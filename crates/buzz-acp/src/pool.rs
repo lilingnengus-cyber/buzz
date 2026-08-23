@@ -36,6 +36,7 @@ use crate::acp::{
 };
 use crate::config::{compose_session_title, DedupMode, PermissionMode};
 use crate::observer;
+use crate::prompt_project::{pick_listed_project_home, PromptProjectInfo};
 use crate::queue::{
     CancelReason, ContextMessage, ConversationContext, FlushBatch, PromptChannelInfo,
     PromptProfile, PromptProfileLookup, ThreadTags,
@@ -543,6 +544,9 @@ pub enum PromptOutcome {
 #[derive(Debug, Clone)]
 pub struct ChannelInfoResolver {
     cache: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<Uuid, PromptChannelInfo>>>,
+    projects: std::sync::Arc<
+        std::sync::RwLock<std::collections::HashMap<Uuid, Option<PromptProjectInfo>>>,
+    >,
     rest_client: RestClient,
 }
 
@@ -560,31 +564,51 @@ impl ChannelInfoResolver {
                         name: info.name,
                         channel_type: info.channel_type,
                         description: info.description,
+                        project: None,
                     },
                 ))
             })
             .collect();
         Self {
             cache: std::sync::Arc::new(std::sync::RwLock::new(cache)),
+            projects: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             rest_client,
         }
     }
 
     pub async fn resolve(&self, channel_id: Uuid) -> Option<PromptChannelInfo> {
-        if let Some(info) = self
+        let mut info = if let Some(info) = self
             .cache
             .read()
             .ok()
             .and_then(|cache| cache.get(&channel_id).cloned())
         {
-            return Some(info);
-        }
-
-        let info = fetch_channel_info(channel_id, &self.rest_client).await?;
-        if let Ok(mut cache) = self.cache.write() {
-            cache.insert(channel_id, info.clone());
-        }
+            info
+        } else {
+            let info = fetch_channel_info(channel_id, &self.rest_client).await?;
+            if let Ok(mut cache) = self.cache.write() {
+                cache.insert(channel_id, info.clone());
+            }
+            info
+        };
+        info.project = self.lookup_project(channel_id).await;
         Some(info)
+    }
+
+    async fn lookup_project(&self, channel_id: Uuid) -> Option<PromptProjectInfo> {
+        if let Some(cached) = self
+            .projects
+            .read()
+            .ok()
+            .and_then(|cache| cache.get(&channel_id).cloned())
+        {
+            return cached;
+        }
+        let fetched = fetch_project_home_for_channel(channel_id, &self.rest_client).await;
+        if let Ok(mut cache) = self.projects.write() {
+            cache.insert(channel_id, fetched.clone());
+        }
+        fetched
     }
 }
 
@@ -2937,6 +2961,7 @@ pub(crate) async fn fetch_channel_info(
                     name: name.unwrap_or(UNKNOWN_CHANNEL_NAME).to_string(),
                     channel_type,
                     description,
+                    project: None,
                 })
             }
             Ok(Err(e)) => {
@@ -2956,6 +2981,47 @@ pub(crate) async fn fetch_channel_info(
         }
     })
     .await
+}
+
+/// Resolve the listed NIP-MP project whose home channel is `channel_id`.
+///
+/// Empty results are not retried: most channels are not project homes.
+pub(crate) async fn fetch_project_home_for_channel(
+    channel_id: Uuid,
+    rest: &RestClient,
+) -> Option<PromptProjectInfo> {
+    let filter = serde_json::json!({
+        "kinds": [buzz_core::kind::KIND_PROJECT],
+        "limit": 1000,
+    });
+
+    let json = fetch_with_retry(|| async {
+        match timeout(
+            CONTEXT_FETCH_TIMEOUT,
+            rest.query_raw(std::slice::from_ref(&filter)),
+        )
+        .await
+        {
+            Ok(Ok(json)) => Some(json),
+            Ok(Err(e)) => {
+                tracing::debug!(
+                    channel_id = %channel_id,
+                    "project home fetch failed: {e} — will retry"
+                );
+                None
+            }
+            Err(_) => {
+                tracing::debug!(
+                    channel_id = %channel_id,
+                    "project home fetch timed out — will retry"
+                );
+                None
+            }
+        }
+    })
+    .await?;
+    let events = json.as_array()?;
+    pick_listed_project_home(events, &channel_id.to_string())
 }
 
 /// Fetch owner-signed huddle instructions for a new channel session.
@@ -8373,7 +8439,8 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
     }
 
     /// A normal channel yields a non-DM (canvas allowed) and its name for the
-    /// title suffix — and the second consumer reads it from cache, not the wire.
+    /// title suffix. Channel metadata and project context resolve once each;
+    /// the second consumer reads both from cache.
     #[tokio::test]
     async fn test_new_session_channel_context_qualifies_a_normal_channel() {
         use std::sync::atomic::Ordering;
@@ -8387,14 +8454,14 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         assert!(!is_dm, "a stream channel is not a DM");
         assert_eq!(title_channel.as_deref(), Some("buzz-dev"));
         assert_eq!(channel_type.as_deref(), Some("stream"));
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
 
         let (_, again, _) = resolve_new_session_channel_context(&resolver, id).await;
         assert_eq!(again.as_deref(), Some("buzz-dev"));
         assert_eq!(
             requests.load(Ordering::SeqCst),
-            1,
-            "a resolved channel is cached — no second lookup"
+            2,
+            "resolved channel metadata and project context are cached"
         );
         server.abort();
     }

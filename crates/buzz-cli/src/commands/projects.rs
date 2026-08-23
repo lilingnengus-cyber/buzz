@@ -25,6 +25,8 @@ use nostr::{Event, EventBuilder, Tag, Timestamp};
 
 use crate::client::BuzzClient;
 use crate::commands::parse_write_response;
+use crate::commands::project_channel::repo_id_from_project_slug;
+use crate::commands::repos::{build_create_announcement, fetch_own_repo_announcement};
 use crate::error::CliError;
 
 // ── Buzz repo-ID grammar (bare --repo shorthand) ─────────────────────────────
@@ -63,9 +65,140 @@ fn parse_events(json: &str) -> Result<Vec<Event>, CliError> {
         .map_err(|e| CliError::Other(format!("failed to parse relay response: {e}")))
 }
 
-/// Fetch the caller's own live kind:30621 head for `slug`.
-async fn fetch_own_project(client: &BuzzClient, slug: &str) -> Result<Option<Event>, CliError> {
-    fetch_project(client, slug, None).await
+/// Fetch every listed kind:30621 head for `slug`, any owner.
+async fn fetch_projects_by_dtag(client: &BuzzClient, slug: &str) -> Result<Vec<Event>, CliError> {
+    let filter = serde_json::json!({
+        "kinds": [KIND_PROJECT],
+        "#d": [slug],
+        "limit": 20,
+    });
+    let raw = client.query(&filter).await?;
+    parse_events(&raw)
+}
+
+/// Fetch listed kind:30621 heads whose `buzz-channel` is `channel`.
+fn project_tags_match_channel<'a>(tags: impl IntoIterator<Item = &'a Tag>, channel: &str) -> bool {
+    tags.into_iter()
+        .any(|tag| tag_name(tag) == Some("buzz-channel") && tag_value(tag) == Some(channel))
+}
+
+pub(crate) async fn fetch_projects_for_channel(
+    client: &BuzzClient,
+    channel: &str,
+) -> Result<Vec<Event>, CliError> {
+    let filter = serde_json::json!({
+        "kinds": [KIND_PROJECT],
+        "limit": 1000,
+    });
+    let raw = client.query(&filter).await?;
+    Ok(parse_events(&raw)?
+        .into_iter()
+        .filter(|event| project_tags_match_channel(event.tags.iter(), channel))
+        .collect())
+}
+
+fn project_is_unlisted(event: &Event) -> bool {
+    event.tags.iter().any(|tag| {
+        matches!(
+            tag.as_slice(),
+            [name, value, ..] if name == "buzz-visibility" && value == "unlisted"
+        )
+    })
+}
+
+fn project_slug(event: &Event) -> Option<String> {
+    event.tags.iter().find_map(|tag| match tag.as_slice() {
+        [name, value, ..] if name == "d" && !value.is_empty() => Some(value.clone()),
+        _ => None,
+    })
+}
+
+fn other_listed_project<'a>(events: &'a [Event], caller_pubkey: &str) -> Option<&'a Event> {
+    events.iter().find(|event| {
+        !event.pubkey.to_hex().eq_ignore_ascii_case(caller_pubkey) && !project_is_unlisted(event)
+    })
+}
+
+/// Add repos to a project the caller owns. Returns the relay write JSON.
+pub async fn add_repos_to_own_project(
+    client: &BuzzClient,
+    slug: &str,
+    repos: &[String],
+) -> Result<String, CliError> {
+    validate_project_slug(slug)?;
+    let caller_pubkey = client.keys().public_key().to_hex();
+
+    let new_members: Vec<ProjectMemberCoord> = repos
+        .iter()
+        .map(|r| expand_repo_coord(r, &caller_pubkey))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut seen = std::collections::HashSet::new();
+    for m in &new_members {
+        if !seen.insert(m.coord.clone()) {
+            return Err(CliError::Usage(format!(
+                "duplicate --repo coordinate in this invocation: {:?}",
+                m.coord
+            )));
+        }
+    }
+
+    let head = fetch_own_project(client, slug)
+        .await?
+        .ok_or_else(|| CliError::NotFound(format!("project {slug:?} not found")))?;
+    let next_ts = next_timestamp(&head, Timestamp::now())?;
+
+    let mut tags: Vec<Tag> = head.tags.iter().cloned().collect();
+    let existing_coords: std::collections::HashSet<String> = head
+        .tags
+        .iter()
+        .filter(|t| tag_name(t) == Some("a"))
+        .filter_map(|t| tag_value(t).map(String::from))
+        .collect();
+    let mut added = 0usize;
+    for m in &new_members {
+        if !existing_coords.contains(m.coord.as_str()) {
+            let parts = m.to_tag_parts();
+            let parts_ref: Vec<&str> = parts.iter().map(String::as_str).collect();
+            tags.push(
+                Tag::parse(parts_ref.iter().copied())
+                    .map_err(|e| CliError::Other(format!("member tag construction failed: {e}")))?,
+            );
+            added += 1;
+        }
+    }
+
+    if added == 0 {
+        return Err(CliError::Conflict(format!(
+            "all requested repositories are already members of project {slug:?}"
+        )));
+    }
+
+    let builder = rebuild_project(&head.content, tags, next_ts)?;
+    let event = client.sign_event(builder)?;
+    client.submit_event(event).await
+}
+
+/// If this channel is already a project the caller owns, attach `repo_id`.
+pub async fn try_add_own_repo_to_channel_project(
+    client: &BuzzClient,
+    channel: &str,
+    repo_id: &str,
+) -> Result<(), CliError> {
+    let projects = fetch_projects_for_channel(client, channel).await?;
+    let caller = client.keys().public_key().to_hex();
+    let Some(event) = projects.iter().find(|candidate| {
+        candidate.pubkey.to_hex().eq_ignore_ascii_case(&caller) && !project_is_unlisted(candidate)
+    }) else {
+        return Ok(());
+    };
+    let Some(slug) = project_slug(event) else {
+        return Ok(());
+    };
+    match add_repos_to_own_project(client, &slug, &[repo_id.to_string()]).await {
+        Ok(_) | Err(CliError::Conflict(_)) => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Fetch a project head by slug and optional owner pubkey.
@@ -91,6 +224,11 @@ async fn fetch_project(
     let mut events = parse_events(&raw)?;
     events.sort_by_key(|e| std::cmp::Reverse(e.created_at));
     Ok(events.into_iter().next())
+}
+
+/// Fetch the caller's own live kind:30621 head for `slug`.
+async fn fetch_own_project(client: &BuzzClient, slug: &str) -> Result<Option<Event>, CliError> {
+    fetch_project(client, slug, None).await
 }
 
 // ── Tag helpers ───────────────────────────────────────────────────────────────
@@ -187,10 +325,17 @@ pub async fn cmd_create(
     let caller_pubkey = client.keys().public_key().to_hex();
 
     // Expand and validate repo coordinates.
-    let members: Vec<ProjectMemberCoord> = repos
+    let mut members: Vec<ProjectMemberCoord> = repos
         .iter()
         .map(|r| expand_repo_coord(r, &caller_pubkey))
         .collect::<Result<Vec<_>, _>>()?;
+
+    if members.is_empty() && channel.is_none() {
+        return Err(CliError::Usage(
+            "pass --channel to create a default repository, or --repo to attach an existing one"
+                .into(),
+        ));
+    }
 
     // Dedupe: preserve first occurrence, reject duplicates with Usage.
     let mut seen = std::collections::HashSet::new();
@@ -224,6 +369,38 @@ pub async fn cmd_create(
         return Err(CliError::Conflict(format!(
             "project {slug:?} already exists; use 'buzz projects update' to modify it"
         )));
+    }
+    if let Some(existing) =
+        other_listed_project(&fetch_projects_by_dtag(client, slug).await?, &caller_pubkey)
+    {
+        let owner = existing.pubkey.to_hex();
+        return Err(CliError::Conflict(format!(
+            "project {slug:?} already exists (owner {owner}); do not create another. Add a repository to that project instead."
+        )));
+    }
+    if let Some(channel) = channel {
+        if let Some(existing) = fetch_projects_for_channel(client, channel)
+            .await?
+            .into_iter()
+            .find(|event| !project_is_unlisted(event))
+        {
+            let existing_slug = project_slug(&existing).unwrap_or_else(|| slug.to_string());
+            let owner = existing.pubkey.to_hex();
+            return Err(CliError::Conflict(format!(
+                "channel {channel} is already the home of project {existing_slug:?} (owner {owner}); do not create another project. Use `buzz repos create --channel {channel}` and `buzz projects add-repo {existing_slug}`."
+            )));
+        }
+    }
+
+    if members.is_empty() {
+        let home = channel.ok_or_else(|| {
+            CliError::Usage(
+                "pass --channel to create a default repository, or --repo to attach an existing one"
+                    .into(),
+            )
+        })?;
+        let repo_id = ensure_default_create_repo(client, slug, name, description, home).await?;
+        members.push(expand_repo_coord(&repo_id, &caller_pubkey)?);
     }
 
     // ── Build via Layer B (enforces all writer policy) ────────────────────
@@ -294,63 +471,10 @@ pub async fn cmd_add_repo(
     slug: &str,
     repos: &[String],
 ) -> Result<(), CliError> {
-    validate_project_slug(slug)?;
-    let caller_pubkey = client.keys().public_key().to_hex();
-
-    // ── Local validation before any .await ────────────────────────────────
-    let new_members: Vec<ProjectMemberCoord> = repos
-        .iter()
-        .map(|r| expand_repo_coord(r, &caller_pubkey))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Dedupe within this invocation: first occurrence wins, duplicate → Usage.
-    let mut seen = std::collections::HashSet::new();
-    for m in &new_members {
-        if !seen.insert(m.coord.clone()) {
-            return Err(CliError::Usage(format!(
-                "duplicate --repo coordinate in this invocation: {:?}",
-                m.coord
-            )));
-        }
-    }
-
-    // ── Network: fetch head ───────────────────────────────────────────────
-    let head = fetch_own_project(client, slug)
-        .await?
-        .ok_or_else(|| CliError::NotFound(format!("project {slug:?} not found")))?;
-    let next_ts = next_timestamp(&head, Timestamp::now())?;
-
-    // Build the new tag set: keep existing tags (including hinted members),
-    // append new members only if not already present (by coordinate).
-    let mut tags: Vec<Tag> = head.tags.iter().cloned().collect();
-    let existing_coords: std::collections::HashSet<String> = head
-        .tags
-        .iter()
-        .filter(|t| tag_name(t) == Some("a"))
-        .filter_map(|t| tag_value(t).map(String::from))
-        .collect();
-    let mut added = 0usize;
-    for m in &new_members {
-        if !existing_coords.contains(m.coord.as_str()) {
-            let parts = m.to_tag_parts();
-            let parts_ref: Vec<&str> = parts.iter().map(String::as_str).collect();
-            tags.push(
-                Tag::parse(parts_ref.iter().copied())
-                    .map_err(|e| CliError::Other(format!("member tag construction failed: {e}")))?,
-            );
-            added += 1;
-        }
-    }
-
-    // All requested coordinates were already present — no change to publish.
-    if added == 0 {
-        return Err(CliError::Conflict(format!(
-            "all requested repositories are already members of project {slug:?}"
-        )));
-    }
-
-    let builder = rebuild_project(&head.content, tags, next_ts)?;
-    submit_project(client, builder, None).await
+    let raw = add_repos_to_own_project(client, slug, repos).await?;
+    let response = parse_write_response(&raw, "project changed concurrently; retry")?;
+    println!("{response}");
+    Ok(())
 }
 
 /// `buzz projects remove-repo`
@@ -554,6 +678,36 @@ pub async fn cmd_delete(client: &BuzzClient, slug: &str) -> Result<(), CliError>
     Ok(())
 }
 
+async fn ensure_default_create_repo(
+    client: &BuzzClient,
+    slug: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+    channel: &str,
+) -> Result<String, CliError> {
+    let repo_id = repo_id_from_project_slug(slug)?;
+    if fetch_own_repo_announcement(client, &repo_id)
+        .await?
+        .is_some()
+    {
+        return Ok(repo_id);
+    }
+    let raw_name = name.unwrap_or(slug);
+    let display_name: String = raw_name.chars().take(128).collect();
+    let builder = build_create_announcement(
+        &repo_id,
+        Some(&display_name),
+        description,
+        &[],
+        None,
+        &[],
+        Some(channel),
+    )?;
+    let event = client.sign_event(builder)?;
+    client.submit_event(event).await?;
+    Ok(repo_id)
+}
+
 // ── Validation helpers ────────────────────────────────────────────────────────
 
 /// Validate a project slug: non-empty, ≤1024 bytes, verbatim.
@@ -651,6 +805,19 @@ mod tests {
 
     const OWNER_HEX: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const OWNER_B_HEX: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    #[test]
+    fn project_channel_matching_ignores_unrelated_claims() {
+        let expected = "11111111-1111-4111-8111-111111111111";
+        let tags = make_head_tags(&[
+            make_test_tag(&["buzz-channel", "22222222-2222-4222-8222-222222222222"]),
+            make_test_tag(&["name", "Unrelated"]),
+        ]);
+        assert!(!project_tags_match_channel(tags.iter(), expected));
+
+        let tags = make_head_tags(&[make_test_tag(&["buzz-channel", expected])]);
+        assert!(project_tags_match_channel(tags.iter(), expected));
+    }
 
     #[test]
     fn expand_repo_coord_bare_expands_with_caller_pubkey() {
@@ -1097,6 +1264,24 @@ mod tests {
         let keys = nostr::Keys::generate();
         crate::client::BuzzClient::new("http://127.0.0.1:9".into(), keys, None, None)
             .expect("client construction")
+    }
+
+    /// Creating without --repo or --channel must fail locally; the default
+    /// repository needs a home channel to bind as git ACL.
+    #[tokio::test]
+    async fn create_without_repo_or_channel_returns_usage_before_any_network_call() {
+        let client = discard_client();
+        let err = cmd_create(&client, "my-slug", &[], None, None, None, None)
+            .await
+            .expect_err("missing repo and channel must fail");
+        assert!(
+            matches!(err, CliError::Usage(_)),
+            "expected CliError::Usage, got {err:?}"
+        );
+        assert!(
+            format!("{err}").contains("--channel"),
+            "Usage message must mention --channel, got {err:?}"
+        );
     }
 
     /// Invalid visibility token must return Usage before touching the relay.

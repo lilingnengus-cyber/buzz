@@ -7,6 +7,7 @@ mod filter;
 mod observer;
 mod pool;
 mod pool_lifecycle;
+mod prompt_project;
 mod queue;
 mod relay;
 mod setup_mode;
@@ -4476,6 +4477,14 @@ mod agent_draft_prompt_tests {
     }
 
     #[test]
+    fn shared_base_prompt_teaches_not_to_duplicate_projects() {
+        let prompt = include_str!("base_prompt.md");
+        assert!(prompt.contains("do **not** run `buzz projects create`"));
+        assert!(prompt.contains("buzz issues create --channel"));
+        assert!(prompt.contains("is not a Buzz repository"));
+    }
+
+    #[test]
     fn shared_base_prompt_teaches_single_command_mentions_and_preflight() {
         let prompt = include_str!("base_prompt.md");
         assert!(prompt.contains("use the person's **exact display name as shown in Buzz**"));
@@ -5666,8 +5675,8 @@ mod author_gate_tests {
         assert!(is_dm_channel(id, &resolver).await);
         assert_eq!(
             requests.load(Ordering::SeqCst),
-            1,
-            "second resolution uses cache"
+            2,
+            "channel metadata and project context each resolve once, then cache"
         );
         server.abort();
     }
