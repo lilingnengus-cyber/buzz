@@ -154,7 +154,15 @@ export function BusinessIamAdminDialog({
             </div>
           </DialogHeader>
           <div className="flex items-center gap-2">
-            <Badge variant="success">MFA step-up</Badge>
+            <Button
+              onClick={() => void workbenchAuth.stepUp()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <KeyRound className="mr-1.5 size-3.5" />
+              Step up
+            </Button>
             <Button
               aria-label="Refresh authority ledger"
               disabled={loading}

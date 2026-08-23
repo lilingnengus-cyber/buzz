@@ -32,3 +32,9 @@ marks the record exhausted; later calls fail.
 Normal turn completion synchronously revokes the delegation. IAM principal,
 direct-grant, role-binding, role-permission, role, or permission changes revoke
 related active delegations transactionally; TTL remains an abnormal-path limit.
+The acceptance suite exercises the ACP finish-path request, the dropped-turn
+fallback, explicit revocation after an exhausted turn, role-authority changes,
+and a consume/revoke race. Calls that were serialized before the revocation
+commit may finish within the atomic call budget; every call and final-response
+verification after that commit is rejected, and the row cannot return to
+`active`.

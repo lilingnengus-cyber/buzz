@@ -532,6 +532,59 @@ fn bounded_number(name: &str, default: u64, min: u64, max: u64) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn revocation_test_config(gateway_base_url: Url) -> Arc<BusinessAgentHostConfig> {
+        Arc::new(BusinessAgentHostConfig {
+            gateway_base_url,
+            business_api_base_url: None,
+            business_action_api_base_url: None,
+            service_credential: "test-service-credential-at-least-32-bytes".into(),
+            mcp_command: "business-read-mcp".into(),
+            adapter: "mock".into(),
+            tool_timeout_seconds: 10,
+            turn_timeout_seconds: 30,
+            max_payload_bytes: 65_536,
+            default_limit: 20,
+            max_limit: 100,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    async fn expect_revocation_request(
+        listener: tokio::net::TcpListener,
+        delegation_id: Uuid,
+        trace_id: Uuid,
+    ) {
+        let (mut stream, _) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+            .await
+            .expect("revocation request timeout")
+            .expect("accept revocation request");
+        let mut request = Vec::new();
+        loop {
+            let mut chunk = [0_u8; 2048];
+            let read = stream.read(&mut chunk).await.expect("read request");
+            assert!(read > 0, "request ended before headers");
+            request.extend_from_slice(&chunk[..read]);
+            if request.windows(4).any(|part| part == b"\r\n\r\n") {
+                break;
+            }
+        }
+        let request = String::from_utf8(request).expect("HTTP request text");
+        assert!(request.starts_with(&format!(
+            "POST /internal/agent-delegations/{delegation_id}/revoke HTTP/1.1\r\n"
+        )));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("x-business-service-credential: test-service-credential-at-least-32-bytes"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains(&format!("x-trace-id: {trace_id}")));
+        stream
+            .write_all(b"HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+            .await
+            .expect("write response");
+    }
 
     #[test]
     fn read_scope_allowlist_has_no_write_capability() {
@@ -565,5 +618,54 @@ mod tests {
         ] {
             assert!(prompt.contains(boundary), "missing boundary: {boundary}");
         }
+    }
+
+    #[tokio::test]
+    async fn normal_turn_revocation_is_synchronous_and_idempotent() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = listener.local_addr().expect("address");
+        let delegation_id = Uuid::new_v4();
+        let trace_id = Uuid::new_v4();
+        let server = tokio::spawn(expect_revocation_request(listener, delegation_id, trace_id));
+        let guard = RevocationGuard {
+            config: revocation_test_config(
+                Url::parse(&format!("http://{address}/")).expect("gateway URL"),
+            ),
+            delegation_id,
+            trace_id,
+            revoked: AtomicBool::new(false),
+        };
+
+        guard.revoke().await;
+        server.await.expect("revocation server");
+        assert!(guard.revoked.load(Ordering::Acquire));
+
+        // A repeated finish/drop path must not make a second network request.
+        guard.revoke().await;
+    }
+
+    #[tokio::test]
+    async fn dropped_turn_still_schedules_revocation() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = listener.local_addr().expect("address");
+        let delegation_id = Uuid::new_v4();
+        let trace_id = Uuid::new_v4();
+        let server = tokio::spawn(expect_revocation_request(listener, delegation_id, trace_id));
+        {
+            let _guard = RevocationGuard {
+                config: revocation_test_config(
+                    Url::parse(&format!("http://{address}/")).expect("gateway URL"),
+                ),
+                delegation_id,
+                trace_id,
+                revoked: AtomicBool::new(false),
+            };
+        }
+
+        server.await.expect("drop revocation server");
     }
 }

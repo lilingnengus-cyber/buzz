@@ -232,6 +232,27 @@ export function WorkbenchAuthProvider({
     };
   }, [manager, syncGateway]);
 
+  const getAccessToken = React.useCallback(async () => {
+    if (import.meta.env.MODE === "e2e") {
+      const injected = window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__;
+      if (typeof injected === "string" && injected.length > 0) return injected;
+    }
+    if (!manager) return null;
+    const user = await getValidWorkbenchUser(manager);
+    if (!user) {
+      setIdentity(null);
+      setGroupClaimStatus(null);
+      setGatewayState({ status: "unauthenticated" });
+      setPhase("expired");
+      return null;
+    }
+    setIdentity(identityFromProfile(user.profile));
+    setGroupClaimStatus(groupClaimStatusFromProfile(user.profile));
+    setPhase("authenticated");
+    await syncGateway(user.access_token);
+    return user.access_token;
+  }, [manager, syncGateway]);
+
   const value = React.useMemo<WorkbenchAuthContextValue>(
     () => ({
       config: result.config,
@@ -241,27 +262,7 @@ export function WorkbenchAuthProvider({
       identity,
       groupClaimStatus,
       phase,
-      getAccessToken: async () => {
-        if (import.meta.env.MODE === "e2e") {
-          const injected = window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__;
-          if (typeof injected === "string" && injected.length > 0)
-            return injected;
-        }
-        if (!manager) return null;
-        const user = await getValidWorkbenchUser(manager);
-        if (!user) {
-          setIdentity(null);
-          setGroupClaimStatus(null);
-          setGatewayState({ status: "unauthenticated" });
-          setPhase("expired");
-          return null;
-        }
-        setIdentity(identityFromProfile(user.profile));
-        setGroupClaimStatus(groupClaimStatusFromProfile(user.profile));
-        setPhase("authenticated");
-        await syncGateway(user.access_token);
-        return user.access_token;
-      },
+      getAccessToken,
       bindCurrentDevice: async () => {
         if (!manager || !gatewayUrl) return;
         const user = await manager.getUser();
@@ -346,12 +347,12 @@ export function WorkbenchAuthProvider({
       error,
       gatewayState,
       gatewayUrl,
+      getAccessToken,
       groupClaimStatus,
       identity,
       manager,
       phase,
       result.config,
-      syncGateway,
     ],
   );
 

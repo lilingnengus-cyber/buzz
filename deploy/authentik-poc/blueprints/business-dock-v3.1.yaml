@@ -68,6 +68,23 @@ entries:
         method = request.context.get("oauth_code_challenge_method")
         return bool(challenge) and method == "S256"
 
+  # The local POC deliberately strengthens the default authentication flow.
+  # Authentik owns device enrollment: users without a TOTP device configure one
+  # on first sign-in. Every later login, including max_age=0 Business IAM
+  # Step-up, validates it again. Device seeds are deliberately not stored in
+  # this Blueprint or its environment.
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    id: require-poc-totp
+    identifiers:
+      name: default-authentication-mfa-validation
+    attrs:
+      not_configured_action: configure
+      device_classes:
+        - totp
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+      last_auth_threshold: seconds=0
+
   - model: authentik_providers_oauth2.oauth2provider
     id: workbench-provider
     identifiers:

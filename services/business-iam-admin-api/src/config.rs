@@ -6,6 +6,7 @@ pub struct Config {
     pub database_url: String,
     pub bind_addr: SocketAddr,
     pub authentik_issuer: String,
+    pub authentik_backchannel_issuer: String,
     pub client_id: String,
     pub allowed_origins: HashSet<String>,
     pub step_up_max_age: Duration,
@@ -30,6 +31,12 @@ fn https_url(value: &str, name: &str) -> Result<Url, String> {
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let issuer = https_url(&required("AUTHENTIK_ISSUER")?, "AUTHENTIK_ISSUER")?;
+        let backchannel_issuer = std::env::var("AUTHENTIK_BACKCHANNEL_ISSUER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| https_url(&value, "AUTHENTIK_BACKCHANNEL_ISSUER"))
+            .transpose()?
+            .unwrap_or_else(|| issuer.clone());
         let allowed_origins = required("BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS")?
             .split(',')
             .map(str::trim)
@@ -70,6 +77,7 @@ impl Config {
                 .parse()
                 .map_err(|_| "BUSINESS_IAM_ADMIN_BIND_ADDR is invalid")?,
             authentik_issuer: issuer.as_str().to_owned(),
+            authentik_backchannel_issuer: backchannel_issuer.as_str().to_owned(),
             client_id: required("BUSINESS_IAM_ADMIN_CLIENT_ID")?,
             allowed_origins,
             step_up_max_age: Duration::from_secs(step_up_seconds),

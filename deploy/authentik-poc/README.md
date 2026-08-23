@@ -134,3 +134,18 @@ pnpm exec playwright test --config playwright.authentik.config.ts embed-session.
 ```
 
 The Web suite expects the `.test` Business environment (`SameSite=Lax`); the packaged desktop/Embed suite expects `.localhost` with `SameSite=None`. Restart only the Business mock when switching those local modes. Never commit either populated environment file.
+
+For the Business IAM security boundary, run the repository-level acceptance
+script after the POC Compose stack is healthy:
+
+```bash
+./scripts/test-business-iam-authentik.sh
+```
+
+The script creates a temporary PostgreSQL database with separate owner and
+least-privilege runtime roles, derives the configured POC user's stable OIDC
+subject from Authentik, installs an ephemeral TOTP device, starts the real IAM
+API, and proves both forced Step-up and read-only overreach denial. The device,
+database, roles, processes, and generated secrets are removed on exit. Set
+`AUTHENTIK_POC_ENV_FILE` when the populated ignored environment file lives
+outside this worktree.

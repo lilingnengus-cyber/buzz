@@ -12,7 +12,8 @@ use business_auth_gateway::{
 use chrono::Utc;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind};
 use sqlx::{postgres::PgPoolOptions, Row};
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
+use tokio::sync::Barrier;
 use uuid::Uuid;
 
 fn config(database_url: String, max_calls: i32) -> Config {
@@ -359,6 +360,41 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
             .expect("status");
     assert_eq!(status, "revoked");
     assert_eq!(binding.status, "active");
+    let consumed_after_turn = store
+        .consume_agent_delegation(
+            &issued.token,
+            ConsumeAgentDelegationRequest {
+                tool_name: "get_sales_order".into(),
+                required_scope: "sales_order:read".into(),
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "turn-001".into(),
+            },
+            facts(trace_id),
+        )
+        .await;
+    assert!(matches!(
+        consumed_after_turn,
+        Err(Rejection::Unauthorized("delegation_rejected"))
+    ));
+    let verified_after_turn = store
+        .verify_agent_delegation(
+            VerifyAgentDelegationRequest {
+                delegation_id: issued.id,
+                enterprise_user_id: principal.user_id,
+                identity_binding_id: binding.id,
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "turn-001".into(),
+                trace_id,
+                used_calls: 4,
+                required_scope: "sales_order:read".into(),
+            },
+            facts(trace_id),
+        )
+        .await;
+    assert!(matches!(
+        verified_after_turn,
+        Err(Rejection::Forbidden("delegation_rejected"))
+    ));
 
     let live_proxy_source = EventBuilder::new(Kind::TextNote, "查一下下一张销售单")
         .tags([Tag::custom(
@@ -398,6 +434,113 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
             .await
             .expect("role-revoked proxy delegation");
     assert_eq!(role_revoked, "revoked");
+    let role_revoked_call = store
+        .consume_agent_delegation(
+            &live_proxy.token,
+            ConsumeAgentDelegationRequest {
+                tool_name: "get_sales_order".into(),
+                required_scope: "sales_order:read".into(),
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "turn-before-human-disable".into(),
+            },
+            facts(live_proxy.trace_id),
+        )
+        .await;
+    assert!(matches!(
+        role_revoked_call,
+        Err(Rejection::Unauthorized("delegation_rejected"))
+    ));
+
+    let racing_source = EventBuilder::new(Kind::TextNote, "并发查询并立即结束")
+        .tags([Tag::custom(
+            TagKind::Custom("h".into()),
+            [channel.to_string()],
+        )])
+        .sign_with_keys(&user_keys)
+        .expect("sign racing source");
+    let racing = store
+        .issue_agent_delegation(
+            IssueAgentDelegationRequest {
+                source_event: racing_source.clone(),
+                source_buzz_event_id: racing_source.id.to_hex(),
+                source_buzz_pubkey: racing_source.pubkey.to_hex(),
+                source_channel_id: channel.to_string(),
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "turn-revocation-race".into(),
+                scopes: vec!["sales_order:read".into()],
+            },
+            facts(Uuid::new_v4()),
+        )
+        .await
+        .expect("racing proxy delegation");
+    let barrier = Arc::new(Barrier::new(10));
+    let mut racing_calls = Vec::new();
+    for _ in 0..8 {
+        let store = store.clone();
+        let token = racing.token.clone();
+        let barrier = Arc::clone(&barrier);
+        let trace_id = racing.trace_id;
+        racing_calls.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .consume_agent_delegation(
+                    &token,
+                    ConsumeAgentDelegationRequest {
+                        tool_name: "get_sales_order".into(),
+                        required_scope: "sales_order:read".into(),
+                        agent_id: "business-query-agent".into(),
+                        agent_turn_id: "turn-revocation-race".into(),
+                    },
+                    facts(trace_id),
+                )
+                .await
+                .is_ok()
+        }));
+    }
+    let revoke_store = store.clone();
+    let revoke_barrier = Arc::clone(&barrier);
+    let racing_id = racing.id;
+    let racing_trace = racing.trace_id;
+    let revoke = tokio::spawn(async move {
+        revoke_barrier.wait().await;
+        revoke_store
+            .revoke_agent_delegation(racing_id, facts(racing_trace))
+            .await
+    });
+    barrier.wait().await;
+    revoke.await.expect("join revoke").expect("racing revoke");
+    let mut successes_before_revocation_commit = 0;
+    for call in racing_calls {
+        if call.await.expect("join racing call") {
+            successes_before_revocation_commit += 1;
+        }
+    }
+    assert!(successes_before_revocation_commit <= 4);
+    for _ in 0..8 {
+        let after_commit = store
+            .consume_agent_delegation(
+                &racing.token,
+                ConsumeAgentDelegationRequest {
+                    tool_name: "get_sales_order".into(),
+                    required_scope: "sales_order:read".into(),
+                    agent_id: "business-query-agent".into(),
+                    agent_turn_id: "turn-revocation-race".into(),
+                },
+                facts(racing.trace_id),
+            )
+            .await;
+        assert!(matches!(
+            after_commit,
+            Err(Rejection::Unauthorized("delegation_rejected"))
+        ));
+    }
+    let racing_status: String =
+        sqlx::query_scalar("SELECT status FROM agent_read_delegations WHERE id=$1")
+            .bind(racing.id)
+            .fetch_one(&pool)
+            .await
+            .expect("racing delegation status");
+    assert_eq!(racing_status, "revoked");
 
     let post_role_source = EventBuilder::new(Kind::TextNote, "按新角色再查一张销售单")
         .tags([Tag::custom(

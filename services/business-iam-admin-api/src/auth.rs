@@ -56,6 +56,7 @@ struct Cache {
 pub struct Authenticator {
     client: reqwest::Client,
     issuer: String,
+    backchannel_issuer: String,
     client_id: String,
     max_age: Duration,
     required_amr: HashSet<String>,
@@ -67,6 +68,7 @@ impl Authenticator {
         Self {
             client: reqwest::Client::new(),
             issuer: config.authentik_issuer.clone(),
+            backchannel_issuer: config.authentik_backchannel_issuer.clone(),
             client_id: config.client_id.clone(),
             max_age: config.step_up_max_age,
             required_amr: config.required_mfa_amr.clone(),
@@ -83,7 +85,7 @@ impl Authenticator {
             .client
             .get(format!(
                 "{}/.well-known/openid-configuration",
-                self.issuer.trim_end_matches('/')
+                self.backchannel_issuer.trim_end_matches('/')
             ))
             .send()
             .await
@@ -170,7 +172,7 @@ impl Authenticator {
              FROM enterprise_users user_row
              JOIN business_iam.principals principal
                ON principal.kind='human' AND principal.external_id=user_row.id::text
-             WHERE user_row.issuer=$1 AND user_row.subject=$2
+             WHERE user_row.oidc_issuer=$1 AND user_row.oidc_subject=$2
                AND user_row.status='active' AND principal.status='active'",
         )
         .bind(&claims.iss)

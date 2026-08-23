@@ -33,11 +33,19 @@ ambient browser cookies.
 BUSINESS_IAM_ADMIN_DATABASE_URL
 BUSINESS_IAM_ADMIN_BIND_ADDR=0.0.0.0:3110
 AUTHENTIK_ISSUER
+# Optional service-to-service discovery/JWKS endpoint. Token `iss` is still
+# verified strictly against AUTHENTIK_ISSUER.
+AUTHENTIK_BACKCHANNEL_ISSUER
 BUSINESS_IAM_ADMIN_CLIENT_ID
 BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS
 BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS=300
 BUSINESS_IAM_REQUIRED_MFA_AMR=mfa
 ```
+
+`AUTHENTIK_BACKCHANNEL_ISSUER` is useful when the browser-facing issuer is
+published through an external reverse proxy while the API reaches Authentik on
+an internal address. It only controls OIDC discovery and JWKS retrieval; it
+never relaxes the expected JWT issuer.
 
 Run migrations with the schema-owner credential and grant the narrowly scoped
 runtime role:

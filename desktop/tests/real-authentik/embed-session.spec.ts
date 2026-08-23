@@ -1,26 +1,18 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { signInWithPasswordAndTotp } from "./authentikMfa";
+import { installMockBridge } from "../helpers/bridge";
 
 const AUTH_ORIGIN = "https://auth.bizfin.localhost";
 const BUSINESS_ORIGIN = "https://business.bizfin.localhost";
-
-async function signInToAuthentik(page: Page) {
-  const password = process.env.POC_USER_PASSWORD;
-  if (!password) throw new Error("POC_USER_PASSWORD is required");
-  await expect(page).toHaveURL(new RegExp(`^${AUTH_ORIGIN}`));
-  const username = page.locator('input[name="uidField"]').first();
-  await username.fill(process.env.POC_USER_USERNAME ?? "poc-user");
-  await page.getByRole("button", { name: /log in|continue/i }).click();
-  const passwordInput = page.getByRole("textbox", { name: "Password" });
-  await passwordInput.fill(password);
-  await page.getByRole("button", { name: "Continue" }).click();
-}
 
 test("one-time Embed Session is audience-bound and replay-safe", async ({
   browser,
   page,
 }) => {
+  await installMockBridge(page);
   await page.goto(`${BUSINESS_ORIGIN}/auth/login`);
-  await signInToAuthentik(page);
+  await signInWithPasswordAndTotp(page, AUTH_ORIGIN);
   await expect(page).toHaveURL(`${BUSINESS_ORIGIN}/`);
   await expect(page.locator("#status")).toContainText(
     "Authenticated as POC User",

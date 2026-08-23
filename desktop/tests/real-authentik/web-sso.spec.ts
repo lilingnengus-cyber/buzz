@@ -1,43 +1,29 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import {
+  readWorkbenchAccessTokenClaims,
+  signInWithPasswordAndTotp,
+} from "./authentikMfa";
+import { installMockBridge } from "../helpers/bridge";
 
 const AUTH_ORIGIN = "https://auth.bizfin.test";
 const BUSINESS_ORIGIN = "https://business.bizfin.test";
-
-async function signInToAuthentik(page: Page) {
-  const username = process.env.POC_USER_USERNAME ?? "poc-user";
-  const password = process.env.POC_USER_PASSWORD;
-  if (!password) throw new Error("POC_USER_PASSWORD is required");
-
-  await expect(page).toHaveURL(new RegExp(`^${AUTH_ORIGIN}`));
-  const usernameInput = page.locator('input[name="uidField"]').first();
-  await expect(usernameInput).toBeVisible();
-  await usernameInput.fill(username);
-  await page.getByRole("button", { name: /log in|continue/i }).click();
-
-  const passwordInput = page.getByRole("textbox", { name: "Password" });
-  await expect(passwordInput).toBeVisible();
-  await passwordInput.fill(password);
-  expect(
-    await passwordInput.evaluate(
-      (element) => (element as HTMLInputElement).value.length,
-    ),
-  ).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Continue" }).click();
-}
 
 test("real Web dual-client SSO establishes an independent Business session", async ({
   context,
   page,
 }) => {
+  await installMockBridge(page);
   await page.goto("/?e2e=mock&resetDevState=1");
   await expect(page.getByTestId("workbench-auth-gate")).toBeVisible();
 
   await page.getByRole("button", { name: "Sign in with Authentik" }).click();
-  await signInToAuthentik(page);
+  await signInWithPasswordAndTotp(page, AUTH_ORIGIN);
   await expect(page).toHaveURL(
     /^https:\/\/workbench\.bizfin\.test\/(?:\?e2e=mock)?$/,
   );
   await expect(page.getByTestId("workbench-auth-gate")).toBeHidden();
+  await readWorkbenchAccessTokenClaims(page);
 
   const businessPage = await context.newPage();
   await businessPage.goto(`${BUSINESS_ORIGIN}/auth/login`);
