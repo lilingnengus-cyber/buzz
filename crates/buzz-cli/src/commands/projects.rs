@@ -21,13 +21,57 @@ use buzz_sdk::{
     build_delete_addressable, build_project, build_project_with_tags, ProjectMemberCoord,
     PROJECT_D_MAX_LEN,
 };
-use nostr::{Event, EventBuilder, Tag, Timestamp};
+use nostr::{Event, EventBuilder, PublicKey, Tag, Timestamp};
 
+use crate::agent_management::{build_project_channel, CreateProjectChannelDraft};
 use crate::client::BuzzClient;
 use crate::commands::parse_write_response;
 use crate::commands::project_channel::repo_id_from_project_slug;
 use crate::commands::repos::{build_create_announcement, fetch_own_repo_announcement};
 use crate::error::CliError;
+
+async fn cmd_add_channel_draft(
+    client: &BuzzClient,
+    home_channel: String,
+    name: String,
+    description: Option<String>,
+    visibility: String,
+    ttl_seconds: Option<u64>,
+    template_name: Option<String>,
+) -> Result<(), CliError> {
+    let owner_hex = client
+        .auth_tag_owner_hex()
+        .ok_or_else(|| CliError::Auth("project channel requests require BUZZ_AUTH_TAG".into()))?;
+    let owner = PublicKey::parse(&owner_hex)
+        .map_err(|error| CliError::Auth(format!("invalid owner attestation: {error}")))?;
+    let built = build_project_channel(
+        client.keys(),
+        &owner,
+        CreateProjectChannelDraft {
+            home_channel_id: home_channel,
+            name,
+            description,
+            visibility,
+            ttl_seconds,
+            template_name,
+        },
+    )?;
+    let response = client.publish_ephemeral_event(built.event).await?;
+    let mut output: serde_json::Value = serde_json::from_str(&response)
+        .map_err(|error| CliError::Other(format!("invalid relay response: {error}")))?;
+    if let Some(object) = output.as_object_mut() {
+        object.insert("request_id".into(), built.request_id.into());
+        object.insert("action".into(), "add-channel".into());
+        object.insert("saved".into(), false.into());
+        object.insert(
+            "message".into(),
+            "Project channel draft sent to Buzz Desktop for owner review. The channel is not created until the owner approves it."
+                .into(),
+        );
+    }
+    println!("{output}");
+    Ok(())
+}
 
 // ── Buzz repo-ID grammar (bare --repo shorthand) ─────────────────────────────
 
@@ -762,6 +806,25 @@ pub async fn dispatch(cmd: crate::ProjectsCmd, client: &BuzzClient) -> Result<()
         ProjectsCmd::Get { slug, owner } => cmd_get(client, &slug, owner.as_deref()).await,
         ProjectsCmd::List { owner, limit } => cmd_list(client, owner.as_deref(), limit).await,
         ProjectsCmd::AddRepo { slug, repo } => cmd_add_repo(client, &slug, &repo).await,
+        ProjectsCmd::AddChannel {
+            home_channel,
+            name,
+            description,
+            visibility,
+            ttl,
+            template,
+        } => {
+            cmd_add_channel_draft(
+                client,
+                home_channel,
+                name,
+                description,
+                visibility.to_string(),
+                ttl,
+                template,
+            )
+            .await
+        }
         ProjectsCmd::RemoveRepo { slug, repo } => cmd_remove_repo(client, &slug, &repo).await,
         ProjectsCmd::Update {
             slug,

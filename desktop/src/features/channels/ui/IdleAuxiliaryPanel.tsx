@@ -4,13 +4,21 @@ import {
   AuxiliaryPanel,
   AuxiliaryPanelBody,
   AuxiliaryPanelHeader,
+  AuxiliaryPanelHeaderActions,
   AuxiliaryPanelHeaderGroup,
   AuxiliaryPanelTitle,
 } from "@/shared/layout/AuxiliaryPanel";
 
+export type IdleAuxiliaryHeaderControls = {
+  actions?: React.ReactNode;
+  backLabel?: string;
+  onBack?: () => void;
+};
+
 export function IdleAuxiliaryPanel({
   canResetWidth,
   children,
+  headerControls,
   isFocusDrawer = false,
   isSinglePanelView,
   onClose,
@@ -22,6 +30,7 @@ export function IdleAuxiliaryPanel({
 }: {
   canResetWidth: boolean;
   children: React.ReactNode;
+  headerControls?: IdleAuxiliaryHeaderControls;
   isFocusDrawer?: boolean;
   isSinglePanelView: boolean;
   onClose: () => void;
@@ -50,9 +59,18 @@ export function IdleAuxiliaryPanel({
       widthPx={widthPx}
       header={
         <AuxiliaryPanelHeader backdrop={isFocusDrawer} transparent={split}>
-          <AuxiliaryPanelHeaderGroup>
+          <AuxiliaryPanelHeaderGroup
+            backButtonAriaLabel={headerControls?.backLabel}
+            backButtonTestId="idle-auxiliary-back"
+            onBack={headerControls?.onBack}
+          >
             <AuxiliaryPanelTitle>{title}</AuxiliaryPanelTitle>
           </AuxiliaryPanelHeaderGroup>
+          {headerControls?.actions ? (
+            <AuxiliaryPanelHeaderActions>
+              {headerControls.actions}
+            </AuxiliaryPanelHeaderActions>
+          ) : null}
         </AuxiliaryPanelHeader>
       }
     >

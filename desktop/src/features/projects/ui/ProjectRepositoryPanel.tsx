@@ -57,6 +57,10 @@ import {
   type RepositoryFileContentSource,
   useRepositoryFileContent,
 } from "./useRepositoryFileContent";
+import {
+  type RepositoryFilesContext,
+  useRepositoryFilesNavigation,
+} from "./useRepositoryFilesNavigation";
 
 function normalizeAuthorLookupValue(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? "";
@@ -612,6 +616,7 @@ function FileContentPanel({
 export function RepositoryFilesPanel({
   files,
   fileContentSource,
+  initialPath,
   snapshot,
   isLoading,
   error,
@@ -624,36 +629,31 @@ export function RepositoryFilesPanel({
 }: {
   files: ProjectRepoFile[];
   fileContentSource?: RepositoryFileContentSource;
+  initialPath?: string;
   snapshot: ProjectRepoSnapshot | null | undefined;
   isLoading: boolean;
   error: unknown;
   profiles?: UserProfileLookup;
   fallbackAuthorPubkey?: string;
-  onContextChange?: (context: {
-    kind: "file" | "folder";
-    path: string;
-  }) => void;
+  onContextChange?: (context: RepositoryFilesContext) => void;
   onOpenCommit?: (commitHash: string) => void;
   /** Branch picker + remote/local toggle rendered in the panel header. */
   sourceControls?: RepoSourceHeaderControls;
   unavailableMessage?: string;
 }) {
-  const [currentPath, setCurrentPath] = React.useState("");
-  const [selectedFile, setSelectedFile] =
-    React.useState<ProjectRepoFile | null>(null);
-  const [visibleEntryCount, setVisibleEntryCount] = React.useState(
-    REPOSITORY_ENTRY_PAGE_SIZE,
-  );
-  const openPath = React.useCallback((path: string) => {
-    setCurrentPath(path);
-    setVisibleEntryCount(REPOSITORY_ENTRY_PAGE_SIZE);
-  }, []);
-  React.useEffect(() => {
-    onContextChange?.({
-      kind: selectedFile ? "file" : "folder",
-      path: selectedFile?.path ?? currentPath,
-    });
-  }, [currentPath, onContextChange, selectedFile]);
+  const {
+    currentPath,
+    openPath,
+    selectedFile,
+    setSelectedFile,
+    setVisibleEntryCount,
+    visibleEntryCount,
+  } = useRepositoryFilesNavigation({
+    files,
+    initialPath,
+    onContextChange,
+    pageSize: REPOSITORY_ENTRY_PAGE_SIZE,
+  });
   const entries = React.useMemo(
     () => repositoryEntries(files, currentPath),
     [currentPath, files],
@@ -695,18 +695,6 @@ export function RepositoryFilesPanel({
     latestCommitProfile,
   );
   const pathSegments = currentPath ? currentPath.split("/") : [];
-
-  const filesKey = React.useMemo(
-    () => files.map((file) => file.path).join("\0"),
-    [files],
-  );
-
-  React.useEffect(() => {
-    if (!filesKey) return;
-    setCurrentPath("");
-    setSelectedFile(null);
-    setVisibleEntryCount(REPOSITORY_ENTRY_PAGE_SIZE);
-  }, [filesKey]);
 
   // Loading/error/empty states keep the header controls visible — the
   // remote/local toggle must stay reachable when one source fails to load.
@@ -790,10 +778,7 @@ export function RepositoryFilesPanel({
       <FileContentPanel
         file={selectedFile}
         fileContentSource={fileContentSource}
-        onOpenPath={(path) => {
-          setSelectedFile(null);
-          openPath(path);
-        }}
+        onOpenPath={openPath}
       />
     );
   }

@@ -49,6 +49,11 @@ export type Project = {
   legacy: boolean;
 };
 
+/** True for an announced NIP-MP project, excluding repository-only read models. */
+export function isExplicitProject(project: Project): boolean {
+  return !project.legacy;
+}
+
 type BuildProjectReadModelsInput = {
   projectEvents: RelayEvent[];
   repositoryEvents: RelayEvent[];

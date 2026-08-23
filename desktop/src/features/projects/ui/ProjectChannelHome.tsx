@@ -1,5 +1,5 @@
 import { useSearch } from "@tanstack/react-router";
-import { Info } from "lucide-react";
+import { Maximize2, Plus } from "lucide-react";
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -9,9 +9,11 @@ import { useProfileQuery } from "@/features/profile/hooks";
 import type { Project } from "@/features/projects/hooks";
 import {
   isProjectHomeWorkspaceSheetTab,
+  projectHomeWorkspaceSheetExpandTab,
   projectHomeWorkspaceSheetTitle,
   type ProjectHomeWorkspaceSheetTab,
 } from "@/features/projects/lib/projectHomeWorkspaceSheet";
+import { ProjectSelectionProvider } from "@/features/projects/lib/useProjectSelection";
 import { useHealProjectHomeRepositories } from "@/features/projects/useHealProjectHomeRepositories";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { RelayEvent } from "@/shared/api/types";
@@ -27,7 +29,11 @@ import { ProjectContextRail } from "./ProjectContextRail";
 import { ProjectDetailChrome } from "./ProjectDetailChrome";
 import { ProjectHomeColumn } from "./ProjectHomeColumn";
 import { ProjectHomeContextPanel } from "./ProjectHomeContextPanel";
-import { ProjectHomeWorkspaceSheet } from "./ProjectHomeWorkspaceSheet";
+import {
+  ProjectHomeWorkspaceSheet,
+  type ProjectHomeWorkspaceCreateAction,
+  type ProjectHomeWorkspaceDetail,
+} from "./ProjectHomeWorkspaceSheet";
 import { ProjectRepositoryManagement } from "./ProjectRepositoryManagement";
 
 const EMPTY_TARGET_MESSAGE_EVENTS: RelayEvent[] = [];
@@ -78,11 +84,17 @@ function ProjectHomeHeaderToggle({
 }
 
 export function ProjectChannelHome({
+  autoSendDraftKey,
   project,
   projects,
+  targetMessageEvents = EMPTY_TARGET_MESSAGE_EVENTS,
+  targetMessageId,
 }: {
+  autoSendDraftKey?: string | null;
   project: Project;
   projects: Project[];
+  targetMessageEvents?: RelayEvent[];
+  targetMessageId?: string | null;
 }) {
   const { goChannel, goProject, goProjects } = useAppNavigation();
   const sidebar = useOptionalSidebar();
@@ -100,6 +112,10 @@ export function ProjectChannelHome({
   const [workspaceRepositoryId, setWorkspaceRepositoryId] = React.useState<
     string | null
   >(null);
+  const [workspaceCreateAction, setWorkspaceCreateAction] =
+    React.useState<ProjectHomeWorkspaceCreateAction | null>(null);
+  const [workspaceDetail, setWorkspaceDetail] =
+    React.useState<ProjectHomeWorkspaceDetail | null>(null);
   const summaryWidth = useThreadPanelWidth(undefined, {
     sessionKey: PROJECT_HOME_SUMMARY_WIDTH_KEY,
   });
@@ -123,11 +139,15 @@ export function ProjectChannelHome({
       if (repositoryId) {
         setWorkspaceRepositoryId(repositoryId);
       }
+      setWorkspaceCreateAction(null);
+      setWorkspaceDetail(null);
       setWorkspaceSheetTab((current) => (current === tab ? null : tab));
     },
     [],
   );
   const closeWorkspaceSheet = React.useCallback(() => {
+    setWorkspaceCreateAction(null);
+    setWorkspaceDetail(null);
     setWorkspaceSheetTab(null);
   }, []);
   const handleOpenWorkspace = React.useCallback(
@@ -150,16 +170,19 @@ export function ProjectChannelHome({
     setAddRepositoryOpen(true);
   }, []);
   const handleFilesAdded = React.useCallback((repositoryId: string) => {
+    setWorkspaceCreateAction(null);
+    setWorkspaceDetail(null);
     setWorkspaceRepositoryId(repositoryId);
     setWorkspaceSheetTab("files");
   }, []);
-  const handleToggleFilesSheet = React.useCallback(() => {
-    if (!workspaceRepository) {
-      handleAddFiles();
-      return;
-    }
-    openWorkspaceSheet("files", workspaceRepository.id);
-  }, [handleAddFiles, openWorkspaceSheet, workspaceRepository]);
+  const handleWorkspaceRepositoryChange = React.useCallback(
+    (repositoryId: string) => {
+      setWorkspaceCreateAction(null);
+      setWorkspaceDetail(null);
+      setWorkspaceRepositoryId(repositoryId);
+    },
+    [],
+  );
   useHealProjectHomeRepositories(project, identityQuery.data?.pubkey);
   const handleOpenCommit = React.useCallback(
     (commitHash: string) => {
@@ -172,14 +195,33 @@ export function ProjectChannelHome({
     },
     [goProject, project.id, workspaceRepository],
   );
+  const handleExpandWorkspace = React.useCallback(() => {
+    if (!workspaceRepository || !workspaceSheetTab) return;
+    void goProject(project.id, {
+      ...workspaceDetail?.navigation,
+      repositoryId: workspaceRepository.id,
+      tab: projectHomeWorkspaceSheetExpandTab(workspaceSheetTab),
+    });
+  }, [
+    goProject,
+    project.id,
+    workspaceDetail?.navigation,
+    workspaceRepository,
+    workspaceSheetTab,
+  ]);
+  const expandLabel = workspaceSheetTab
+    ? `Open ${projectHomeWorkspaceSheetTitle(workspaceSheetTab)} in repository`
+    : "Open in repository";
   const workspaceSheet =
     workspaceSheetOpen && workspaceSheetTab && workspaceRepository ? (
       <ProjectHomeWorkspaceSheet
         key={`${workspaceSheetTab}:${workspaceRepository.id}`}
         identityPubkey={identityQuery.data?.pubkey}
+        onCreateActionChange={setWorkspaceCreateAction}
+        onDetailChange={setWorkspaceDetail}
         onOpenCommit={handleOpenCommit}
         onRepositoryAdded={handleFilesAdded}
-        onSelectRepository={setWorkspaceRepositoryId}
+        onSelectRepository={handleWorkspaceRepositoryChange}
         project={project}
         projects={projects}
         repository={workspaceRepository}
@@ -188,25 +230,29 @@ export function ProjectChannelHome({
     ) : null;
 
   return (
-    <div
-      className={cn(
-        "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
-        summaryVisible && "bg-sidebar pb-2 pr-2 pt-px",
-        summaryVisible && sidebar?.open === false && "pl-2",
-      )}
-      data-project-context-detached={summaryVisible ? "true" : undefined}
-      data-project-detail-screen
-      data-testid="project-channel-home"
+    <ProjectSelectionProvider
+      resetKey={`${project.id}:${workspaceSheetTab ?? "home"}`}
     >
       <div
         className={cn(
-          "relative flex min-h-0 min-w-60 flex-1 flex-col overflow-hidden",
-          summaryVisible ? "ml-px rounded-2xl bg-background" : "bg-muted/20",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
+          summaryVisible && "bg-sidebar",
+          summaryVisible && sidebar?.open === false && "pl-2",
         )}
+        data-project-context-detached={summaryVisible ? "true" : undefined}
+        data-project-detail-screen
+        data-testid="project-channel-home"
       >
-        <ProjectDetailChrome
-          actions={
-            <>
+        <div
+          className={cn(
+            "relative flex min-h-0 min-w-60 flex-1 flex-col overflow-hidden",
+            summaryVisible
+              ? "mb-2 ml-px mt-px rounded-2xl bg-background"
+              : "bg-muted/20",
+          )}
+        >
+          <ProjectDetailChrome
+            actions={
               <ProjectHomeHeaderToggle
                 label="Overview"
                 onClick={() => {
@@ -219,115 +265,160 @@ export function ProjectChannelHome({
                 open={summaryVisible}
                 testId="project-home-drawer-toggle"
               >
-                <Info
-                  className={cn(
-                    "h-4 w-4 transition-opacity duration-200 ease-linear",
-                    summaryVisible ? "opacity-100" : "opacity-60",
-                  )}
-                />
-              </ProjectHomeHeaderToggle>
-              <ProjectHomeHeaderToggle
-                label="Files"
-                onClick={handleToggleFilesSheet}
-                open={workspaceSheetTab === "files"}
-                testId="project-home-codebase-toggle"
-              >
                 <DrawerPanelIcon
                   className="-scale-x-100"
-                  side={workspaceSheetTab === "files" ? "left" : "right"}
+                  side={summaryVisible ? "left" : "right"}
                 />
               </ProjectHomeHeaderToggle>
-            </>
-          }
-          activeTabCrumb={null}
-          activeWorkItemCrumb={null}
-          onGoProjectHome={() => undefined}
-          onGoProjects={() => {
-            void goProjects();
-          }}
-          project={project}
-        />
-        {waitingForChannel ? (
-          <ViewLoadingFallback kind="channel" />
-        ) : homeChannel ? (
-          <React.Suspense
-            fallback={
-              <ChannelScreenLoadingFallback isHuddleTranscript={false} />
             }
-          >
-            <ChannelScreenView
-              activeChannel={homeChannel}
-              autoSendDraftKey={search.autoSend ?? null}
-              currentIdentity={identityQuery.data}
-              currentProfile={profileQuery.data}
-              idleAuxiliaryPanel={workspaceSheet}
-              idleAuxiliaryTitle={
-                workspaceSheetTab
-                  ? projectHomeWorkspaceSheetTitle(workspaceSheetTab)
-                  : ""
+            activeTabCrumb={null}
+            activeWorkItemCrumb={null}
+            onGoProjectHome={() => undefined}
+            onGoProjects={() => {
+              void goProjects();
+            }}
+            project={project}
+          />
+          {waitingForChannel ? (
+            <ViewLoadingFallback kind="channel" />
+          ) : homeChannel ? (
+            <React.Suspense
+              fallback={
+                <ChannelScreenLoadingFallback isHuddleTranscript={false} />
               }
-              onAddFiles={handleAddFiles}
-              onCloseIdleAuxiliaryPanel={closeWorkspaceSheet}
-              onCloseForumPost={ignoreForumPost}
-              onSelectForumPost={ignoreForumPostSelect}
-              selectedForumPostId={null}
-              targetForumReplyId={null}
-              targetMessageEvents={EMPTY_TARGET_MESSAGE_EVENTS}
-              targetMessageId={search.messageId ?? null}
-            />
-          </React.Suspense>
-        ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8">
-            <p className="text-sm text-muted-foreground">
-              This project's channel could not be found.
-            </p>
-          </div>
-        )}
+            >
+              <ChannelScreenView
+                activeChannel={homeChannel}
+                autoSendDraftKey={
+                  autoSendDraftKey === undefined
+                    ? (search.autoSend ?? null)
+                    : autoSendDraftKey
+                }
+                currentIdentity={identityQuery.data}
+                currentProfile={profileQuery.data}
+                idleAuxiliaryPanel={workspaceSheet}
+                idleAuxiliaryHeaderActions={{
+                  actions: (
+                    <>
+                      {workspaceCreateAction ? (
+                        <Tooltip disableHoverableContent>
+                          <TooltipTrigger asChild>
+                            <Button
+                              aria-label={workspaceCreateAction.label}
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                              data-testid="project-home-workspace-sheet-create"
+                              disabled={workspaceCreateAction.disabled}
+                              onClick={workspaceCreateAction.onClick}
+                              size="icon"
+                              title={
+                                workspaceCreateAction.title ??
+                                workspaceCreateAction.label
+                              }
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {workspaceCreateAction.label}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      <Tooltip disableHoverableContent>
+                        <TooltipTrigger asChild>
+                          <Button
+                            aria-label={expandLabel}
+                            className="shrink-0"
+                            data-testid="project-home-workspace-sheet-expand"
+                            onClick={handleExpandWorkspace}
+                            size="icon"
+                            title={expandLabel}
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Maximize2 />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{expandLabel}</TooltipContent>
+                      </Tooltip>
+                    </>
+                  ),
+                  backLabel: workspaceDetail?.backLabel,
+                  onBack: workspaceDetail?.onBack,
+                }}
+                idleAuxiliaryTitle={
+                  workspaceSheetTab
+                    ? projectHomeWorkspaceSheetTitle(workspaceSheetTab)
+                    : ""
+                }
+                onAddFiles={handleAddFiles}
+                onCloseIdleAuxiliaryPanel={closeWorkspaceSheet}
+                onCloseForumPost={ignoreForumPost}
+                onSelectForumPost={ignoreForumPostSelect}
+                selectedForumPostId={null}
+                targetForumReplyId={null}
+                targetMessageEvents={targetMessageEvents}
+                targetMessageId={
+                  targetMessageId === undefined
+                    ? (search.messageId ?? null)
+                    : targetMessageId
+                }
+              />
+            </React.Suspense>
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8">
+              <p className="text-sm text-muted-foreground">
+                This project's channel could not be found.
+              </p>
+            </div>
+          )}
+        </div>
+        <ProjectRepositoryManagement
+          createOpen={addRepositoryOpen}
+          hideTriggers
+          identityPubkey={identityQuery.data?.pubkey}
+          onChange={handleFilesAdded}
+          onCreateOpenChange={setAddRepositoryOpen}
+          project={project}
+          projects={projects}
+        />
+        <ProjectContextRail
+          open={summaryVisible}
+          panelWidthPx={summaryWidth.widthPx}
+          resizing={summaryWidth.isResizing}
+          rounded={false}
+          testId="project-home-summary-rail"
+        >
+          {summaryVisible ? (
+            <ProjectHomeColumn
+              bodyClassName="overflow-y-auto overflow-x-hidden overscroll-contain"
+              canResetWidth={summaryWidth.canReset}
+              onResetWidth={summaryWidth.onResetWidth}
+              onResizeStart={summaryWidth.onResizeStart}
+              testId="project-home-summary-column"
+              title="Overview"
+              widthPx={summaryWidth.widthPx}
+            >
+              <ProjectHomeContextPanel
+                activeWorkspaceTab={workspaceSheetTab}
+                channel={homeChannel}
+                channels={channelsQuery.data ?? []}
+                identityPubkey={identityQuery.data?.pubkey}
+                onAddRepository={handleAddFiles}
+                onOpenChannel={(channelId) => {
+                  void goChannel(channelId);
+                }}
+                onOpenRepository={handleOpenRepository}
+                onOpenWorkspace={handleOpenWorkspace}
+                onRepositoryChange={handleOpenRepository}
+                project={project}
+                projects={projects}
+              />
+            </ProjectHomeColumn>
+          ) : null}
+        </ProjectContextRail>
       </div>
-      <ProjectRepositoryManagement
-        createOpen={addRepositoryOpen}
-        hideTriggers
-        identityPubkey={identityQuery.data?.pubkey}
-        onChange={handleFilesAdded}
-        onCreateOpenChange={setAddRepositoryOpen}
-        project={project}
-        projects={projects}
-      />
-      <ProjectContextRail
-        open={summaryVisible}
-        panelWidthPx={summaryWidth.widthPx}
-        resizing={summaryWidth.isResizing}
-        testId="project-home-summary-rail"
-      >
-        {summaryVisible ? (
-          <ProjectHomeColumn
-            bodyClassName="overflow-y-auto overflow-x-hidden overscroll-contain"
-            canResetWidth={summaryWidth.canReset}
-            onClose={() => setSummaryOpen(false)}
-            onResetWidth={summaryWidth.onResetWidth}
-            onResizeStart={summaryWidth.onResizeStart}
-            testId="project-home-summary-column"
-            title="Overview"
-            widthPx={summaryWidth.widthPx}
-          >
-            <ProjectHomeContextPanel
-              activeWorkspaceTab={workspaceSheetTab}
-              channel={homeChannel}
-              channels={channelsQuery.data ?? []}
-              identityPubkey={identityQuery.data?.pubkey}
-              onAddRepository={handleAddFiles}
-              onOpenChannel={(channelId) => {
-                void goChannel(channelId);
-              }}
-              onOpenRepository={handleOpenRepository}
-              onOpenWorkspace={handleOpenWorkspace}
-              onRepositoryChange={handleOpenRepository}
-              project={project}
-              projects={projects}
-            />
-          </ProjectHomeColumn>
-        ) : null}
-      </ProjectContextRail>
-    </div>
+    </ProjectSelectionProvider>
   );
 }

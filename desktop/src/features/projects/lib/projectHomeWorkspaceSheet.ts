@@ -31,3 +31,10 @@ export function projectHomeWorkspaceSheetTitle(
 ): string {
   return WORKSPACE_SHEET_TITLES[tab];
 }
+
+/** Repository workspace tab to open when expanding a home-channel sheet. */
+export function projectHomeWorkspaceSheetExpandTab(
+  tab: ProjectHomeWorkspaceSheetTab,
+): ProjectHomeWorkspaceSheetTab {
+  return tab;
+}

@@ -90,6 +90,7 @@ export function ChannelScreen({
   currentProfile,
   headerEndActions,
   idleAuxiliaryPanel,
+  idleAuxiliaryHeaderActions,
   idleAuxiliaryTitle,
   onAddFiles,
   onCloseIdleAuxiliaryPanel,
@@ -853,6 +854,7 @@ export function ChannelScreen({
                   fetchOlder={fetchOlder}
                   header={channelHeader}
                   idleAuxiliaryPanel={idleAuxiliaryPanel}
+                  idleAuxiliaryHeaderActions={idleAuxiliaryHeaderActions}
                   idleAuxiliaryTitle={idleAuxiliaryTitle}
                   hasOlderMessages={hasOlderMessages}
                   historyExhausted={historyExhausted}

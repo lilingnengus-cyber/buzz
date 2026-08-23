@@ -22,6 +22,7 @@ function nonEmptyString(value: unknown): string | undefined {
 export function parseProjectDetailSearch(search: Record<string, unknown>) {
   return {
     commitHash: optionalSearchString(search.commitHash),
+    filePath: optionalSearchString(search.filePath),
     pullRequestId: optionalSearchString(search.pullRequestId),
     issueId: optionalSearchString(search.issueId),
     repositoryId: optionalSearchString(search.repositoryId),
@@ -46,6 +47,7 @@ export function parseProjectDetailSearch(search: Record<string, unknown>) {
  */
 export function wantsProjectRepositorySurface(input: {
   commitHash?: string;
+  filePath?: string;
   issueId?: string;
   projectId: string;
   pullRequestId?: string;
@@ -57,7 +59,8 @@ export function wantsProjectRepositorySurface(input: {
     input.tab ||
     input.issueId ||
     input.pullRequestId ||
-    input.commitHash
+    input.commitHash ||
+    input.filePath
   ) {
     return true;
   }

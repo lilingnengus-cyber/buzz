@@ -1334,6 +1334,28 @@ pub enum ProjectsCmd {
         #[arg(long = "repo", required = true)]
         repo: Vec<String>,
     },
+    /// Draft a project-linked channel for owner review in Buzz Desktop
+    #[command(name = "add-channel")]
+    AddChannel {
+        /// Project home channel UUID from the current ACP [Context]
+        #[arg(long)]
+        home_channel: String,
+        /// New channel name
+        #[arg(long)]
+        name: String,
+        /// Optional channel description
+        #[arg(long)]
+        description: Option<String>,
+        /// Channel visibility
+        #[arg(long, value_enum, default_value = "open")]
+        visibility: ChannelVisibility,
+        /// Optional temporary-channel lifetime in seconds
+        #[arg(long)]
+        ttl: Option<u64>,
+        /// Optional Desktop channel-template name
+        #[arg(long)]
+        template: Option<String>,
+    },
     /// Remove one or more member repositories from a project
     #[command(name = "remove-repo")]
     RemoveRepo {
@@ -2375,6 +2397,7 @@ mod tests {
         assert_eq!(
             names(&cmd, "projects"),
             vec![
+                "add-channel",
                 "add-repo",
                 "create",
                 "delete",
@@ -2421,7 +2444,7 @@ mod tests {
             ("pack", 2),
             ("patches", 4),
             ("pr", 5),
-            ("projects", 7),
+            ("projects", 8),
             ("reactions", 3),
             ("repos", 5),
             ("social", 7),
@@ -2491,6 +2514,25 @@ mod tests {
     }
 
     // ── projects update mutation group ────────────────────────────────────────
+
+    /// Project-channel requests accept the owner-review metadata.
+    #[test]
+    fn projects_add_channel_accepts_owner_review_fields() {
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "projects",
+            "add-channel",
+            "--home-channel",
+            "11111111-1111-4111-8111-111111111111",
+            "--name",
+            "release-planning",
+            "--visibility",
+            "private",
+            "--template",
+            "Release team",
+        ])
+        .is_ok());
+    }
 
     /// Multiple independent fields must be accepted in the same invocation.
     #[test]

@@ -26,7 +26,9 @@ import type { EntityLinkTab } from "@/shared/lib/entityLink";
 import { Button } from "@/shared/ui/button";
 import { ProjectChannelManagement } from "./ProjectChannelManagement";
 import { ProjectRepositoryManagement } from "./ProjectRepositoryManagement";
-import { PROJECT_CONTEXT_ACTION_BUTTON_CLASS } from "./projectContextActionStyles";
+
+const PROJECT_HOME_SIDEBAR_ROW_CLASS =
+  "h-8 w-full justify-start gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal text-sidebar-foreground/80 transition-[background-color,color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50";
 
 function ContextSection({
   children,
@@ -40,11 +42,11 @@ function ContextSection({
   title?: string;
 }) {
   return (
-    <section className="space-y-0.5" data-testid={testId}>
+    <section className="space-y-1" data-testid={testId}>
       {title || headerAction ? (
-        <div className="flex h-7 min-w-0 items-center justify-between gap-2">
+        <div className="flex h-8 min-w-0 items-center justify-between gap-2 px-2">
           {title ? (
-            <h3 className="min-w-0 truncate text-sm font-normal text-muted-foreground/70">
+            <h3 className="min-w-0 truncate text-xs font-medium text-sidebar-foreground/70">
               {title}
             </h3>
           ) : (
@@ -69,11 +71,11 @@ function ContextRowContent({
 }) {
   return (
     <>
-      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+      <span className="flex size-4 shrink-0 items-center justify-center text-current">
         {icon}
       </span>
       <span className="min-w-0 flex-1 truncate text-left">{children}</span>
-      <span className="w-8 shrink-0 text-right tabular-nums text-muted-foreground">
+      <span className="w-8 shrink-0 text-right tabular-nums text-current opacity-60">
         {count ?? ""}
       </span>
     </>
@@ -103,8 +105,9 @@ function ContextNavButton({
     <Button
       aria-pressed={pressed}
       className={cn(
-        PROJECT_CONTEXT_ACTION_BUTTON_CLASS,
-        pressed && "bg-muted/70",
+        PROJECT_HOME_SIDEBAR_ROW_CLASS,
+        pressed &&
+          "bg-sidebar-active text-sidebar-active-foreground shadow-xs hover:bg-sidebar-active hover:text-sidebar-active-foreground",
       )}
       data-testid={testId}
       disabled={disabled}
@@ -148,7 +151,7 @@ function ChannelContextRow({
   }
   return (
     <div
-      className={`${PROJECT_CONTEXT_ACTION_BUTTON_CLASS} pointer-events-none flex items-center`}
+      className={`${PROJECT_HOME_SIDEBAR_ROW_CLASS} pointer-events-none flex items-center`}
       data-testid={testId}
     >
       <ContextRowContent count={count} icon={<Icon />}>
@@ -238,7 +241,7 @@ export function ProjectHomeContextPanel({
 
   return (
     <div
-      className="space-y-4 px-4 pb-8 pt-1"
+      className="space-y-4 px-2 pb-8 pt-1"
       data-testid="project-home-context-panel"
     >
       <ContextSection testId="project-home-context-workspace">
@@ -334,7 +337,7 @@ export function ProjectHomeContextPanel({
           })
         ) : (
           <p
-            className={`${PROJECT_CONTEXT_ACTION_BUTTON_CLASS} pointer-events-none flex items-center`}
+            className={`${PROJECT_HOME_SIDEBAR_ROW_CLASS} pointer-events-none flex items-center`}
           >
             <ContextRowContent icon={<Hash />}>Unavailable</ContextRowContent>
           </p>
@@ -365,7 +368,9 @@ export function ProjectHomeContextPanel({
             </ContextNavButton>
           ))
         ) : (
-          <p className="text-sm text-muted-foreground">None yet</p>
+          <p className="px-2 py-1 text-sm text-sidebar-foreground/60">
+            None yet
+          </p>
         )}
       </ContextSection>
     </div>

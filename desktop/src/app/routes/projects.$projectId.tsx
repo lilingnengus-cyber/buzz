@@ -18,7 +18,7 @@ export const Route = createFileRoute("/projects/$projectId")({
 function ProjectDetailRouteComponent() {
   usePreviewFeatureWarning("projects");
   const { projectId } = Route.useParams();
-  const { commitHash, pullRequestId, issueId, repositoryId, tab } =
+  const { commitHash, filePath, pullRequestId, issueId, repositoryId, tab } =
     Route.useSearch();
   const entityNavigationId = useLocation({
     select: (location) => {
@@ -34,6 +34,7 @@ function ProjectDetailRouteComponent() {
       <ProjectDetailScreen
         commitHash={commitHash}
         entityNavigationId={entityNavigationId}
+        filePath={filePath}
         issueId={issueId}
         projectId={projectId}
         pullRequestId={pullRequestId}

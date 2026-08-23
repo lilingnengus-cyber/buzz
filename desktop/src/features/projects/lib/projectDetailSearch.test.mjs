@@ -10,6 +10,7 @@ test("parseProjectDetailSearch keeps forge params and channel panel params", () 
   const search = parseProjectDetailSearch({
     repositoryId: "30617:owner:buzz",
     tab: "files",
+    filePath: "src/main.ts",
     thread: "abc123",
     agentSession: "def456",
     channelManagement: "1",
@@ -18,6 +19,7 @@ test("parseProjectDetailSearch keeps forge params and channel panel params", () 
 
   assert.equal(search.repositoryId, "30617:owner:buzz");
   assert.equal(search.tab, "files");
+  assert.equal(search.filePath, "src/main.ts");
   assert.equal(search.thread, "abc123");
   assert.equal(search.agentSession, "def456");
   assert.equal(search.channelManagement, "1");
@@ -57,6 +59,13 @@ test("wantsProjectRepositorySurface is true for repo, tab, or work-item params",
     wantsProjectRepositorySurface({
       projectId: "30621:owner:platform",
       tab: "files",
+    }),
+    true,
+  );
+  assert.equal(
+    wantsProjectRepositorySurface({
+      filePath: "src/main.ts",
+      projectId: "30621:owner:platform",
     }),
     true,
   );

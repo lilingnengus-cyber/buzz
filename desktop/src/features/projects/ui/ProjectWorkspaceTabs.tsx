@@ -54,6 +54,7 @@ import {
   PROJECT_COLUMN_HEADER_BACKDROP_CLASS,
   PROJECT_DETAIL_PANEL_CLASS,
   PROJECT_DETAIL_PANEL_MESSAGE_CLASS,
+  PROJECT_SECTION_HEADER_CLASS,
 } from "./projectPanelStyles";
 import { ProjectSectionHeader } from "./ProjectSectionHeader";
 import { CreatePullRequestDialog } from "./CreatePullRequestDialog";
@@ -61,8 +62,6 @@ import {
   CreateIssueDialog,
   type CreateIssueDialogInput,
 } from "./CreateIssueDialog";
-
-const SECTION_HEADER_CLASS = "mx-4 mb-2 rounded-xl bg-muted/40";
 
 type CreatePullRequestAction = {
   projects: Project[];
@@ -96,6 +95,7 @@ export function WorkspaceTabs({
   createPullRequestRequestKey,
   updatePullRequestAction,
   initialTab,
+  initialFilePath,
   initialTabRequestKey,
   fileContentSource,
   localSnapshot,
@@ -143,6 +143,8 @@ export function WorkspaceTabs({
   updatePullRequestAction?: UpdatePullRequestAction;
   /** Tab to open on mount (workspace vocabulary), e.g. from a share link. */
   initialTab?: string;
+  /** File or folder to open when entering the repository Files tab. */
+  initialFilePath?: string;
   /** Changes for every entity-link activation, including repeated links. */
   initialTabRequestKey?: string;
   fileContentSource?: RepositoryFileContentSource;
@@ -352,13 +354,13 @@ export function WorkspaceTabs({
   const sectionHeader =
     selectedTab === "files" && files.length > 0 ? (
       <ProjectSectionHeader
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={FilesIcon}
         title="Files"
       />
     ) : selectedTab === "activity" && !selectedCommitHash ? (
       <ProjectSectionHeader
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={GitCommitHorizontal}
         title="Commits"
       />
@@ -369,7 +371,7 @@ export function WorkspaceTabs({
           label: "Create task",
           onClick: () => setCreateIssueOpen(true),
         }}
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={CircleDot}
         title="Tasks"
       />
@@ -383,19 +385,19 @@ export function WorkspaceTabs({
           onClick: () => setCreatePullRequestOpen(true),
           title: "Create review — choose a repository and branches to compare",
         }}
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={GitPullRequest}
         title="Reviews"
       />
     ) : selectedTab === "channels" ? (
       <ProjectSectionHeader
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={Hash}
         title="Channels"
       />
     ) : selectedTab === "contributors" ? (
       <ProjectSectionHeader
-        className={SECTION_HEADER_CLASS}
+        className={PROJECT_SECTION_HEADER_CLASS}
         icon={Users}
         title="Contributors"
       />
@@ -583,6 +585,7 @@ export function WorkspaceTabs({
                 fallbackAuthorPubkey={project.owner}
                 fileContentSource={fileContentSource}
                 files={files}
+                initialPath={initialFilePath}
                 isLoading={displayedSnapshotLoading}
                 onContextChange={onFilesContextChange}
                 onOpenCommit={onSelectedCommitHashChange}
