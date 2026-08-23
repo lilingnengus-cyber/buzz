@@ -9,6 +9,8 @@ import {
   isWelcomeChannel,
   isWelcomeExperienceChannel,
 } from "@/features/onboarding/welcome";
+import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
+import { ProjectChannelIcon } from "@/features/projects/ui/ProjectChannelIcon";
 import type { Channel } from "@/shared/api/types";
 import { HashSearch } from "@/shared/ui/icons";
 
@@ -43,6 +45,8 @@ export function useChannelIntro({
   onOpenMembers?: () => void;
   onWelcomeAddAgent?: () => void;
 }) {
+  const projectHome = useIsProjectHomeChannel(activeChannel?.id);
+
   return React.useMemo(() => {
     if (!activeChannel || activeChannel.channelType === "dm") {
       return null;
@@ -81,7 +85,7 @@ export function useChannelIntro({
         actions,
         channelKindLabel: isWelcomeChannel(activeChannel)
           ? "private welcome channel"
-          : getChannelIntroKind(activeChannel),
+          : getChannelIntroKind(activeChannel, projectHome),
         channelName: activeChannel.name,
         description: isWelcomeChannel(activeChannel)
           ? null
@@ -103,9 +107,9 @@ export function useChannelIntro({
 
       if (onAddAgent) {
         actions.push({
-          description: "Bring them in.",
-          icon: <Bot aria-hidden className="h-6 w-6" />,
-          label: "Add agents",
+          description: "Add an agent here.",
+          icon: <Bot aria-hidden className="h-5 w-5" />,
+          label: "Add agent",
           onClick: onAddAgent,
           testId: "channel-intro-action-create-agent",
         });
@@ -114,7 +118,7 @@ export function useChannelIntro({
       if (onOpenMembers) {
         actions.push({
           description: "Invite members.",
-          icon: <UserPlus aria-hidden className="h-6 w-6" />,
+          icon: <UserPlus aria-hidden className="h-5 w-5" />,
           label: "Add people",
           onClick: onOpenMembers,
           testId: "channel-intro-action-add-people",
@@ -124,9 +128,13 @@ export function useChannelIntro({
 
     return {
       actions,
-      channelKindLabel: getChannelIntroKind(activeChannel),
+      channelKindLabel: getChannelIntroKind(activeChannel, projectHome),
       channelName: activeChannel.name,
       description: getChannelIntroDescription(activeChannel),
+      hideBeginning: projectHome,
+      icon: projectHome ? (
+        <ProjectChannelIcon className="h-7 w-7" />
+      ) : undefined,
     };
   }, [
     activeChannel,
@@ -136,5 +144,6 @@ export function useChannelIntro({
     onCreateChannel,
     onOpenMembers,
     onWelcomeAddAgent,
+    projectHome,
   ]);
 }
