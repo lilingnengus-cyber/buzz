@@ -45,6 +45,7 @@ import {
   projectRepoUnavailableReason,
   refineRepoUnavailableReason,
 } from "@/features/projects/lib/projectRepoAvailability";
+import { wantsProjectRepositorySurface } from "@/features/projects/lib/projectDetailSearch";
 import { selectProjectRepository } from "@/features/projects/projectModels";
 import { ProjectSelectionProvider } from "@/features/projects/lib/useProjectSelection";
 import { useMemberChannelIds } from "@/features/projects/useRepositoryAccess";
@@ -61,6 +62,7 @@ import { ProjectDetailChrome } from "./ProjectDetailChrome";
 import { ProjectConversationPanelController } from "./ProjectConversationPanelContext";
 import { ProjectDetailRightPanel } from "./ProjectDetailRightPanel";
 import { ProjectDetailUnavailableState } from "./ProjectDetailUnavailableState";
+import { ProjectChannelHome } from "./ProjectChannelHome";
 import { ProjectRightPanelControls } from "./ProjectRightPanelControls";
 import { buildProjectDetailCrumbs } from "./useProjectDetailCrumbs";
 import { useProjectDetailPeople } from "./useProjectDetailPeople";
@@ -673,6 +675,24 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
       />
     );
   }
+  const showChannelHome =
+    Boolean(project.projectChannelId) &&
+    !wantsProjectRepositorySurface({
+      commitHash,
+      issueId,
+      projectId,
+      pullRequestId,
+      repositoryId,
+      tab,
+    });
+  if (showChannelHome) {
+    return (
+      <ProjectChannelHome
+        project={project}
+        projects={projectsQuery.data ?? [project]}
+      />
+    );
+  }
   if (!repository) {
     return (
       <ProjectDetailUnavailableState
@@ -720,6 +740,13 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
       setSelectedPullRequestId,
       setTabsResetKey,
     });
+  const goChannelHome = () => {
+    if (project.projectChannelId) {
+      void goProject(project.id);
+      return;
+    }
+    handleGoToProjectHome();
+  };
   const agentPageContext = buildProjectDetailAgentContext({
     activeTab,
     branch: activeBranch,
@@ -834,7 +861,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
                 actions={repositoryPanelAction}
                 activeTabCrumb={activeTabCrumb}
                 activeWorkItemCrumb={activeWorkItemCrumb}
-                onGoProjectHome={handleGoToProjectHome}
+                onGoProjectHome={goChannelHome}
                 onGoProjects={() => {
                   void goProjects();
                 }}
@@ -900,6 +927,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
                       handleSelectedPullRequestIdChange
                     }
                     onSelectedTabChange={setActiveTab}
+                    onBack={goChannelHome}
                     profiles={profiles}
                     project={repository}
                     projectId={project.id}
