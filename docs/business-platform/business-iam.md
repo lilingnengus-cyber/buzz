@@ -79,13 +79,23 @@ effective = delegating human current permission
 
 ## 管理面
 
-当前提供无网络监听的 `business-iam-admin` 作为引导和紧急运维入口。它使用
+无网络监听的 `business-iam-admin` 仅作为引导和紧急运维入口。它使用
 `BUSINESS_IAM_ADMIN_DATABASE_URL` 连接专用管理数据库角色，并要求
 `BUSINESS_IAM_ADMIN_ACTOR` 标识操作人。每次变更与审计记录位于同一事务，审计同时
 记录操作人声明和数据库 `current_user`，便于把操作追溯到真实凭据。
 
-该工具不代表未来业务台可以直接写 IAM 表。业务台管理界面应调用独立的 IAM 管理
-服务，并强制管理员登录、Step-up、职责分离和双人复核；Agent 运行凭据不得调用管理面。
+正常管理流量由独立进程 `business-iam-admin-api` 承载。它不依赖 Buzz Relay、ACP、
+Desktop 或 Agent 凭据，仅接受 Authentik OIDC bearer token，并同时验证：当前人员已映射为
+有效 Human 主体、持有 `business_iam:read/request/approve` 中对应能力、`auth_time` 在配置的
+5 分钟窗口内、`amr` 包含要求的 MFA 方法。
+
+所有变更先写入 24 小时有效的不可变 change request。申请人不能审批自己的申请；高风险
+变更需要一名独立审批人，关键授权、撤权、停用及敏感角色分配需要两名不同审批人。目标
+版本不匹配时不会覆盖新状态。Step-up JWT 只保存 SHA-256 证据哈希，不保存令牌；审批和
+管理审计表禁止更新或删除。详细接口及部署参数见
+[`services/business-iam-admin-api/README.md`](../../services/business-iam-admin-api/README.md)。
+
+Agent 运行凭据不能调用该管理面；在线服务凭据与离线 break-glass 凭据必须分离。
 
 ## 写权限契约（尚未开放执行）
 
@@ -100,8 +110,9 @@ IAM capability 目录已登记 `sales_order:write`、`purchase_order:write`、
 
 ## 当前状态与下一步
 
-已完成策略模型、数据库 schema、gateway 决策接入、权限子集签发、同步撤销和 PostgreSQL 集成测试。仍需完成：
+已完成策略模型、数据库 schema、gateway 决策接入、权限子集签发、同步撤销、受控 IAM 管理 API 和 PostgreSQL 双人审批集成测试。仍需完成：
 
-1. IAM 管理 API/业务台管理界面和双人复核；
-2. 写入 capability、Step-up、审批和职责分离策略；
-3. 独立部署、密钥轮换、监控和灾备演练。
+1. 业务台 IAM 管理界面；
+2. Authentik 真实 MFA/Step-up 管理流验收；
+3. 写执行适配器、可回滚 staging 验证（在此之前继续 `V7_BLOCKED`）；
+4. 生产部署、密钥轮换、监控和灾备演练。

@@ -1013,6 +1013,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "business-iam-admin-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "business-iam",
+ "chrono",
+ "hex",
+ "jsonwebtoken",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "business-query-contracts"
 version = "0.1.0"
 dependencies = [

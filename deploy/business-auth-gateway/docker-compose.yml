@@ -7,6 +7,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
       BUSINESS_AUTH_RUNTIME_DATABASE_ROLE: ${BUSINESS_AUTH_RUNTIME_DATABASE_ROLE:?required}
       BUSINESS_AUTH_RUNTIME_DATABASE_PASSWORD: ${BUSINESS_AUTH_RUNTIME_DATABASE_PASSWORD:?required}
+      BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE: ${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE:?required}
+      BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_PASSWORD: ${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_PASSWORD:?required}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
@@ -63,6 +65,44 @@ services:
     ports: ["127.0.0.1:3100:3100"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/business-auth-gateway", "--version"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  iam-admin-migrate:
+    build:
+      context: ../..
+      dockerfile: services/business-iam-admin-api/Dockerfile
+    command: ["--migrate-only"]
+    environment:
+      BUSINESS_IAM_ADMIN_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE: ${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE:?required}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  iam-admin-api:
+    build:
+      context: ../..
+      dockerfile: services/business-iam-admin-api/Dockerfile
+    environment:
+      BUSINESS_IAM_ADMIN_DATABASE_URL: postgres://${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE}:${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BUSINESS_IAM_ADMIN_BIND_ADDR: 0.0.0.0:3110
+      AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?required}
+      BUSINESS_IAM_ADMIN_CLIENT_ID: ${WORKBENCH_CLIENT_ID:?required}
+      BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS: ${BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS:?required}
+      BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS: ${BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS:-300}
+      BUSINESS_IAM_REQUIRED_MFA_AMR: ${BUSINESS_IAM_REQUIRED_MFA_AMR:-mfa}
+    depends_on:
+      iam-admin-migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3110:3110"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/business-iam-admin-api", "--version"]
       interval: 15s
       timeout: 3s
       retries: 3

@@ -38,6 +38,7 @@ members = [
     "services/business-read-mcp",
     "crates/buzz-voice",
     "services/business-auth-gateway",
+    "services/business-iam-admin-api",
     "services/business-core",
     "crates/buzz-backend-kubernetes",
     "crates/buzz-datastore-tracing",
