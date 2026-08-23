@@ -43,6 +43,7 @@ type WorkbenchAuthContextValue = {
   bindCurrentDevice: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
   signIn: () => Promise<void>;
+  stepUp: () => Promise<void>;
   signOutWorkbench: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -241,6 +242,11 @@ export function WorkbenchAuthProvider({
       groupClaimStatus,
       phase,
       getAccessToken: async () => {
+        if (import.meta.env.MODE === "e2e") {
+          const injected = window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__;
+          if (typeof injected === "string" && injected.length > 0)
+            return injected;
+        }
         if (!manager) return null;
         const user = await getValidWorkbenchUser(manager);
         if (!user) {
@@ -285,6 +291,19 @@ export function WorkbenchAuthProvider({
         } catch (cause) {
           setPhase("failed");
           setError(cause instanceof Error ? cause.message : "Sign-in failed.");
+        }
+      },
+      stepUp: async () => {
+        if (!manager) return;
+        setPhase("signing-in");
+        setError(null);
+        try {
+          await manager.signinRedirect({ max_age: 0, prompt: "login" });
+        } catch (cause) {
+          setPhase("failed");
+          setError(
+            cause instanceof Error ? cause.message : "Step-up sign-in failed.",
+          );
         }
       },
       signOut: async () => {

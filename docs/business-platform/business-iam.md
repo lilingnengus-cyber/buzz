@@ -97,6 +97,13 @@ Desktop 或 Agent 凭据，仅接受 Authentik OIDC bearer token，并同时验�
 
 Agent 运行凭据不能调用该管理面；在线服务凭据与离线 break-glass 凭据必须分离。
 
+桌面端通过 Buzz 的通用扩展组合点挂载 `Authority ledger`，不修改频道、成员或 Relay
+授权模型。界面提供待审队列、连续的职责分离审批轨道、主体/角色/能力目录和结构化变更
+申请；不接受任意 JSON。目录中的主体与角色版本会自动绑定到申请，避免管理员基于旧状态
+覆盖新授权。API URL 只允许 HTTPS，开发和 E2E 仅放行 loopback HTTP；请求只携带当前
+Workbench OIDC bearer token，不使用环境 Cookie，并在 Step-up 失效时回到 Authentik
+重新验证。
+
 ## 写权限契约（尚未开放执行）
 
 IAM capability 目录已登记 `sales_order:write`、`purchase_order:write`、
@@ -110,9 +117,9 @@ IAM capability 目录已登记 `sales_order:write`、`purchase_order:write`、
 
 ## 当前状态与下一步
 
-已完成策略模型、数据库 schema、gateway 决策接入、权限子集签发、同步撤销、受控 IAM 管理 API 和 PostgreSQL 双人审批集成测试。仍需完成：
+已完成策略模型、数据库 schema、gateway 决策接入、权限子集签发、同步撤销、受控 IAM
+管理 API、桌面 Authority ledger，以及 PostgreSQL 双人审批和桌面浏览器集成测试。仍需完成：
 
-1. 业务台 IAM 管理界面；
-2. Authentik 真实 MFA/Step-up 管理流验收；
-3. 写执行适配器、可回滚 staging 验证（在此之前继续 `V7_BLOCKED`）；
-4. 生产部署、密钥轮换、监控和灾备演练。
+1. Authentik 真实 MFA/Step-up 管理流验收；
+2. 写执行适配器、可回滚 staging 验证（在此之前继续 `V7_BLOCKED`）；
+3. 生产部署、密钥轮换、监控和灾备演练。

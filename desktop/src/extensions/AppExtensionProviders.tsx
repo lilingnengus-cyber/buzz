@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { BusinessIamAdminProvider } from "@/features/business-iam-admin";
 import { BusinessDockProvider } from "@/features/business-dock";
 import {
   WorkbenchAuthGate,
@@ -15,7 +16,9 @@ export function AppExtensionProviders({
   return (
     <WorkbenchAuthProvider>
       <WorkbenchAuthGate>
-        <BusinessDockProvider>{children}</BusinessDockProvider>
+        <BusinessIamAdminProvider>
+          <BusinessDockProvider>{children}</BusinessDockProvider>
+        </BusinessIamAdminProvider>
       </WorkbenchAuthGate>
     </WorkbenchAuthProvider>
   );

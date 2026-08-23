@@ -76,8 +76,27 @@ impl Store {
         let principals = sqlx::query_scalar::<_, Value>(
             "SELECT jsonb_build_object(
                'id',id,'kind',kind,'externalId',external_id,'displayName',display_name,
-               'status',status,'version',version,'updatedAt',updated_at)
-             FROM business_iam.principals ORDER BY kind,external_id LIMIT 1000",
+               'status',status,'version',version,'updatedAt',updated_at,
+               'roles',COALESCE((
+                 SELECT jsonb_agg(jsonb_build_object('code',role.code,'name',role.name)
+                                  ORDER BY role.code)
+                 FROM business_iam.principal_roles assignment
+                 JOIN business_iam.roles role ON role.id=assignment.role_id
+                 WHERE assignment.principal_id=principal.id
+                   AND assignment.valid_from<=now()
+                   AND (assignment.valid_until IS NULL OR assignment.valid_until>now())
+               ),'[]'::jsonb),
+               'permissions',COALESCE((
+                 SELECT jsonb_agg(jsonb_build_object(
+                   'capability',permission.capability,'dataScope',assignment.data_scope,
+                   'obligations',assignment.obligations) ORDER BY permission.capability)
+                 FROM business_iam.principal_permissions assignment
+                 JOIN business_iam.permissions permission ON permission.id=assignment.permission_id
+                 WHERE assignment.principal_id=principal.id
+                   AND assignment.valid_from<=now()
+                   AND (assignment.valid_until IS NULL OR assignment.valid_until>now())
+               ),'[]'::jsonb))
+             FROM business_iam.principals principal ORDER BY kind,external_id LIMIT 1000",
         )
         .fetch_all(&self.pool)
         .await
@@ -85,8 +104,15 @@ impl Store {
         let roles = sqlx::query_scalar::<_, Value>(
             "SELECT jsonb_build_object(
                'id',id,'code',code,'name',name,'status',status,'version',version,
-               'updatedAt',updated_at)
-             FROM business_iam.roles ORDER BY code LIMIT 1000",
+               'updatedAt',updated_at,'permissions',COALESCE((
+                 SELECT jsonb_agg(jsonb_build_object(
+                   'capability',permission.capability,'dataScope',assignment.data_scope,
+                   'obligations',assignment.obligations) ORDER BY permission.capability)
+                 FROM business_iam.role_permissions assignment
+                 JOIN business_iam.permissions permission ON permission.id=assignment.permission_id
+                 WHERE assignment.role_id=role.id
+               ),'[]'::jsonb))
+             FROM business_iam.roles role ORDER BY code LIMIT 1000",
         )
         .fetch_all(&self.pool)
         .await
@@ -126,14 +152,23 @@ impl Store {
             "SELECT request.id,request.operation,request.payload,request.risk_level,
                     request.required_approvals,
                     count(approval.id) FILTER (WHERE approval.decision='approve') AS approval_count,
-                    request.status,request.requested_by,request.reason,request.trace_id,
+                    request.status,request.requested_by,requester.display_name AS requester_display_name,
+                    COALESCE(jsonb_agg(jsonb_build_object(
+                      'approverId',approval.approver_id,'approverDisplayName',approver.display_name,
+                      'decision',approval.decision,'comment',approval.comment,
+                      'decidedAt',approval.decided_at)
+                      ORDER BY approval.decided_at) FILTER (WHERE approval.id IS NOT NULL),'[]'::jsonb)
+                      AS approvals,
+                    request.reason,request.trace_id,
                     request.requested_at,request.expires_at,request.decided_at,request.applied_at,
                     request.failure_code,request.version
              FROM business_iam.change_requests request
+             JOIN business_iam.principals requester ON requester.id=request.requested_by
              LEFT JOIN business_iam.change_approvals approval
                ON approval.change_request_id=request.id
+             LEFT JOIN business_iam.principals approver ON approver.id=approval.approver_id
              WHERE ($1::text IS NULL OR request.status=$1)
-             GROUP BY request.id
+             GROUP BY request.id,requester.display_name
              ORDER BY request.requested_at DESC LIMIT 500",
         )
         .bind(status)
@@ -443,13 +478,22 @@ impl Store {
             "SELECT request.id,request.operation,request.payload,request.risk_level,
                     request.required_approvals,
                     count(approval.id) FILTER (WHERE approval.decision='approve') AS approval_count,
-                    request.status,request.requested_by,request.reason,request.trace_id,
+                    request.status,request.requested_by,requester.display_name AS requester_display_name,
+                    COALESCE(jsonb_agg(jsonb_build_object(
+                      'approverId',approval.approver_id,'approverDisplayName',approver.display_name,
+                      'decision',approval.decision,'comment',approval.comment,
+                      'decidedAt',approval.decided_at)
+                      ORDER BY approval.decided_at) FILTER (WHERE approval.id IS NOT NULL),'[]'::jsonb)
+                      AS approvals,
+                    request.reason,request.trace_id,
                     request.requested_at,request.expires_at,request.decided_at,request.applied_at,
                     request.failure_code,request.version
              FROM business_iam.change_requests request
+             JOIN business_iam.principals requester ON requester.id=request.requested_by
              LEFT JOIN business_iam.change_approvals approval
                ON approval.change_request_id=request.id
-             WHERE request.id=$1 GROUP BY request.id",
+             LEFT JOIN business_iam.principals approver ON approver.id=approval.approver_id
+             WHERE request.id=$1 GROUP BY request.id,requester.display_name",
         )
         .bind(id)
         .fetch_optional(&self.pool)

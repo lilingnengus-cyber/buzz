@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_BUSINESS_IAM_ADMIN_URL?: string;
   readonly VITE_BUSINESS_AUTH_GATEWAY_URL?: string;
   readonly VITE_OIDC_ISSUER?: string;
   readonly VITE_OIDC_CLIENT_ID?: string;
@@ -16,4 +17,8 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+interface Window {
+  __BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__?: string;
 }

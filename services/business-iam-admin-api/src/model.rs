@@ -70,6 +70,8 @@ pub struct ChangeRequestView {
     pub approval_count: i64,
     pub status: String,
     pub requested_by: Uuid,
+    pub requester_display_name: String,
+    pub approvals: Value,
     pub reason: String,
     pub trace_id: Uuid,
     pub requested_at: DateTime<Utc>,
