@@ -59,12 +59,19 @@
 
 - 本地 Buzz 基线落后 `origin/main` 74 个提交。
 - 检查目标为 `0720f5380ce8a6c050afac159f8462c06cd51ab5`；最新桌面发布为 `desktop-v0.5.18`。
-- 完整业务台补丁（40 个上游跟踪文件和 451 个业务台新增文件）已迁移到独立分支 `codex/business-platform-buzz-latest`。三方合并只有 5 个需要人工适配的文件：`crates/buzz-acp/src/lib.rs`、`desktop/src-tauri/src/lib.rs`、`desktop/src/app/AppShell.tsx`、`desktop/src/shared/hooks/useThreadPanelWidth.ts` 和 `pnpm-lock.yaml`。
-- 适配后的完整候选已通过 Business IAM/gateway/query/action/core Rust 编译、Desktop TypeScript 检查、Desktop E2E 构建、Tauri 检查、Business Web 构建及 18 项测试、Desktop 5475 项测试，以及 Business Dock 11 项 E2E。详细证据见 [`upgrade-record-2026-08-24.md`](upgrade-record-2026-08-24.md)。
+- 完整业务台补丁（40 个上游跟踪文件和 483 个业务台新增文件）已迁移到独立分支 `codex/business-platform-buzz-latest`。三方合并只有 5 个需要人工适配的文件：`crates/buzz-acp/src/lib.rs`、`desktop/src-tauri/src/lib.rs`、`desktop/src/app/AppShell.tsx`、`desktop/src/shared/hooks/useThreadPanelWidth.ts` 和 `pnpm-lock.yaml`。
+- 适配后的完整候选已通过 Business IAM/gateway/query/action/core Rust 编译、Desktop TypeScript 检查、Desktop E2E 构建、Tauri 检查、Business Web 构建及 18 项测试、Desktop 5481 项测试，以及 Business Dock 11 项 E2E。真实 Authentik 2026.8 MFA/Step-up、IAM 只读访问、越权拒绝和代理委托撤销竞态也已验收。详细证据见 [`upgrade-record-2026-08-24.md`](upgrade-record-2026-08-24.md)。
 - 业务 IAM、Authentik、gateway 和 Business Dock feature 本身不进入 Buzz 上游核心合并；它们通过扩展组装点重新接线。
 
 ## 尚需继续收敛的点
 
 - `AppShell.tsx` 已只依赖一个通用 `AppExtensionLayout`，语义耦合已收敛；但 JSX 包装使该文件相对上游仍有较大的纯缩进差异，升级时可能出现机械合并冲突，继续把它列为固定适配点并用 E2E 验证。
-- Business IAM 已有独立策略 crate、独立 schema、gateway 适配器和离线管理工具，但尚未作为独立生产权限服务部署。
+- Business IAM 已有独立策略 crate、独立 schema、gateway 适配器和独立管理 API；当前真实集成验收仍是本地部署，尚未完成生产环境部署与运维验收。
 - Agent Host 当前只开放固定读能力目录；读委托已经由 Business IAM 计算独立 Agent 自身权限或代理 Agent 的按任务最小权限交集。写能力仍保持 `V7_BLOCKED`。
+
+## 对未来 Buzz 升级的影响判定
+
+- **不会形成架构性阻断**：Authentik、Business IAM、业务数据库、业务 API 和业务 Web 均由业务台拥有，不要求上游 Buzz 接受业务权限模型。
+- **会有有限适配成本**：40 个上游文件包含 workspace 注册、ACP 扩展插槽、Desktop 壳层插槽、Tauri 能力和 lockfile；上游改动这些位置时可能产生合并冲突。
+- **权限语义不随 Buzz 升级漂移**：独立 Agent、代理 Agent、Step-up、双人审批与审计规则由 Business IAM 判定，Buzz 只承载会话和执行上下文。
+- **升级失败应阻断发布而非放宽权限**：兼容预演、边界检查或真实鉴权验收失败时，保留旧版运行；不得绕过 Business IAM，也不得把 `V7_BLOCKED` 改为可执行。

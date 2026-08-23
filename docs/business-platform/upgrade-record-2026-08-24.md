@@ -9,7 +9,7 @@
 
 ## 迁移范围和冲突
 
-完整迁移覆盖 40 个相对 Buzz 基线修改的跟踪文件，以及 451 个业务台新增文件。普通补丁无法直接应用；三方应用后只有以下 5 个文件需要人工合并：
+完整迁移覆盖 40 个相对 Buzz 基线修改的跟踪文件，以及 483 个业务台新增文件。普通补丁无法直接应用；三方应用后只有以下 5 个文件需要人工合并：
 
 1. `crates/buzz-acp/src/lib.rs`
 2. `desktop/src-tauri/src/lib.rs`
@@ -44,5 +44,19 @@ pnpm --dir desktop test:e2e:smoke --grep 'Business Dock'
 - Business Web：18/18 测试通过，构建通过
 - Desktop：5475/5475 测试通过
 - Business Dock：11/11 E2E 通过
+
+后续安全与升级收口提交 `8cc43bdf86b798eaebd732e8e0a35f32fbd63a82` 又通过：
+
+- Desktop：5481/5481 测试通过
+- Business 扩展边界检查：通过
+- 面向 `origin/main` 的完整补丁兼容预演：通过
+- 文件体积门禁、`git diff --check`、Desktop TypeScript 检查：通过
+- Authentik 2026.8 Blueprint dry-run：通过
+- 真实 Authentik 密码 + TOTP 登录及 `prompt=login,max_age=0` Step-up：通过
+- 真实 MFA access token 查询 Business IAM catalog：200
+- 只有读取权限的主体提交 IAM 变更：403 `business_iam_permission_denied`
+- 代理 Agent 正常结束、异常析构和并发撤销后继续调用：均拒绝
+
+上面的 Desktop 5475 项是首次迁移时的快照；当前候选以 5481 项结果为准。
 
 这证明当前业务台能够完整迁移到该 Buzz 版本；它不是对未来任意版本“零冲突”的承诺。每次升级仍必须重新运行全平台兼容预演和真实工作流验收。
