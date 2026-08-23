@@ -1,28 +1,25 @@
 import * as React from "react";
-import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
-  useProjectIssuesQuery,
   useProjectPullRequestsQuery,
   useProjectRepoSnapshotQuery,
+  useProjectsWorkItemsQuery,
   useRepoStateQuery,
   type Project,
 } from "@/features/projects/hooks";
-import { useCreateProjectIssueMutation } from "@/features/projects/issueMutations";
 import { gitContributorPubkeysFromCommits } from "@/features/projects/lib/projectContributorMatching";
 import { resolveProjectDefaultBranch } from "@/features/projects/lib/projectBranches";
 import type { ProjectHomeWorkspaceSheetTab } from "@/features/projects/lib/projectHomeWorkspaceSheet";
 import { useProjectCommitDiffQuery } from "@/features/projects/useProjectCommitDiff";
-import {
-  CreateIssueDialog,
-  type CreateIssueDialogInput,
-} from "./CreateIssueDialog";
+import { useProjectRepositorySnapshots } from "@/features/projects/useProjectRepositorySnapshots";
+import { CreateProjectIssueDialog } from "./CreateProjectIssueDialog";
 import { CreatePullRequestDialog } from "./CreatePullRequestDialog";
 import { ProjectCommitDetailPanel } from "./ProjectCommitDetailPanel";
-import { ActivityPanel, ContributorsPanel } from "./ProjectDetailFeedPanels";
+import { ContributorsPanel } from "./ProjectDetailFeedPanels";
 import { ProjectHomeCodebasePanel } from "./ProjectHomeCodebasePanel";
+import { ProjectHomeCommitsPanel } from "./ProjectHomeCommitsPanel";
 import { ProjectIssuesPanel } from "./ProjectIssuesPanel";
 import { PullRequestsPanel } from "./ProjectPullRequestsPanel";
 import { PROJECT_DETAIL_PANEL_CLASS } from "./projectPanelStyles";
@@ -42,6 +39,7 @@ export type ProjectHomeWorkspaceDetail = {
     filePath?: string;
     issueId?: string;
     pullRequestId?: string;
+    repositoryId?: string;
   };
   onBack: () => void;
 };
@@ -82,6 +80,8 @@ export function ProjectHomeWorkspaceSheet({
   const [selectedCommitHash, setSelectedCommitHash] = React.useState<
     string | null
   >(null);
+  const [selectedCommitRepositoryId, setSelectedCommitRepositoryId] =
+    React.useState<string | null>(null);
   const [filesContext, setFilesContext] = React.useState<{
     kind: "file" | "folder";
     onBack?: () => void;
@@ -91,9 +91,23 @@ export function ProjectHomeWorkspaceSheet({
   const [createPullRequestOpen, setCreatePullRequestOpen] =
     React.useState(false);
 
-  const issuesQuery = useProjectIssuesQuery(repository);
+  const projectScope = React.useMemo(() => [project], [project]);
+  const workItemsQuery = useProjectsWorkItemsQuery(projectScope);
   const pullRequestsQuery = useProjectPullRequestsQuery(repository);
-  const issues = issuesQuery.data ?? [];
+  const issueItems = React.useMemo(
+    () =>
+      (workItemsQuery.data?.issues.items ?? []).map(
+        ({ issue, repository: issueRepository }) => ({
+          issue,
+          project: issueRepository,
+        }),
+      ),
+    [workItemsQuery.data?.issues.items],
+  );
+  const issues = React.useMemo(
+    () => issueItems.map(({ issue }) => issue),
+    [issueItems],
+  );
   const pullRequests = pullRequestsQuery.data ?? [];
   const people = useProjectDetailPeople({
     issues,
@@ -113,13 +127,23 @@ export function ProjectHomeWorkspaceSheet({
     true,
   );
   const snapshot = snapshotQuery.data ?? null;
+  const repositorySnapshots = useProjectRepositorySnapshots(
+    project.repositories,
+    tab === "commits",
+  );
+  const selectedCommitResult =
+    repositorySnapshots.find(
+      ({ repository: candidate }) =>
+        candidate.id === selectedCommitRepositoryId,
+    ) ?? null;
+  const selectedCommitRepository =
+    selectedCommitResult?.repository ?? repository;
   const commitDiffQuery = useProjectCommitDiffQuery(
-    repository,
+    selectedCommitRepository,
     selectedCommitHash,
     "remote",
     activeCommunity?.reposDir,
   );
-  const createIssueMutation = useCreateProjectIssueMutation(repository);
   const contributorPubkeysByGitIdentity = React.useMemo(
     () =>
       gitContributorPubkeysFromCommits(snapshot?.commits ?? [], pullRequests),
@@ -129,24 +153,37 @@ export function ProjectHomeWorkspaceSheet({
     pullRequests.find(
       (pullRequest) => pullRequest.id === selectedPullRequestId,
     ) ?? null;
+  const selectedIssueItem =
+    issueItems.find(({ issue }) => issue.id === selectedIssueId) ?? null;
   const selectedCommit =
+    selectedCommitResult?.snapshot?.commits.find(
+      (commit) => commit.hash === selectedCommitHash,
+    ) ??
     snapshot?.commits.find((commit) => commit.hash === selectedCommitHash) ??
     null;
   const selectedCommitPullRequest = selectedCommitHash
-    ? pullRequests.find(
-        (pullRequest) =>
-          pullRequest.commit === selectedCommitHash ||
-          pullRequest.initialCommit === selectedCommitHash,
-      )
+    ? selectedCommitRepository.id === repository.id
+      ? pullRequests.find(
+          (pullRequest) =>
+            pullRequest.commit === selectedCommitHash ||
+            pullRequest.initialCommit === selectedCommitHash,
+        )
+      : null
     : null;
-  const handleCreateIssue = React.useCallback(
-    async (input: CreateIssueDialogInput) => {
-      const issueId = await createIssueMutation.mutateAsync(input);
-      toast.success("Task created.");
-      await issuesQuery.refetch();
+  const handleIssueCreated = React.useCallback(
+    async (
+      createdProject: Project,
+      _createdRepository: Project["repositories"][number],
+      issueId: string,
+    ) => {
+      if (createdProject.id !== project.id) {
+        await goProject(createdProject.id, { issueId });
+        return;
+      }
+      await workItemsQuery.refetch();
       setSelectedIssueId(issueId);
     },
-    [createIssueMutation, issuesQuery],
+    [goProject, project.id, workItemsQuery],
   );
   const handlePullRequestCreated = React.useCallback(
     async (
@@ -179,7 +216,10 @@ export function ProjectHomeWorkspaceSheet({
     if (tab === "issues" && selectedIssueId) {
       return {
         backLabel: "Back to Tasks",
-        navigation: { issueId: selectedIssueId },
+        navigation: {
+          issueId: selectedIssueId,
+          repositoryId: selectedIssueItem?.project.id,
+        },
         onBack: () => setSelectedIssueId(null),
       };
     }
@@ -193,8 +233,14 @@ export function ProjectHomeWorkspaceSheet({
     if (tab === "commits" && selectedCommitHash) {
       return {
         backLabel: "Back to Commits",
-        navigation: { commitHash: selectedCommitHash },
-        onBack: () => setSelectedCommitHash(null),
+        navigation: {
+          commitHash: selectedCommitHash,
+          repositoryId: selectedCommitRepository.id,
+        },
+        onBack: () => {
+          setSelectedCommitHash(null);
+          setSelectedCommitRepositoryId(null);
+        },
       };
     }
     if (tab === "files" && filesContext?.onBack) {
@@ -208,7 +254,9 @@ export function ProjectHomeWorkspaceSheet({
   }, [
     filesContext,
     selectedCommitHash,
+    selectedCommitRepository.id,
     selectedIssueId,
+    selectedIssueItem?.project.id,
     selectedPullRequestId,
     tab,
   ]);
@@ -224,7 +272,7 @@ export function ProjectHomeWorkspaceSheet({
   React.useEffect(() => {
     if (tab === "issues" && !selectedIssueId) {
       onCreateActionChange?.({
-        disabled: createIssueMutation.isPending,
+        disabled: project.repositories.length === 0,
         label: "Create task",
         onClick: () => setCreateIssueOpen(true),
       });
@@ -241,8 +289,8 @@ export function ProjectHomeWorkspaceSheet({
     }
     onCreateActionChange?.(null);
   }, [
-    createIssueMutation.isPending,
     onCreateActionChange,
+    project.repositories.length,
     projects.length,
     selectedIssueId,
     selectedPullRequestId,
@@ -260,9 +308,12 @@ export function ProjectHomeWorkspaceSheet({
     case "issues":
       body = (
         <ProjectIssuesPanel
+          error={workItemsQuery.error}
+          isLoading={workItemsQuery.isLoading}
+          issueItems={issueItems}
           onSelectedIssueIdChange={setSelectedIssueId}
           profiles={people.profiles}
-          project={repository}
+          project={selectedCommitRepository}
           selectedIssueId={selectedIssueId}
         />
       );
@@ -293,17 +344,15 @@ export function ProjectHomeWorkspaceSheet({
           project={repository}
         />
       ) : (
-        <ActivityPanel
-          branch={defaultBranch ?? undefined}
-          error={snapshotQuery.error}
-          isLoading={snapshotQuery.isPending}
-          onSelectCommit={(commit) => setSelectedCommitHash(commit.hash)}
+        <ProjectHomeCommitsPanel
+          onSelectCommit={(commit, commitRepository) => {
+            setSelectedCommitRepositoryId(commitRepository.id);
+            setSelectedCommitHash(commit.hash);
+          }}
           profiles={people.profiles}
-          project={repository}
           projectId={project.id}
           pullRequests={pullRequests}
-          repoContributors={snapshot?.contributors ?? []}
-          snapshot={snapshot}
+          results={repositorySnapshots}
           viewerGitIdentity={people.viewerGitIdentity}
         />
       );
@@ -362,12 +411,12 @@ export function ProjectHomeWorkspaceSheet({
           reposDir={activeCommunity?.reposDir}
         />
       ) : null}
-      <CreateIssueDialog
-        isCreating={createIssueMutation.isPending}
-        onCreate={handleCreateIssue}
+      <CreateProjectIssueDialog
+        initialProjectId={project.id}
+        onCreated={handleIssueCreated}
         onOpenChange={setCreateIssueOpen}
         open={createIssueOpen}
-        projectName={repository.name}
+        projects={projectScope}
       />
     </div>
   );

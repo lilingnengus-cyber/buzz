@@ -2,7 +2,9 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { ownsAuthorAgent } from "@/features/profile/lib/identity";
 import {
   type Project,
   type ProjectIssue,
@@ -17,6 +19,7 @@ import {
 import { useRepositoryActivitySummariesQuery } from "@/features/projects/repositoryActivityHooks";
 import { useCreateProjectMutation } from "@/features/projects/useCreateProject";
 import { isExplicitProject } from "@/features/projects/projectModels";
+import { projectsWithWorkItemRepositories } from "@/features/projects/projectWorkItems";
 import { useProjectsRepoSnapshotsQuery } from "@/features/projects/useProjectsRepoSnapshots";
 import { buildProjectSelectionAgentContext } from "@/features/projects/lib/projectDetailAgentContext";
 import { buildProjectsActivityDigest } from "@/features/projects/lib/projectsActivityDigest";
@@ -53,6 +56,7 @@ import { CreateProjectDialog } from "@/features/projects/ui/CreateProjectDialog"
 import { CreateProjectIssueDialog } from "@/features/projects/ui/CreateProjectIssueDialog";
 import { CreatePullRequestDialog } from "@/features/projects/ui/CreatePullRequestDialog";
 import { ProjectAgentChatPanel } from "@/features/projects/ui/ProjectAgentChatPanel";
+import { ProjectsCategoryCreateDialogs } from "@/features/projects/ui/ProjectsCategoryCreateDialogs";
 import { ProjectsIssuesList } from "@/features/projects/ui/ProjectsIssuesList";
 import { ProjectsWorkspaceChrome } from "@/features/projects/ui/ProjectDetailChrome";
 import { ProjectsPullRequestsList } from "@/features/projects/ui/ProjectsPullRequestsList";
@@ -114,6 +118,7 @@ export function ProjectsView() {
     useProjectsScrollIndicator();
   const projectsQuery = useProjectsQuery();
   const identityQuery = useIdentityQuery();
+  const managedAgentsQuery = useManagedAgentsQuery();
   const projectReadModels = projectsQuery.data ?? [];
   const projects = React.useMemo(
     () => projectReadModels.filter(isExplicitProject),
@@ -145,7 +150,11 @@ export function ProjectsView() {
   const repositoryActivitySummariesQuery = useRepositoryActivitySummariesQuery(
     filter === "repositories" ? projectReadModels : [],
   );
-  const projectsWorkItemsQuery = useProjectsWorkItemsQuery(projects);
+  const workItemProjects = React.useMemo(
+    () => projectsWithWorkItemRepositories(projectReadModels),
+    [projectReadModels],
+  );
+  const projectsWorkItemsQuery = useProjectsWorkItemsQuery(workItemProjects);
   // One blobless clone per primary Buzz repository, only while the overview
   // header is visible.
   const snapshotProjects = React.useMemo(
@@ -168,6 +177,8 @@ export function ProjectsView() {
     memberChannelIds,
   );
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
+  const [createChannelOpen, setCreateChannelOpen] = React.useState(false);
+  const [createRepositoryOpen, setCreateRepositoryOpen] = React.useState(false);
   const [createIssueOpen, setCreateIssueOpen] = React.useState(false);
   const [createPullRequestOpen, setCreatePullRequestOpen] =
     React.useState(false);
@@ -230,6 +241,42 @@ export function ProjectsView() {
   );
   const deleteProjectMutation = useDeleteProjectMutation();
   const currentPubkey = identityQuery.data?.pubkey;
+  const managedAgentPubkeys = React.useMemo(
+    () =>
+      new Set(
+        (managedAgentsQuery.data ?? []).map((agent) =>
+          normalizePubkey(agent.pubkey),
+        ),
+      ),
+    [managedAgentsQuery.data],
+  );
+  const editableProjects = React.useMemo(() => {
+    if (!currentPubkey) return [];
+    const viewer = normalizePubkey(currentPubkey);
+    return projects.filter((project) => {
+      const owner = normalizePubkey(project.owner);
+      return (
+        owner === viewer ||
+        managedAgentPubkeys.has(owner) ||
+        ownsAuthorAgent(profiles?.[owner], currentPubkey)
+      );
+    });
+  }, [currentPubkey, managedAgentPubkeys, profiles, projects]);
+  const ownerControlAgentPubkeyFor = React.useCallback(
+    (project: Project) => {
+      const owner = normalizePubkey(project.owner);
+      if (
+        owner === normalizePubkey(currentPubkey ?? "") ||
+        managedAgentPubkeys.has(owner)
+      ) {
+        return undefined;
+      }
+      return ownsAuthorAgent(profiles?.[owner], currentPubkey)
+        ? project.owner
+        : undefined;
+    },
+    [currentPubkey, managedAgentPubkeys, profiles],
+  );
 
   const handleViewModeChange = React.useCallback(
     (nextViewMode: ProjectsViewMode) => {
@@ -523,7 +570,6 @@ export function ProjectsView() {
     <ProjectsOverviewProjectItems
       currentPubkey={currentPubkey}
       deleteDisabled={deleteProjectMutation.isPending}
-      filter={filter}
       localRepoNames={localRepoNames}
       onDelete={handleDeleteProject}
       onOpen={handleOpenProject}
@@ -538,6 +584,7 @@ export function ProjectsView() {
 
   const repositoryItems = (
     <ProjectsOverviewRepositoryItems
+      currentPubkey={currentPubkey}
       localRepoNames={localRepoNames}
       onOpen={handleOpenRepository}
       onOpenTerminal={handleOpenRepositoryTerminal}
@@ -593,8 +640,11 @@ export function ProjectsView() {
   );
 
   const contextPanelProps = {
+    canCreateTarget: editableProjects.length > 0,
     filter,
     issues: contextIssues,
+    onAddChannel: () => setCreateChannelOpen(true),
+    onAddRepository: () => setCreateRepositoryOpen(true),
     onChatWithAgent: (items: ProjectSelectionItem[]) =>
       setSelectionAgentContext(buildProjectSelectionAgentContext(items)),
     onCreateIssue: () => setCreateIssueOpen(true),
@@ -722,6 +772,14 @@ export function ProjectsView() {
             onOpenChange={setCreateIssueOpen}
             open={createIssueOpen}
             projects={projects}
+          />
+          <ProjectsCategoryCreateDialogs
+            channelOpen={createChannelOpen}
+            editableProjects={editableProjects}
+            onChannelOpenChange={setCreateChannelOpen}
+            onRepositoryOpenChange={setCreateRepositoryOpen}
+            ownerControlAgentPubkeyFor={ownerControlAgentPubkeyFor}
+            repositoryOpen={createRepositoryOpen}
           />
           <div className="flex min-h-0 min-w-0 flex-1">
             <div className="relative min-h-0 min-w-0 flex-1">

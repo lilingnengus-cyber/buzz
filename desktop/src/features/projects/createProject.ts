@@ -33,6 +33,7 @@ export type CreateProjectInput = {
   channelVisibility?: ChannelVisibility;
   projectVisibility?: ProjectListingVisibility;
   agents?: readonly CreateChannelManagedAgentInput[];
+  templateId?: string;
 };
 
 export type CreateProjectResult = {

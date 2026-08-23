@@ -88,7 +88,7 @@ test("projects activity overview screenshot", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByTestId("projects-overview-create-project"),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("projects-activity-group").first(),
   ).toBeVisible();
@@ -151,6 +151,10 @@ test("sidebar project add flow browses before creating", async ({ page }) => {
     page.getByTestId("create-project-channel-permissions"),
   ).toBeVisible();
   await expect(page.getByTestId("create-project-listing")).toHaveText("Listed");
+  await expect(page.getByTestId("create-project-template")).toHaveText(
+    "Project home",
+  );
+  await expect(page.getByTestId("create-project-team")).toHaveText("None");
   await expect(page.getByTestId("create-project-agent")).toHaveText("None");
   await page.getByRole("button", { name: "Back to projects" }).click();
   await expect(browser).toBeVisible();
@@ -273,6 +277,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   // Borderless workspace: repository controls live in the persistent,
   // resizable auxiliary panel instead of a header row.
   const backButton = page.getByTestId("project-workspace-back");
+  const overviewTab = page.getByRole("tab", { name: "Overview" });
   const filesTab = page.getByRole("tab", { name: "Files" });
   const channelsTab = page.getByRole("tab", { name: "Channels" });
   const contributorsTab = page.getByRole("tab", { name: "Contributors" });
@@ -305,7 +310,11 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
       (menuBox?.x ?? 0) + (menuBox?.width ?? 0),
     );
   };
+  await expect(overviewTab).toBeVisible();
   await expect(filesTab).toBeVisible();
+  expect((await overviewTab.boundingBox())?.x).toBeLessThan(
+    (await filesTab.boundingBox())?.x ?? 0,
+  );
   await expect(backButton).toBeVisible();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(projectDetailScroll).toHaveCSS("overscroll-behavior-y", "none");
@@ -1005,12 +1014,12 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   ).toBe(4);
   expect(
     Math.round((firstIssueBounds?.x ?? 0) - (issueHeaderBounds?.x ?? 0)),
-  ).toBe(8);
+  ).toBe(0);
   expect(
     Math.round(
       (issueHeaderBounds?.width ?? 0) - (firstIssueBounds?.width ?? 0),
     ),
-  ).toBe(16);
+  ).toBe(0);
   expect(
     (secondIssueBounds?.y ?? 0) -
       ((firstIssueBounds?.y ?? 0) + (firstIssueBounds?.height ?? 0)),
@@ -1122,12 +1131,12 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   ).toBe(4);
   expect(
     Math.round((firstReviewBounds?.x ?? 0) - (reviewHeaderBounds?.x ?? 0)),
-  ).toBe(8);
+  ).toBe(0);
   expect(
     Math.round(
       (reviewHeaderBounds?.width ?? 0) - (firstReviewBounds?.width ?? 0),
     ),
-  ).toBe(16);
+  ).toBe(0);
   expect(
     (secondReviewBounds?.y ?? 0) -
       ((firstReviewBounds?.y ?? 0) + (firstReviewBounds?.height ?? 0)),

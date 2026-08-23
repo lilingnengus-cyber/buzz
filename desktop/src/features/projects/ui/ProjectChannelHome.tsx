@@ -200,8 +200,8 @@ export function ProjectChannelHome({
   const handleExpandWorkspace = React.useCallback(() => {
     if (!workspaceRepository || !workspaceSheetTab) return;
     void goProject(project.id, {
-      ...workspaceDetail?.navigation,
       repositoryId: workspaceRepository.id,
+      ...workspaceDetail?.navigation,
       tab: projectHomeWorkspaceSheetExpandTab(workspaceSheetTab),
     });
   }, [
@@ -399,7 +399,6 @@ export function ProjectChannelHome({
               onResetWidth={summaryWidth.onResetWidth}
               onResizeStart={summaryWidth.onResizeStart}
               testId="project-home-summary-column"
-              title="Overview"
               widthPx={summaryWidth.widthPx}
             >
               <ProjectHomeContextPanel

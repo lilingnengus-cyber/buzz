@@ -25,9 +25,9 @@ import type { ProjectsActivityDigest } from "@/features/projects/lib/projectsAct
 import { useProjectSelection } from "@/features/projects/lib/useProjectSelection";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
-import { ProjectsCreateMenu } from "./ProjectsCreateMenu";
 import { ProjectsSelectionCountMenu } from "./ProjectsSelectionCountMenu";
 import {
+  type OverviewContextAction,
   type OverviewContextStatIcon,
   type ProjectsOverviewSection,
   projectsOverviewContext,
@@ -54,7 +54,10 @@ type ProjectsOverviewPanelProps = {
 
 type ProjectsOverviewContextPanelProps = {
   filter: ProjectsFilter;
+  canCreateTarget: boolean;
   issues: ProjectIssue[];
+  onAddChannel: () => void;
+  onAddRepository: () => void;
   onChatWithAgent: (items: ProjectSelectionItem[]) => void;
   onCreateIssue: () => void;
   onCreateProject: () => void;
@@ -65,25 +68,48 @@ type ProjectsOverviewContextPanelProps = {
   summaries?: Record<string, ProjectActivitySummary>;
 };
 
-function OverviewActionButton({
-  children,
-  onClick,
-  testId,
+function OverviewCreateButton({
+  action,
+  canCreateTarget,
+  onAddChannel,
+  onAddRepository,
+  onCreateIssue,
+  onCreateProject,
+  onCreatePullRequest,
 }: {
-  children: React.ReactNode;
-  onClick: () => void;
-  testId?: string;
+  action: Exclude<OverviewContextAction, null>;
+  canCreateTarget: boolean;
+  onAddChannel: () => void;
+  onAddRepository: () => void;
+  onCreateIssue: () => void;
+  onCreateProject: () => void;
+  onCreatePullRequest: () => void;
 }) {
+  const actionHandler =
+    action.kind === "issue"
+      ? onCreateIssue
+      : action.kind === "pullRequest"
+        ? onCreatePullRequest
+        : action.kind === "project"
+          ? onCreateProject
+          : action.kind === "channel"
+            ? onAddChannel
+            : onAddRepository;
+  const requiresProject =
+    action.kind === "channel" || action.kind === "repository";
   return (
     <Button
-      className="-mx-2 h-7 w-[calc(100%+1rem)] justify-start gap-3 rounded-md px-2 text-left text-sm font-normal text-muted-foreground hover:bg-muted/70 hover:text-foreground [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
-      data-testid={testId}
-      onClick={onClick}
-      size="sm"
+      aria-label={action.label}
+      className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+      data-testid={action.testId}
+      disabled={requiresProject && !canCreateTarget}
+      onClick={actionHandler}
+      size="icon"
+      title={action.label}
       type="button"
       variant="ghost"
     >
-      {children}
+      <Plus className="h-4 w-4" />
     </Button>
   );
 }
@@ -167,8 +193,11 @@ export function ProjectsActivityIntro({
 }
 
 export function ProjectsOverviewContextPanel({
+  canCreateTarget,
   filter,
   issues,
+  onAddChannel,
+  onAddRepository,
   onChatWithAgent,
   onCreateIssue,
   onCreateProject,
@@ -197,13 +226,6 @@ export function ProjectsOverviewContextPanel({
       }),
     [filter, issues, projects, pullRequests, summaries],
   );
-  const actionHandler =
-    context.action?.kind === "issue"
-      ? onCreateIssue
-      : context.action?.kind === "pullRequest"
-        ? onCreatePullRequest
-        : onCreateProject;
-
   return (
     <div
       className={cn(
@@ -228,25 +250,21 @@ export function ProjectsOverviewContextPanel({
             >
               {context.title}
             </h2>
-            <ProjectsCreateMenu
-              compact
-              onCreateIssue={onCreateIssue}
-              onCreateProject={onCreateProject}
-              onCreatePullRequest={onCreatePullRequest}
-            />
+            {context.action ? (
+              <OverviewCreateButton
+                action={context.action}
+                canCreateTarget={canCreateTarget}
+                onAddChannel={onAddChannel}
+                onAddRepository={onAddRepository}
+                onCreateIssue={onCreateIssue}
+                onCreateProject={onCreateProject}
+                onCreatePullRequest={onCreatePullRequest}
+              />
+            ) : null}
           </div>
         )}
         {selectionPresentation ? null : (
           <div className="space-y-2.5 pt-2">
-            {context.action ? (
-              <OverviewActionButton
-                onClick={actionHandler}
-                testId={context.action.testId}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {context.action.label}
-              </OverviewActionButton>
-            ) : null}
             <section
               className="space-y-2.5 text-sm"
               data-testid="projects-overview-stats-pod"

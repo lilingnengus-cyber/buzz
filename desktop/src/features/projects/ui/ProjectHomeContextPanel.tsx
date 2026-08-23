@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   CircleDot,
   FileCode2,
   FolderGit2,
@@ -7,7 +8,7 @@ import {
   Hash,
   Users,
 } from "lucide-react";
-import type * as React from "react";
+import * as React from "react";
 
 import { presentContextCount } from "@/features/projects/lib/projectHomeSummary";
 import type { ProjectHomeWorkspaceSheetTab } from "@/features/projects/lib/projectHomeWorkspaceSheet";
@@ -26,36 +27,60 @@ import type { EntityLinkTab } from "@/shared/lib/entityLink";
 import { Button } from "@/shared/ui/button";
 import { ProjectChannelManagement } from "./ProjectChannelManagement";
 import { ProjectRepositoryManagement } from "./ProjectRepositoryManagement";
+import { SECTION_ACTION_VISIBILITY_CLASS } from "@/features/sidebar/ui/sidebarSectionStyles";
 
 const PROJECT_HOME_SIDEBAR_ROW_CLASS =
   "h-8 w-full justify-start gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal text-sidebar-foreground/80 transition-[background-color,color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50";
 
 function ContextSection({
   children,
+  collapsible = false,
   headerAction,
   testId,
   title,
 }: {
   children: React.ReactNode;
+  collapsible?: boolean;
   headerAction?: React.ReactNode;
   testId?: string;
   title?: string;
 }) {
+  const [expanded, setExpanded] = React.useState(true);
   return (
-    <section className="space-y-1" data-testid={testId}>
+    <section className="group/sidebar-section space-y-1" data-testid={testId}>
       {title || headerAction ? (
         <div className="flex h-8 min-w-0 items-center justify-between gap-2 px-2">
-          {title ? (
+          {title && collapsible ? (
+            <button
+              aria-expanded={expanded}
+              className="group/section-label flex min-w-0 items-center gap-1 text-left text-xs font-medium text-sidebar-foreground/70"
+              onClick={() => setExpanded((current) => !current)}
+              type="button"
+            >
+              <span className="truncate">{title}</span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "size-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100",
+                  expanded ? "rotate-0" : "-rotate-90",
+                )}
+              />
+            </button>
+          ) : title ? (
             <h3 className="min-w-0 truncate text-xs font-medium text-sidebar-foreground/70">
               {title}
             </h3>
           ) : (
             <span />
           )}
-          {headerAction}
+          {headerAction ? (
+            <span className={SECTION_ACTION_VISIBILITY_CLASS}>
+              {headerAction}
+            </span>
+          ) : null}
         </div>
       ) : null}
-      {children}
+      {!collapsible || expanded ? children : null}
     </section>
   );
 }
@@ -297,6 +322,7 @@ export function ProjectHomeContextPanel({
         </ContextNavButton>
       </ContextSection>
       <ContextSection
+        collapsible
         headerAction={
           <ProjectChannelManagement
             identityPubkey={identityPubkey}
@@ -336,6 +362,7 @@ export function ProjectHomeContextPanel({
         )}
       </ContextSection>
       <ContextSection
+        collapsible
         headerAction={
           <ProjectRepositoryManagement
             compact

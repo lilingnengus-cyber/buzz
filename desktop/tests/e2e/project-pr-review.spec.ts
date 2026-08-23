@@ -1166,6 +1166,10 @@ test("sidebar distinguishes the Projects overview from an open project", async (
   await projectsOverview.click();
   await expect(projectsOverview).toHaveAttribute("data-active", "true");
   await expect(sidebarProject).toHaveAttribute("data-active", "false");
+  await expect(sidebarProject.locator("svg").first()).toHaveCSS(
+    "opacity",
+    "0.8",
+  );
   await expect(sidebarProject.locator('[data-sidebar="menu-label"]')).toHaveCSS(
     "opacity",
     "0.8",
@@ -1724,18 +1728,13 @@ test("project overview presents collapsible context beside grouped activity", as
   ).toBe(280);
   await expect(
     page.getByTestId("projects-overview-create-project"),
-  ).toContainText("Create project");
-  await expect(
-    page
-      .getByTestId("projects-overview-context-panel")
-      .getByTestId("projects-create-menu"),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByTestId("projects-overview-stats-pod")).toBeVisible();
   await expect(
     page
       .getByTestId("projects-overview-context-panel")
       .getByTestId("projects-overview-people"),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page
       .getByTestId("projects-overview-stats-pod")
@@ -1799,17 +1798,12 @@ test("project overview presents collapsible context beside grouped activity", as
   const stats = page.getByTestId("projects-overview-stat");
   await expect(stats).toHaveCount(5);
   await expect(stats.nth(2)).toContainText("Channels");
-  const createBox = await page
-    .getByTestId("projects-overview-create-project")
-    .boundingBox();
   const lastStatBox = await stats.last().boundingBox();
   const peopleBox = await page
     .getByTestId("projects-overview-people")
     .boundingBox();
-  expect(createBox).toBeTruthy();
   expect(lastStatBox).toBeTruthy();
   expect(peopleBox).toBeTruthy();
-  expect(peopleBox?.y ?? 0).toBeGreaterThan(createBox?.y ?? 0);
   expect(peopleBox?.y ?? 0).toBeGreaterThan(
     (lastStatBox?.y ?? 0) + (lastStatBox?.height ?? 0) - 1,
   );
@@ -1835,9 +1829,13 @@ test("project overview presents collapsible context beside grouped activity", as
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
     "Channels",
   );
+  await expect(page.getByTestId("projects-overview-add-channel")).toBeVisible();
+  await page.getByTestId("projects-overview-add-channel").click();
+  await expect(page.getByTestId("create-project-channel-dialog")).toBeVisible();
   await expect(
-    page.getByTestId("projects-overview-create-project"),
-  ).toHaveCount(0);
+    page.getByTestId("create-project-channel-project"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("projects-overview-people")).toHaveCount(0);
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await expect(stats).toHaveCount(3);
@@ -1891,15 +1889,21 @@ test("project overview presents collapsible context beside grouped activity", as
   await expect(
     page.getByTestId("projects-overview-create-project"),
   ).toBeVisible();
-  await expect(page.getByTestId("projects-overview-people")).toBeVisible();
+  await expect(page.getByTestId("projects-overview-people")).toHaveCount(0);
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-repositories").click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
     "Repositories",
   );
   await expect(
-    page.getByTestId("projects-overview-create-project"),
-  ).toHaveCount(0);
+    page.getByTestId("projects-overview-add-repository"),
+  ).toBeVisible();
+  await page.getByTestId("projects-overview-add-repository").click();
+  await expect(page.getByTestId("add-project-repository-dialog")).toBeVisible();
+  await expect(
+    page.getByTestId("add-project-repository-project"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(stats.nth(1)).toContainText("Active tasks");
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-issues").click();
@@ -1908,7 +1912,7 @@ test("project overview presents collapsible context beside grouped activity", as
   );
   await expect(
     page.getByTestId("projects-overview-create-issue"),
-  ).toContainText("Create task");
+  ).toHaveAttribute("aria-label", "Create task");
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-prs").click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
@@ -1916,8 +1920,8 @@ test("project overview presents collapsible context beside grouped activity", as
   );
   await expect(
     page.getByTestId("projects-overview-create-pull-request"),
-  ).toContainText("Create review");
-  await expect(page.getByTestId("projects-overview-people")).toBeVisible();
+  ).toHaveAttribute("aria-label", "Create review");
+  await expect(page.getByTestId("projects-overview-people")).toHaveCount(0);
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-all").click();
   await expect(
@@ -1928,6 +1932,7 @@ test("project overview presents collapsible context beside grouped activity", as
   );
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
 
+  await page.getByTestId("projects-section-projects").click();
   await page.getByTestId("projects-overview-create-project").click();
   await expect(page.getByTestId("create-project-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -1947,11 +1952,6 @@ test("project overview presents collapsible context beside grouped activity", as
   );
   await expect(stats).toHaveCount(5);
   await expect(activityCards.first()).toBeVisible();
-  await expect(
-    page
-      .getByTestId("projects-workspace-chrome")
-      .getByTestId("projects-create-menu"),
-  ).toHaveCount(0);
 });
 
 test("project overview chrome toggles a detached resizable agent chat", async ({
@@ -2144,12 +2144,6 @@ test("project overview info control animates the context rail", async ({
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(railPanel).toHaveCSS("transform", "none");
   expect(await surfaceStyle()).toEqual(expandedSurfaceStyle);
-  await expect(
-    page
-      .getByTestId("projects-workspace-chrome")
-      .getByTestId("projects-create-menu"),
-  ).toHaveCount(0);
-
   await toggle.click();
   await expect(rail).toHaveCSS("width", "288px");
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -2669,8 +2663,8 @@ test("selecting repository workspace rows switches the context pod to the cluste
   expect(
     Math.abs(reviewRowOrder.checkbox - reviewRowOrder.status),
   ).toBeLessThanOrEqual(1);
-  expect(reviewRowOrder.status).toBeLessThan(reviewRowOrder.title);
-  expect(reviewRowOrder.title).toBeLessThan(reviewRowOrder.identifier);
+  expect(reviewRowOrder.status).toBeLessThan(reviewRowOrder.identifier);
+  expect(reviewRowOrder.identifier).toBeLessThan(reviewRowOrder.title);
   await reviewRows.first().getByTestId("projects-row-select").click();
   await expect(
     reviewRows.first().getByTestId("project-work-item-status-icon"),
@@ -2906,7 +2900,14 @@ test("project detail content areas do not paint background fills", async ({
     }
   };
 
-  for (const tab of ["Files", "Commits", "Tasks", "Review", "Contributors"]) {
+  for (const tab of [
+    "Overview",
+    "Files",
+    "Commits",
+    "Tasks",
+    "Review",
+    "Contributors",
+  ]) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
     await expectVisiblePanelsToBeTransparent();
   }

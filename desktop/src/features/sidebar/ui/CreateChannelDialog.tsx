@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { ChannelVisibility } from "@/shared/api/types";
 import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Dialog } from "@/shared/ui/dialog";
@@ -17,6 +19,7 @@ type ChannelKind = "stream" | "forum";
 type CreateChannelDialogProps = {
   /** Which kind of channel to create, or null when closed. */
   channelKind: ChannelKind | null;
+  children?: ReactNode;
   description?: string;
   isCreating: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,6 +36,7 @@ type CreateChannelDialogProps = {
 
 export function CreateChannelDialog({
   channelKind,
+  children,
   description,
   isCreating,
   onOpenChange,
@@ -80,6 +84,7 @@ export function CreateChannelDialog({
           id={CREATE_CHANNEL_FORM_ID}
           onSubmit={form.handleSubmit}
         >
+          {children}
           <CreateChannelFormFields form={form} />
         </form>
       </ChooserDialogContent>

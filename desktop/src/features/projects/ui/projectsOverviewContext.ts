@@ -32,7 +32,7 @@ export type OverviewContextStatIcon =
   | "merged";
 
 export type OverviewContextAction = {
-  kind: "project" | "issue" | "pullRequest";
+  kind: "channel" | "issue" | "project" | "pullRequest" | "repository";
   label: string;
   testId: string;
 } | null;
@@ -225,7 +225,11 @@ export function projectsOverviewContext(
 
   if (filter === "repositories") {
     return {
-      action: null,
+      action: {
+        kind: "repository",
+        label: "Add repository",
+        testId: "projects-overview-add-repository",
+      },
       detailsTitle: "Repository activity",
       people,
       stats: [
@@ -254,7 +258,11 @@ export function projectsOverviewContext(
 
   if (filter === "channels") {
     return {
-      action: null,
+      action: {
+        kind: "channel",
+        label: "Add channel",
+        testId: "projects-overview-add-channel",
+      },
       detailsTitle: "Details",
       people,
       stats: [
@@ -349,7 +357,7 @@ export function projectsOverviewContext(
 
   if (filter === "all") {
     return {
-      action: createProjectAction(),
+      action: null,
       detailsTitle: "Details",
       people,
       stats: [

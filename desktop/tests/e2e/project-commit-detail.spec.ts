@@ -18,6 +18,11 @@ async function enableProjectsFeature(page: import("@playwright/test").Page) {
   });
 }
 
+async function openCreateProjectDialog(page: import("@playwright/test").Page) {
+  await page.getByTestId("projects-section-projects").click();
+  await page.getByTestId("projects-overview-create-project").click();
+}
+
 async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
@@ -194,17 +199,14 @@ test("top-level project lists show metadata and overflow actions", async ({
   await expect(
     page.getByRole("button", { name: "Filter reviews" }),
   ).toHaveCount(0);
-  await page.getByTestId("projects-create-menu").hover();
-  await expect(page.getByRole("menuitem", { name: "Project" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Task" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Review", exact: true }).click();
+  await page.getByTestId("projects-overview-create-pull-request").click();
   await expect(page.getByTestId("create-pull-request-dialog")).toBeVisible();
   await expect(
     page.getByTestId("create-pull-request-repository"),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Task" }).click();
+  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await page.getByTestId("projects-overview-create-issue").click();
   await expect(page.getByTestId("create-issue-repository")).toBeVisible();
   await page.keyboard.press("Escape");
   const pullRequestRow = page
@@ -274,14 +276,15 @@ test("creating a project opens its channel conversation", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Project" }).click();
+  await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("multi-repo-demo");
   await page
     .getByTestId("create-project-description")
     .fill("A grouped project created through the desktop app.");
   await expect(page.getByTestId("create-project-listing")).toHaveText("Listed");
-  await expect(page.getByTestId("create-project-template")).toHaveText("None");
+  await expect(page.getByTestId("create-project-template")).toHaveText(
+    "Project home",
+  );
   await expect(page.getByTestId("create-project-team")).toHaveText("None");
   await expect(page.getByTestId("create-project-agent")).toHaveText("None");
   await page.getByTestId("create-project-submit").click();
@@ -319,6 +322,11 @@ test("creating a project opens its channel conversation", async ({ page }) => {
   await expect(
     page
       .getByTestId("project-home-summary-column")
+      .getByRole("heading", { name: "Overview", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("project-home-summary-column")
       .getByTestId("auxiliary-panel-close"),
   ).toHaveCount(0);
   await expect(page.getByTestId("project-channel-home")).toHaveAttribute(
@@ -345,8 +353,40 @@ test("creating a project opens its channel conversation", async ({ page }) => {
   await expect(
     page.getByTestId("project-home-context-channel"),
   ).not.toContainText("people in this channel");
-  await expect(page.getByTestId("add-project-channel")).toBeVisible();
-  await expect(page.getByTestId("add-project-repository")).toBeVisible();
+  const channelSection = page.getByTestId("project-home-context-channel");
+  const channelSectionToggle = channelSection.getByRole("button", {
+    name: "Channels",
+    exact: true,
+  });
+  await channelSectionToggle.click();
+  await expect(
+    channelSection.getByTestId("project-home-context-home-channel"),
+  ).toHaveCount(0);
+  await channelSectionToggle.click();
+  await expect(
+    channelSection.getByTestId("project-home-context-home-channel"),
+  ).toBeVisible();
+  const codebaseSection = page.getByTestId("project-home-context-codebase");
+  const codebaseSectionToggle = codebaseSection.getByRole("button", {
+    name: "Codebase",
+    exact: true,
+  });
+  await codebaseSectionToggle.click();
+  await expect(
+    codebaseSection.getByTestId("project-home-context-repo-multi-repo-demo"),
+  ).toHaveCount(0);
+  await codebaseSectionToggle.click();
+  const channelAction = page.getByTestId("add-project-channel").locator("..");
+  const repositoryAction = page
+    .getByTestId("add-project-repository")
+    .locator("..");
+  await expect(channelAction).toHaveCSS("opacity", "0");
+  await expect(repositoryAction).toHaveCSS("opacity", "0");
+  await page.getByTestId("project-home-context-channel").hover();
+  await expect(channelAction).toHaveCSS("opacity", "1");
+  await page.getByTestId("project-home-context-codebase").hover();
+  await expect(repositoryAction).toHaveCSS("opacity", "1");
+  await page.getByTestId("project-home-context-channel").hover();
   await page.getByTestId("add-project-channel").click();
   await expect(page.getByTestId("create-project-channel-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -437,8 +477,7 @@ test("creating a project opens its channel conversation", async ({ page }) => {
     .getByTestId("project-detail-chrome")
     .getByRole("button", { name: "Projects" })
     .click();
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Project" }).click();
+  await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("multi-repo-demo");
   await page.getByTestId("create-project-submit").click();
   await expect(page.getByTestId("create-project-dialog")).toBeVisible();
@@ -469,8 +508,7 @@ test("unsupported relays cannot create a channel-first project", async ({
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Project" }).click();
+  await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("legacy-fallback");
   await page.getByTestId("create-project-submit").click();
 
@@ -502,8 +540,7 @@ test("project creation can retry after its repository publication fails", async 
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Project" }).click();
+  await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("retry-project");
   await page.getByTestId("create-project-submit").click();
 
@@ -528,8 +565,7 @@ test("project creation is idempotent after a lost publish acknowledgement", asyn
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-projects-view").click();
-  await page.getByTestId("projects-create-menu").hover();
-  await page.getByRole("menuitem", { name: "Project" }).click();
+  await openCreateProjectDialog(page);
   await page.getByTestId("create-project-name").fill("lost-ack-project");
   await page.getByTestId("create-project-submit").click();
 

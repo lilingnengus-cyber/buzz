@@ -36,7 +36,7 @@ export function CreateProjectFormContent({
   const [description, setDescription] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const nameInputRef = React.useRef<HTMLInputElement>(null);
-  const settings = useCreateProjectFormSettings(active);
+  const settings = useCreateProjectFormSettings(active, setDescription);
 
   React.useEffect(() => {
     if (!active) return;
@@ -63,6 +63,7 @@ export function CreateProjectFormContent({
         channelVisibility: settings.channelVisibility,
         projectVisibility: settings.projectVisibility,
         agents: settings.buildAgents(),
+        templateId: settings.templateId,
       });
       onCreated();
     } catch (error) {

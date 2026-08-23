@@ -34,6 +34,9 @@ export function ProjectTabsList({
         <ArrowLeft className="h-full w-full" strokeWidth={2} />
       </button>
       <TabsList className="h-full min-w-0 max-w-full flex-none justify-start gap-1.5 overflow-x-auto bg-transparent p-0 scrollbar-none">
+        <TabsTrigger className={PROJECT_TAB_TRIGGER_CLASS} value="overview">
+          <ProjectTabLabel>Overview</ProjectTabLabel>
+        </TabsTrigger>
         <TabsTrigger className={PROJECT_TAB_TRIGGER_CLASS} value="files">
           <ProjectTabLabel>Files</ProjectTabLabel>
         </TabsTrigger>
