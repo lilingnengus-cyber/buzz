@@ -85,6 +85,7 @@ export default defineConfig({
         "**/sidebar-snapshot.spec.ts",
         "**/home-collapsed-top-chrome.spec.ts",
         "**/top-chrome-zoom-clearance.spec.ts",
+        "**/business-dock.spec.ts",
         "**/thread-unread.spec.ts",
         "**/workspace-rail.spec.ts",
         "**/community-rail.spec.ts",

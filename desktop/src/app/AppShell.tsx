@@ -75,6 +75,8 @@ import {
 import { useDueReminderBadgeCount } from "@/features/reminders/hooks";
 import { useReminderNotifications } from "@/features/reminders/useReminderNotifications";
 import { AppSidebar } from "@/features/sidebar/ui/AppSidebar";
+import { AppExtensionLayout } from "@/extensions/AppExtensionLayout";
+import { AppExtensionTopChromeActions } from "@/extensions/AppExtensionTopChromeActions";
 import { requestFocusedThreadClose } from "@/features/channels/focusedThreadCloseRequest";
 import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
 import { useChannelMutes } from "@/features/sidebar/lib/useChannelMutes";
@@ -770,13 +772,15 @@ export function AppShell() {
                     <AppTopChrome
                       canGoBack={canGoBack}
                       canGoForward={canGoForward}
+                      endActions={<AppExtensionTopChromeActions />}
                       hasCommunityRail={hasCommunityRail}
                       onGoBack={goBack}
                       onGoForward={goForward}
                     />
                   ) : null}
+                  <AppExtensionLayout>
                   {settingsOpen ? (
-                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                       <React.Suspense fallback={null}>
                         <LazySettingsScreen
                           currentPubkey={identityQuery.data?.pubkey}
@@ -816,7 +820,7 @@ export function AppShell() {
                       </React.Suspense>
                     </div>
                   ) : (
-                    <div className="relative flex min-h-0 flex-1 overflow-visible">
+                    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-visible">
                       {!isHuddleRoom ? (
                         <AppSidebar
                           activeCommunity={communitiesHook.activeCommunity}
@@ -945,6 +949,7 @@ export function AppShell() {
                       ) : null}
                     </div>
                   )}
+                  </AppExtensionLayout>
                   <RequestedAgentCreateDialogs />
                   <AgentManagementDialogs />
                   <AppShellOverlays

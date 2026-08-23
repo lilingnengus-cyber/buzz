@@ -41,6 +41,9 @@ export default defineConfig(async () => ({
     port: parseInt(process.env.VITE_PORT || "1420", 10),
     strictPort: true,
     host: host || false,
+    // Exact local Authentik POC hosts; keep this finite to retain Vite's
+    // host-header/DNS-rebinding protection while allowing Caddy TLS ingress.
+    allowedHosts: ["workbench.bizfin.test", "workbench.bizfin.localhost"],
     hmr: host
       ? {
           protocol: "ws",

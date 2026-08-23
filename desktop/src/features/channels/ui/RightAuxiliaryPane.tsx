@@ -9,7 +9,7 @@ type RightAuxiliaryPaneProps = {
   constrainToAvailableSpace?: boolean;
   detached?: boolean;
   onResetWidth: () => void;
-  onResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onResizeStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   testId?: string;
   widthPx: number;
 };
@@ -42,10 +42,10 @@ export function RightAuxiliaryPane({
     >
       <button
         aria-label="Resize panel"
-        className="peer/right-pane-resize group/right-pane-resize absolute inset-y-0 left-0 z-50 w-3 -translate-x-1/2 cursor-col-resize"
+        className="peer/right-pane-resize group/right-pane-resize absolute inset-y-0 left-0 z-50 w-3 touch-none cursor-col-resize select-none"
         data-testid="right-auxiliary-pane-resize-handle"
         onDoubleClick={canResetWidth ? onResetWidth : undefined}
-        onPointerDown={onResizeStart}
+        onMouseDown={onResizeStart}
         title={
           canResetWidth
             ? "Drag to resize. Double-click to reset width."
@@ -53,7 +53,7 @@ export function RightAuxiliaryPane({
         }
         type="button"
       >
-        <span className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2 bg-transparent group-hover/right-pane-resize:bg-border/80 group-focus-visible/right-pane-resize:bg-border/80" />
+        <span className="absolute bottom-0 left-0 top-0 w-px bg-border/80 transition-[width,background-color] group-hover/right-pane-resize:w-1 group-hover/right-pane-resize:bg-primary/70 group-focus-visible/right-pane-resize:w-1 group-focus-visible/right-pane-resize:bg-primary/70" />
       </button>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {children}

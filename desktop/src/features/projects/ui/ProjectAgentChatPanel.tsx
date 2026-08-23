@@ -61,7 +61,7 @@ export function ProjectAgentChatPanel({
   detached?: boolean;
   onClose?: () => void;
   onResetWidth: () => void;
-  onResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onResizeStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   sharedHeaderBackdrop?: boolean;
   widthPx: number;
 }) {

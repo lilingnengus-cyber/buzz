@@ -1,4 +1,11 @@
 {
   "identifier": "xyz.block.buzz.app.dev",
-  "productName": "Buzz Dev"
+  "productName": "Buzz Dev",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["buzz-dev"]
+      }
+    }
+  }
 }
