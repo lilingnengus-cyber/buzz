@@ -37,20 +37,18 @@ pub fn valid_pubkey(value: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn canonical_binding_payload(
     id: Uuid,
     nonce: &str,
     issuer: &str,
     subject: &str,
     pubkey: &str,
-    device_id: &str,
     issued_at: i64,
     expires_at: i64,
 ) -> String {
     // Fixed field order and LF separators are the signed protocol. Values are
     // length-bounded before this function and may not contain CR/LF.
-    format!("bizfin-device-binding-v1\nchallenge_id={id}\nnonce={nonce}\naudience=bizfin-workbench-device-binding\noidc_issuer={issuer}\noidc_subject={subject}\nbuzz_pubkey={pubkey}\ndevice_id={device_id}\nissued_at={issued_at}\nexpires_at={expires_at}")
+    format!("bizfin-identity-binding-v1\nchallenge_id={id}\nnonce={nonce}\naudience=bizfin-workbench-identity-binding\noidc_issuer={issuer}\noidc_subject={subject}\nbuzz_pubkey={pubkey}\nissued_at={issued_at}\nexpires_at={expires_at}")
 }
 
 pub fn safe_target(path: &str) -> bool {
@@ -96,6 +94,6 @@ mod tests {
     #[test]
     fn canonical_payload_is_stable() {
         let id = Uuid::nil();
-        assert_eq!(canonical_binding_payload(id,"n","i","s",&"a".repeat(64),"device-01",1,2), format!("bizfin-device-binding-v1\nchallenge_id={id}\nnonce=n\naudience=bizfin-workbench-device-binding\noidc_issuer=i\noidc_subject=s\nbuzz_pubkey={}\ndevice_id=device-01\nissued_at=1\nexpires_at=2", "a".repeat(64)));
+        assert_eq!(canonical_binding_payload(id,"n","i","s",&"a".repeat(64),1,2), format!("bizfin-identity-binding-v1\nchallenge_id={id}\nnonce=n\naudience=bizfin-workbench-identity-binding\noidc_issuer=i\noidc_subject=s\nbuzz_pubkey={}\nissued_at=1\nexpires_at=2", "a".repeat(64)));
     }
 }

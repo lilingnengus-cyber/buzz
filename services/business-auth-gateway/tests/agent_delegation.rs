@@ -128,9 +128,6 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
             &principal,
             ChallengeRequest {
                 pubkey: user_keys.public_key().to_hex(),
-                device_id: "delegation-device-01".into(),
-                device_name: "Delegation Mac".into(),
-                device_platform: "macos".into(),
             },
             facts(Uuid::new_v4()),
         )

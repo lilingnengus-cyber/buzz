@@ -12,7 +12,7 @@ import { Button } from "@/shared/ui/button";
 export function BusinessDockBrowser() {
   const {
     businessAuth,
-    bindCurrentDevice,
+    bindCurrentIdentity,
     checkBusinessAuth,
     config,
     configError,
@@ -95,9 +95,9 @@ export function BusinessDockBrowser() {
           </p>
           <div className="mt-3 flex gap-2">
             {workbenchGatewayStatus === "binding_required" ||
-            workbenchGatewayStatus === "device_revoked" ? (
-              <Button onClick={bindCurrentDevice} size="sm">
-                <KeyRound /> Bind current device
+            workbenchGatewayStatus === "identity_revoked" ? (
+              <Button onClick={bindCurrentIdentity} size="sm">
+                <KeyRound /> Bind Buzz identity
               </Button>
             ) : (
               <Button onClick={startBusinessSignIn} size="sm">

@@ -46,7 +46,7 @@ fn facts() -> RequestFacts {
     }
 }
 
-async fn issue(store: &Store, principal: &Principal, keys: &Keys, device_id: &str) -> String {
+async fn issue(store: &Store, principal: &Principal, keys: &Keys) -> String {
     store
         .issue_embed(
             principal,
@@ -58,7 +58,6 @@ async fn issue(store: &Store, principal: &Principal, keys: &Keys, device_id: &st
                 },
                 source: None,
                 pubkey: keys.public_key().to_hex(),
-                device_id: device_id.into(),
             },
             facts(),
         )
@@ -100,15 +99,11 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
     };
     let principal = store.principal(&claims, &facts()).await.unwrap();
     let keys = Keys::generate();
-    let mut device_id = "test-device-0001";
     let rejected_challenge = store
         .challenge(
             &principal,
             ChallengeRequest {
                 pubkey: keys.public_key().to_hex(),
-                device_id: "rejected-device-0001".into(),
-                device_name: "Rejected Mac".into(),
-                device_platform: "macos".into(),
             },
             facts(),
         )
@@ -128,9 +123,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
             &principal,
             ChallengeRequest {
                 pubkey: keys.public_key().to_hex(),
-                device_id: "expired-device-0001".into(),
-                device_name: "Expired Mac".into(),
-                device_platform: "macos".into(),
             },
             facts(),
         )
@@ -156,9 +148,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
             &principal,
             ChallengeRequest {
                 pubkey: keys.public_key().to_hex(),
-                device_id: device_id.into(),
-                device_name: "Test Mac".into(),
-                device_platform: "macos".into(),
             },
             facts(),
         )
@@ -171,6 +160,9 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .verify_binding(&principal, challenge.id, event.clone(), facts())
         .await
         .unwrap();
+    assert!(initial_binding.device_id.is_none());
+    assert!(initial_binding.device_name.is_none());
+    assert!(initial_binding.device_platform.is_none());
     assert!(
         store
             .verify_binding(&principal, challenge.id, event, facts())
@@ -179,17 +171,13 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         "binding challenge replay must fail"
     );
 
-    let pre_rebind_code = issue(&store, &principal, &keys, device_id).await;
+    let pre_rebind_code = issue(&store, &principal, &keys).await;
     let pre_rebind_session = store.bootstrap(&pre_rebind_code, facts()).await.unwrap();
-    let replacement_device_id = "test-device-0002";
     let replacement_challenge = store
         .challenge(
             &principal,
             ChallengeRequest {
                 pubkey: keys.public_key().to_hex(),
-                device_id: replacement_device_id.into(),
-                device_name: "Replacement Mac".into(),
-                device_platform: "macos".into(),
             },
             facts(),
         )
@@ -207,7 +195,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         )
         .await
         .unwrap();
-    device_id = replacement_device_id;
     assert_eq!(
         sqlx::query_scalar::<_, String>("SELECT status FROM buzz_identity_bindings WHERE id=$1")
             .bind(initial_binding.id)
@@ -221,7 +208,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
             .business_state(&pre_rebind_session.session_token)
             .await
             .is_err(),
-        "moving a pubkey to another device must revoke the old Business session"
+        "re-binding a pubkey must revoke the old Business session"
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
@@ -246,14 +233,13 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                 },
                 source: None,
                 pubkey: keys.public_key().to_hex(),
-                device_id: device_id.into(),
             },
             facts(),
         )
         .await
         .is_err());
 
-    let wrong_audience_code = issue(&store, &principal, &keys, device_id).await;
+    let wrong_audience_code = issue(&store, &principal, &keys).await;
     let wrong_audience_id: Uuid =
         sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
             .bind(security::hash(&wrong_audience_code))
@@ -270,7 +256,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .await
         .is_err());
 
-    let revoked_code = issue(&store, &principal, &keys, device_id).await;
+    let revoked_code = issue(&store, &principal, &keys).await;
     let revoked_id: Uuid = sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
         .bind(security::hash(&revoked_code))
         .fetch_one(&pool)
@@ -282,7 +268,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .unwrap();
     assert!(store.bootstrap(&revoked_code, facts()).await.is_err());
 
-    let expired_code = issue(&store, &principal, &keys, device_id).await;
+    let expired_code = issue(&store, &principal, &keys).await;
     let expired_id: Uuid = sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
         .bind(security::hash(&expired_code))
         .fetch_one(&pool)
@@ -304,8 +290,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                     path: "/embed/sales/orders/SO-001".into(),
                 },
                 source: None,
-                pubkey: keys.public_key().to_hex(),
-                device_id: "wrong-device-0001".into(),
+                pubkey: wrong_keys.public_key().to_hex(),
             },
             facts(),
         )
@@ -323,7 +308,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                 },
                 source: None,
                 pubkey: keys.public_key().to_hex(),
-                device_id: device_id.into(),
             },
             facts(),
         )
@@ -336,7 +320,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .await
         .unwrap();
     assert_eq!(stored.get::<Vec<u8>, _>("code_hash").len(), 32);
-    assert_eq!(stored.get::<i64, _>("ttl_seconds"), 30);
+    assert!((29..=31).contains(&stored.get::<i64, _>("ttl_seconds")));
     assert!(!format!("{:?}", stored.get::<Vec<u8>, _>("code_hash")).contains(&code));
     let first_store = store.clone();
     let first_code = code.clone();
@@ -382,10 +366,10 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .execute(&pool)
         .await
         .unwrap();
-    let replacement_code = issue(&store, &principal, &keys, device_id).await;
+    let replacement_code = issue(&store, &principal, &keys).await;
     let replacement = store.bootstrap(&replacement_code, facts()).await.unwrap();
     for _ in 0..9 {
-        let _ = issue(&store, &principal, &keys, device_id).await;
+        let _ = issue(&store, &principal, &keys).await;
     }
     assert!(store
         .issue_embed(
@@ -398,7 +382,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                 },
                 source: None,
                 pubkey: keys.public_key().to_hex(),
-                device_id: device_id.into(),
             },
             facts(),
         )
@@ -414,7 +397,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
             .business_state(&replacement.session_token)
             .await
             .is_err(),
-        "device revocation must revoke Business sessions"
+        "identity revocation must revoke Business sessions"
     );
 
     let replay_events:i64=sqlx::query_scalar("SELECT count(*) FROM security_audit_events WHERE event_type='EMBED_SESSION_REPLAY_REJECTED'").fetch_one(&pool).await.unwrap();

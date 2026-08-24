@@ -49,10 +49,9 @@ export function createWorkbenchUserManager(
   config: WorkbenchAuthConfig,
   sessionStore: Storage,
 ): UserManager {
-  const desktopMetadata =
-    isTauri() && config.desktopProxyOrigin
-      ? createAuthentikDesktopMetadata(config)
-      : undefined;
+  const desktopMetadata = isTauri()
+    ? createAuthentikDesktopMetadata(config)
+    : undefined;
   if (desktopMetadata && config.desktopProxyOrigin)
     installDesktopPocFetch(config.desktopProxyOrigin);
   const settings = {
@@ -223,21 +222,31 @@ function installDesktopPocFetch(proxyOrigin: string): void {
 function createAuthentikDesktopMetadata(config: WorkbenchAuthConfig) {
   const issuer = new URL(`${config.issuer.replace(/\/$/, "")}/`);
   const match = issuer.pathname.match(/^\/application\/o\/([^/]+)\/$/);
-  if (!match || !config.desktopProxyOrigin)
-    throw new Error("Desktop proxy requires an Authentik provider issuer.");
+  if (!match)
+    throw new Error("Desktop OIDC requires an Authentik provider issuer.");
   const providerSlug = match[1];
   const authorization = new URL("/application/o/authorize/", issuer.origin);
+  const token = new URL("/application/o/token/", issuer.origin);
+  const userinfo = new URL("/application/o/userinfo/", issuer.origin);
   const endSession = new URL(
     `/application/o/${providerSlug}/end-session/`,
     issuer.origin,
   );
+  const jwks = new URL(`/application/o/${providerSlug}/jwks/`, issuer.origin);
+  const proxyOrigin = config.desktopProxyOrigin;
   return {
     issuer: issuer.href,
     authorization_endpoint: authorization.href,
-    token_endpoint: `${config.desktopProxyOrigin}/_pacioli_oidc/token/`,
-    userinfo_endpoint: `${config.desktopProxyOrigin}/_pacioli_oidc/userinfo/`,
+    token_endpoint: proxyOrigin
+      ? `${proxyOrigin}/_pacioli_oidc/token/`
+      : token.href,
+    userinfo_endpoint: proxyOrigin
+      ? `${proxyOrigin}/_pacioli_oidc/userinfo/`
+      : userinfo.href,
     end_session_endpoint: endSession.href,
-    jwks_uri: `${config.desktopProxyOrigin}/_pacioli_oidc/${providerSlug}/jwks/`,
+    jwks_uri: proxyOrigin
+      ? `${proxyOrigin}/_pacioli_oidc/${providerSlug}/jwks/`
+      : jwks.href,
   };
 }
 

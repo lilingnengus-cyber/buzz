@@ -19,9 +19,9 @@ pub struct Principal {
 pub struct Binding {
     pub id: Uuid,
     pub buzz_pubkey: String,
-    pub device_id: String,
-    pub device_name: String,
-    pub device_platform: String,
+    pub device_id: Option<String>,
+    pub device_name: Option<String>,
+    pub device_platform: Option<String>,
     pub status: String,
     pub bound_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
@@ -33,9 +33,6 @@ pub struct Binding {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChallengeRequest {
     pub pubkey: String,
-    pub device_id: String,
-    pub device_name: String,
-    pub device_platform: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,7 +73,6 @@ pub struct IssueEmbedRequest {
     pub target: EmbedTarget,
     pub source: Option<EmbedSource>,
     pub pubkey: String,
-    pub device_id: String,
 }
 
 #[derive(Debug, Serialize)]

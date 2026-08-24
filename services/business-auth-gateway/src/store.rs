@@ -207,14 +207,7 @@ impl Store {
         request: ChallengeRequest,
         facts: RequestFacts,
     ) -> Result<ChallengeResponse> {
-        if !security::valid_pubkey(&request.pubkey)
-            || !security::safe_text(&request.device_id, 8, 200)
-            || !security::safe_text(&request.device_name, 1, 200)
-            || !matches!(
-                request.device_platform.as_str(),
-                "macos" | "windows" | "linux" | "web"
-            )
-        {
+        if !security::valid_pubkey(&request.pubkey) {
             return Err(Rejection::Invalid("invalid_binding_request"));
         }
         let id = Uuid::new_v4();
@@ -228,13 +221,12 @@ impl Store {
             &principal.issuer,
             &principal.subject,
             &request.pubkey,
-            &request.device_id,
             now.timestamp(),
             expires.timestamp(),
         );
         let mut tx = self.pool.begin().await.map_err(db)?;
-        sqlx::query("INSERT INTO identity_binding_challenges(id,enterprise_user_id,requested_pubkey,device_id,device_name,device_platform,challenge_hash,canonical_payload,audience,expires_at,created_ip,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'bizfin-workbench-device-binding',$9,$10::inet,$11)")
-            .bind(id).bind(principal.user_id).bind(&request.pubkey).bind(&request.device_id).bind(&request.device_name).bind(&request.device_platform).bind(security::hash(&nonce)).bind(&payload).bind(expires).bind(&facts.ip).bind(facts.trace_id).execute(&mut *tx).await.map_err(db)?;
+        sqlx::query("INSERT INTO identity_binding_challenges(id,enterprise_user_id,requested_pubkey,challenge_hash,canonical_payload,audience,expires_at,created_ip,trace_id) VALUES($1,$2,$3,$4,$5,'bizfin-workbench-identity-binding',$6,$7::inet,$8)")
+            .bind(id).bind(principal.user_id).bind(&request.pubkey).bind(security::hash(&nonce)).bind(&payload).bind(expires).bind(&facts.ip).bind(facts.trace_id).execute(&mut *tx).await.map_err(db)?;
         let mut audit = Audit::event(
             "IDENTITY_BINDING_CHALLENGE_CREATED",
             "success",
@@ -242,13 +234,12 @@ impl Store {
         );
         audit.user_id = Some(principal.user_id);
         audit.pubkey_short = Some(security::short_pubkey(&request.pubkey));
-        audit.device_id = Some(request.device_id);
         audit.workbench_session_id = Some(principal.workbench_session_id);
         Self::audit_tx(&mut tx, audit).await?;
         tx.commit().await.map_err(db)?;
         Ok(ChallengeResponse {
             id,
-            audience: "bizfin-workbench-device-binding",
+            audience: "bizfin-workbench-identity-binding",
             payload,
             expires_at: expires,
             trace_id: facts.trace_id,
@@ -263,10 +254,9 @@ impl Store {
         facts: RequestFacts,
     ) -> Result<Binding> {
         let mut tx = self.pool.begin().await.map_err(db)?;
-        let row=sqlx::query("SELECT requested_pubkey,device_id,device_name,device_platform,canonical_payload,status,expires_at FROM identity_binding_challenges WHERE id=$1 AND enterprise_user_id=$2 FOR UPDATE")
+        let row=sqlx::query("SELECT requested_pubkey,canonical_payload,status,expires_at FROM identity_binding_challenges WHERE id=$1 AND enterprise_user_id=$2 FOR UPDATE")
             .bind(challenge_id).bind(principal.user_id).fetch_optional(&mut *tx).await.map_err(db)?.ok_or(Rejection::NotFound)?;
         let pubkey: String = row.get("requested_pubkey");
-        let device_id: String = row.get("device_id");
         let status: String = row.get("status");
         let expires: chrono::DateTime<Utc> = row.get("expires_at");
         let payload: String = row.get("canonical_payload");
@@ -289,7 +279,6 @@ impl Store {
             });
             audit.user_id = Some(principal.user_id);
             audit.pubkey_short = Some(security::short_pubkey(&pubkey));
-            audit.device_id = Some(device_id);
             audit.workbench_session_id = Some(principal.workbench_session_id);
             Self::audit_tx(&mut tx, audit).await?;
             tx.commit().await.map_err(db)?;
@@ -302,11 +291,10 @@ impl Store {
         }
         if let Some(owner)=sqlx::query_scalar::<_,Uuid>("SELECT enterprise_user_id FROM buzz_identity_bindings WHERE buzz_pubkey=$1 AND status='active' FOR UPDATE").bind(&pubkey).fetch_optional(&mut *tx).await.map_err(db)? { if owner!=principal.user_id { tx.rollback().await.map_err(db)?; return Err(Rejection::Conflict("pubkey_already_bound")); } }
         let replaced_bindings = sqlx::query_scalar::<_, Uuid>(
-            "SELECT id FROM buzz_identity_bindings WHERE enterprise_user_id=$1 AND status='active' AND (buzz_pubkey=$2 OR device_id=$3) FOR UPDATE",
+            "SELECT id FROM buzz_identity_bindings WHERE enterprise_user_id=$1 AND status='active' AND buzz_pubkey=$2 FOR UPDATE",
         )
         .bind(principal.user_id)
         .bind(&pubkey)
-        .bind(&device_id)
         .fetch_all(&mut *tx)
         .await
         .map_err(db)?;
@@ -314,14 +302,13 @@ impl Store {
             Self::revoke_binding_tx(&mut tx, principal, replaced_id, facts.clone()).await?;
         }
         let id = Uuid::new_v4();
-        let binding=sqlx::query_as::<_,Binding>("INSERT INTO buzz_identity_bindings(id,enterprise_user_id,buzz_pubkey,device_id,device_name,device_platform) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,buzz_pubkey,device_id,device_name,device_platform,status,bound_at,last_seen_at,revoked_at,version")
-            .bind(id).bind(principal.user_id).bind(&pubkey).bind(&device_id).bind(row.get::<String,_>("device_name")).bind(row.get::<String,_>("device_platform")).fetch_one(&mut *tx).await.map_err(db)?;
+        let binding=sqlx::query_as::<_,Binding>("INSERT INTO buzz_identity_bindings(id,enterprise_user_id,buzz_pubkey) VALUES($1,$2,$3) RETURNING id,buzz_pubkey,device_id,device_name,device_platform,status,bound_at,last_seen_at,revoked_at,version")
+            .bind(id).bind(principal.user_id).bind(&pubkey).fetch_one(&mut *tx).await.map_err(db)?;
         for event_type in ["IDENTITY_BINDING_VERIFIED", "IDENTITY_BINDING_CREATED"] {
             let mut audit = Audit::event(event_type, "success", facts.clone());
             audit.user_id = Some(principal.user_id);
             audit.binding_id = Some(id);
             audit.pubkey_short = Some(security::short_pubkey(&pubkey));
-            audit.device_id = Some(device_id.clone());
             audit.workbench_session_id = Some(principal.workbench_session_id);
             Self::audit_tx(&mut tx, audit).await?;
         }
@@ -357,7 +344,7 @@ impl Store {
         audit.user_id = Some(principal.user_id);
         audit.binding_id = Some(id);
         audit.pubkey_short = Some(security::short_pubkey(row.get("buzz_pubkey")));
-        audit.device_id = Some(row.get("device_id"));
+        audit.device_id = row.get("device_id");
         audit.workbench_session_id = Some(principal.workbench_session_id);
         Self::audit_tx(tx, audit).await?;
         Ok(())
@@ -370,7 +357,6 @@ impl Store {
         facts: RequestFacts,
     ) -> Result<IssueEmbedResponse> {
         if !security::valid_pubkey(&request.pubkey)
-            || !security::safe_text(&request.device_id, 8, 200)
             || !security::safe_text(&request.target.r#type, 1, 80)
             || !security::safe_text(&request.target.id, 1, 200)
             || !security::safe_target(&request.target.path)
@@ -381,18 +367,17 @@ impl Store {
             return Err(Rejection::Invalid("target_rejected"));
         }
         let mut tx = self.pool.begin().await.map_err(db)?;
-        let binding=sqlx::query_scalar::<_,Uuid>("SELECT id FROM buzz_identity_bindings WHERE enterprise_user_id=$1 AND buzz_pubkey=$2 AND device_id=$3 AND status='active' FOR UPDATE")
-            .bind(principal.user_id).bind(&request.pubkey).bind(&request.device_id).fetch_optional(&mut *tx).await.map_err(db)?;
+        let binding=sqlx::query_scalar::<_,Uuid>("SELECT id FROM buzz_identity_bindings WHERE enterprise_user_id=$1 AND buzz_pubkey=$2 AND status='active' FOR UPDATE")
+            .bind(principal.user_id).bind(&request.pubkey).fetch_optional(&mut *tx).await.map_err(db)?;
         let Some(binding_id) = binding else {
-            let mut a = Audit::event("DEVICE_ACCESS_REJECTED", "failure", facts);
-            a.reason = Some("binding_required_or_revoked");
+            let mut a = Audit::event("IDENTITY_ACCESS_REJECTED", "failure", facts);
+            a.reason = Some("identity_binding_required_or_revoked");
             a.user_id = Some(principal.user_id);
             a.pubkey_short = Some(security::short_pubkey(&request.pubkey));
-            a.device_id = Some(request.device_id);
             a.workbench_session_id = Some(principal.workbench_session_id);
             Self::audit_tx(&mut tx, a).await?;
             tx.commit().await.map_err(db)?;
-            return Err(Rejection::Forbidden("binding_required_or_revoked"));
+            return Err(Rejection::Forbidden("identity_binding_required_or_revoked"));
         };
         let count:i64=sqlx::query_scalar("SELECT count(*) FROM embed_sessions WHERE workbench_session_id=$1 AND created_at>now()-interval '1 minute'").bind(principal.workbench_session_id).fetch_one(&mut *tx).await.map_err(db)?;
         if count >= self.config.rate_limit {
@@ -414,7 +399,6 @@ impl Store {
         a.user_id = Some(principal.user_id);
         a.binding_id = Some(binding_id);
         a.pubkey_short = Some(security::short_pubkey(&request.pubkey));
-        a.device_id = Some(request.device_id);
         a.workbench_session_id = Some(principal.workbench_session_id);
         a.embed_session_id = Some(id);
         a.target_type = Some(request.target.r#type);

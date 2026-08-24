@@ -13,9 +13,9 @@ export type EnterpriseUserSummary = {
 export type BuzzIdentityBinding = {
   id: string;
   buzzPubkey: string;
-  deviceId: string;
-  deviceName: string;
-  devicePlatform: "macos" | "windows" | "linux" | "web";
+  deviceId?: string | null;
+  deviceName?: string | null;
+  devicePlatform?: "macos" | "windows" | "linux" | "web" | null;
   status: "active" | "revoked";
   boundAt: string;
   lastSeenAt: string;
@@ -45,13 +45,11 @@ export type WorkbenchAuthState =
       workbenchSessionId: string;
     }
   | {
-      status: "device_revoked";
+      status: "identity_revoked";
       user: EnterpriseUserSummary;
       workbenchSessionId: string;
     }
   | { status: "error"; error: string };
-
-const DEVICE_ID_KEY = "bizfin.workbench.device-id.v1";
 
 export function getBusinessAuthGatewayUrl(): string | null {
   const value = import.meta.env.VITE_BUSINESS_AUTH_GATEWAY_URL?.trim();
@@ -64,14 +62,6 @@ export function getBusinessAuthGatewayUrl(): string | null {
   } catch {
     return null;
   }
-}
-
-export function getOrCreateDeviceId(storage: Storage): string {
-  const current = storage.getItem(DEVICE_ID_KEY);
-  if (current && /^[0-9a-f-]{36}$/.test(current)) return current;
-  const next = crypto.randomUUID();
-  storage.setItem(DEVICE_ID_KEY, next);
-  return next;
 }
 
 async function gatewayFetch<T>(
@@ -114,12 +104,9 @@ export async function readGatewayState(
     };
   }
   const identity = await getIdentity();
-  const deviceId = getOrCreateDeviceId(window.localStorage);
   const active = me.bindings.find(
     (binding) =>
-      binding.buzzPubkey === identity.pubkey &&
-      binding.deviceId === deviceId &&
-      binding.status === "active",
+      binding.buzzPubkey === identity.pubkey && binding.status === "active",
   );
   if (active)
     return {
@@ -130,29 +117,22 @@ export async function readGatewayState(
     };
   const revoked = me.bindings.some(
     (binding) =>
-      binding.buzzPubkey === identity.pubkey &&
-      binding.deviceId === deviceId &&
-      binding.status === "revoked",
+      binding.buzzPubkey === identity.pubkey && binding.status === "revoked",
   );
   return {
-    status: revoked ? "device_revoked" : "binding_required",
+    status: revoked ? "identity_revoked" : "binding_required",
     user: me.user,
     workbenchSessionId: me.workbenchSessionId,
   };
 }
 
-export async function bindCurrentDevice(
+export async function bindCurrentIdentity(
   gateway: string,
   token: string,
 ): Promise<WorkbenchAuthState> {
-  if (!isTauri()) throw new Error("Device binding requires the Desktop app.");
+  if (!isTauri())
+    throw new Error("Buzz identity binding requires the Desktop app.");
   const identity = await getIdentity();
-  const deviceId = getOrCreateDeviceId(window.localStorage);
-  const platform = navigator.userAgent.includes("Windows")
-    ? "windows"
-    : navigator.userAgent.includes("Linux")
-      ? "linux"
-      : "macos";
   const challenge = await gatewayFetch<{
     id: string;
     payload: string;
@@ -160,15 +140,12 @@ export async function bindCurrentDevice(
     method: "POST",
     body: JSON.stringify({
       pubkey: identity.pubkey,
-      deviceId,
-      deviceName: navigator.platform || "Business Dock device",
-      devicePlatform: platform,
     }),
   });
   const signedEvent = await signRelayEvent({
     kind: 24243,
     content: challenge.payload,
-    tags: [["aud", "bizfin-workbench-device-binding"]],
+    tags: [["aud", "bizfin-workbench-identity-binding"]],
   });
   await gatewayFetch(gateway, token, "/api/identity-bindings/verify", {
     method: "POST",
@@ -188,7 +165,6 @@ export async function issueEmbedSession(
     body: JSON.stringify({
       target,
       pubkey: identity.pubkey,
-      deviceId: getOrCreateDeviceId(window.localStorage),
     }),
   });
 }
