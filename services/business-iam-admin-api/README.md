@@ -42,6 +42,11 @@ BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS=300
 BUSINESS_IAM_REQUIRED_MFA_AMR=mfa
 ```
 
+`BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS` accepts HTTPS origins plus the two exact
+Buzz Desktop webview origins, `tauri://localhost` and
+`http://tauri.localhost`. Other custom schemes and cleartext origins are
+rejected.
+
 `AUTHENTIK_BACKCHANNEL_ISSUER` is useful when the browser-facing issuer is
 published through an external reverse proxy while the API reaches Authentik on
 an internal address. It only controls OIDC discovery and JWKS retrieval; it

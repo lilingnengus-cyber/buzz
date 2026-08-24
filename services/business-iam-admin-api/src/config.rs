@@ -28,6 +28,29 @@ fn https_url(value: &str, name: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+fn allowed_origin(value: &str) -> Result<String, String> {
+    // Tauri uses these two fixed local origins for its production webviews.
+    // Keep the exception exact: arbitrary custom schemes and HTTP hosts remain
+    // forbidden for the management plane.
+    if matches!(value, "tauri://localhost" | "http://tauri.localhost") {
+        return Ok(value.to_owned());
+    }
+    let url = Url::parse(value)
+        .map_err(|_| "BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS must be a URL".to_owned())?;
+    if url.scheme() != "https" {
+        return Err("BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS must use HTTPS".into());
+    }
+    if url.username() != ""
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err("BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS must contain origins".into());
+    }
+    Ok(url.origin().ascii_serialization())
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let issuer = https_url(&required("AUTHENTIK_ISSUER")?, "AUTHENTIK_ISSUER")?;
@@ -40,18 +63,7 @@ impl Config {
         let allowed_origins = required("BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS")?
             .split(',')
             .map(str::trim)
-            .map(|value| {
-                let url = https_url(value, "BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS")?;
-                if url.username() != ""
-                    || url.password().is_some()
-                    || url.query().is_some()
-                    || url.fragment().is_some()
-                    || url.path() != "/"
-                {
-                    return Err("BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS must contain origins".into());
-                }
-                Ok(url.origin().ascii_serialization())
-            })
+            .map(allowed_origin)
             .collect::<Result<HashSet<_>, String>>()?;
         let step_up_seconds = std::env::var("BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS")
             .unwrap_or_else(|_| "300".into())
@@ -83,5 +95,33 @@ impl Config {
             step_up_max_age: Duration::from_secs(step_up_seconds),
             required_mfa_amr,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allowed_origin;
+
+    #[test]
+    fn management_origins_allow_https_and_fixed_tauri_origins() {
+        assert_eq!(
+            allowed_origin("https://workbench.example.com/").as_deref(),
+            Ok("https://workbench.example.com")
+        );
+        assert_eq!(
+            allowed_origin("tauri://localhost").as_deref(),
+            Ok("tauri://localhost")
+        );
+        assert_eq!(
+            allowed_origin("http://tauri.localhost").as_deref(),
+            Ok("http://tauri.localhost")
+        );
+    }
+
+    #[test]
+    fn management_origins_reject_paths_and_untrusted_http() {
+        assert!(allowed_origin("https://workbench.example.com/admin").is_err());
+        assert!(allowed_origin("http://workbench.example.com").is_err());
+        assert!(allowed_origin("buzz://localhost").is_err());
     }
 }
