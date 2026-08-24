@@ -81,6 +81,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   header,
   idleAuxiliaryPanel = null,
   idleAuxiliaryHeaderActions,
+  idleAuxiliaryOverridesThread = false,
   idleAuxiliaryTitle = "",
   hasOlderMessages,
   historyExhausted,
@@ -469,11 +470,15 @@ export const ChannelPane = React.memo(function ChannelPane({
     useSplitAuxiliaryPane &&
     Boolean(idleAuxiliaryPanel) &&
     Boolean(onCloseIdleAuxiliaryPanel);
+  const priorityIdleAuxiliary =
+    idleAuxiliaryOverridesThread && useFocusIdleDrawer;
   const { channelIsCovered, markExitComplete } = useFocusDrawerPresence(
     useFocusThreadDrawer || useFocusIdleDrawer,
-    useFocusThreadDrawer
-      ? onCloseThread
-      : (onCloseIdleAuxiliaryPanel ?? onCloseThread),
+    priorityIdleAuxiliary
+      ? (onCloseIdleAuxiliaryPanel ?? onCloseThread)
+      : useFocusThreadDrawer
+        ? onCloseThread
+        : (onCloseIdleAuxiliaryPanel ?? onCloseThread),
   );
   const { changeThreadViewMode, layoutScrollTargetId, resolveScrollTarget } =
     useThreadViewModeSwitch({
@@ -543,6 +548,25 @@ export const ChannelPane = React.memo(function ChannelPane({
     ) : (
       wrapAux(panel, "idle-auxiliary-panel")
     );
+  const idleAuxiliarySurface =
+    idleAuxiliaryPanel && onCloseIdleAuxiliaryPanel
+      ? wrapIdlePanel(
+          <IdleAuxiliaryPanel
+            canResetWidth={canResetThreadPanelWidth}
+            headerControls={idleAuxiliaryHeaderActions}
+            isFocusDrawer={useFocusIdleDrawer}
+            isSinglePanelView={isSinglePanelView}
+            onClose={onCloseIdleAuxiliaryPanel}
+            onResetWidth={onResetThreadPanelWidth}
+            onResizeStart={onThreadPanelResizeStart}
+            title={idleAuxiliaryTitle}
+            useSplitAuxiliaryPane={useSplitAuxiliaryPane}
+            widthPx={threadPanelWidthPx}
+          >
+            {idleAuxiliaryPanel}
+          </IdleAuxiliaryPanel>,
+        )
+      : null;
   const threadHeaderLeading = useSplitAuxiliaryPane ? (
     <ThreadViewModeToggle onChange={changeThreadViewMode} />
   ) : undefined;
@@ -791,14 +815,7 @@ export const ChannelPane = React.memo(function ChannelPane({
         </section>
       ) : null}
 
-      {/*
-       * `AnimatePresence` keeps the focus thread drawer mounted through its exit
-       * animation — without it the drawer's own existence condition
-       * (`useFocusThreadDrawer`, which is derived from `threadHeadMessage`) goes
-       * false on the same frame as the close, and there is nothing left to
-       * animate. It can hold the real thread through the exit rather than a
-       * frozen snapshot because the panel is fully prop-driven.
-       */}
+      {/* Keep focus drawers mounted until their exit animation finishes. */}
       <AnimatePresence onExitComplete={markExitComplete}>
         {channelManagementOpen && activeChannel ? (
           <ChannelManagementAuxiliaryPanel
@@ -816,6 +833,8 @@ export const ChannelPane = React.memo(function ChannelPane({
             useSplitAuxiliaryPane={useSplitAuxiliaryPane}
             transparentChrome={hasSplitAuxiliaryPane}
           />
+        ) : priorityIdleAuxiliary && idleAuxiliarySurface ? (
+          idleAuxiliarySurface
         ) : threadHeadMessage ? (
           (() => {
             const panel = (
@@ -967,24 +986,9 @@ export const ChannelPane = React.memo(function ChannelPane({
             );
             return wrapAux(panel, "user-profile-panel");
           })()
-        ) : idleAuxiliaryPanel && onCloseIdleAuxiliaryPanel ? (
-          wrapIdlePanel(
-            <IdleAuxiliaryPanel
-              canResetWidth={canResetThreadPanelWidth}
-              headerControls={idleAuxiliaryHeaderActions}
-              isFocusDrawer={useFocusIdleDrawer}
-              isSinglePanelView={isSinglePanelView}
-              onClose={onCloseIdleAuxiliaryPanel}
-              onResetWidth={onResetThreadPanelWidth}
-              onResizeStart={onThreadPanelResizeStart}
-              title={idleAuxiliaryTitle}
-              useSplitAuxiliaryPane={useSplitAuxiliaryPane}
-              widthPx={threadPanelWidthPx}
-            >
-              {idleAuxiliaryPanel}
-            </IdleAuxiliaryPanel>,
-          )
-        ) : null}
+        ) : (
+          idleAuxiliarySurface
+        )}
       </AnimatePresence>
     </div>
   );

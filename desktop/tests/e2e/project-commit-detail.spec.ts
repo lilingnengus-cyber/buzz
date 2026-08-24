@@ -810,6 +810,14 @@ test("commit detail opens from the commits feed with a diff", async ({
     .first();
   await expect(projectEntry).toBeVisible({ timeout: 10_000 });
   await projectEntry.click();
+  const rootMessage = page
+    .getByTestId("message-timeline")
+    .getByTestId("message-row")
+    .first();
+  await expect(rootMessage).toBeVisible();
+  await rootMessage.hover();
+  await rootMessage.getByRole("button", { name: "Reply" }).click();
+  await expect(page.getByTestId("focus-thread-drawer")).toBeVisible();
   await page.getByTestId("project-home-context-tasks").click();
   await expect(page.getByTestId("project-home-workspace-sheet")).toBeVisible();
   const workspaceSheet = page.getByTestId("project-home-workspace-sheet");

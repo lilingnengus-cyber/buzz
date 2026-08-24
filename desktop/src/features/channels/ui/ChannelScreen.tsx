@@ -91,6 +91,7 @@ export function ChannelScreen({
   headerEndActions,
   idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions,
+  idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
   onAddFiles,
   onCloseIdleAuxiliaryPanel,
@@ -855,6 +856,7 @@ export function ChannelScreen({
                   header={channelHeader}
                   idleAuxiliaryPanel={idleAuxiliaryPanel}
                   idleAuxiliaryHeaderActions={idleAuxiliaryHeaderActions}
+                  idleAuxiliaryOverridesThread={idleAuxiliaryOverridesThread}
                   idleAuxiliaryTitle={idleAuxiliaryTitle}
                   hasOlderMessages={hasOlderMessages}
                   historyExhausted={historyExhausted}

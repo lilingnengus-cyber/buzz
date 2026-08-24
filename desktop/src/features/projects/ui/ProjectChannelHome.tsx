@@ -349,6 +349,7 @@ export function ProjectChannelHome({
                   backLabel: workspaceDetail?.backLabel,
                   onBack: workspaceDetail?.onBack,
                 }}
+                idleAuxiliaryOverridesThread={workspaceSheetOpen}
                 idleAuxiliaryTitle={
                   workspaceSheetTab
                     ? projectHomeWorkspaceSheetTitle(workspaceSheetTab)
