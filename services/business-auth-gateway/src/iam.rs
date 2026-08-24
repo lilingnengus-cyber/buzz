@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub(crate) struct GrantedTurn {
     pub decision_id: Uuid,
-    pub agent_principal_id: Uuid,
+    pub agent_principal_id: Option<Uuid>,
     pub scopes: Vec<String>,
     pub effective_grants: Value,
 }
@@ -35,9 +35,7 @@ impl Store {
         requested_scopes: &[String],
         trace_id: Uuid,
     ) -> Result<TurnDecision, Rejection> {
-        let Some(agent) = load_agent_authority(tx, agent_id).await? else {
-            return Ok(TurnDecision::Denied("iam_agent_not_registered"));
-        };
+        let independent_agent = load_independent_agent_authority(tx, agent_id).await?;
         let human = load_authority(
             tx,
             "human",
@@ -54,11 +52,21 @@ impl Store {
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let request = AuthorizationRequest { requested };
-        let decision = evaluate(
-            human.as_ref().map(|resolved| &resolved.authority),
-            &agent.authority,
-            &request,
-        );
+        let (authority, agent_principal_id, agent_kind, executor_type) =
+            if let Some(agent) = independent_agent.as_ref() {
+                (
+                    &agent.authority,
+                    Some(agent.id),
+                    Some("independent_agent"),
+                    "independent_agent",
+                )
+            } else {
+                let Some(human) = human.as_ref() else {
+                    return Ok(TurnDecision::Denied("iam_human_not_registered"));
+                };
+                (&human.authority, None, None, "proxy_agent")
+            };
+        let decision = evaluate(authority, &request);
         let decision_id = Uuid::new_v4();
         let allowed_scopes = decision
             .grants
@@ -83,13 +91,13 @@ impl Store {
             "INSERT INTO business_iam.authorization_decisions(
                id,human_principal_id,agent_principal_id,agent_kind,task_id,
                requested_capabilities,allowed_capabilities,denied_capabilities,
-               effective_grants,result,reason_code,trace_id)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+               effective_grants,result,reason_code,trace_id,executor_type,executor_id)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         )
         .bind(decision_id)
         .bind(human.as_ref().map(|resolved| resolved.id))
-        .bind(agent.id)
-        .bind(kind_name(agent.authority.kind))
+        .bind(agent_principal_id)
+        .bind(agent_kind)
         .bind(agent_turn_id)
         .bind(requested_scopes)
         .bind(&allowed_scopes)
@@ -98,6 +106,8 @@ impl Store {
         .bind(result)
         .bind(decision.reason)
         .bind(trace_id)
+        .bind(executor_type)
+        .bind(agent_id)
         .execute(&mut **tx)
         .await
         .map_err(|_| Rejection::Database)?;
@@ -105,7 +115,7 @@ impl Store {
         if decision.allowed {
             Ok(TurnDecision::Granted(GrantedTurn {
                 decision_id,
-                agent_principal_id: agent.id,
+                agent_principal_id,
                 scopes: allowed_scopes,
                 effective_grants,
             }))
@@ -115,13 +125,13 @@ impl Store {
     }
 }
 
-async fn load_agent_authority(
+async fn load_independent_agent_authority(
     tx: &mut Transaction<'_, Postgres>,
     external_id: &str,
 ) -> Result<Option<ResolvedAuthority>, Rejection> {
     let row = sqlx::query(
         "SELECT id,kind,status FROM business_iam.principals
-         WHERE external_id=$1 AND kind IN ('independent_agent','proxy_agent')
+         WHERE external_id=$1 AND kind='independent_agent'
          ORDER BY (status='active') DESC,updated_at DESC LIMIT 1",
     )
     .bind(external_id)
@@ -131,12 +141,9 @@ async fn load_agent_authority(
     let Some(row) = row else {
         return Ok(None);
     };
-    let kind = match row.get::<String, _>("kind").as_str() {
-        "independent_agent" => PrincipalKind::IndependentAgent,
-        "proxy_agent" => PrincipalKind::ProxyAgent,
-        _ => return Err(Rejection::Database),
-    };
-    load_authority_from_row(tx, kind, row).await.map(Some)
+    load_authority_from_row(tx, PrincipalKind::IndependentAgent, row)
+        .await
+        .map(Some)
 }
 
 async fn load_authority(
@@ -228,12 +235,4 @@ async fn load_authority_from_row(
             entitlements,
         },
     })
-}
-
-fn kind_name(kind: PrincipalKind) -> &'static str {
-    match kind {
-        PrincipalKind::Human => "human",
-        PrincipalKind::IndependentAgent => "independent_agent",
-        PrincipalKind::ProxyAgent => "proxy_agent",
-    }
 }

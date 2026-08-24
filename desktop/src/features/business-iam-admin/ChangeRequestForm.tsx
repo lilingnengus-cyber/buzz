@@ -140,7 +140,6 @@ export function ChangeRequestForm({
                 >
                   <option value="human">Human</option>
                   <option value="independent_agent">Independent Agent</option>
-                  <option value="proxy_agent">Proxy Agent</option>
                 </select>
               </Field>
               <Field label="External ID">

@@ -339,7 +339,16 @@ impl BusinessAgentHostConfig {
         } else {
             None
         };
-        let action_api_url = if adapter == "production" {
+        let action_enabled = std::env::var("BUSINESS_ACTION_ENABLED")
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<bool>()
+                    .map_err(|_| "BUSINESS_ACTION_ENABLED must be true or false".to_string())
+            })
+            .transpose()?
+            .unwrap_or(false);
+        let action_api_url = if adapter == "production" && action_enabled {
             Some(parse_url(
                 "BUSINESS_ACTION_API_BASE_URL",
                 required("BUSINESS_ACTION_API_BASE_URL")?,
@@ -462,7 +471,10 @@ impl BusinessAgentHostConfig {
             env("BUSINESS_READ_SERVICE_AUTH_MODE", "shared_secret"),
             env("BUSINESS_READ_SERVICE_AUDIENCE", "business-read-api"),
             env("BUSINESS_ANOMALY_ENABLED", "true"),
-            env("BUSINESS_ACTION_ENABLED", "true"),
+            env(
+                "BUSINESS_ACTION_ENABLED",
+                self.business_action_api_base_url.is_some().to_string(),
+            ),
             env("BUSINESS_READ_ADAPTER", &self.adapter),
             env(
                 "BUSINESS_TOOL_TIMEOUT_SECONDS",

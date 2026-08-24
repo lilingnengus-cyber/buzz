@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.7
 FROM rust:1.88-bookworm AS build
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

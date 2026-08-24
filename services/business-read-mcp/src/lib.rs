@@ -103,12 +103,21 @@ impl Config {
                 None
             }
         };
-        let business_action_api_base_url = match adapter {
-            AdapterKind::Production => Some(parse_url(
+        let action_enabled = std::env::var("BUSINESS_ACTION_ENABLED")
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<bool>()
+                    .map_err(|_| "BUSINESS_ACTION_ENABLED must be true or false".to_string())
+            })
+            .transpose()?
+            .unwrap_or(false);
+        let business_action_api_base_url = match (adapter, action_enabled) {
+            (AdapterKind::Production, true) => Some(parse_url(
                 "BUSINESS_ACTION_API_BASE_URL",
                 required("BUSINESS_ACTION_API_BASE_URL")?,
             )?),
-            AdapterKind::Mock => None,
+            _ => None,
         };
         let service_credential = required("BUSINESS_READ_SERVICE_CREDENTIAL")?;
         if service_credential.len() < 32 {

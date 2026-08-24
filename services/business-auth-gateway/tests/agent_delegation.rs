@@ -86,18 +86,14 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
         .await
         .expect("principal");
     let human_iam_id = Uuid::new_v4();
-    let proxy_iam_id = Uuid::new_v4();
     let independent_iam_id = Uuid::new_v4();
-    let proxy_role_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO business_iam.principals(id,kind,external_id,display_name) VALUES
          ($1,'human',$2,'Delegation User'),
-         ($3,'proxy_agent','business-query-agent','Business Query Proxy'),
-         ($4,'independent_agent','finance-independent-agent','Finance Digital Employee')",
+         ($3,'independent_agent','finance-independent-agent','Finance Digital Employee')",
     )
     .bind(human_iam_id)
     .bind(principal.user_id.to_string())
-    .bind(proxy_iam_id)
     .bind(independent_iam_id)
     .execute(&pool)
     .await
@@ -126,32 +122,6 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     .execute(&pool)
     .await
     .expect("IAM grants");
-    sqlx::query(
-        "INSERT INTO business_iam.roles(id,code,name)
-         VALUES($1,'business.query.proxy','Business Query Proxy')",
-    )
-    .bind(proxy_role_id)
-    .execute(&pool)
-    .await
-    .expect("IAM proxy role");
-    sqlx::query(
-        "INSERT INTO business_iam.role_permissions(
-           role_id,permission_id,data_scope,obligations
-         )
-         SELECT $1,id,'{\"mode\":\"restricted\",\"dimensions\":{\"legal_entity\":[\"cn\",\"us\"]}}'::jsonb,
-                '[\"human_approval\"]'::jsonb
-         FROM business_iam.permissions WHERE capability='sales_order:read'",
-    )
-    .bind(proxy_role_id)
-    .execute(&pool)
-    .await
-    .expect("IAM proxy role permission");
-    sqlx::query("INSERT INTO business_iam.principal_roles(principal_id,role_id) VALUES($1,$2)")
-        .bind(proxy_iam_id)
-        .bind(proxy_role_id)
-        .execute(&pool)
-        .await
-        .expect("IAM proxy role assignment");
     let user_keys = Keys::generate();
     let challenge = store
         .challenge(
@@ -201,7 +171,8 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     assert_eq!(issued.trace_id, trace_id);
     assert_eq!(issued.scopes, vec!["sales_order:read"]);
     let iam_decision = sqlx::query(
-        "SELECT result,allowed_capabilities,denied_capabilities,effective_grants
+        "SELECT result,allowed_capabilities,denied_capabilities,effective_grants,
+                human_principal_id,agent_principal_id,agent_kind,executor_type,executor_id
          FROM business_iam.authorization_decisions WHERE trace_id=$1",
     )
     .bind(trace_id)
@@ -209,6 +180,23 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     .await
     .expect("IAM decision");
     assert_eq!(iam_decision.get::<String, _>("result"), "partial");
+    assert_eq!(
+        iam_decision.get::<Uuid, _>("human_principal_id"),
+        human_iam_id
+    );
+    assert_eq!(
+        iam_decision.get::<Option<Uuid>, _>("agent_principal_id"),
+        None
+    );
+    assert_eq!(iam_decision.get::<Option<String>, _>("agent_kind"), None);
+    assert_eq!(
+        iam_decision.get::<String, _>("executor_type"),
+        "proxy_agent"
+    );
+    assert_eq!(
+        iam_decision.get::<String, _>("executor_id"),
+        "business-query-agent"
+    );
     assert_eq!(
         iam_decision.get::<Vec<String>, _>("allowed_capabilities"),
         vec!["sales_order:read"]
@@ -227,7 +215,6 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     assert_eq!(
         obligations,
         vec![
-            serde_json::json!("human_approval"),
             serde_json::json!("step_up_authentication"),
             serde_json::json!("dual_control"),
         ]
@@ -344,7 +331,7 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
         serde_json::to_value(verified.data_scope).expect("serialize effective scope"),
         serde_json::json!({
             "mode": "restricted",
-            "dimensions": {"legal_entity": ["cn"]}
+            "dimensions": {"legal_entity": ["cn", "sg"]}
         })
     );
 
@@ -419,14 +406,14 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
         .await
         .expect("live proxy delegation");
     sqlx::query(
-        "UPDATE business_iam.role_permissions
+        "UPDATE business_iam.principal_permissions
          SET data_scope='{\"mode\":\"restricted\",\"dimensions\":{\"legal_entity\":[\"cn\"]}}'::jsonb
-         WHERE role_id=$1",
+         WHERE principal_id=$1",
     )
-    .bind(proxy_role_id)
+    .bind(human_iam_id)
     .execute(&pool)
     .await
-    .expect("tighten proxy role");
+    .expect("tighten human permission");
     let role_revoked: String =
         sqlx::query_scalar("SELECT status FROM agent_read_delegations WHERE id=$1")
             .bind(live_proxy.id)

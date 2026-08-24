@@ -9,6 +9,9 @@
 - `business-auth-gateway` resolves the event author through an active
   `BuzzIdentityBinding` to an active `EnterpriseUser`. It owns issuance,
   atomic call consumption, revocation, expiry, rate limit, and security audit.
+- A proxy executor is one common runtime mechanism, not an IAM principal. It
+  receives the event author's current Business IAM authority only for the Turn;
+  `agent_id` binds the credential and identifies the executor in audit.
 - `business-read-mcp` exposes exactly eight read tools, validates inputs,
   consumes one call, invokes the API with service identity, validates the
   response, and emits sanitized audit facts.

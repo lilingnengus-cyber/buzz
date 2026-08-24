@@ -1,0 +1,169 @@
+name: buzz-business-agent
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      BUSINESS_AUTH_RUNTIME_DATABASE_ROLE: ${BUSINESS_AUTH_RUNTIME_DATABASE_ROLE:?required}
+      BUSINESS_AUTH_RUNTIME_DATABASE_PASSWORD: ${BUSINESS_AUTH_RUNTIME_DATABASE_PASSWORD:?required}
+      BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE: ${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_ROLE:?required}
+      BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_PASSWORD: ${BUSINESS_IAM_ADMIN_RUNTIME_DATABASE_PASSWORD:?required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - business-agent-postgres:/var/lib/postgresql/data
+      - ../business-auth-gateway/postgres-init/001-runtime-role.sh:/docker-entrypoint-initdb.d/001-runtime-role.sh:ro
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/business-agent/Dockerfile
+      target: gateway
+    command: ["--migrate-only"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BUSINESS_AUTH_RUNTIME_DATABASE_ROLE: ${BUSINESS_AUTH_RUNTIME_DATABASE_ROLE:?required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/business-agent/Dockerfile
+      target: gateway
+    environment:
+      DATABASE_URL: postgres://${BUSINESS_AUTH_RUNTIME_DATABASE_ROLE}:${BUSINESS_AUTH_RUNTIME_DATABASE_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BIND_ADDR: 0.0.0.0:3100
+      AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?required}
+      WORKBENCH_CLIENT_ID: ${WORKBENCH_CLIENT_ID:?required}
+      BUSINESS_CLIENT_ID: ${BUSINESS_CLIENT_ID:?required}
+      ALLOWED_WORKBENCH_ORIGINS: ${ALLOWED_WORKBENCH_ORIGINS:?required}
+      BUSINESS_APP_ORIGIN: ${BUSINESS_APP_ORIGIN:?required}
+      DEPLOYMENT_ID: ${DEPLOYMENT_ID:?required}
+      GLOBAL_LOGOUT_REDIRECT_URI: ${GLOBAL_LOGOUT_REDIRECT_URI:?required}
+      BUSINESS_AGENT_READ_ENABLED: "true"
+      BUSINESS_READ_SERVICE_CREDENTIAL: ${BUSINESS_READ_SERVICE_CREDENTIAL:?required}
+      BUSINESS_READ_MCP_AUDIENCE: business-read-mcp
+      AGENT_DELEGATION_TTL_SECONDS: ${AGENT_DELEGATION_TTL_SECONDS:-300}
+      AGENT_DELEGATION_MAX_CALLS: ${AGENT_DELEGATION_MAX_CALLS:-20}
+      BUSINESS_AGENT_RATE_LIMIT_PER_MINUTE: ${BUSINESS_AGENT_RATE_LIMIT_PER_MINUTE:-10}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports: ["127.0.0.1:${BUSINESS_AUTH_GATEWAY_PORT:-3100}:3100"]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  business-core:
+    build:
+      context: ../..
+      dockerfile: deploy/business-agent/Dockerfile
+      target: business-core
+    environment:
+      BUSINESS_CORE_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BUSINESS_CORE_BIND_ADDR: 0.0.0.0:3120
+      BUSINESS_CORE_SERVICE_AUTH_MODE: shared_secret
+      BUSINESS_CORE_SERVICE_AUDIENCE: business-core
+      BUSINESS_CORE_SERVICE_CREDENTIAL: ${BUSINESS_CORE_SERVICE_CREDENTIAL:?required}
+      BUSINESS_CORE_BOOTSTRAP_ENABLED: "false"
+      BUSINESS_WEB_ORIGIN: ${BUSINESS_WEB_ORIGIN:?required}
+      BUSINESS_WEB_EMBED_ORIGIN: ${BUSINESS_WEB_EMBED_ORIGIN:?required}
+      BUSINESS_SESSION_COOKIE_NAME: ${BUSINESS_SESSION_COOKIE_NAME:-__Host-bizfin_business}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports: ["127.0.0.1:${BUSINESS_CORE_PORT:-3120}:3120"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3120/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  business-read-api:
+    build:
+      context: ../..
+      dockerfile: deploy/business-agent/Dockerfile
+      target: business-read-api
+    environment:
+      BUSINESS_READ_API_BIND: 0.0.0.0:3130
+      BUSINESS_AUTHORIZATION_ENABLED: "true"
+      BUSINESS_AUTH_GATEWAY_BASE_URL: ${BUSINESS_AUTH_GATEWAY_BASE_URL:?required}
+      BUSINESS_READ_SERVICE_AUTH_MODE: shared_secret
+      BUSINESS_READ_SERVICE_AUDIENCE: business-read-api
+      BUSINESS_READ_SERVICE_CREDENTIAL: ${BUSINESS_READ_SERVICE_CREDENTIAL:?required}
+      BUSINESS_CORE_BASE_URL: ${BUSINESS_CORE_BASE_URL:?required}
+      BUSINESS_CORE_SERVICE_CREDENTIAL: ${BUSINESS_CORE_SERVICE_CREDENTIAL:?required}
+      BUSINESS_ANOMALY_ENABLED: "true"
+      BUSINESS_ANOMALY_DEFAULT_RULESET_VERSION: ${BUSINESS_ANOMALY_DEFAULT_RULESET_VERSION:-trade-risk-v1.0}
+      BUSINESS_ANOMALY_SCHEDULE_ENABLED: "false"
+    depends_on:
+      business-core:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    ports: ["127.0.0.1:${BUSINESS_READ_API_PORT:-3130}:3130"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3130/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  proxy-agent:
+    build:
+      context: ../..
+      dockerfile: deploy/business-agent/Dockerfile
+      target: proxy-agent
+    environment:
+      BUZZ_RELAY_URL: ${BUZZ_RELAY_URL:?required}
+      BUZZ_PRIVATE_KEY: ${BUZZ_PRIVATE_KEY:?required}
+      BUZZ_ACP_AGENT_COMMAND: /usr/local/bin/buzz-agent
+      BUZZ_ACP_RESPOND_TO: ${BUZZ_ACP_RESPOND_TO:-anyone}
+      BUZZ_ACP_HEARTBEAT_INTERVAL: "0"
+      BUZZ_AGENT_PROVIDER: ${BUZZ_AGENT_PROVIDER:?required}
+      OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:?required}
+      OPENAI_COMPAT_MODEL: ${OPENAI_COMPAT_MODEL:?required}
+      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-https://api.openai.com/v1}
+      BUSINESS_AGENT_READ_ENABLED: "true"
+      BUSINESS_AUTH_GATEWAY_BASE_URL: ${BUSINESS_AUTH_GATEWAY_BASE_URL:?required}
+      BUSINESS_READ_API_BASE_URL: ${BUSINESS_READ_API_BASE_URL:?required}
+      BUSINESS_READ_MCP_COMMAND: /usr/local/bin/business-read-mcp
+      BUSINESS_READ_ADAPTER: production
+      BUSINESS_READ_SERVICE_AUTH_MODE: shared_secret
+      BUSINESS_READ_SERVICE_AUDIENCE: business-read-api
+      BUSINESS_READ_SERVICE_CREDENTIAL: ${BUSINESS_READ_SERVICE_CREDENTIAL:?required}
+      BUSINESS_ACTION_ENABLED: "false"
+      BUSINESS_ANOMALY_ENABLED: "true"
+      AGENT_TURN_TIMEOUT_SECONDS: ${AGENT_TURN_TIMEOUT_SECONDS:-120}
+      BUSINESS_TOOL_TIMEOUT_SECONDS: ${BUSINESS_TOOL_TIMEOUT_SECONDS:-10}
+      BUSINESS_TOOL_MAX_PAYLOAD_BYTES: ${BUSINESS_TOOL_MAX_PAYLOAD_BYTES:-131072}
+    depends_on:
+      business-read-api:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+volumes:
+  business-agent-postgres:

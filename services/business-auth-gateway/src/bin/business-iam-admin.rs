@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 const USAGE: &str = "\
 business-iam-admin commands:
-  principal-upsert <human|independent_agent|proxy_agent> <external-id> <display-name>
+  principal-upsert <human|independent_agent> <external-id> <display-name>
   principal-disable <external-id>
   permission-grant <external-id> <capability> [data-scope-json]
   permission-revoke <external-id> <capability>
@@ -136,7 +136,7 @@ async fn principal_upsert(
     external_id: &str,
     display_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !matches!(kind, "human" | "independent_agent" | "proxy_agent") {
+    if !matches!(kind, "human" | "independent_agent") {
         return Err("principal kind is invalid".into());
     }
     validate_text(external_id, 1, 200, "external-id")?;

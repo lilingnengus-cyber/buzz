@@ -18,7 +18,7 @@ export type IamPermissionAssignment = {
 
 export type IamPrincipal = {
   id: string;
-  kind: "human" | "independent_agent" | "proxy_agent";
+  kind: "human" | "independent_agent";
   externalId: string;
   displayName: string;
   status: "active" | "disabled";

@@ -17,15 +17,15 @@ Business IAM 是业务权限的唯一权威来源。Authentik 负责人员登录
 |---|---|---:|---|
 | Human | 自身角色和直接权限 | 是 | 普通业务人员 |
 | Independent Agent | Agent 自身角色和直接权限 | 是 | 数字员工，不继承创建者或触发者权限 |
-| Proxy Agent | Agent 仅保存能力上限 | 否 | 每个任务计算 `Human ∩ Agent ceiling ∩ Request` |
+| Proxy Agent | 被代理人员的当前权限 | 否 | 统一代理执行器，不是 IAM 主体，没有自身角色或权限 |
 
-代理 Agent 的能力上限不是业务授权。例如代理 Agent 允许调用 `sales_order:read`，只有被代理人当前也拥有该权限时才能获得临时委托。
+代理 Agent 不登记为主体，也不按 Persona、模型或业务场景拆分授权。`agent_id` 仅用于把临时凭据绑定到执行实例并保留审计轨迹，不参与权限计算。
 
 ## 数据模型
 
 `business_iam` schema 包含：
 
-- `principals`：人员、独立 Agent、代理 Agent；
+- `principals`：人员和独立 Agent；
 - `roles`、`permissions`、`role_permissions`、`principal_roles`；
 - `principal_permissions`：直接授权或代理 Agent 能力上限；
 - `authorization_decisions`：不可修改、不可删除的决策快照。
@@ -33,7 +33,7 @@ Business IAM 是业务权限的唯一权威来源。Authentik 负责人员登录
 `agent_read_delegations` 不是权限源。它只保存一次 IAM 决策签发出的短时、单任务、有限调用次数凭证，并关联：
 
 ```text
-human + agent + task + source event + channel + capability
+human + proxy executor instance + task + source event + channel + capability
 + effective data scope + trace + IAM decision
 ```
 
@@ -51,11 +51,10 @@ effective = agent persistent permission ∩ requested scope
 
 ```text
 effective = delegating human current permission
-          ∩ proxy agent capability ceiling
           ∩ requested task scope
 ```
 
-请求多个 capability 时允许返回安全子集。未授权 capability 不进入委托；若交集为空则整个任务拒绝。
+请求多个 capability 时允许返回安全子集。未授权 capability 不进入委托；若交集为空则整个任务拒绝。工具白名单、可代理操作限制和 Step-up 等属于执行安全与业务风控，不是代理 Agent 自身权限。
 
 ### 数据范围
 
@@ -65,7 +64,7 @@ effective = delegating human current permission
 
 - 正常 Agent 回合结束：ACP 同步等待 gateway 撤销完成；
 - 取消、错误或对象提前释放：Drop 路径执行补偿撤销；
-- 人员/Agent 停用、直接权限、角色绑定或角色权限发生变化：数据库触发器在同一事务中撤销所有相关活动委托；
+- 被代理人员或独立 Agent 停用、直接权限、角色绑定或角色权限发生变化：数据库触发器在同一事务中撤销所有相关活动委托；
 - TTL 和调用次数上限只负责异常兜底，不代替正常撤销。
 
 每次撤销都保留 IAM 决策快照，并向 `security_audit_events` 追加事件；不修改历史决策。
@@ -73,7 +72,7 @@ effective = delegating human current permission
 ## Fail-closed
 
 - 数据库只预置 capability 目录，不预置任何主体、角色或授权；
-- 未登记 Agent、缺少人员主体、主体停用、权限交集为空、数据范围无交集均拒绝；
+- 代理任务缺少人员主体、主体停用、权限交集为空、数据范围无交集均拒绝；独立 Agent 仍必须登记并持有自己的权限；
 - gateway 运行账户只能读取 IAM 配置和写入决策，不能管理主体或授权；
 - IAM 管理面必须使用独立管理员身份和审计链，不能复用 Agent service credential。
 

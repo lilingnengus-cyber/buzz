@@ -96,7 +96,9 @@ impl Store {
                    AND assignment.valid_from<=now()
                    AND (assignment.valid_until IS NULL OR assignment.valid_until>now())
                ),'[]'::jsonb))
-             FROM business_iam.principals principal ORDER BY kind,external_id LIMIT 1000",
+             FROM business_iam.principals principal
+             WHERE kind IN ('human','independent_agent')
+             ORDER BY kind,external_id LIMIT 1000",
         )
         .fetch_all(&self.pool)
         .await
@@ -596,7 +598,7 @@ fn validate_payload(operation: Operation, payload: &Value) -> Result<(), Error> 
     match operation {
         Operation::PrincipalUpsert => {
             let kind = string(payload, "kind", "invalid_principal_kind")?;
-            if !matches!(kind, "human" | "independent_agent" | "proxy_agent") {
+            if !matches!(kind, "human" | "independent_agent") {
                 return Err(Error::Invalid("invalid_principal_kind"));
             }
             validate_text(

@@ -28,6 +28,7 @@ BUSINESS_DATA_STALE_AFTER_MINUTES=1440
 BUSINESS_ANOMALY_MAX_FINDINGS=100
 BUSINESS_ANOMALY_MAX_PAYLOAD_BYTES=131072
 BUSINESS_ANOMALY_SCHEDULE_ENABLED=false
+BUSINESS_ACTION_ENABLED=false # production Action adapter remains blocked
 AGENT_DELEGATION_TTL_SECONDS=300
 AGENT_DELEGATION_MAX_CALLS=20
 AGENT_TURN_TIMEOUT_SECONDS=120
@@ -45,6 +46,11 @@ tools. Codex, Goose, Claude and other ACP runtimes are supported. Dedicated mode
 still removes ordinary configured MCP servers and injects only the per-turn
 Business MCP server, but a general-purpose runtime may independently expose its
 own built-in tools; operators must evaluate and restrict those capabilities.
+
+Keep `BUSINESS_ACTION_ENABLED=false` until the production Action adapter has
+passed its separate execution acceptance. In this read-only mode
+`BUSINESS_ACTION_API_BASE_URL` is intentionally not required; action-lifecycle
+tools fail closed as unavailable and no write execution endpoint is exposed.
 
 For `codex-acp`, select a model that exposes session-scoped MCP tools as direct
 tool calls. The verified local acceptance path uses `gpt-5.5`. Do not use

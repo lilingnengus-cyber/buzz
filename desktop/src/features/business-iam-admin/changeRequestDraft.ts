@@ -8,7 +8,7 @@ export type ChangeDraft = {
   principalId: string;
   roleId: string;
   capability: string;
-  principalKind: "human" | "independent_agent" | "proxy_agent";
+  principalKind: "human" | "independent_agent";
   externalId: string;
   displayName: string;
   roleCode: string;

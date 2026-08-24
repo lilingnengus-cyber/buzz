@@ -16,8 +16,6 @@ pub enum PrincipalKind {
     Human,
     /// A digital employee with its own persistent business entitlements.
     IndependentAgent,
-    /// An agent that can only act through a task-scoped human delegation.
-    ProxyAgent,
 }
 
 /// Whether an IAM principal may participate in authorization decisions.
@@ -114,8 +112,7 @@ pub struct Authority {
     pub principal_id: String,
     pub kind: PrincipalKind,
     pub status: PrincipalStatus,
-    /// Persistent grants for humans and independent agents; capability ceilings
-    /// for proxy agents.
+    /// Persistent grants for humans and independent agents.
     pub entitlements: Vec<Entitlement>,
 }
 
@@ -145,66 +142,20 @@ pub struct Decision {
     pub denied_capabilities: Vec<Capability>,
 }
 
-/// Evaluates a human, independent-agent, or proxy-agent task.
+/// Evaluates one durable human or independent-agent authority for a task.
 ///
-/// Proxy agents never receive persistent business permissions: their
-/// `entitlements` are ceilings, and every effective grant is the intersection
-/// of the current human authority, that ceiling, and the task request.
-pub fn evaluate(
-    human: Option<&Authority>,
-    agent: &Authority,
-    request: &AuthorizationRequest,
-) -> Decision {
-    if agent.status != PrincipalStatus::Active {
-        return denied("agent_inactive", request);
+/// A proxy executor is deliberately not an IAM principal. Callers authorize a
+/// proxy turn by passing the delegating human's current authority here, then
+/// bind the resulting snapshot to a short-lived delegation credential.
+pub fn evaluate(authority: &Authority, request: &AuthorizationRequest) -> Decision {
+    if authority.status != PrincipalStatus::Active {
+        return denied("principal_inactive", request);
     }
     if request.requested.is_empty() {
         return denied("empty_request", request);
     }
 
-    let source = match agent.kind {
-        PrincipalKind::IndependentAgent => &agent.entitlements,
-        PrincipalKind::ProxyAgent => {
-            let Some(human) = human else {
-                return denied("delegating_human_required", request);
-            };
-            if human.kind != PrincipalKind::Human || human.status != PrincipalStatus::Active {
-                return denied("delegating_human_inactive", request);
-            }
-            return evaluate_proxy(human, agent, request);
-        }
-        PrincipalKind::Human => return denied("agent_principal_required", request),
-    };
-
-    evaluate_against(source, request)
-}
-
-fn evaluate_proxy(
-    human: &Authority,
-    agent: &Authority,
-    request: &AuthorizationRequest,
-) -> Decision {
-    let mut intersected = Vec::new();
-    for human_grant in &human.entitlements {
-        for ceiling in agent
-            .entitlements
-            .iter()
-            .filter(|grant| grant.capability == human_grant.capability)
-        {
-            if let Some(data_scope) = human_grant.data_scope.intersection(&ceiling.data_scope) {
-                intersected.push(Entitlement {
-                    capability: human_grant.capability.clone(),
-                    data_scope,
-                    obligations: human_grant
-                        .obligations
-                        .union(&ceiling.obligations)
-                        .cloned()
-                        .collect(),
-                });
-            }
-        }
-    }
-    evaluate_against(&intersected, request)
+    evaluate_against(&authority.entitlements, request)
 }
 
 fn evaluate_against(entitlements: &[Entitlement], request: &AuthorizationRequest) -> Decision {
@@ -303,24 +254,23 @@ mod tests {
 
         assert!(
             !evaluate(
-                Some(&human),
                 &agent,
                 &request("sales_order:read", DataScope::Unrestricted)
             )
             .allowed
         );
+        assert!(evaluate(&agent, &request("inventory:read", DataScope::Unrestricted)).allowed);
         assert!(
             evaluate(
-                None,
-                &agent,
-                &request("inventory:read", DataScope::Unrestricted)
+                &human,
+                &request("sales_order:read", DataScope::Unrestricted)
             )
             .allowed
         );
     }
 
     #[test]
-    fn proxy_agent_gets_human_ceiling_request_intersection() {
+    fn proxy_turn_uses_only_human_authority_and_requested_scope() {
         let human = Authority {
             principal_id: "human-1".into(),
             kind: PrincipalKind::Human,
@@ -330,18 +280,8 @@ mod tests {
                 scope("legal_entity", &["cn", "sg"]),
             )],
         };
-        let agent = Authority {
-            principal_id: "agent-1".into(),
-            kind: PrincipalKind::ProxyAgent,
-            status: PrincipalStatus::Active,
-            entitlements: vec![entitlement(
-                "sales_order:read",
-                scope("legal_entity", &["cn", "us"]),
-            )],
-        };
         let decision = evaluate(
-            Some(&human),
-            &agent,
+            &human,
             &request("sales_order:read", scope("legal_entity", &["cn", "jp"])),
         );
 
@@ -353,19 +293,16 @@ mod tests {
     }
 
     #[test]
-    fn proxy_agent_requires_an_active_human() {
-        let agent = Authority {
-            principal_id: "agent-1".into(),
-            kind: PrincipalKind::ProxyAgent,
-            status: PrincipalStatus::Active,
+    fn inactive_delegating_human_is_denied() {
+        let human = Authority {
+            principal_id: "human-1".into(),
+            kind: PrincipalKind::Human,
+            status: PrincipalStatus::Disabled,
             entitlements: vec![entitlement("sales_order:read", DataScope::Unrestricted)],
         };
         let requested = request("sales_order:read", DataScope::Unrestricted);
 
-        assert_eq!(
-            evaluate(None, &agent, &requested).reason,
-            "delegating_human_required"
-        );
+        assert_eq!(evaluate(&human, &requested).reason, "principal_inactive");
     }
 
     #[test]
@@ -382,7 +319,6 @@ mod tests {
 
         assert!(
             !evaluate(
-                None,
                 &agent,
                 &request("inventory:read", scope("warehouse", &["shenzhen"]))
             )
@@ -404,7 +340,7 @@ mod tests {
                 (capability("payable:read"), DataScope::Unrestricted),
             ]),
         };
-        let decision = evaluate(None, &agent, &requested);
+        let decision = evaluate(&agent, &requested);
 
         assert!(decision.allowed);
         assert_eq!(decision.reason, "partially_allowed");

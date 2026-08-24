@@ -1,7 +1,7 @@
 # AgentReadDelegation
 
 `agent_read_delegations` binds one opaque credential to one real Buzz event,
-Enterprise user/binding, IAM decision, Agent principal/id, Turn id, channel,
+Enterprise user/binding, IAM decision, proxy executor id, Turn id, channel,
 audience, effective capability/data-scope list, Trace id, expiry, and call budget.
 
 - entropy: 32 cryptographically random bytes;
@@ -16,8 +16,11 @@ audience, effective capability/data-scope list, Trace id, expiry, and call budge
 
 The issue endpoint verifies the Nostr id/signature, author, `h` channel tag,
 active binding, active user, requested read scopes, and per-user rate limit,
-then evaluates Business IAM. Unregistered Agents and empty effective permission
-intersections are rejected.
+then evaluates Business IAM. A proxy executor is not registered in IAM and has
+no permissions of its own; its effective grants come from the delegating
+human's current authority narrowed by the task request. A registered independent
+Agent continues to use only its own persistent authority. Empty effective
+permission intersections are rejected.
 
 The token is never a tool parameter or prompt field. `buzz-acp` passes it in
 the MCP process environment; `business-read-mcp` sends it only in the gateway
@@ -29,9 +32,11 @@ status, expiry, audience, Agent/Turn ids, binding/user state, scope and budget,
 then increments `used_calls`. The call that reaches the maximum succeeds and
 marks the record exhausted; later calls fail.
 
-Normal turn completion synchronously revokes the delegation. IAM principal,
+Normal turn completion synchronously revokes the delegation. The responsible
+human's IAM principal,
 direct-grant, role-binding, role-permission, role, or permission changes revoke
-related active delegations transactionally; TTL remains an abnormal-path limit.
+related active proxy delegations transactionally; independent-Agent authority
+changes revoke its own delegations. TTL remains an abnormal-path limit.
 The acceptance suite exercises the ACP finish-path request, the dropped-turn
 fallback, explicit revocation after an exhausted turn, role-authority changes,
 and a consume/revoke race. Calls that were serialized before the revocation
