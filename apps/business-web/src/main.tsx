@@ -279,9 +279,8 @@ function App() {
       {!current.embed && !navigationCollapsed && (
         <aside className="rail" id="business-navigation">
           <div className="brand">
-            <span className="brand-mark">业</span>
             <div>
-              <strong>商贸业务台</strong>
+              <strong>企业工作台</strong>
               <small>Business Core · S1</small>
             </div>
             <button
