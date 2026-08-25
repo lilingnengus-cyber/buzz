@@ -67,11 +67,11 @@
 
 - `AppShell.tsx` 已只依赖一个通用 `AppExtensionLayout`，语义耦合已收敛；但 JSX 包装使该文件相对上游仍有较大的纯缩进差异，升级时可能出现机械合并冲突，继续把它列为固定适配点并用 E2E 验证。
 - Business IAM 已有独立策略 crate、独立 schema、gateway 适配器和独立管理 API；当前真实集成验收仍是本地部署，尚未完成生产环境部署与运维验收。
-- Agent Host 当前只开放固定读能力目录；读委托已经由 Business IAM 计算独立 Agent 自身权限或代理 Agent 的按任务最小权限交集。写能力仍保持 `V7_BLOCKED`。
+- Agent Host 默认只开放固定读能力目录；读委托已经由 Business IAM 计算独立 Agent 自身权限或代理 Agent 的按任务最小权限交集。草稿创建能力由独立、默认关闭的写入开关控制，自动业务执行不在当前产品范围内。
 
 ## 对未来 Buzz 升级的影响判定
 
 - **不会形成架构性阻断**：Authentik、Business IAM、业务数据库、业务 API 和业务 Web 均由业务台拥有，不要求上游 Buzz 接受业务权限模型。
 - **会有有限适配成本**：40 个上游文件包含 workspace 注册、ACP 扩展插槽、Desktop 壳层插槽、Tauri 能力和 lockfile；上游改动这些位置时可能产生合并冲突。
 - **权限语义不随 Buzz 升级漂移**：独立 Agent、代理 Agent、Step-up、双人审批与审计规则由 Business IAM 判定，Buzz 只承载会话和执行上下文。
-- **升级失败应阻断发布而非放宽权限**：兼容预演、边界检查或真实鉴权验收失败时，保留旧版运行；不得绕过 Business IAM，也不得把 `V7_BLOCKED` 改为可执行。
+- **升级失败应阻断发布而非放宽权限**：兼容预演、边界检查或真实鉴权验收失败时，保留旧版运行；不得绕过 Business IAM，也不得开启草稿写入开关。
