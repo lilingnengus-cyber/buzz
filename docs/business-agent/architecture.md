@@ -12,11 +12,12 @@
 - A proxy executor is one common runtime mechanism, not an IAM principal. It
   receives the event author's current Business IAM authority only for the Turn;
   `agent_id` binds the credential and identifies the executor in audit.
-- `business-read-mcp` exposes exactly eight read tools, validates inputs,
+- `business-read-mcp` exposes a fixed set of 28 reads and six draft creates, validates inputs,
   consumes one call, invokes the API with service identity, validates the
   response, and emits sanitized audit facts.
-- The Business System remains authoritative for roles and data scope. It must
-  intersect requested and authorized scope on every call.
+- The Business System remains authoritative for roles and data scope. It
+  rechecks the current user and domain scope on every call; draft writes also
+  use server-derived idempotency keys and the existing domain audit log.
 - Business Dock independently uses its existing Business Session. A `biz://`
   link is navigation, never authorization.
 
