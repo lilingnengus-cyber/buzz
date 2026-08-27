@@ -1,4 +1,4 @@
--- Add only the six draft-creation capabilities exposed through the fixed,
+-- Add only the six draft creation capabilities exposed through the fixed,
 -- turn-scoped Business Agent tool surface. Confirmation, approval, reversal,
 -- allocation, posting and payment execution remain excluded.
 INSERT INTO business_iam.permissions(

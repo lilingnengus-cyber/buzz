@@ -577,6 +577,7 @@ mod tests {
             gateway_base_url,
             business_api_base_url: None,
             business_action_api_base_url: None,
+            draft_write_enabled: false,
             service_credential: "test-service-credential-at-least-32-bytes".into(),
             mcp_command: "business-read-mcp".into(),
             adapter: "mock".into(),

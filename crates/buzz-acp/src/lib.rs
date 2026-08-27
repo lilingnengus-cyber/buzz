@@ -8,8 +8,6 @@ mod observer;
 mod pool;
 mod pool_lifecycle;
 mod product_extensions;
-mod prompt_framing;
-mod prompt_project;
 mod queue;
 mod relay;
 mod setup_mode;

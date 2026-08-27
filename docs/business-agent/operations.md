@@ -2,7 +2,7 @@
 
 ## Production
 
-Run all Gateway migrations through `0025_business_agent_draft_create.sql`, provision a minimum 32-byte
+Run all Gateway migrations through `0028_business_agent_draft_create.sql`, provision a minimum 32-byte
 service credential from the server secret store, deploy the Gateway and
 `business-read-mcp`, then configure the dedicated `buzz-acp` process:
 
