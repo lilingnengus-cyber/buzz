@@ -7,6 +7,7 @@ import { AppShellProvider } from "@/app/AppShellContext";
 import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
 import { AppHuddleShell } from "@/app/AppHuddleShell";
+import { AppSettingsSurface } from "@/app/AppSettingsSurface";
 import { AppTopChrome } from "@/app/AppTopChrome";
 import {
   type TerminalContextOverride,

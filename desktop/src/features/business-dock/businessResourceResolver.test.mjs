@@ -216,6 +216,50 @@ test("parses S1 operating singleton links", () => {
   );
 });
 
+test("parses and rebuilds conversation entry links", () => {
+  for (const [reference, type, path] of [
+    [
+      "biz://sales-order-entry",
+      "sales_order_entry",
+      "/embed/entries/sales-order",
+    ],
+    ["biz://shipment-entry", "shipment_entry", "/embed/entries/shipment"],
+    [
+      "biz://purchase-order-entry",
+      "purchase_order_entry",
+      "/embed/entries/purchase-order",
+    ],
+    [
+      "biz://goods-receipt-entry",
+      "goods_receipt_entry",
+      "/embed/entries/goods-receipt",
+    ],
+    [
+      "biz://customer-receipt-entry",
+      "customer_receipt_entry",
+      "/embed/entries/customer-receipt",
+    ],
+    [
+      "biz://supplier-payment-entry",
+      "supplier_payment_entry",
+      "/embed/entries/supplier-payment",
+    ],
+  ]) {
+    const resource = parseBusinessUrl(reference, config);
+    assert.deepEqual(resource, { version: 1, type, path });
+    assert.equal(buildBusinessReference(resource), reference);
+    assert.equal(
+      buildBusinessUrl(resource, config),
+      `https://biz.example.com${path}`,
+    );
+  }
+  assert.equal(parseBusinessUrl("biz://sales-order-entry/extra", config), null);
+  assert.equal(
+    parseBusinessUrl("biz://sales-order-entry?customer=CUST-1", config),
+    null,
+  );
+});
+
 test("parses server-generated receivable and payable business links", () => {
   const receivable = parseBusinessUrl(
     "biz://customer/CUST-001/receivables",
