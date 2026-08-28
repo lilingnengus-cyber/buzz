@@ -1,10 +1,4 @@
-import {
-  ExternalLink,
-  KeyRound,
-  LoaderCircle,
-  LogOut,
-  RotateCw,
-} from "lucide-react";
+import { ExternalLink, LoaderCircle, LogOut, RotateCw } from "lucide-react";
 
 import { useBusinessDock } from "@/features/business-dock/BusinessDockProvider";
 import { Button } from "@/shared/ui/button";
@@ -12,7 +6,6 @@ import { Button } from "@/shared/ui/button";
 export function BusinessDockBrowser() {
   const {
     businessAuth,
-    bindCurrentIdentity,
     checkBusinessAuth,
     config,
     configError,
@@ -94,16 +87,9 @@ export function BusinessDockBrowser() {
               "Sign in in your browser, then check the embedded session again."}
           </p>
           <div className="mt-3 flex gap-2">
-            {workbenchGatewayStatus === "binding_required" ||
-            workbenchGatewayStatus === "identity_revoked" ? (
-              <Button onClick={bindCurrentIdentity} size="sm">
-                <KeyRound /> Bind Buzz identity
-              </Button>
-            ) : (
-              <Button onClick={startBusinessSignIn} size="sm">
-                <ExternalLink /> Continue SSO
-              </Button>
-            )}
+            <Button onClick={startBusinessSignIn} size="sm">
+              <ExternalLink /> Continue SSO
+            </Button>
             <Button onClick={checkBusinessAuth} size="sm" variant="outline">
               <RotateCw /> Check again
             </Button>

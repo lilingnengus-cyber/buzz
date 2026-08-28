@@ -1,7 +1,6 @@
 import * as React from "react";
 import type { UserManager } from "oidc-client-ts";
 import {
-  bindCurrentIdentity as bindGatewayIdentity,
   getBusinessAuthGatewayUrl,
   logoutWorkbenchSession,
   readGatewayState,
@@ -40,7 +39,6 @@ type WorkbenchAuthContextValue = {
   gatewayUrl: string | null;
   gatewayState: WorkbenchAuthState;
   phase: AuthPhase;
-  bindCurrentIdentity: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
   signIn: () => Promise<void>;
   stepUp: () => Promise<void>;
@@ -263,28 +261,6 @@ export function WorkbenchAuthProvider({
       groupClaimStatus,
       phase,
       getAccessToken,
-      bindCurrentIdentity: async () => {
-        if (!manager || !gatewayUrl) return;
-        const user = await manager.getUser();
-        if (!user || user.expired) {
-          setGatewayState({ status: "unauthenticated" });
-          return;
-        }
-        setGatewayState({ status: "authenticating" });
-        try {
-          setGatewayState(
-            await bindGatewayIdentity(gatewayUrl, user.access_token),
-          );
-        } catch (cause) {
-          setGatewayState({
-            status: "error",
-            error:
-              cause instanceof Error
-                ? cause.message
-                : "Buzz identity binding failed.",
-          });
-        }
-      },
       signIn: async () => {
         if (!manager) return;
         setPhase("signing-in");

@@ -356,8 +356,7 @@ impl Store {
         request: IssueEmbedRequest,
         facts: RequestFacts,
     ) -> Result<IssueEmbedResponse> {
-        if !security::valid_pubkey(&request.pubkey)
-            || !security::safe_text(&request.target.r#type, 1, 80)
+        if !security::safe_text(&request.target.r#type, 1, 80)
             || !security::safe_text(&request.target.id, 1, 200)
             || !security::safe_target(&request.target.path)
         {
@@ -367,18 +366,6 @@ impl Store {
             return Err(Rejection::Invalid("target_rejected"));
         }
         let mut tx = self.pool.begin().await.map_err(db)?;
-        let binding=sqlx::query_scalar::<_,Uuid>("SELECT id FROM buzz_identity_bindings WHERE enterprise_user_id=$1 AND buzz_pubkey=$2 AND status='active' FOR UPDATE")
-            .bind(principal.user_id).bind(&request.pubkey).fetch_optional(&mut *tx).await.map_err(db)?;
-        let Some(binding_id) = binding else {
-            let mut a = Audit::event("IDENTITY_ACCESS_REJECTED", "failure", facts);
-            a.reason = Some("identity_binding_required_or_revoked");
-            a.user_id = Some(principal.user_id);
-            a.pubkey_short = Some(security::short_pubkey(&request.pubkey));
-            a.workbench_session_id = Some(principal.workbench_session_id);
-            Self::audit_tx(&mut tx, a).await?;
-            tx.commit().await.map_err(db)?;
-            return Err(Rejection::Forbidden("identity_binding_required_or_revoked"));
-        };
         let count:i64=sqlx::query_scalar("SELECT count(*) FROM embed_sessions WHERE workbench_session_id=$1 AND created_at>now()-interval '1 minute'").bind(principal.workbench_session_id).fetch_one(&mut *tx).await.map_err(db)?;
         if count >= self.config.rate_limit {
             let mut audit = Audit::event("EMBED_SESSION_RATE_LIMITED", "failure", facts);
@@ -394,11 +381,9 @@ impl Store {
         let expires = Utc::now()
             + Duration::from_std(self.config.embed_ttl).map_err(|_| Rejection::Database)?;
         sqlx::query("INSERT INTO embed_sessions(id,code_hash,enterprise_user_id,identity_binding_id,workbench_session_id,oidc_sid,audience,deployment_id,target_path,target_resource_type,target_resource_id,expires_at,created_ip,user_agent_hash,trace_id) VALUES($1,$2,$3,$4,$5,$6,'business-dock',$7,$8,$9,$10,$11,$12::inet,$13,$14)")
-            .bind(id).bind(security::hash(&code)).bind(principal.user_id).bind(binding_id).bind(principal.workbench_session_id).bind(&principal.sid).bind(&self.config.deployment_id).bind(&request.target.path).bind(&request.target.r#type).bind(&request.target.id).bind(expires).bind(&facts.ip).bind(&facts.user_agent_hash).bind(facts.trace_id).execute(&mut *tx).await.map_err(db)?;
+            .bind(id).bind(security::hash(&code)).bind(principal.user_id).bind(Option::<Uuid>::None).bind(principal.workbench_session_id).bind(&principal.sid).bind(&self.config.deployment_id).bind(&request.target.path).bind(&request.target.r#type).bind(&request.target.id).bind(expires).bind(&facts.ip).bind(&facts.user_agent_hash).bind(facts.trace_id).execute(&mut *tx).await.map_err(db)?;
         let mut a = Audit::event("EMBED_SESSION_ISSUED", "success", facts.clone());
         a.user_id = Some(principal.user_id);
-        a.binding_id = Some(binding_id);
-        a.pubkey_short = Some(security::short_pubkey(&request.pubkey));
         a.workbench_session_id = Some(principal.workbench_session_id);
         a.embed_session_id = Some(id);
         a.target_type = Some(request.target.r#type);
@@ -447,7 +432,7 @@ impl Store {
             return Err(Rejection::Invalid("invalid_embed_code"));
         }
         let mut tx = self.pool.begin().await.map_err(db)?;
-        let row=sqlx::query("UPDATE embed_sessions e SET status='consumed',consumed_at=now(),consumed_ip=$2::inet,version=e.version+1 FROM enterprise_users u,buzz_identity_bindings b,workbench_sessions w WHERE e.code_hash=$1 AND e.enterprise_user_id=u.id AND e.identity_binding_id=b.id AND e.workbench_session_id=w.id AND e.status='active' AND e.expires_at>now() AND e.audience='business-dock' AND e.deployment_id=$3 AND u.status='active' AND b.status='active' AND w.status='active' AND w.expires_at>now() RETURNING e.id,e.enterprise_user_id,e.identity_binding_id,e.workbench_session_id,e.oidc_sid,e.target_path,e.target_resource_type,e.target_resource_id,e.trace_id")
+        let row=sqlx::query("UPDATE embed_sessions e SET status='consumed',consumed_at=now(),consumed_ip=$2::inet,version=e.version+1 FROM enterprise_users u,workbench_sessions w WHERE e.code_hash=$1 AND e.enterprise_user_id=u.id AND e.workbench_session_id=w.id AND e.status='active' AND e.expires_at>now() AND e.audience='business-dock' AND e.deployment_id=$3 AND u.status='active' AND w.status='active' AND w.expires_at>now() RETURNING e.id,e.enterprise_user_id,e.identity_binding_id,e.workbench_session_id,e.oidc_sid,e.target_path,e.target_resource_type,e.target_resource_id,e.trace_id")
             .bind(security::hash(code)).bind(&facts.ip).bind(&self.config.deployment_id).fetch_optional(&mut *tx).await.map_err(db)?;
         let Some(row) = row else {
             let exists = sqlx::query(
@@ -488,7 +473,7 @@ impl Store {
         let expires = Utc::now()
             + Duration::from_std(self.config.business_ttl).map_err(|_| Rejection::Database)?;
         let trace_id: Uuid = row.get("trace_id");
-        sqlx::query("INSERT INTO business_sessions(id,session_token_hash,csrf_token_hash,enterprise_user_id,identity_binding_id,workbench_session_id,embed_session_id,oidc_sid,expires_at,created_ip,user_agent_hash,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::inet,$11,$12)").bind(session_id).bind(security::hash(&session_token)).bind(security::hash(&csrf_token)).bind(row.get::<Uuid,_>("enterprise_user_id")).bind(row.get::<Uuid,_>("identity_binding_id")).bind(row.get::<Uuid,_>("workbench_session_id")).bind(row.get::<Uuid,_>("id")).bind(row.get::<Option<String>,_>("oidc_sid")).bind(expires).bind(&facts.ip).bind(&facts.user_agent_hash).bind(trace_id).execute(&mut *tx).await.map_err(db)?;
+        sqlx::query("INSERT INTO business_sessions(id,session_token_hash,csrf_token_hash,enterprise_user_id,identity_binding_id,workbench_session_id,embed_session_id,oidc_sid,expires_at,created_ip,user_agent_hash,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::inet,$11,$12)").bind(session_id).bind(security::hash(&session_token)).bind(security::hash(&csrf_token)).bind(row.get::<Uuid,_>("enterprise_user_id")).bind(row.get::<Option<Uuid>,_>("identity_binding_id")).bind(row.get::<Uuid,_>("workbench_session_id")).bind(row.get::<Uuid,_>("id")).bind(row.get::<Option<String>,_>("oidc_sid")).bind(expires).bind(&facts.ip).bind(&facts.user_agent_hash).bind(trace_id).execute(&mut *tx).await.map_err(db)?;
         for event_type in ["EMBED_SESSION_CONSUMED", "BUSINESS_SESSION_CREATED"] {
             let mut a = Audit::event(
                 event_type,
@@ -499,7 +484,7 @@ impl Store {
                 },
             );
             a.user_id = Some(row.get("enterprise_user_id"));
-            a.binding_id = Some(row.get("identity_binding_id"));
+            a.binding_id = row.get("identity_binding_id");
             a.workbench_session_id = Some(row.get("workbench_session_id"));
             a.embed_session_id = Some(row.get("id"));
             a.business_session_id = Some(session_id);
@@ -519,7 +504,7 @@ impl Store {
     }
 
     pub async fn business_state(&self, token: &str) -> Result<BusinessState> {
-        let row=sqlx::query("SELECT s.id,s.enterprise_user_id,s.workbench_session_id,u.oidc_subject,u.display_name,s.csrf_token_hash,s.trace_id FROM business_sessions s JOIN enterprise_users u ON u.id=s.enterprise_user_id JOIN buzz_identity_bindings b ON b.id=s.identity_binding_id JOIN workbench_sessions w ON w.id=s.workbench_session_id WHERE s.session_token_hash=$1 AND s.status='active' AND s.expires_at>now() AND u.status='active' AND b.status='active' AND w.status='active' AND w.expires_at>now()")
+        let row=sqlx::query("SELECT s.id,s.enterprise_user_id,s.workbench_session_id,u.oidc_subject,u.display_name,s.csrf_token_hash,s.trace_id FROM business_sessions s JOIN enterprise_users u ON u.id=s.enterprise_user_id JOIN workbench_sessions w ON w.id=s.workbench_session_id WHERE s.session_token_hash=$1 AND s.status='active' AND s.expires_at>now() AND u.status='active' AND w.status='active' AND w.expires_at>now()")
             .bind(security::hash(token)).fetch_optional(&self.pool).await.map_err(db)?.ok_or(Rejection::Unauthorized("business_session_invalid"))?;
         let id: Uuid = row.get("id");
         sqlx::query("UPDATE business_sessions SET last_seen_at=now() WHERE id=$1")

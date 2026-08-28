@@ -1,6 +1,6 @@
 # Business Dock V3.2 Verification Matrix
 
-Recorded through 2026-08-21. `PASS` means the named path was actually exercised.
+Recorded through 2026-08-28. `PASS` means the named path was actually exercised.
 `PARTIAL` means only part of the named platform path has direct evidence.
 Static fixtures never upgrade a real OIDC, cookie, WKWebView, or WebView2 row.
 
@@ -24,9 +24,9 @@ Gateway is the V3.2 authority.
 | Workbench OIDC login | PASS | PASS | NOT TESTED |
 | Authentik SSO established | PASS | PASS — system browser session survived app restart | NOT TESTED |
 | Business native OIDC | PASS | N/A — not the selected Desktop transport | NOT TESTED |
-| Device identity binding | N/A | PARTIAL — signed Gateway flow passes integration/unit tests; final packaged interaction pending | NOT TESTED |
-| Embed Bootstrap issuance | PASS | PARTIAL — Gateway/Desktop policy passes; packaged interaction pending | NOT TESTED |
-| Atomic redemption | PASS | PARTIAL — PostgreSQL and isolated-context tests pass; packaged WKWebView pending | NOT TESTED |
+| Account-scoped Business authorization | PASS | PASS — packaged Dock issued a session without a Buzz identity or device binding | NOT TESTED |
+| Embed Bootstrap issuance | PASS | PASS — production Gateway and packaged Desktop exercised | NOT TESTED |
+| Atomic redemption | PASS | PASS — production PostgreSQL and packaged WKWebView exercised | NOT TESTED |
 | No second password prompt | PASS | PASS — packaged macOS system-browser SSO reused | NOT TESTED |
 | Business session cookie | PASS | PASS — packaged WKWebView accepted host-only Partitioned session | NOT TESTED |
 | Business Dock authenticated | PASS | PASS — packaged Dock loaded dashboard and completed a CSRF write | NOT TESTED |
@@ -53,7 +53,7 @@ Gateway is the V3.2 authority.
 | V3.1 isolated one-time Embed Session | PASS | Authentik login, isolated redemption, HttpOnly cookie, target/replay/revocation checks |
 | V3.2 Gateway unit tests | PASS | ticket entropy/hash/TTL and canonical binding proof |
 | V3.2 JWT suite | PASS | valid token plus signature, issuer, audience/client, expiry, subject, sid and sub-only logout cases |
-| V3.2 PostgreSQL security suite | PASS | binding, concurrency, replay, cascade, rate limit, logout, audit, cleanup, disabled user |
+| Gateway PostgreSQL security suite | PASS | account-only issuance, concurrency, replay, cascade, rate limit, logout, audit, cleanup, disabled user; legacy binding coverage retained |
 | Production Compose | PASS | clean image, migrations, readiness, explicit environment mapping, least-privilege audit grants |
 | Clean macOS Relay bootstrap | PASS | isolated dependencies, bucket, migration, Relay readiness, packaged app launch |
 | macOS packaged Business Dock | PASS | dashboard, CSRF write, Business-only logout/recovery and natural-expiry heartbeat recovery exercised in the rebuilt package |

@@ -121,7 +121,6 @@ type BusinessDockContextValue = {
   checkBusinessAuth: () => void;
   logoutBusiness: () => void;
   startBusinessSignIn: () => void;
-  bindCurrentIdentity: () => void;
   requestCurrentBusinessResource: () => void;
   resolveBusinessResourceLink: (value: string) => BusinessResource | null;
   setBusinessContext: (context: {
@@ -397,10 +396,7 @@ export function BusinessDockProvider({
           if (workbenchAuth.gatewayState.status !== "authenticated") {
             setBusinessAuth({
               phase: "failed",
-              reason:
-                workbenchAuth.gatewayState.status === "identity_revoked"
-                  ? "This Buzz identity binding was revoked."
-                  : "Bind the current Buzz identity before opening Business Dock.",
+              reason: "Workbench account authentication is not ready.",
             });
             setEmbedSessionPhase("failed");
             return;
@@ -845,7 +841,6 @@ export function BusinessDockProvider({
         });
       },
       startBusinessSignIn,
-      bindCurrentIdentity: () => void workbenchAuth.bindCurrentIdentity(),
       state,
       toggle: () => {
         if (stateRef.current.open)
@@ -882,7 +877,6 @@ export function BusinessDockProvider({
       workbenchAuth.phase,
       workbenchAuth.groupClaimStatus,
       workbenchAuth.gatewayState.status,
-      workbenchAuth.bindCurrentIdentity,
     ],
   );
 

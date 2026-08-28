@@ -1,9 +1,11 @@
 # Business Auth Gateway
 
-The V3.2 production boundary for Workbench identity binding, one-time Desktop
-embed sessions, server-side Business sessions, logout, and append-only security
-audit. It uses Authentik access tokens only on Workbench-to-Gateway calls and
-never sends them to the Business iframe.
+The production boundary for account-scoped Workbench authentication, one-time
+Desktop embed sessions, server-side Business sessions, logout, and append-only
+security audit. It uses Authentik access tokens only on Workbench-to-Gateway
+calls and never sends them to the Business iframe. Interactive Business Dock
+sessions do not require a Buzz identity or device binding; legacy bindings are
+retained for Agent delegation and historical audit.
 
 V4 adds internal Agent Delegation endpoints. They are disabled unless
 `BUSINESS_AGENT_READ_ENABLED=true` and require the server-only

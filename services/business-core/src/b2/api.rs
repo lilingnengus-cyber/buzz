@@ -584,7 +584,7 @@ async fn business_session_auth(
 ) -> Result<Response, B2ApiError> {
     let token = cookie(request.headers(), &state.business_session_cookie_name)
         .ok_or_else(|| B2ApiError::auth(StatusCode::UNAUTHORIZED, "business_session_required"))?;
-    let row=sqlx::query("SELECT s.enterprise_user_id,s.csrf_token_hash,s.trace_id FROM business_sessions s JOIN enterprise_users u ON u.id=s.enterprise_user_id JOIN buzz_identity_bindings b ON b.id=s.identity_binding_id JOIN workbench_sessions w ON w.id=s.workbench_session_id WHERE s.session_token_hash=$1 AND s.status='active' AND s.expires_at>now() AND u.status='active' AND b.status='active' AND w.status='active' AND w.expires_at>now()")
+    let row=sqlx::query("SELECT s.enterprise_user_id,s.csrf_token_hash,s.trace_id FROM business_sessions s JOIN enterprise_users u ON u.id=s.enterprise_user_id JOIN workbench_sessions w ON w.id=s.workbench_session_id WHERE s.session_token_hash=$1 AND s.status='active' AND s.expires_at>now() AND u.status='active' AND w.status='active' AND w.expires_at>now()")
   .bind(business_auth_gateway::security::hash(&token)).fetch_optional(state.store.pool()).await.map_err(|_|B2ApiError::auth(StatusCode::SERVICE_UNAVAILABLE,"service_unavailable"))?.ok_or_else(||B2ApiError::auth(StatusCode::UNAUTHORIZED,"business_session_invalid"))?;
     let actor: Uuid = row.get("enterprise_user_id");
     let trace_id = request

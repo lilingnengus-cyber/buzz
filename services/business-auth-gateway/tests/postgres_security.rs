@@ -47,7 +47,7 @@ fn facts() -> RequestFacts {
     }
 }
 
-async fn issue(store: &Store, principal: &Principal, keys: &Keys) -> String {
+async fn issue(store: &Store, principal: &Principal) -> String {
     store
         .issue_embed(
             principal,
@@ -58,7 +58,6 @@ async fn issue(store: &Store, principal: &Principal, keys: &Keys) -> String {
                     path: "/embed/sales/orders/SO-001".into(),
                 },
                 source: None,
-                pubkey: keys.public_key().to_hex(),
             },
             facts(),
         )
@@ -99,6 +98,27 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         events: None,
     };
     let principal = store.principal(&claims, &facts()).await.unwrap();
+    let account_only_code = issue(&store, &principal).await;
+    let account_only_binding: Option<Uuid> =
+        sqlx::query_scalar("SELECT identity_binding_id FROM embed_sessions WHERE code_hash=$1")
+            .bind(security::hash(&account_only_code))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(account_only_binding.is_none());
+    let account_only_session = store.bootstrap(&account_only_code, facts()).await.unwrap();
+    assert_eq!(
+        store
+            .business_state(&account_only_session.session_token)
+            .await
+            .unwrap()
+            .user_id,
+        principal.user_id
+    );
+    sqlx::query("UPDATE embed_sessions SET created_at=now()-interval '2 minutes'")
+        .execute(&pool)
+        .await
+        .unwrap();
     let keys = Keys::generate();
     let rejected_challenge = store
         .challenge(
@@ -172,7 +192,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         "binding challenge replay must fail"
     );
 
-    let pre_rebind_code = issue(&store, &principal, &keys).await;
+    let pre_rebind_code = issue(&store, &principal).await;
     let pre_rebind_session = store.bootstrap(&pre_rebind_code, facts()).await.unwrap();
     let replacement_challenge = store
         .challenge(
@@ -208,8 +228,8 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         store
             .business_state(&pre_rebind_session.session_token)
             .await
-            .is_err(),
-        "re-binding a pubkey must revoke the old Business session"
+            .is_ok(),
+        "Buzz identity changes must not revoke account-scoped Business sessions"
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
@@ -233,14 +253,13 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                     path: "https://evil.test/embed/SO-001".into(),
                 },
                 source: None,
-                pubkey: keys.public_key().to_hex(),
             },
             facts(),
         )
         .await
         .is_err());
 
-    let wrong_audience_code = issue(&store, &principal, &keys).await;
+    let wrong_audience_code = issue(&store, &principal).await;
     let wrong_audience_id: Uuid =
         sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
             .bind(security::hash(&wrong_audience_code))
@@ -257,7 +276,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .await
         .is_err());
 
-    let revoked_code = issue(&store, &principal, &keys).await;
+    let revoked_code = issue(&store, &principal).await;
     let revoked_id: Uuid = sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
         .bind(security::hash(&revoked_code))
         .fetch_one(&pool)
@@ -269,7 +288,7 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .unwrap();
     assert!(store.bootstrap(&revoked_code, facts()).await.is_err());
 
-    let expired_code = issue(&store, &principal, &keys).await;
+    let expired_code = issue(&store, &principal).await;
     let expired_id: Uuid = sqlx::query_scalar("SELECT id FROM embed_sessions WHERE code_hash=$1")
         .bind(security::hash(&expired_code))
         .fetch_one(&pool)
@@ -281,23 +300,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .await
         .unwrap();
     assert!(store.bootstrap(&expired_code, facts()).await.is_err());
-    assert!(store
-        .issue_embed(
-            &principal,
-            IssueEmbedRequest {
-                target: EmbedTarget {
-                    r#type: "sales_order".into(),
-                    id: "SO-001".into(),
-                    path: "/embed/sales/orders/SO-001".into(),
-                },
-                source: None,
-                pubkey: wrong_keys.public_key().to_hex(),
-            },
-            facts(),
-        )
-        .await
-        .is_err());
-
     let issued = store
         .issue_embed(
             &principal,
@@ -308,19 +310,21 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                     path: "/embed/sales/orders/SO-001".into(),
                 },
                 source: None,
-                pubkey: keys.public_key().to_hex(),
             },
             facts(),
         )
         .await
         .unwrap();
     let code = issued.embed_url.split("code=").nth(1).unwrap().to_string();
-    let stored = sqlx::query("SELECT code_hash,extract(epoch from expires_at-created_at)::bigint AS ttl_seconds FROM embed_sessions WHERE id=$1")
+    let stored = sqlx::query("SELECT code_hash,identity_binding_id,extract(epoch from expires_at-created_at)::bigint AS ttl_seconds FROM embed_sessions WHERE id=$1")
         .bind(issued.id)
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(stored.get::<Vec<u8>, _>("code_hash").len(), 32);
+    assert!(stored
+        .get::<Option<Uuid>, _>("identity_binding_id")
+        .is_none());
     assert!((29..=31).contains(&stored.get::<i64, _>("ttl_seconds")));
     assert!(!format!("{:?}", stored.get::<Vec<u8>, _>("code_hash")).contains(&code));
     let first_store = store.clone();
@@ -367,10 +371,10 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         .execute(&pool)
         .await
         .unwrap();
-    let replacement_code = issue(&store, &principal, &keys).await;
+    let replacement_code = issue(&store, &principal).await;
     let replacement = store.bootstrap(&replacement_code, facts()).await.unwrap();
     for _ in 0..9 {
-        let _ = issue(&store, &principal, &keys).await;
+        let _ = issue(&store, &principal).await;
     }
     assert!(store
         .issue_embed(
@@ -382,7 +386,6 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
                     path: "/embed/sales/orders/SO-rate-limit".into(),
                 },
                 source: None,
-                pubkey: keys.public_key().to_hex(),
             },
             facts(),
         )
@@ -397,8 +400,8 @@ async fn postgres_binding_ticket_replay_revocation_cleanup_and_audit() {
         store
             .business_state(&replacement.session_token)
             .await
-            .is_err(),
-        "identity revocation must revoke Business sessions"
+            .is_ok(),
+        "identity revocation must not revoke account-scoped Business sessions"
     );
 
     let replay_events:i64=sqlx::query_scalar("SELECT count(*) FROM security_audit_events WHERE event_type='EMBED_SESSION_REPLAY_REJECTED'").fetch_one(&pool).await.unwrap();

@@ -1,8 +1,3 @@
-import { isTauri } from "@tauri-apps/api/core";
-
-import { signRelayEvent } from "@/shared/api/tauri";
-import { getIdentity } from "@/shared/api/tauriIdentity";
-
 export type EnterpriseUserSummary = {
   id: string;
   email?: string | null;
@@ -35,17 +30,6 @@ export type WorkbenchAuthState =
   | { status: "authenticating" }
   | {
       status: "authenticated";
-      user: EnterpriseUserSummary;
-      binding: BuzzIdentityBinding;
-      workbenchSessionId: string;
-    }
-  | {
-      status: "binding_required";
-      user: EnterpriseUserSummary;
-      workbenchSessionId: string;
-    }
-  | {
-      status: "identity_revoked";
       user: EnterpriseUserSummary;
       workbenchSessionId: string;
     }
@@ -96,62 +80,11 @@ export async function readGatewayState(
   token: string,
 ): Promise<WorkbenchAuthState> {
   const me = await gatewayFetch<GatewayMe>(gateway, token, "/api/me");
-  if (!isTauri()) {
-    return {
-      status: "binding_required",
-      user: me.user,
-      workbenchSessionId: me.workbenchSessionId,
-    };
-  }
-  const identity = await getIdentity();
-  const active = me.bindings.find(
-    (binding) =>
-      binding.buzzPubkey === identity.pubkey && binding.status === "active",
-  );
-  if (active)
-    return {
-      status: "authenticated",
-      user: me.user,
-      binding: active,
-      workbenchSessionId: me.workbenchSessionId,
-    };
-  const revoked = me.bindings.some(
-    (binding) =>
-      binding.buzzPubkey === identity.pubkey && binding.status === "revoked",
-  );
   return {
-    status: revoked ? "identity_revoked" : "binding_required",
+    status: "authenticated",
     user: me.user,
     workbenchSessionId: me.workbenchSessionId,
   };
-}
-
-export async function bindCurrentIdentity(
-  gateway: string,
-  token: string,
-): Promise<WorkbenchAuthState> {
-  if (!isTauri())
-    throw new Error("Buzz identity binding requires the Desktop app.");
-  const identity = await getIdentity();
-  const challenge = await gatewayFetch<{
-    id: string;
-    payload: string;
-  }>(gateway, token, "/api/identity-bindings/challenges", {
-    method: "POST",
-    body: JSON.stringify({
-      pubkey: identity.pubkey,
-    }),
-  });
-  const signedEvent = await signRelayEvent({
-    kind: 24243,
-    content: challenge.payload,
-    tags: [["aud", "bizfin-workbench-identity-binding"]],
-  });
-  await gatewayFetch(gateway, token, "/api/identity-bindings/verify", {
-    method: "POST",
-    body: JSON.stringify({ challengeId: challenge.id, signedEvent }),
-  });
-  return readGatewayState(gateway, token);
 }
 
 export async function issueEmbedSession(
@@ -159,13 +92,9 @@ export async function issueEmbedSession(
   token: string,
   target: { type: string; id: string; path: string },
 ): Promise<{ id: string; embedUrl: string; traceId: string }> {
-  const identity = await getIdentity();
   return gatewayFetch(gateway, token, "/api/embed-sessions", {
     method: "POST",
-    body: JSON.stringify({
-      target,
-      pubkey: identity.pubkey,
-    }),
+    body: JSON.stringify({ target }),
   });
 }
 

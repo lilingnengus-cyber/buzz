@@ -349,7 +349,6 @@ async fn b1_postgres_authorization_flow() {
         business_session_cookie_name: "__Host-bizfin_business".into(),
     };
     let workbench_session_id = Uuid::new_v4();
-    let identity_binding_id = Uuid::new_v4();
     let embed_session_id = Uuid::new_v4();
     let business_session_id = Uuid::new_v4();
     let session_token = "browser-session-security-test";
@@ -357,12 +356,10 @@ async fn b1_postgres_authorization_flow() {
     let trace_id = Uuid::new_v4();
     sqlx::query("INSERT INTO workbench_sessions(id,enterprise_user_id,status,expires_at,trace_id) VALUES($1,$2,'active',now()+interval '1 hour',$3)")
         .bind(workbench_session_id).bind(fixture.salesperson).bind(trace_id).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO buzz_identity_bindings(id,enterprise_user_id,buzz_pubkey,device_id,device_name,device_platform,status) VALUES($1,$2,$3,'integration-device','Integration Device','linux','active')")
-        .bind(identity_binding_id).bind(fixture.salesperson).bind("a".repeat(64)).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO embed_sessions(id,code_hash,enterprise_user_id,identity_binding_id,workbench_session_id,audience,deployment_id,target_path,target_resource_type,target_resource_id,status,expires_at,trace_id) VALUES($1,$2,$3,$4,$5,'business-dock','integration','/','business_home','home','consumed',now()+interval '1 hour',$6)")
-        .bind(embed_session_id).bind(business_auth_gateway::security::hash("consumed-embed-code")).bind(fixture.salesperson).bind(identity_binding_id).bind(workbench_session_id).bind(trace_id).execute(&pool).await.unwrap();
+        .bind(embed_session_id).bind(business_auth_gateway::security::hash("consumed-embed-code")).bind(fixture.salesperson).bind(Option::<Uuid>::None).bind(workbench_session_id).bind(trace_id).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_sessions(id,session_token_hash,csrf_token_hash,enterprise_user_id,identity_binding_id,workbench_session_id,embed_session_id,status,expires_at,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'active',now()+interval '1 hour',$8)")
-        .bind(business_session_id).bind(business_auth_gateway::security::hash(session_token)).bind(business_auth_gateway::security::hash(csrf_token)).bind(fixture.salesperson).bind(identity_binding_id).bind(workbench_session_id).bind(embed_session_id).bind(trace_id).execute(&pool).await.unwrap();
+        .bind(business_session_id).bind(business_auth_gateway::security::hash(session_token)).bind(business_auth_gateway::security::hash(csrf_token)).bind(fixture.salesperson).bind(Option::<Uuid>::None).bind(workbench_session_id).bind(embed_session_id).bind(trace_id).execute(&pool).await.unwrap();
     let app = router(AppState::new(store, &config));
 
     for (origin, csrf, expected_code) in [

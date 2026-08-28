@@ -72,7 +72,6 @@ pub struct EmbedSource {
 pub struct IssueEmbedRequest {
     pub target: EmbedTarget,
     pub source: Option<EmbedSource>,
-    pub pubkey: String,
 }
 
 #[derive(Debug, Serialize)]

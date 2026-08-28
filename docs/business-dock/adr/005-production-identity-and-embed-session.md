@@ -1,6 +1,6 @@
 # ADR 005: Production identity and Embed Session
 
-- Status: Accepted for V3.2
+- Status: Superseded by ADR 006 for interactive session authorization
 - Date: 2026-08-20
 
 ## Decision

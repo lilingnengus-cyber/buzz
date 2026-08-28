@@ -1,4 +1,9 @@
-# Buzz identity and device binding
+# Legacy Buzz identity binding
+
+> Interactive Workbench and Business Dock login no longer requires this
+> binding. See ADR 006. The protocol remains available only for compatibility,
+> historical audit, and agent-delegation flows that explicitly use Buzz
+> identity.
 
 An authenticated Enterprise user proves possession of the current Buzz private
 key without uploading it. One user may own several devices; an active Buzz
@@ -23,6 +28,7 @@ ID, nonce, audience, issuer, subject, pubkey, device ID, issue time, and expiry.
 Raw JSON is not signed. Challenges live 60–120 seconds and are single-use. The
 server verifies Nostr event ID and Schnorr signature using the existing library.
 
-Revocation atomically revokes the binding and its active Embed and Business
-sessions. Workbench reports `device_revoked`; it must not silently open Business
-Dock. Buzz private keys never leave Tauri.
+Revocation still revokes legacy sessions that reference the binding and any
+agent delegations created from it. Account-scoped Embed and Business sessions
+have no binding reference and are revoked through their Workbench/Authentik
+session lifecycle instead. Buzz private keys never leave Tauri.
