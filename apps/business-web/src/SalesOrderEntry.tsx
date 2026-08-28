@@ -1,17 +1,11 @@
 import React from "react";
 import { type MasterDataList, type MasterDataRecord, request } from "./api";
 import { formatAmount } from "./formatters";
-
-type LineDraft = {
-  key: string;
-  skuId: string;
-  warehouseId: string;
-  unitOfMeasureId: string;
-  quantity: string;
-  unitPrice: string;
-  discountAmount: string;
-  taxRate: string;
-};
+import {
+  isCompleteSalesOrderLine,
+  newSalesOrderLine,
+  type SalesOrderLineDraft,
+} from "./salesOrderEntryDraft";
 
 type Catalog = {
   legalEntities: MasterDataRecord[];
@@ -41,7 +35,9 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
   const [requestedDeliveryDate, setRequestedDeliveryDate] = React.useState("");
   const [customerReference, setCustomerReference] = React.useState("");
   const [businessNote, setBusinessNote] = React.useState("");
-  const [lines, setLines] = React.useState<LineDraft[]>([newLine()]);
+  const [lines, setLines] = React.useState<SalesOrderLineDraft[]>([
+    newSalesOrderLine(),
+  ]);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
 
@@ -77,7 +73,9 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
           setLegalEntityId(legalEntities[0]?.id ?? "");
           setCustomerId(customers[0]?.id ?? "");
           setBusinessUnitId(businessUnits[0]?.id ?? "");
-          setLines([newLine(skus[0]?.id, warehouses[0]?.id, units[0]?.id)]);
+          setLines([
+            newSalesOrderLine(skus[0]?.id, warehouses[0]?.id, units[0]?.id),
+          ]);
         },
       )
       .catch((error: Error) => active && setNotice(error.message))
@@ -118,7 +116,11 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     );
   }
 
-  function updateLine(key: string, field: keyof LineDraft, value: string) {
+  function updateLine(
+    key: string,
+    field: keyof SalesOrderLineDraft,
+    value: string,
+  ) {
     setLines((current) =>
       current.map((line) =>
         line.key === key ? { ...line, [field]: value } : line,
@@ -133,17 +135,8 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
       setNotice("请选择法律主体、客户和业务单元。");
       return;
     }
-    if (
-      lines.some(
-        (line) =>
-          !line.skuId ||
-          !line.warehouseId ||
-          !line.unitOfMeasureId ||
-          Number(line.quantity) <= 0 ||
-          Number(line.unitPrice) < 0,
-      )
-    ) {
-      setNotice("请补全商品行，并确保数量大于 0、单价不小于 0。");
+    if (lines.some((line) => !isCompleteSalesOrderLine(line))) {
+      setNotice("请补全商品行，并填写单价；数量须大于 0，单价不能为负。");
       return;
     }
     setBusy(true);
@@ -166,7 +159,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
       setCustomerReference("");
       setBusinessNote("");
       setLines([
-        newLine(
+        newSalesOrderLine(
           catalog.skus[0]?.id,
           availableWarehouses[0]?.id,
           catalog.units[0]?.id,
@@ -338,6 +331,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
                       min="0"
                       step="0.000001"
                       value={line[field]}
+                      placeholder={field === "unitPrice" ? "必填" : undefined}
                       onChange={(event) =>
                         updateLine(line.key, field, event.target.value)
                       }
@@ -372,7 +366,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
                 onClick={() =>
                   setLines((current) => [
                     ...current,
-                    newLine(
+                    newSalesOrderLine(
                       catalog.skus[0]?.id,
                       availableWarehouses[0]?.id,
                       catalog.units[0]?.id,
@@ -450,23 +444,6 @@ async function loadMaster(resource: string) {
     `/api/v1/master-data/${resource}?limit=200`,
   );
   return response.items.filter((item) => item.status === "active");
-}
-
-function newLine(
-  skuId = "",
-  warehouseId = "",
-  unitOfMeasureId = "",
-): LineDraft {
-  return {
-    key: crypto.randomUUID(),
-    skuId,
-    warehouseId,
-    unitOfMeasureId,
-    quantity: "1",
-    unitPrice: "0",
-    discountAmount: "0",
-    taxRate: "0",
-  };
 }
 
 function lineLabel(
