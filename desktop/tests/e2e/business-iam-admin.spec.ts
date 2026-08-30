@@ -46,7 +46,7 @@ const catalog = {
       action: "write",
       riskLevel: "high",
       status: "active",
-      obligations: ["human_approval", "step_up_authentication", "dual_control"],
+      obligations: ["human_approval"],
       defaultDataScope: { mode: "unrestricted" },
       version: 1,
     },

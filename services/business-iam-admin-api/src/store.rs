@@ -18,6 +18,7 @@ impl Store {
     }
 
     pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+        // Keep the management plane on the gateway's shared migration history.
         sqlx::migrate!("../business-auth-gateway/migrations")
             .run(pool)
             .await

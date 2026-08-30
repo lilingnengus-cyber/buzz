@@ -100,7 +100,7 @@ impl PgStore {
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
-        let permissions = sqlx::query_scalar::<_, String>(
+        let mut permissions: BTreeSet<String> = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT rp.permission_key FROM business_role_permissions rp JOIN business_user_roles ur ON ur.role_id=rp.role_id JOIN business_roles r ON r.id=rp.role_id WHERE ur.enterprise_user_id=$1 AND r.status='active' ORDER BY rp.permission_key",
         )
         .bind(user_id)
@@ -108,6 +108,37 @@ impl PgStore {
         .await?
         .into_iter()
         .collect();
+        let iam_permissions = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT permission.capability
+             FROM business_iam.principals principal
+             JOIN (
+               SELECT principal_id,permission_id,data_scope,obligations
+               FROM business_iam.principal_permissions
+               WHERE valid_from<=now() AND (valid_until IS NULL OR valid_until>now())
+               UNION ALL
+               SELECT assignment.principal_id,role_permission.permission_id,
+                      role_permission.data_scope,role_permission.obligations
+               FROM business_iam.principal_roles assignment
+               JOIN business_iam.roles role
+                 ON role.id=assignment.role_id AND role.status='active'
+               JOIN business_iam.role_permissions role_permission
+                 ON role_permission.role_id=assignment.role_id
+               WHERE assignment.valid_from<=now()
+                 AND (assignment.valid_until IS NULL OR assignment.valid_until>now())
+             ) grant_row ON grant_row.principal_id=principal.id
+             JOIN business_iam.permissions permission
+               ON permission.id=grant_row.permission_id AND permission.status='active'
+             WHERE principal.kind='human' AND principal.status='active'
+               AND principal.external_id=$1
+               AND grant_row.data_scope->>'mode'='unrestricted'
+               AND permission.obligations='[]'::jsonb
+               AND grant_row.obligations='[]'::jsonb
+             ORDER BY permission.capability",
+        )
+        .bind(user_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        permissions.extend(iam_permissions);
         let scopes = DataScopes {
             legal_entity_ids: legal_entity_ids(&self.pool, user_id).await?,
             warehouse_ids: warehouse_ids(&self.pool, user_id).await?,

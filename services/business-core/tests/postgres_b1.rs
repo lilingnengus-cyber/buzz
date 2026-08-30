@@ -217,6 +217,44 @@ async fn b1_postgres_authorization_flow() {
         .contains(&fixture.warehouse_two));
     assert_eq!(snapshot.effective_scope_hash.len(), 64);
 
+    let iam_principal = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO business_iam.principals(id,kind,external_id,display_name)
+         VALUES($1,'human',$2,'Sales IAM User')",
+    )
+    .bind(iam_principal)
+    .bind(fixture.salesperson.to_string())
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO business_iam.principal_permissions(principal_id,permission_id)
+         SELECT $1,id FROM business_iam.permissions
+         WHERE capability IN ('management_report:read','receivable:read')",
+    )
+    .bind(iam_principal)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let snapshot = store.snapshot(fixture.salesperson).await.unwrap();
+    assert!(snapshot.permission_keys.contains("management_report:read"));
+    assert!(snapshot.permission_keys.contains("receivable:read"));
+
+    sqlx::query(
+        "UPDATE business_iam.principal_permissions grant_row
+         SET data_scope='{\"mode\":\"restricted\",\"dimensions\":{\"legal_entity\":[\"test\"]}}'::jsonb
+         FROM business_iam.permissions permission
+         WHERE grant_row.principal_id=$1 AND permission.id=grant_row.permission_id
+           AND permission.capability='management_report:read'",
+    )
+    .bind(iam_principal)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let snapshot = store.snapshot(fixture.salesperson).await.unwrap();
+    assert!(!snapshot.permission_keys.contains("management_report:read"));
+    assert!(snapshot.permission_keys.contains("receivable:read"));
+
     let (allowed, _) = store
         .can_access(
             fixture.salesperson,

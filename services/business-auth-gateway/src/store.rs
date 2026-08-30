@@ -72,7 +72,8 @@ impl Store {
         // governed product/SKU catalogs with product-specific unit conversions,
         // configurable numbering rules with scoped, period-aware counter pools,
         // an append-only committed-number issuance ledger, and the logically
-        // independent Business IAM schema used by human and Agent principals.
+        // independent Business IAM schema used by human and Agent principals,
+        // including the aligned management-report catalog.
         sqlx::migrate!().run(pool).await
     }
     pub async fn grant_runtime(pool: &PgPool, role: &str) -> std::result::Result<(), sqlx::Error> {
