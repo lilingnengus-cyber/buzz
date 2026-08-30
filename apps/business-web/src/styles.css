@@ -821,7 +821,9 @@ a:focus-visible {
   color: #b7ced8;
   border-color: rgb(183 206 216 / 42%);
   background: transparent;
-  font: 22px / 1 ui-monospace, monospace;
+  font:
+    22px / 1 ui-monospace,
+    monospace;
 }
 .rail-collapse:hover {
   color: white;
@@ -921,10 +923,54 @@ a:focus-visible {
 }
 .rail-foot {
   margin-top: auto;
-  color: #91aab5;
-  font-size: 12px;
+  display: grid;
+  gap: 13px;
+  padding-top: 17px;
+  border-top: 1px solid rgb(142 176 190 / 22%);
 }
-.rail-foot i {
+.rail-account {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.rail-account-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: #e1b866;
+  border: 1px solid rgb(225 184 102 / 42%);
+  border-radius: 50%;
+  background: #1d4056;
+  font:
+    13px ui-monospace,
+    monospace;
+}
+.rail-account-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.rail-account-copy small {
+  color: #7898a7;
+  font:
+    9px ui-monospace,
+    monospace;
+  letter-spacing: 0.12em;
+}
+.rail-account-copy strong {
+  overflow: hidden;
+  color: #eff7f8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-environment {
+  color: #91aab5;
+  font-size: 11px;
+}
+.rail-environment i {
   display: inline-block;
   width: 7px;
   height: 7px;
@@ -1003,7 +1049,9 @@ a:focus-visible {
   height: 27px;
   padding: 0 7px;
   color: var(--ink);
-  font: 700 12px ui-monospace, monospace;
+  font:
+    700 12px ui-monospace,
+    monospace;
   background: transparent;
   border: 0;
   border-left: 1px solid var(--line);
@@ -1157,13 +1205,17 @@ a:focus-visible {
 .recent-agent-queries header span,
 .recent-agent-queries header small {
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .recent-agent-queries h2 {
   margin: 3px 0 0;
-  font: 700 19px "Arial Narrow", sans-serif;
+  font:
+    700 19px "Arial Narrow",
+    sans-serif;
 }
 .recent-agent-queries > div {
   display: grid;
@@ -1183,7 +1235,9 @@ a:focus-visible {
 }
 .recent-agent-queries a > span {
   color: var(--green);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   text-transform: uppercase;
 }
 .recent-agent-queries a > small {
@@ -1216,13 +1270,17 @@ a:focus-visible {
   display: block;
   margin-bottom: 5px;
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .agent-query-summary strong {
   color: var(--ink);
-  font: 700 20px "Arial Narrow", sans-serif;
+  font:
+    700 20px "Arial Narrow",
+    sans-serif;
   overflow-wrap: anywhere;
 }
 .agent-query-identifiers {
@@ -1244,7 +1302,9 @@ a:focus-visible {
 }
 .agent-query-timeline h2 {
   margin: 0 0 12px;
-  font: 700 18px "Arial Narrow", sans-serif;
+  font:
+    700 18px "Arial Narrow",
+    sans-serif;
 }
 .agent-query-timeline article {
   display: grid;
@@ -1269,7 +1329,9 @@ a:focus-visible {
 }
 .agent-query-timeline article span {
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
 }
 @media (max-width: 760px) {
   .agent-query-summary,
@@ -2050,11 +2112,16 @@ a:focus-visible {
 .pick-ticket-meta span,
 .pick-ticket-meta small {
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
 }
 .pick-line {
   display: grid;
-  grid-template-columns: minmax(190px, 1.5fr) repeat(5, minmax(72px, 0.55fr)) minmax(110px, 0.8fr);
+  grid-template-columns: minmax(190px, 1.5fr) repeat(5, minmax(72px, 0.55fr)) minmax(
+      110px,
+      0.8fr
+    );
   gap: 10px;
   min-width: 920px;
   align-items: center;
@@ -2069,7 +2136,9 @@ a:focus-visible {
   padding-block: 7px;
   color: var(--muted);
   background: #dbe6ea;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .pick-line > div {
@@ -2080,7 +2149,9 @@ a:focus-visible {
 .pick-line > div b {
   grid-row: 1 / 3;
   color: var(--stamp);
-  font: 700 18px "Arial Narrow", sans-serif;
+  font:
+    700 18px "Arial Narrow",
+    sans-serif;
 }
 .pick-line > div small {
   color: var(--muted);
@@ -2110,7 +2181,9 @@ a:focus-visible {
   color: #b7cad3;
 }
 .pick-total strong {
-  font: 700 28px "Arial Narrow", sans-serif;
+  font:
+    700 28px "Arial Narrow",
+    sans-serif;
 }
 
 .purchase-entry {
@@ -2140,11 +2213,15 @@ a:focus-visible {
 .supplier-strip span,
 .supplier-strip small {
   color: #b7cad3;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .supplier-strip strong {
-  font: 700 17px "Arial Narrow", sans-serif;
+  font:
+    700 17px "Arial Narrow",
+    sans-serif;
 }
 .purchase-total .grand {
   border-left: 5px solid var(--amber);
@@ -2169,7 +2246,10 @@ a:focus-visible {
 }
 .receipt-line {
   display: grid;
-  grid-template-columns: minmax(190px, 1.5fr) repeat(5, minmax(72px, 0.55fr)) minmax(110px, 0.8fr);
+  grid-template-columns: minmax(190px, 1.5fr) repeat(5, minmax(72px, 0.55fr)) minmax(
+      110px,
+      0.8fr
+    );
   gap: 10px;
   min-width: 920px;
   align-items: center;
@@ -2184,7 +2264,9 @@ a:focus-visible {
   padding-block: 7px;
   color: var(--muted);
   background: #dce9e4;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .receipt-line > div {
@@ -2195,7 +2277,9 @@ a:focus-visible {
 .receipt-line > div b {
   grid-row: 1 / 3;
   color: var(--green);
-  font: 700 18px "Arial Narrow", sans-serif;
+  font:
+    700 18px "Arial Narrow",
+    sans-serif;
 }
 .receipt-line > div small {
   color: var(--muted);
@@ -2227,11 +2311,15 @@ a:focus-visible {
   color: #b7cad3;
 }
 .receipt-total strong {
-  font: 700 28px "Arial Narrow", sans-serif;
+  font:
+    700 28px "Arial Narrow",
+    sans-serif;
 }
 .receipt-total small {
   justify-self: end;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
 }
 .receipt-inspection {
   margin-bottom: 28px;
@@ -2255,7 +2343,10 @@ a:focus-visible {
 }
 .cost-track {
   display: grid;
-  grid-template-columns: minmax(170px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.65fr) 24px minmax(110px, 0.75fr) minmax(90px, 0.65fr) minmax(130px, 0.9fr) 70px;
+  grid-template-columns: minmax(170px, 1.4fr) minmax(110px, 0.75fr) minmax(
+      90px,
+      0.65fr
+    ) 24px minmax(110px, 0.75fr) minmax(90px, 0.65fr) minmax(130px, 0.9fr) 70px;
   gap: 10px;
   min-width: 1030px;
   align-items: center;
@@ -2270,7 +2361,9 @@ a:focus-visible {
   padding-block: 8px;
   color: #59717e;
   background: #dce9e4;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.05em;
 }
 .cost-track > div {
@@ -2319,14 +2412,18 @@ a:focus-visible {
 .release-head p {
   margin: 0 0 6px;
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 .release-head h2 {
   margin: 0 0 7px;
   color: var(--ink);
-  font: 700 25px "Arial Narrow", sans-serif;
+  font:
+    700 25px "Arial Narrow",
+    sans-serif;
 }
 .release-head span {
   color: var(--muted);
@@ -2338,11 +2435,15 @@ a:focus-visible {
 }
 .release-stamp small {
   color: var(--muted);
-  font: 11px ui-monospace, monospace;
+  font:
+    11px ui-monospace,
+    monospace;
 }
 .release-stamp strong {
   color: var(--stamp);
-  font: 800 23px "Arial Narrow", sans-serif;
+  font:
+    800 23px "Arial Narrow",
+    sans-serif;
   letter-spacing: 0.08em;
   transform: rotate(-2deg);
 }
@@ -2369,7 +2470,9 @@ a:focus-visible {
 .release-money dt {
   margin-bottom: 4px;
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .release-context dd,
@@ -2382,7 +2485,9 @@ a:focus-visible {
   background: #edf3f5;
 }
 .release-money dd {
-  font: 700 20px "Arial Narrow", sans-serif;
+  font:
+    700 20px "Arial Narrow",
+    sans-serif;
   font-variant-numeric: tabular-nums;
 }
 .release-money .warning dd {
@@ -2394,7 +2499,10 @@ a:focus-visible {
 }
 .release-table {
   display: grid;
-  grid-template-columns: minmax(170px, 1.5fr) repeat(6, minmax(78px, 0.62fr)) minmax(74px, 0.55fr);
+  grid-template-columns: minmax(170px, 1.5fr) repeat(6, minmax(78px, 0.62fr)) minmax(
+      74px,
+      0.55fr
+    );
   gap: 10px;
   min-width: 960px;
   align-items: center;
@@ -2409,7 +2517,9 @@ a:focus-visible {
   padding-block: 8px;
   color: #59717e;
   background: #dbe6ea;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .release-table > div {
@@ -2446,19 +2556,28 @@ a:focus-visible {
   grid-template-columns: 1fr auto;
   gap: 24px;
   padding: 23px 24px 20px;
-  background-image: linear-gradient(90deg, transparent 0 68%, rgba(180, 106, 19, 0.06) 68% 69%, transparent 69%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0 68%,
+    rgba(180, 106, 19, 0.06) 68% 69%,
+    transparent 69%
+  );
 }
 .purchase-review-head p {
   margin: 0 0 6px;
   color: #8a6a45;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 .purchase-review-head h2 {
   margin: 0 0 7px;
   color: var(--ink);
-  font: 700 25px "Arial Narrow", sans-serif;
+  font:
+    700 25px "Arial Narrow",
+    sans-serif;
 }
 .purchase-review-head span {
   color: var(--muted);
@@ -2471,13 +2590,17 @@ a:focus-visible {
 }
 .purchase-review-stamp small {
   color: var(--muted);
-  font: 11px ui-monospace, monospace;
+  font:
+    11px ui-monospace,
+    monospace;
 }
 .purchase-review-stamp strong {
   padding: 5px 9px 3px;
   border: 2px solid currentColor;
   color: #a84a2a;
-  font: 800 20px "Arial Narrow", sans-serif;
+  font:
+    800 20px "Arial Narrow",
+    sans-serif;
   letter-spacing: 0.1em;
   transform: rotate(-2deg);
 }
@@ -2505,7 +2628,9 @@ a:focus-visible {
 .purchase-review-money dt {
   margin-bottom: 4px;
   color: #7f7463;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .purchase-review-context dd,
@@ -2528,7 +2653,10 @@ a:focus-visible {
 }
 .purchase-review-line {
   display: grid;
-  grid-template-columns: minmax(210px, 1.7fr) repeat(6, minmax(84px, 0.72fr)) minmax(78px, 0.55fr);
+  grid-template-columns: minmax(210px, 1.7fr) repeat(6, minmax(84px, 0.72fr)) minmax(
+      78px,
+      0.55fr
+    );
   gap: 11px;
   min-width: 1040px;
   align-items: center;
@@ -2540,7 +2668,9 @@ a:focus-visible {
   padding-block: 8px;
   color: #746b5e;
   background: #e9e2d4;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.06em;
 }
 .purchase-review-line > div,

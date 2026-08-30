@@ -6,7 +6,7 @@ export type BusinessHostAuthMessage = {
   payload?: unknown;
 };
 
-type BusinessSession = {
+export type BusinessSession = {
   authenticated: true;
   subject: string;
   displayName: string;
@@ -68,13 +68,16 @@ function isAllowedBusinessHostOrigin(origin: string): boolean {
   }
 }
 
-async function readBusinessSession(): Promise<BusinessSession | null> {
-  const response = await fetch("/api/session", {
+export async function readBusinessSession(
+  fetchImpl: typeof fetch = fetch,
+): Promise<BusinessSession | null> {
+  const response = await fetchImpl("/api/session", {
     credentials: "include",
     headers: { accept: "application/json" },
   });
   if (response.status === 401) return null;
-  if (!response.ok) throw new Error(`Business session check failed (${response.status})`);
+  if (!response.ok)
+    throw new Error(`Business session check failed (${response.status})`);
   const body = (await response.json()) as Record<string, unknown>;
   if (
     body.authenticated !== true ||
@@ -98,7 +101,9 @@ export async function logoutBusinessSession(
   });
   if (sessionResponse.status === 401) return;
   if (!sessionResponse.ok)
-    throw new Error(`Business session check failed (${sessionResponse.status})`);
+    throw new Error(
+      `Business session check failed (${sessionResponse.status})`,
+    );
   const session = (await sessionResponse.json()) as Record<string, unknown>;
   if (!boundedText(session.csrfToken, 512))
     throw new Error("Business session response did not include CSRF");
@@ -151,14 +156,24 @@ export function connectBusinessDockAuthBridge(): () => void {
         return;
       }
       authenticated = true;
-      post(request, "AUTH_STATUS", {
-        authenticated: true,
-        user: { subject: session.subject, displayName: session.displayName },
-      }, targetOrigin);
+      post(
+        request,
+        "AUTH_STATUS",
+        {
+          authenticated: true,
+          user: { subject: session.subject, displayName: session.displayName },
+        },
+        targetOrigin,
+      );
     } catch {
-      post(request, "AUTH_REQUIRED", {
-        reason: "Business session could not be verified",
-      }, targetOrigin);
+      post(
+        request,
+        "AUTH_REQUIRED",
+        {
+          reason: "Business session could not be verified",
+        },
+        targetOrigin,
+      );
     }
   };
 
@@ -167,8 +182,7 @@ export function connectBusinessDockAuthBridge(): () => void {
     if (
       knownOrigin !== null
         ? event.origin !== knownOrigin
-        : event.origin !== "null" &&
-          !isAllowedBusinessHostOrigin(event.origin)
+        : event.origin !== "null" && !isAllowedBusinessHostOrigin(event.origin)
     )
       return;
     const request = parseBusinessHostAuthMessage(event.data);

@@ -26,7 +26,10 @@ import {
   type SupplierPayment,
   request,
 } from "./api";
-import { connectBusinessDockAuthBridge } from "./businessDockBridge";
+import {
+  connectBusinessDockAuthBridge,
+  readBusinessSession,
+} from "./businessDockBridge";
 import { formatAmount, formatMoney } from "./formatters";
 import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
@@ -124,8 +127,7 @@ const NAV_GROUPS: Array<{
   },
 ];
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
-const NAVIGATION_COLLAPSED_STORAGE_KEY =
-  "bizfin.business.navigationCollapsed";
+const NAVIGATION_COLLAPSED_STORAGE_KEY = "bizfin.business.navigationCollapsed";
 
 function savedNavigationCollapsed() {
   try {
@@ -229,6 +231,9 @@ function App() {
     savedNavigationCollapsed,
   );
   const pageZoom = usePageZoom();
+  const account = useLoad(readBusinessSession, []);
+  const accountName = account.data?.displayName.trim();
+  const accountInitial = accountName?.slice(0, 1).toLocaleUpperCase() ?? "·";
   const activeNavigation =
     WORKFLOW_NAV_ALIASES[current.section] ?? current.section;
   React.useEffect(() => {
@@ -318,7 +323,20 @@ function App() {
             ))}
           </nav>
           <div className="rail-foot">
-            <i /> 真实数据 · Staging
+            <div className="rail-account" aria-live="polite">
+              <span className="rail-account-avatar" aria-hidden="true">
+                {accountInitial}
+              </span>
+              <div className="rail-account-copy">
+                <small>当前登录账号</small>
+                <strong title={accountName}>
+                  {accountName ?? (account.loading ? "正在读取…" : "未登录")}
+                </strong>
+              </div>
+            </div>
+            <div className="rail-environment">
+              <i /> 真实数据 · Staging
+            </div>
           </div>
         </aside>
       )}
@@ -340,9 +358,7 @@ function App() {
               </button>
             )}
             <span>
-              {current.embed
-                ? "嵌入业务视图"
-                : "销售、采购与真实利润经营闭环"}
+              {current.embed ? "嵌入业务视图" : "销售、采购与真实利润经营闭环"}
             </span>
           </div>
           <div className="topline-tools">
@@ -475,7 +491,9 @@ function AgentQueryReceipt({ traceId }: { traceId?: string }) {
             <dl className="agent-query-identifiers">
               <div>
                 <dt>Trace ID</dt>
-                <dd><code>{state.data.traceId}</code></dd>
+                <dd>
+                  <code>{state.data.traceId}</code>
+                </dd>
               </div>
               <div>
                 <dt>发起消息</dt>
@@ -713,10 +731,7 @@ function RecentAgentQueries() {
       </header>
       <div>
         {state.data.items.slice(0, 5).map((run) => (
-          <a
-            href={`/embed/agent-queries/${run.traceId}`}
-            key={run.traceId}
-          >
+          <a href={`/embed/agent-queries/${run.traceId}`} key={run.traceId}>
             <span>{QUERY_STATUS_LABELS[run.status]}</span>
             <strong>{run.toolName ?? "等待调用"}</strong>
             <small>
@@ -1337,9 +1352,7 @@ function OrderTable({
               row.holdStatus === "none" ? row.fulfillmentStatus : row.holdStatus
             }
           />
-          <strong>
-            {formatMoney(row.currency, row.grossAmount)}
-          </strong>
+          <strong>{formatMoney(row.currency, row.grossAmount)}</strong>
           <div className="row-actions">
             <em>v{row.version}</em>
             {row.lifecycleStatus === "draft" && (
@@ -1412,9 +1425,7 @@ function Receivables({ customerId }: { customerId?: string }) {
               </div>
               <div className="amount">
                 <small>未核销</small>
-                <strong>
-                  {formatMoney(row.currency, row.openAmount)}
-                </strong>
+                <strong>{formatMoney(row.currency, row.openAmount)}</strong>
               </div>
               <Status
                 value={
@@ -1480,9 +1491,7 @@ function ReceiptView({ id }: { id?: string }) {
           <div className="receipt-slip">
             <div>
               <span>收款金额</span>
-              <strong>
-                {formatMoney(receipt.currency, receipt.amount)}
-              </strong>
+              <strong>{formatMoney(receipt.currency, receipt.amount)}</strong>
             </div>
             <dl>
               <div>
@@ -1532,9 +1541,7 @@ function ReceiptView({ id }: { id?: string }) {
                   <a href={`/customer-receipts/${item.id}`}>
                     {item.receiptNumber}
                   </a>
-                  <strong>
-                    {formatMoney(item.currency, item.amount)}
-                  </strong>
+                  <strong>{formatMoney(item.currency, item.amount)}</strong>
                   <Status value={item.status} />
                   <span>未核销 {formatAmount(item.unappliedAmount)}</span>
                 </article>
@@ -1652,9 +1659,7 @@ function PurchaseOrders({ id }: { id?: string }) {
               </div>
               <code>{short(row.supplierId)}</code>
               <Status value={row.receivingStatus} />
-              <strong>
-                {formatMoney(row.currency, row.grossAmount)}
-              </strong>
+              <strong>{formatMoney(row.currency, row.grossAmount)}</strong>
               <div className="row-actions">
                 <em>v{row.version}</em>
                 {row.lifecycleStatus === "draft" && (
@@ -1772,9 +1777,7 @@ function Payables({ supplierId }: { supplierId?: string }) {
               </div>
               <div className="amount">
                 <small>未核销</small>
-                <strong>
-                  {formatMoney(row.currency, row.openAmount)}
-                </strong>
+                <strong>{formatMoney(row.currency, row.openAmount)}</strong>
               </div>
               <Status
                 value={
@@ -1842,9 +1845,7 @@ function SupplierPayments({ id }: { id?: string }) {
               <a href={`/supplier-payments/${item.id}`}>
                 {item.supplierPaymentNumber}
               </a>
-              <strong>
-                {formatMoney(item.currency, item.amount)}
-              </strong>
+              <strong>{formatMoney(item.currency, item.amount)}</strong>
               <Status value={item.status} />
               <span>未核销 {formatAmount(item.unappliedAmount)}</span>
               <div className="row-actions">
@@ -1900,9 +1901,7 @@ function OrderProfits({ id }: { id?: string }) {
                 </a>
                 <small>{row.dataAsOf}</small>
               </div>
-              <strong>
-                {formatMoney(row.currency, row.netRevenue)}
-              </strong>
+              <strong>{formatMoney(row.currency, row.netRevenue)}</strong>
               <span>毛利 {formatAmount(row.grossProfit)}</span>
               <span>贡献利润 {formatAmount(row.contributionProfit)}</span>
               <div>
@@ -1969,9 +1968,7 @@ function Profitability() {
               <code>
                 {row.dimensionOneId ? short(row.dimensionOneId) : "未归属"}
               </code>
-              <strong>
-                {formatMoney(row.currency, row.netRevenue)}
-              </strong>
+              <strong>{formatMoney(row.currency, row.netRevenue)}</strong>
               <span>毛利 {formatAmount(row.grossProfit)}</span>
               <span>贡献利润 {formatAmount(row.contributionProfit)}</span>
               <div>

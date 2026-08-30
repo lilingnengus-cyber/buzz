@@ -77,24 +77,27 @@ function masterRecord(resource: string) {
   };
   const value = values[resource];
   if (!value) return [];
-  return [{
-    resourceType: resource,
-    ...value,
-    status: "active",
-    legalEntityId: resource === "legal_entity" ? null : "legal-entity-1",
-    warehouseId: null,
-    customerId: null,
-    supplierId: null,
-    brandId: null,
-    businessUnitId: null,
-    version: 1,
-  }];
+  return [
+    {
+      resourceType: resource,
+      ...value,
+      status: "active",
+      legalEntityId: resource === "legal_entity" ? null : "legal-entity-1",
+      warehouseId: null,
+      customerId: null,
+      supplierId: null,
+      brandId: null,
+      businessUnitId: null,
+      version: 1,
+    },
+  ];
 }
 
 async function installBusinessFixtures(page: Page, zoom: number) {
   await page.clock.setFixedTime(new Date(FIXED_NOW));
   await page.addInitScript(
-    ({ value }) => localStorage.setItem("bizfin.business.pageZoom", String(value)),
+    ({ value }) =>
+      localStorage.setItem("bizfin.business.pageZoom", String(value)),
     { value: zoom / 100 },
   );
   await page.addInitScript(() => {
@@ -108,13 +111,23 @@ async function installBusinessFixtures(page: Page, zoom: number) {
     let body: unknown = envelope([]);
 
     if (path === "/api/session") {
-      body = { authenticated: true, subject: "visual-user", displayName: "视觉巡检", csrfToken: "visual-csrf" };
+      body = {
+        authenticated: true,
+        subject: "visual-user",
+        displayName: "视觉巡检",
+        csrfToken: "visual-csrf",
+      };
     } else if (path === "/api/v1/sales-orders") {
       body = envelope([salesOrder]);
     } else if (path === "/api/v1/purchase-orders") {
       body = envelope([purchaseOrder]);
     } else if (path === "/api/v1/purchase-orders/entry-options") {
-      body = { canCreate: true, canUpdate: true, dataAsOf: "2026-08-23T01:30:00Z", draft: null };
+      body = {
+        canCreate: true,
+        canUpdate: true,
+        dataAsOf: "2026-08-23T01:30:00Z",
+        draft: null,
+      };
     } else if (path.startsWith("/api/v1/master-data/")) {
       body = {
         items: masterRecord(path.split("/").at(-1) ?? ""),
@@ -128,21 +141,25 @@ async function installBusinessFixtures(page: Page, zoom: number) {
     } else if (path === "/api/v1/inventory-openings") {
       body = envelope([]);
     } else if (path === "/api/v1/inventory-counts/options") {
-      body = { items: [{
-        legalEntityId: "legal-entity-1",
-        currency: "CNY",
-        warehouseId: "warehouse-1",
-        warehouseCode: "WH-01",
-        warehouseName: "上海中心仓",
-        skuId: "sku-1",
-        skuCode: "SKU-001",
-        skuName: "标准测试商品",
-        onHandQuantity: "15000",
-        reservedQuantity: "2000",
-        quarantinedQuantity: "0",
-        inventoryValue: "6000000",
-        averageUnitCost: "400",
-      }] };
+      body = {
+        items: [
+          {
+            legalEntityId: "legal-entity-1",
+            currency: "CNY",
+            warehouseId: "warehouse-1",
+            warehouseCode: "WH-01",
+            warehouseName: "上海中心仓",
+            skuId: "sku-1",
+            skuCode: "SKU-001",
+            skuName: "标准测试商品",
+            onHandQuantity: "15000",
+            reservedQuantity: "2000",
+            quarantinedQuantity: "0",
+            inventoryValue: "6000000",
+            averageUnitCost: "400",
+          },
+        ],
+      };
     } else if (path === "/api/v1/inventory-counts") {
       body = envelope([]);
     } else if (path === "/api/v1/inventory-aging") {
@@ -160,7 +177,11 @@ async function installBusinessFixtures(page: Page, zoom: number) {
       };
     }
 
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
   });
 }
 
@@ -169,7 +190,10 @@ async function expectNoHorizontalOverflow(locator: Locator) {
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
   }));
-  expect(dimensions.scrollWidth, `horizontal overflow: ${JSON.stringify(dimensions)}`).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+  expect(
+    dimensions.scrollWidth,
+    `horizontal overflow: ${JSON.stringify(dimensions)}`,
+  ).toBeLessThanOrEqual(dimensions.clientWidth + 1);
 }
 
 async function expectNoTextClipping(locator: Locator) {
@@ -177,7 +201,10 @@ async function expectNoTextClipping(locator: Locator) {
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
   }));
-  expect(dimensions.scrollWidth, `clipped text: ${JSON.stringify(dimensions)}`).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+  expect(
+    dimensions.scrollWidth,
+    `clipped text: ${JSON.stringify(dimensions)}`,
+  ).toBeLessThanOrEqual(dimensions.clientWidth + 1);
 }
 
 async function expectSingleLine(locator: Locator) {
@@ -186,11 +213,15 @@ async function expectSingleLine(locator: Locator) {
     const range = document.createRange();
     range.selectNodeContents(element);
     return [...range.getClientRects()].reduce<number[]>((tops, rect) => {
-      if (!tops.some((top) => Math.abs(top - rect.top) < 1)) tops.push(rect.top);
+      if (!tops.some((top) => Math.abs(top - rect.top) < 1))
+        tops.push(rect.top);
       return tops;
     }, []);
   });
-  expect(lineTops, `wrapped text occupies ${lineTops.length} lines`).toHaveLength(1);
+  expect(
+    lineTops,
+    `wrapped text occupies ${lineTops.length} lines`,
+  ).toHaveLength(1);
 }
 
 async function expectDialogInsideViewport(page: Page, dialog: Locator) {
@@ -224,19 +255,33 @@ async function expectIndentedNavigation(page: Page, activeLabel: string) {
   expect(groupBox).not.toBeNull();
   expect(childBox).not.toBeNull();
   if (groupBox && childBox) expect(childBox.x).toBeGreaterThan(groupBox.x + 12);
-  await expect(navigation.getByRole("link", { name: new RegExp(activeLabel) })).toHaveClass(/active/);
+  await expect(
+    navigation.getByRole("link", { name: new RegExp(activeLabel) }),
+  ).toHaveClass(/active/);
 }
 
-async function openPage(page: Page, section: "sales" | "purchasing" | "inventory", zoom: number) {
+async function openPage(
+  page: Page,
+  section: "sales" | "purchasing" | "inventory",
+  zoom: number,
+) {
   await installBusinessFixtures(page, zoom);
   await page.goto(`/#${section}`);
-  await expect(page.getByRole("button", { name: `当前缩放 ${zoom}%` })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `当前缩放 ${zoom}%` }),
+  ).toBeVisible();
+  await expect(page.getByText("当前登录账号")).toBeVisible();
+  await expect(page.locator(".rail-account-copy strong")).toHaveText(
+    "视觉巡检",
+  );
 }
 
 for (const zoom of ZOOMS) {
   test(`销售闭环页面与新增弹窗在 ${zoom}% 下稳定`, async ({ page }) => {
     await openPage(page, "sales", zoom);
-    await expect(page.getByRole("heading", { name: "销售订单闭环" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "销售订单闭环" }),
+    ).toBeVisible();
     await expectIndentedNavigation(page, "销售订单闭环");
     await expectNoHorizontalOverflow(page.locator("main"));
     await expectSingleLine(page.locator(".money-cell strong").first());
@@ -244,7 +289,9 @@ for (const zoom of ZOOMS) {
 
     await page.getByRole("button", { name: "新增销售订单" }).click();
     const dialog = page.getByRole("dialog", { name: "新增销售订单" });
-    await expect(dialog.getByRole("heading", { name: "录入销售订单" })).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name: "录入销售订单" }),
+    ).toBeVisible();
     await expectDialogInsideViewport(page, dialog);
     await expectNoHorizontalOverflow(dialog);
     await expect(page).toHaveScreenshot(`sales-modal-${zoom}.png`);
@@ -252,14 +299,18 @@ for (const zoom of ZOOMS) {
 
   test(`采购闭环页面与新增弹窗在 ${zoom}% 下稳定`, async ({ page }) => {
     await openPage(page, "purchasing", zoom);
-    await expect(page.getByRole("heading", { name: "采购订单闭环" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "采购订单闭环" }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page.locator("main"));
     await expectSingleLine(page.locator(".money-cell strong").first());
     await expect(page).toHaveScreenshot(`purchase-page-${zoom}.png`);
 
     await page.getByRole("button", { name: "新增采购订单" }).click();
     const dialog = page.getByRole("dialog", { name: "新增采购订单" });
-    await expect(dialog.getByRole("heading", { name: "录入采购订单" })).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name: "录入采购订单" }),
+    ).toBeVisible();
     await expectDialogInsideViewport(page, dialog);
     await expectNoHorizontalOverflow(dialog);
     await expect(page).toHaveScreenshot(`purchase-modal-${zoom}.png`);
@@ -270,11 +321,16 @@ for (const zoom of ZOOMS) {
     await expect(page.getByRole("heading", { name: "库存台账" })).toBeVisible();
     await expect(page.locator(".balance-table tbody tr")).toHaveCount(1);
     await expectNoHorizontalOverflow(page.locator("main"));
-    for (const value of await page.locator(".inventory-equation strong").all()) {
+    for (const value of await page
+      .locator(".inventory-equation strong")
+      .all()) {
       await expectSingleLine(value);
       await expectNoTextClipping(value);
     }
-    for (const cell of await page.locator(".balance-table tbody td:not(:first-child)").all()) await expectSingleLine(cell);
+    for (const cell of await page
+      .locator(".balance-table tbody td:not(:first-child)")
+      .all())
+      await expectSingleLine(cell);
     await expect(page).toHaveScreenshot(`inventory-page-${zoom}.png`);
 
     await page.getByRole("button", { name: "期初与盘点" }).click();

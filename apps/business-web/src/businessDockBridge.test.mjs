@@ -4,6 +4,7 @@ import {
   isAllowedBusinessHostProtocol,
   logoutBusinessSession,
   parseBusinessHostAuthMessage,
+  readBusinessSession,
 } from "./businessDockBridge.ts";
 
 const valid = {
@@ -20,7 +21,10 @@ test("accepts a bounded Business Bridge V3 auth request", () => {
 
 test("rejects wrong versions, missing nonce, and unknown auth commands", () => {
   assert.equal(parseBusinessHostAuthMessage({ ...valid, version: 2 }), null);
-  assert.equal(parseBusinessHostAuthMessage({ ...valid, sessionNonce: "" }), null);
+  assert.equal(
+    parseBusinessHostAuthMessage({ ...valid, sessionNonce: "" }),
+    null,
+  );
   assert.equal(parseBusinessHostAuthMessage({ ...valid, type: "TOKEN" }), null);
 });
 
@@ -29,6 +33,32 @@ test("allows the packaged Tauri host but rejects unrelated schemes", () => {
   assert.equal(isAllowedBusinessHostProtocol("https:"), true);
   assert.equal(isAllowedBusinessHostProtocol("file:"), false);
   assert.equal(isAllowedBusinessHostProtocol("javascript:"), false);
+});
+
+test("reads the current Business session identity", async () => {
+  const session = await readBusinessSession(
+    async () =>
+      new Response(
+        JSON.stringify({
+          authenticated: true,
+          subject: "user-1",
+          displayName: "张三",
+        }),
+        { status: 200 },
+      ),
+  );
+  assert.deepEqual(session, {
+    authenticated: true,
+    subject: "user-1",
+    displayName: "张三",
+  });
+});
+
+test("treats an absent Business session as unauthenticated", async () => {
+  const session = await readBusinessSession(
+    async () => new Response(null, { status: 401 }),
+  );
+  assert.equal(session, null);
 });
 
 test("logs out with a freshly rotated CSRF token", async () => {
