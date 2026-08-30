@@ -274,6 +274,7 @@ async function openPage(
   await expect(page.locator(".rail-account-copy strong")).toHaveText(
     "视觉巡检",
   );
+  await expect(page.getByText("真实数据 · Staging")).toBeVisible();
 }
 
 for (const zoom of ZOOMS) {

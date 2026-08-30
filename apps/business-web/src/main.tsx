@@ -30,6 +30,7 @@ import {
   connectBusinessDockAuthBridge,
   readBusinessSession,
 } from "./businessDockBridge";
+import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
 import { formatAmount, formatMoney } from "./formatters";
 import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
@@ -128,6 +129,10 @@ const NAV_GROUPS: Array<{
 ];
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
 const NAVIGATION_COLLAPSED_STORAGE_KEY = "bizfin.business.navigationCollapsed";
+const BUSINESS_ENVIRONMENT_LABEL = resolveBusinessEnvironmentLabel(
+  import.meta.env.VITE_BUSINESS_ENVIRONMENT_LABEL,
+  window.location.hostname,
+);
 
 function savedNavigationCollapsed() {
   try {
@@ -335,7 +340,7 @@ function App() {
               </div>
             </div>
             <div className="rail-environment">
-              <i /> 真实数据 · Staging
+              <i /> 真实数据 · {BUSINESS_ENVIRONMENT_LABEL}
             </div>
           </div>
         </aside>

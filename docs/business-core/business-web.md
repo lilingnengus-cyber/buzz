@@ -7,6 +7,10 @@ idempotency and expected versions. Tokens/service secrets are never stored in
 JavaScript. Business Dock receives only validated resource routes and declared
 parent origins.
 
+The navigation footer reads `VITE_BUSINESS_ENVIRONMENT_LABEL` when it is set.
+Without an override, `business.shiyueshizi.com` is labeled `Production` and
+other hosts are labeled `Staging`.
+
 ## Visual regression
 
 The deterministic Playwright suite covers the sales, purchasing, and inventory
