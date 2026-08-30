@@ -135,8 +135,6 @@ AUTHENTIK_ISSUER='https://auth.bizfin.test/application/o/workbench/' \
 AUTHENTIK_BACKCHANNEL_ISSUER='http://127.0.0.1:9000/application/o/workbench/' \
 BUSINESS_IAM_ADMIN_CLIENT_ID="$WORKBENCH_OIDC_CLIENT_ID" \
 BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS='https://workbench.bizfin.test' \
-BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS=300 \
-BUSINESS_IAM_REQUIRED_MFA_AMR=mfa \
 RUST_LOG=business_iam_admin_api=info \
   cargo run -q -p business-iam-admin-api >"$tmp_dir/admin-api.log" 2>&1 &
 api_pid=$!
@@ -192,12 +190,12 @@ install_ephemeral_totp() {
 # Each scenario gets a new device so Authentik's last-used TOTP counter cannot
 # leak from one browser context into another and create an order-dependent test.
 scenario="${BUSINESS_IAM_AUTHENTIK_SCENARIO:-all}"
-if [[ "$scenario" == "all" || "$scenario" == "step-up" ]]; then
+if [[ "$scenario" == "all" || "$scenario" == "session" ]]; then
   totp_key="$(install_ephemeral_totp)"
   POC_USER_TOTP_KEY="$totp_key" \
     pnpm --dir desktop exec playwright test \
       --config=playwright.authentik.config.ts \
-      tests/real-authentik/business-iam-step-up.spec.ts
+      tests/real-authentik/business-iam-session.spec.ts
 fi
 
 if [[ "$scenario" == "all" || "$scenario" == "api" ]]; then
@@ -210,4 +208,4 @@ if [[ "$scenario" == "all" || "$scenario" == "api" ]]; then
       tests/real-authentik/business-iam-api.spec.ts
 fi
 
-echo "PASS: real Authentik MFA, forced step-up, IAM read, and overreach denial"
+echo "PASS: existing Authentik session, IAM read, and overreach denial"

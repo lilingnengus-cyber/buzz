@@ -41,7 +41,6 @@ type WorkbenchAuthContextValue = {
   phase: AuthPhase;
   getAccessToken: () => Promise<string | null>;
   signIn: () => Promise<void>;
-  stepUp: () => Promise<void>;
   signOutWorkbench: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -270,19 +269,6 @@ export function WorkbenchAuthProvider({
         } catch (cause) {
           setPhase("failed");
           setError(cause instanceof Error ? cause.message : "Sign-in failed.");
-        }
-      },
-      stepUp: async () => {
-        if (!manager) return;
-        setPhase("signing-in");
-        setError(null);
-        try {
-          await manager.signinRedirect({ max_age: 0, prompt: "login" });
-        } catch (cause) {
-          setPhase("failed");
-          setError(
-            cause instanceof Error ? cause.message : "Step-up sign-in failed.",
-          );
         }
       },
       signOut: async () => {

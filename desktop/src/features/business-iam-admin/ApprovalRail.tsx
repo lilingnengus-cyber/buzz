@@ -20,7 +20,7 @@ export function ApprovalRail({ change }: { change: IamChangeRequest }) {
     },
     ...reviewSlots.map((approval, index) => ({
       complete: Boolean(approval),
-      detail: approval?.approverDisplayName ?? "Independent reviewer",
+      detail: approval?.approverDisplayName ?? "Reviewer",
       icon: approval ? (
         <Check className="size-4" />
       ) : (

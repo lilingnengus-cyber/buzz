@@ -2,7 +2,6 @@ import * as React from "react";
 import {
   Check,
   FileClock,
-  KeyRound,
   RefreshCw,
   ShieldCheck,
   ShieldX,
@@ -21,7 +20,6 @@ import {
   describeIamError,
   type IamCatalog,
   type IamChangeRequest,
-  isStepUpRequired,
   readIamCatalog,
   readIamChanges,
 } from "@/features/business-iam-admin/businessIamAdminApi";
@@ -58,7 +56,6 @@ export function BusinessIamAdminDialog({
   const [loading, setLoading] = React.useState(false);
   const [mutating, setMutating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(configResult.error);
-  const [stepUpRequired, setStepUpRequired] = React.useState(false);
   const [comment, setComment] = React.useState("");
 
   const load = React.useCallback(async () => {
@@ -82,9 +79,7 @@ export function BusinessIamAdminDialog({
             nextChanges[0]?.id ??
             null),
       );
-      setStepUpRequired(false);
     } catch (cause) {
-      setStepUpRequired(isStepUpRequired(cause));
       setError(describeIamError(cause));
     } finally {
       setLoading(false);
@@ -122,10 +117,8 @@ export function BusinessIamAdminDialog({
         current.map((change) => (change.id === updated.id ? updated : change)),
       );
       setComment("");
-      setStepUpRequired(false);
       await load();
     } catch (cause) {
-      setStepUpRequired(isStepUpRequired(cause));
       setError(describeIamError(cause));
     } finally {
       setMutating(false);
@@ -155,15 +148,6 @@ export function BusinessIamAdminDialog({
           </DialogHeader>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => void workbenchAuth.stepUp()}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <KeyRound className="mr-1.5 size-3.5" />
-              Step up
-            </Button>
-            <Button
               aria-label="Refresh authority ledger"
               disabled={loading}
               onClick={() => void load()}
@@ -186,28 +170,6 @@ export function BusinessIamAdminDialog({
             }
             title="Authority ledger is not configured"
           />
-        ) : stepUpRequired ? (
-          <div className="grid min-h-0 flex-1 place-items-center p-8">
-            <div className="max-w-md rounded-2xl border bg-card p-7 text-center shadow-sm">
-              <KeyRound className="mx-auto size-6 text-amber-500" />
-              <h3 className="mt-4 text-lg font-semibold">
-                Verify before changing authority
-              </h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Authentik requires a recent MFA sign-in for every authority
-                review session.
-              </p>
-              {error ? (
-                <p className="mt-3 text-xs text-destructive">{error}</p>
-              ) : null}
-              <Button
-                className="mt-5"
-                onClick={() => void workbenchAuth.stepUp()}
-              >
-                Verify with Authentik
-              </Button>
-            </div>
-          </div>
         ) : (
           <Tabs
             className="flex min-h-0 flex-1 flex-col"
@@ -305,7 +267,6 @@ export function BusinessIamAdminDialog({
                       setView("review");
                       setHistoryVisible(false);
                     } catch (cause) {
-                      setStepUpRequired(isStepUpRequired(cause));
                       throw new Error(describeIamError(cause));
                     } finally {
                       setMutating(false);
@@ -369,7 +330,7 @@ function ChangeReview({
 
       <section className="mt-6 rounded-2xl border bg-card p-5">
         <p className="mb-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Separation of duties
+          Approval flow
         </p>
         <ApprovalRail change={change} />
       </section>

@@ -281,33 +281,26 @@ export function ChangeRequestForm({
                 ) : null}
               </div>
               <div className="mt-4 flex flex-wrap gap-4">
-                {[
-                  ["human_approval", "Human approval"],
-                  ["step_up_authentication", "Step-up"],
-                  ["dual_control", "Dual control"],
-                ].map(([value, label]) => (
-                  <label
-                    className="flex items-center gap-2 text-xs"
-                    htmlFor={`iam-obligation-${value}`}
-                    key={value}
-                  >
-                    <Checkbox
-                      checked={draft.obligations.includes(value)}
-                      id={`iam-obligation-${value}`}
-                      onCheckedChange={(checked) =>
-                        update(
-                          "obligations",
-                          checked
-                            ? [...draft.obligations, value]
-                            : draft.obligations.filter(
-                                (item) => item !== value,
-                              ),
-                        )
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
+                <label
+                  className="flex items-center gap-2 text-xs"
+                  htmlFor="iam-obligation-human_approval"
+                >
+                  <Checkbox
+                    checked={draft.obligations.includes("human_approval")}
+                    id="iam-obligation-human_approval"
+                    onCheckedChange={(checked) =>
+                      update(
+                        "obligations",
+                        checked
+                          ? [...draft.obligations, "human_approval"]
+                          : draft.obligations.filter(
+                              (item) => item !== "human_approval",
+                            ),
+                      )
+                    }
+                  />
+                  Human approval
+                </label>
               </div>
             </div>
           ) : null}
@@ -328,7 +321,7 @@ export function ChangeRequestForm({
         ) : null}
         <div className="flex items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">
-            Sensitive changes automatically require two independent reviewers.
+            Every request needs one review; the requester may approve it.
           </p>
           <Button disabled={busy} type="submit">
             {busy ? "Creating…" : "Create review request"}

@@ -92,8 +92,6 @@ services:
       AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?required}
       BUSINESS_IAM_ADMIN_CLIENT_ID: ${WORKBENCH_CLIENT_ID:?required}
       BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS: ${BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS:?required}
-      BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS: ${BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS:-300}
-      BUSINESS_IAM_REQUIRED_MFA_AMR: ${BUSINESS_IAM_REQUIRED_MFA_AMR:-mfa}
     depends_on:
       iam-admin-migrate:
         condition: service_completed_successfully

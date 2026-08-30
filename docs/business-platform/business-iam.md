@@ -2,7 +2,7 @@
 
 ## 定位
 
-Business IAM 是业务权限的唯一权威来源。Authentik 负责人员登录、MFA、OIDC 和 Step-up；Buzz 负责协作、消息和 Agent 运行；两者都不直接决定业务资源权限。
+Business IAM 是业务权限的唯一权威来源。Authentik 负责人员登录和 OIDC；Buzz 负责协作、消息和 Agent 运行；两者都不直接决定业务资源权限。
 
 当前采用“逻辑独立、物理共置”的第一阶段形态：
 
@@ -85,23 +85,22 @@ effective = delegating human current permission
 
 正常管理流量由独立进程 `business-iam-admin-api` 承载。它不依赖 Buzz Relay、ACP、
 Desktop 或 Agent 凭据，仅接受 Authentik OIDC bearer token，并同时验证：当前人员已映射为
-有效 Human 主体、持有 `business_iam:read/request/approve` 中对应能力、`auth_time` 在配置的
-5 分钟窗口内、`amr` 包含要求的 MFA 方法。
+有效 Human 主体、持有 `business_iam:read/request/approve` 中对应能力。管理面不再要求 MFA
+或独立 Step-up 会话。
 
-所有变更先写入 24 小时有效的不可变 change request。申请人不能审批自己的申请；高风险
-变更需要一名独立审批人，关键授权、撤权、停用及敏感角色分配需要两名不同审批人。目标
-版本不匹配时不会覆盖新状态。Step-up JWT 只保存 SHA-256 证据哈希，不保存令牌；审批和
+所有变更先写入 24 小时有效的不可变 change request。每项变更需要一次审批，申请人可以
+审批自己的申请；同一人员不能对同一申请重复表决。目标
+版本不匹配时不会覆盖新状态。OIDC JWT 只保存 SHA-256 证据哈希，不保存令牌；审批和
 管理审计表禁止更新或删除。详细接口及部署参数见
 [`services/business-iam-admin-api/README.md`](../../services/business-iam-admin-api/README.md)。
 
 Agent 运行凭据不能调用该管理面；在线服务凭据与离线 break-glass 凭据必须分离。
 
 桌面端通过 Buzz 的通用扩展组合点挂载 `Authority ledger`，不修改频道、成员或 Relay
-授权模型。界面提供待审队列、连续的职责分离审批轨道、主体/角色/能力目录和结构化变更
+授权模型。界面提供待审队列、一次审批轨道、主体/角色/能力目录和结构化变更
 申请；不接受任意 JSON。目录中的主体与角色版本会自动绑定到申请，避免管理员基于旧状态
 覆盖新授权。API URL 只允许 HTTPS，开发和 E2E 仅放行 loopback HTTP；请求只携带当前
-Workbench OIDC bearer token，不使用环境 Cookie，并在 Step-up 失效时回到 Authentik
-重新验证。
+Workbench OIDC bearer token，不使用环境 Cookie，也不触发单独的 Step-up 验证。
 
 ## 写权限契约（尚未开放执行）
 
@@ -115,8 +114,8 @@ IAM capability 目录已登记 `sales_order:write`、`purchase_order:write`、
 ## 当前状态与下一步
 
 已完成策略模型、数据库 schema、gateway 决策接入、权限子集签发、同步撤销、受控 IAM
-管理 API、桌面 Authority ledger，以及 PostgreSQL 双人审批和桌面浏览器集成测试。仍需完成：
+管理 API、桌面 Authority ledger，以及 PostgreSQL 单次审批和桌面浏览器集成测试。仍需完成：
 
-1. 草稿创建权限、业务台管理界面和双人复核的真实工作流验收；
-2. 完善管理操作所需的 Step-up、审批和职责分离策略；
+1. 草稿创建权限、业务台管理界面和单次审批（含申请人自批）的真实工作流验收；
+2. 完善管理操作所需的能力、数据范围和审计策略；
 3. 独立部署、密钥轮换、监控和灾备演练。

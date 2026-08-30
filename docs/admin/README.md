@@ -1,5 +1,7 @@
 # Read-only deployment moderation dashboard
 
+企业工作台的用户、Agent、操作权限与数据权限管理，参见[《企业工作台管理员简要手册》](./business-iam-admin-guide.zh-CN.md)。
+
 Buzz can expose a private, deployment-wide read-only dashboard from the existing
 relay process. It shows open moderation reports and recent product feedback.
 

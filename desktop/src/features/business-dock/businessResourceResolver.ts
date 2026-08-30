@@ -27,6 +27,12 @@ export type BusinessResourceType =
   | "action_proposal"
   | "work_item"
   | "approval_draft"
+  | "sales_order_entry"
+  | "shipment_entry"
+  | "purchase_order_entry"
+  | "goods_receipt_entry"
+  | "customer_receipt_entry"
+  | "supplier_payment_entry"
   | "generic";
 
 export type BusinessResource = {
@@ -132,6 +138,48 @@ const ROUTES: readonly RouteDefinition[] = [
     prefix: "/embed/approval-drafts/",
     entity: true,
     label: "审批草稿",
+  },
+  {
+    type: "sales_order_entry",
+    deepLink: "sales-order-entry",
+    prefix: "/embed/entries/sales-order",
+    entity: false,
+    label: "销售订单录入",
+  },
+  {
+    type: "shipment_entry",
+    deepLink: "shipment-entry",
+    prefix: "/embed/entries/shipment",
+    entity: false,
+    label: "销售出库录入",
+  },
+  {
+    type: "purchase_order_entry",
+    deepLink: "purchase-order-entry",
+    prefix: "/embed/entries/purchase-order",
+    entity: false,
+    label: "采购订单录入",
+  },
+  {
+    type: "goods_receipt_entry",
+    deepLink: "goods-receipt-entry",
+    prefix: "/embed/entries/goods-receipt",
+    entity: false,
+    label: "采购收货录入",
+  },
+  {
+    type: "customer_receipt_entry",
+    deepLink: "customer-receipt-entry",
+    prefix: "/embed/entries/customer-receipt",
+    entity: false,
+    label: "客户收款录入",
+  },
+  {
+    type: "supplier_payment_entry",
+    deepLink: "supplier-payment-entry",
+    prefix: "/embed/entries/supplier-payment",
+    entity: false,
+    label: "供应商付款录入",
   },
   {
     type: "sales_order",
@@ -242,6 +290,12 @@ const SINGLETON_DEEP_LINKS = new Set([
   "data-quality",
   "operating-incidents",
   "operating-trends",
+  "sales-order-entry",
+  "shipment-entry",
+  "purchase-order-entry",
+  "goods-receipt-entry",
+  "customer-receipt-entry",
+  "supplier-payment-entry",
 ]);
 const ACCOUNT_DEEP_LINKS = new Map([
   ["customer/receivables", ROUTE_BY_TYPE.get("receivable")],

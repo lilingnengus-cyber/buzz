@@ -9,7 +9,7 @@ import {
 
 const AUTH_ORIGIN = "https://auth.bizfin.test";
 
-test("real Authentik MFA token is accepted but cannot exceed Business IAM", async ({
+test("real Authentik OIDC token is accepted but cannot exceed Business IAM", async ({
   page,
 }) => {
   const adminApi = process.env.BUSINESS_IAM_ADMIN_E2E_URL;

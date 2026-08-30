@@ -11,7 +11,6 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use std::{
-    collections::HashSet,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -27,8 +26,6 @@ struct Claims {
     azp: Option<String>,
     client_id: Option<String>,
     auth_time: Option<i64>,
-    #[serde(default)]
-    amr: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -58,8 +55,6 @@ pub struct Authenticator {
     issuer: String,
     backchannel_issuer: String,
     client_id: String,
-    max_age: Duration,
-    required_amr: HashSet<String>,
     cache: Arc<RwLock<Option<Cache>>>,
 }
 
@@ -70,8 +65,6 @@ impl Authenticator {
             issuer: config.authentik_issuer.clone(),
             backchannel_issuer: config.authentik_backchannel_issuer.clone(),
             client_id: config.client_id.clone(),
-            max_age: config.step_up_max_age,
-            required_amr: config.required_mfa_amr.clone(),
             cache: Arc::new(RwLock::new(None)),
         }
     }
@@ -166,7 +159,7 @@ impl Authenticator {
 
     pub async fn actor(&self, pool: &PgPool, token: &str) -> Result<Actor, Error> {
         let claims = self.verify(token).await?;
-        let auth_time = validate_step_up(&claims, &self.required_amr, self.max_age, Utc::now())?;
+        let auth_time = authentication_time(&claims)?;
         let row = sqlx::query(
             "SELECT principal.id
              FROM enterprise_users user_row
@@ -193,28 +186,11 @@ impl Authenticator {
     }
 }
 
-fn validate_step_up(
-    claims: &Claims,
-    required_amr: &HashSet<String>,
-    max_age: Duration,
-    now: DateTime<Utc>,
-) -> Result<DateTime<Utc>, Error> {
-    let auth_time = claims
+fn authentication_time(claims: &Claims) -> Result<DateTime<Utc>, Error> {
+    claims
         .auth_time
         .and_then(|value| DateTime::from_timestamp(value, 0))
-        .ok_or(Error::Forbidden("step_up_auth_time_missing"))?;
-    let age = now.signed_duration_since(auth_time);
-    if age.num_seconds() < -30 || age.to_std().map_or(true, |duration| duration > max_age) {
-        return Err(Error::Forbidden("step_up_expired"));
-    }
-    if !claims
-        .amr
-        .iter()
-        .any(|method| required_amr.contains(method))
-    {
-        return Err(Error::Forbidden("step_up_mfa_required"));
-    }
-    Ok(auth_time)
+        .ok_or(Error::Unauthorized("jwt_auth_time_missing"))
 }
 
 fn jwt_error_code(error: &JwtError) -> &'static str {
@@ -256,7 +232,7 @@ fn unverified_issuer(token: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn claims(auth_time: Option<i64>, amr: &[&str]) -> Claims {
+    fn claims(auth_time: Option<i64>) -> Claims {
         Claims {
             iss: "https://auth.test/".into(),
             sub: "user".into(),
@@ -265,47 +241,19 @@ mod tests {
             azp: Some("iam-admin".into()),
             client_id: None,
             auth_time,
-            amr: amr.iter().map(|value| (*value).to_owned()).collect(),
         }
     }
 
     #[test]
-    fn requires_recent_mfa_step_up() {
+    fn accepts_the_original_authentication_time_without_step_up() {
         let now = Utc::now();
-        let required = HashSet::from(["mfa".to_owned()]);
-        assert!(validate_step_up(
-            &claims(Some(now.timestamp() - 120), &["pwd", "mfa"]),
-            &required,
-            Duration::from_secs(300),
-            now,
-        )
-        .is_ok());
         assert!(matches!(
-            validate_step_up(
-                &claims(Some(now.timestamp() - 301), &["mfa"]),
-                &required,
-                Duration::from_secs(300),
-                now,
-            ),
-            Err(Error::Forbidden("step_up_expired"))
+            authentication_time(&claims(Some(now.timestamp() - 86_400))),
+            Ok(value) if value.timestamp() == now.timestamp() - 86_400
         ));
         assert!(matches!(
-            validate_step_up(
-                &claims(Some(now.timestamp()), &["pwd"]),
-                &required,
-                Duration::from_secs(300),
-                now,
-            ),
-            Err(Error::Forbidden("step_up_mfa_required"))
-        ));
-        assert!(matches!(
-            validate_step_up(
-                &claims(None, &["mfa"]),
-                &required,
-                Duration::from_secs(300),
-                now,
-            ),
-            Err(Error::Forbidden("step_up_auth_time_missing"))
+            authentication_time(&claims(None)),
+            Err(Error::Unauthorized("jwt_auth_time_missing"))
         ));
     }
 }

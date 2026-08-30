@@ -177,17 +177,6 @@ export function decideIamChange(
   );
 }
 
-export function isStepUpRequired(error: unknown): boolean {
-  return (
-    error instanceof BusinessIamApiError &&
-    [
-      "step_up_auth_time_missing",
-      "step_up_expired",
-      "step_up_mfa_required",
-    ].includes(error.code)
-  );
-}
-
 export function describeIamError(error: unknown): string {
   if (!(error instanceof BusinessIamApiError))
     return error instanceof Error
@@ -196,7 +185,6 @@ export function describeIamError(error: unknown): string {
   const messages: Record<string, string> = {
     business_iam_permission_denied:
       "Your Business IAM role does not allow this action.",
-    requester_cannot_approve: "The requester cannot approve their own change.",
     approver_already_decided: "You already reviewed this change.",
     change_request_not_pending: "This change is no longer pending.",
     change_request_expired: "This change expired. Create a new request.",

@@ -67,7 +67,7 @@ function pendingChange() {
       expectedVersion: 4,
     },
     riskLevel: "critical",
-    requiredApprovals: 2,
+    requiredApprovals: 1,
     approvalCount: 0,
     status: "pending",
     requestedBy: "requester-id",
@@ -126,6 +126,7 @@ async function installIamApi(page: Page) {
       change = {
         ...change,
         approvalCount: 1,
+        status: "applied",
         approvals: [
           {
             approverId: "approver-id",
@@ -173,9 +174,7 @@ test.describe("Business IAM authority ledger", () => {
     await expect(page.getByTestId("home-inbox-list")).toBeVisible();
   });
 
-  test("reviews a critical change through the separation-of-duties rail", async ({
-    page,
-  }) => {
+  test("applies a critical change after one review", async ({ page }) => {
     await page.getByTestId("business-iam-admin-toggle").click();
     const dialog = page.getByTestId("business-iam-admin-dialog");
     await expect(dialog).toBeVisible();
@@ -197,9 +196,10 @@ test.describe("Business IAM authority ledger", () => {
     await expect(dialog.getByTestId("iam-approval-rail")).toContainText(
       "Mei Reviewer",
     );
-    await expect(
-      dialog.getByText("1/2 reviews", { exact: false }),
-    ).toBeVisible();
+    await expect(dialog.getByTestId("iam-approval-rail")).toHaveAccessibleName(
+      "1 of 1 approvals complete",
+    );
+    await expect(dialog.getByText("Policy applied")).toBeVisible();
   });
 
   test("creates a version-bound request from catalog selections", async ({
@@ -208,6 +208,13 @@ test.describe("Business IAM authority ledger", () => {
     await page.getByTestId("business-iam-admin-toggle").click();
     const dialog = page.getByTestId("business-iam-admin-dialog");
     await dialog.getByRole("tab", { name: "New request" }).click();
+    await expect(dialog.getByLabel("Step-up")).toHaveCount(0);
+    await expect(dialog.getByLabel("Dual control")).toHaveCount(0);
+    await expect(
+      dialog.getByText(
+        "Every request needs one review; the requester may approve it.",
+      ),
+    ).toBeVisible();
     await dialog
       .getByLabel("Principal", { exact: true })
       .selectOption("agent-id");

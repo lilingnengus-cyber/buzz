@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::SocketAddr, time::Duration};
+use std::{collections::HashSet, net::SocketAddr};
 use url::Url;
 
 #[derive(Clone, Debug)]
@@ -9,8 +9,6 @@ pub struct Config {
     pub authentik_backchannel_issuer: String,
     pub client_id: String,
     pub allowed_origins: HashSet<String>,
-    pub step_up_max_age: Duration,
-    pub required_mfa_amr: HashSet<String>,
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -65,23 +63,6 @@ impl Config {
             .map(str::trim)
             .map(allowed_origin)
             .collect::<Result<HashSet<_>, String>>()?;
-        let step_up_seconds = std::env::var("BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS")
-            .unwrap_or_else(|_| "300".into())
-            .parse::<u64>()
-            .map_err(|_| "BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS must be an integer")?;
-        if !(60..=900).contains(&step_up_seconds) {
-            return Err("BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS must be between 60 and 900".into());
-        }
-        let required_mfa_amr = std::env::var("BUSINESS_IAM_REQUIRED_MFA_AMR")
-            .unwrap_or_else(|_| "mfa".into())
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-            .collect::<HashSet<_>>();
-        if required_mfa_amr.is_empty() {
-            return Err("BUSINESS_IAM_REQUIRED_MFA_AMR cannot be empty".into());
-        }
         Ok(Self {
             database_url: required("BUSINESS_IAM_ADMIN_DATABASE_URL")?,
             bind_addr: std::env::var("BUSINESS_IAM_ADMIN_BIND_ADDR")
@@ -92,8 +73,6 @@ impl Config {
             authentik_backchannel_issuer: backchannel_issuer.as_str().to_owned(),
             client_id: required("BUSINESS_IAM_ADMIN_CLIENT_ID")?,
             allowed_origins,
-            step_up_max_age: Duration::from_secs(step_up_seconds),
-            required_mfa_amr,
         })
     }
 }

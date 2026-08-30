@@ -1,6 +1,6 @@
 use business_iam_admin_api::{
     model::{Actor, CreateChangeRequest, Operation},
-    Error, Store,
+    Store,
 };
 use chrono::Utc;
 use serde_json::json;
@@ -18,7 +18,7 @@ fn actor(principal_id: Uuid, subject: &str) -> Actor {
 }
 
 #[tokio::test]
-async fn critical_change_requires_distinct_requester_and_two_approvers() {
+async fn critical_change_allows_one_self_approval() {
     let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
         eprintln!("TEST_DATABASE_URL absent; PostgreSQL change-control test skipped");
         return;
@@ -40,19 +40,13 @@ async fn critical_change_requires_distinct_requester_and_two_approvers() {
     .expect("truncate");
 
     let requester_id = Uuid::new_v4();
-    let first_approver_id = Uuid::new_v4();
-    let second_approver_id = Uuid::new_v4();
     let target_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO business_iam.principals(id,kind,external_id,display_name) VALUES
          ($1,'human','requester','Requester'),
-         ($2,'human','approver-one','Approver One'),
-         ($3,'human','approver-two','Approver Two'),
-         ($4,'independent_agent','finance-agent','Finance Agent')",
+         ($2,'independent_agent','finance-agent','Finance Agent')",
     )
     .bind(requester_id)
-    .bind(first_approver_id)
-    .bind(second_approver_id)
     .bind(target_id)
     .execute(&pool)
     .await
@@ -60,17 +54,9 @@ async fn critical_change_requires_distinct_requester_and_two_approvers() {
     sqlx::query(
         "INSERT INTO business_iam.principal_permissions(principal_id,permission_id)
          SELECT $1,id FROM business_iam.permissions
-          WHERE capability IN ('business_iam:read','business_iam:request','business_iam:approve')
-         UNION ALL
-         SELECT $2,id FROM business_iam.permissions
-          WHERE capability IN ('business_iam:read','business_iam:approve')
-         UNION ALL
-         SELECT $3,id FROM business_iam.permissions
-          WHERE capability IN ('business_iam:read','business_iam:approve')",
+          WHERE capability IN ('business_iam:read','business_iam:request','business_iam:approve')",
     )
     .bind(requester_id)
-    .bind(first_approver_id)
-    .bind(second_approver_id)
     .execute(&pool)
     .await
     .expect("admin grants");
@@ -92,8 +78,6 @@ async fn critical_change_requires_distinct_requester_and_two_approvers() {
     };
     let store = Store::new(runtime_pool.clone());
     let requester = actor(requester_id, "requester-sub");
-    let first = actor(first_approver_id, "approver-one-sub");
-    let second = actor(second_approver_id, "approver-two-sub");
     let created = store
         .create_change(
             &requester,
@@ -114,53 +98,20 @@ async fn critical_change_requires_distinct_requester_and_two_approvers() {
         .await
         .expect("create");
     assert_eq!(created.risk_level, "critical");
-    assert_eq!(created.required_approvals, 2);
+    assert_eq!(created.required_approvals, 1);
     assert_eq!(created.status, "pending");
-
-    assert!(matches!(
-        store
-            .approve(
-                &requester,
-                created.id,
-                Some("self approval should fail"),
-                Uuid::new_v4()
-            )
-            .await,
-        Err(Error::Forbidden("requester_cannot_approve"))
-    ));
-    let after_first = store
-        .approve(
-            &first,
-            created.id,
-            Some("Scope and duties reviewed"),
-            Uuid::new_v4(),
-        )
-        .await
-        .expect("first approval");
-    assert_eq!(after_first.status, "pending");
-    assert_eq!(after_first.approval_count, 1);
-    let grant_before: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM business_iam.principal_permissions grant_row
-         JOIN business_iam.permissions permission ON permission.id=grant_row.permission_id
-         WHERE grant_row.principal_id=$1 AND permission.capability='sales_order:write'",
-    )
-    .bind(target_id)
-    .fetch_one(&pool)
-    .await
-    .expect("grant count");
-    assert_eq!(grant_before, 0);
 
     let applied = store
         .approve(
-            &second,
+            &requester,
             created.id,
-            Some("Independent second review completed"),
+            Some("Requester confirmed the scoped grant"),
             Uuid::new_v4(),
         )
         .await
-        .expect("second approval");
+        .expect("self approval");
     assert_eq!(applied.status, "applied");
-    assert_eq!(applied.approval_count, 2);
+    assert_eq!(applied.approval_count, 1);
     let grant = sqlx::query(
         "SELECT grant_row.data_scope,grant_row.obligations,principal.version
          FROM business_iam.principal_permissions grant_row
@@ -190,7 +141,7 @@ async fn critical_change_requires_distinct_requester_and_two_approvers() {
     .fetch_one(&pool)
     .await
     .expect("audit count");
-    assert_eq!(audit_count, 3);
+    assert_eq!(audit_count, 2);
     assert!(
         sqlx::query("DELETE FROM business_iam.change_approvals WHERE change_request_id=$1")
             .bind(created.id)

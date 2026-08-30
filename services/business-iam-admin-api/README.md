@@ -3,17 +3,15 @@
 This is the separately deployable management plane for Business IAM. It has no
 dependency on Buzz relay, ACP, Desktop, or Agent credentials.
 
-Every request uses an Authentik OIDC bearer token. The token must contain a
-recent `auth_time` and one configured MFA value in `amr`; the mapped active
-human principal must also hold the applicable `business_iam:read`,
+Every request uses an Authentik OIDC bearer token. The token must contain its
+original `auth_time`; the mapped active human principal must also hold the applicable `business_iam:read`,
 `business_iam:request`, or `business_iam:approve` capability.
 
 Mutations are never applied by the create endpoint. They become immutable
 change requests with a 24-hour lifetime and an optimistic target version.
-High-risk changes need one approver; critical grants, revocations, disables,
-and sensitive role assignments need two. The requester cannot approve their
-own request, approvers cannot vote twice, and every decision carries a hash of
-the exact Step-up JWT evidence. Approval and audit rows are append-only.
+Every change needs one approval. The requester may approve their own request,
+an approver cannot vote twice on the same request, and every decision carries a
+hash of the exact OIDC JWT evidence. Approval and audit rows are append-only.
 
 ## API
 
@@ -38,8 +36,6 @@ AUTHENTIK_ISSUER
 AUTHENTIK_BACKCHANNEL_ISSUER
 BUSINESS_IAM_ADMIN_CLIENT_ID
 BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS
-BUSINESS_IAM_STEP_UP_MAX_AGE_SECONDS=300
-BUSINESS_IAM_REQUIRED_MFA_AMR=mfa
 ```
 
 `BUSINESS_IAM_ADMIN_ALLOWED_ORIGINS` accepts HTTPS origins plus the two exact

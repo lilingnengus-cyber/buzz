@@ -195,7 +195,7 @@ impl Store {
             .await
             .map_err(db_error)?;
         let risk = risk_level(&mut tx, request.operation, &request.payload).await?;
-        let required_approvals = if risk == "critical" { 2_i16 } else { 1_i16 };
+        let required_approvals = 1_i16;
         let payload_hash = payload_hash(request.operation, &request.payload)?;
         let id = Uuid::new_v4();
         let inserted = sqlx::query(
@@ -296,7 +296,7 @@ impl Store {
             .await
             .map_err(db_error)?;
         let row = sqlx::query(
-            "SELECT requested_by,status,required_approvals,operation,payload,expires_at
+            "SELECT status,required_approvals,operation,payload,expires_at
              FROM business_iam.change_requests WHERE id=$1 FOR UPDATE",
         )
         .bind(request_id)
@@ -329,9 +329,6 @@ impl Store {
             .await?;
             tx.commit().await.map_err(db_error)?;
             return Err(Error::Conflict("change_request_expired"));
-        }
-        if row.get::<Uuid, _>("requested_by") == actor.principal_id {
-            return Err(Error::Forbidden("requester_cannot_approve"));
         }
         sqlx::query(
             "INSERT INTO business_iam.change_approvals(
