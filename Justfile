@@ -476,6 +476,14 @@ business-dock-macos-build: bootstrap _ensure-sidecar-stubs _ensure-migrations
 business-dock-macos-acceptance:
     ./scripts/macos-business-dock-acceptance.sh
 
+# Build, verify, and atomically publish the independent Business Web static app.
+business-web-release *ARGS:
+    ./scripts/release-business-web.sh {{ARGS}}
+
+# Exercise path guards, deterministic manifests, and release-script syntax.
+business-web-release-test:
+    ./scripts/test-release-business-web.sh
+
 # Verify the dedicated runtime exposes exactly the fixed Business MCP tools.
 business-agent-runtime-acceptance:
     cargo build -p buzz-agent -p business-read-mcp

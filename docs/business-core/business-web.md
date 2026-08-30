@@ -26,3 +26,21 @@ pnpm test:visual
 ```
 
 Use `pnpm test:visual:update` only after reviewing an intentional visual change.
+
+## Production static release
+
+`scripts/release-business-web.sh` builds the current pushed commit, creates a
+content-addressed release, verifies every asset hash, and atomically switches
+the production static pointer. It retains the prior tree as a rollback pointer
+and automatically restores it if the public asset, IAM readiness, or Business
+Core health checks fail.
+
+```bash
+BUSINESS_WEB_DEPLOY_HOST=ubuntu@business-host \
+BUSINESS_WEB_SSH_KEY=/absolute/path/to/ssh-key \
+./scripts/release-business-web.sh
+```
+
+Use `--dry-run` to build and print the derived release without connecting to
+the server. The script requires `HEAD` to exist on the current branch of
+`origin`; it never pushes Git refs itself.
