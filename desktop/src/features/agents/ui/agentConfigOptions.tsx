@@ -539,14 +539,12 @@ function runtimeAvailabilitySortRank(
   switch (availability) {
     case "available":
       return 0;
+    case "adapter_missing":
+    case "adapter_outdated":
     case "cli_missing":
       return 1;
     case "not_installed":
       return 2;
-    case "adapter_missing":
-      return 3;
-    case "adapter_outdated":
-      return 3;
   }
 }
 

@@ -20,10 +20,8 @@ import {
 import type { GlobalAgentConfig } from "@/shared/api/types";
 import { getBakedBuildEnv, type BakedEnvEntry } from "@/shared/api/tauri";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
-import {
-  useAcpRuntimesQuery,
-  useRuntimeFileConfigQuery,
-} from "@/features/agents/hooks";
+import { useRuntimeFileConfigQuery } from "@/features/agents/hooks";
+import { useAcpRuntimesQueryForced } from "@/features/agents/acpRuntimesQuery";
 import {
   formatRuntimeOptionLabel,
   getDefaultPersonaRuntime,
@@ -134,7 +132,12 @@ export function AgentDefaultsEditor({
       });
   }, []);
 
-  const runtimesQuery = useAcpRuntimesQuery();
+  // Agent defaults is a settings surface where users expect a CLI/adapter they
+  // just installed to appear immediately. The cheap catalog query deliberately
+  // reuses cached PATH and auth state, so it can keep Codex at "adapter missing"
+  // until the app restarts. Force a live probe when this editor opens and write
+  // the fresh result into the shared runtime cache.
+  const runtimesQuery = useAcpRuntimesQueryForced();
   const sortedRuntimes = React.useMemo(
     () => sortPersonaRuntimes(runtimesQuery.data ?? []),
     [runtimesQuery.data],

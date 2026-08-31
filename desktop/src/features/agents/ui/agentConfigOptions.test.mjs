@@ -8,6 +8,7 @@ import {
   getProviderApiKeyLabel,
   resetConfigForHarnessChange,
   runtimeSupportsLlmProviderSelection,
+  sortPersonaRuntimes,
 } from "./agentConfigOptions.tsx";
 import { formatModelDiscoveryErrorStatus } from "./personaModelDiscoveryStatus.ts";
 
@@ -133,6 +134,20 @@ test("getDefaultPersonaRuntime returns null when no runtime is available", () =>
     makeRuntime("goose", "cli_missing"),
   ];
   assert.equal(getDefaultPersonaRuntime(runtimes), null);
+});
+
+test("sortPersonaRuntimes keeps partially installed harnesses ahead of absent ones", () => {
+  const runtimes = [
+    makeRuntime("amp", "not_installed"),
+    makeRuntime("codex", "adapter_missing"),
+    makeRuntime("claude", "cli_missing"),
+    makeRuntime("buzz-agent"),
+  ];
+
+  assert.deepEqual(
+    sortPersonaRuntimes(runtimes).map((runtime) => runtime.id),
+    ["buzz-agent", "claude", "codex", "amp"],
+  );
 });
 
 // ── runtimeSupportsLlmProviderSelection — provider gating ────────────────────
