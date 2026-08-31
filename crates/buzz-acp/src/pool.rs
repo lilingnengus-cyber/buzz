@@ -41,6 +41,7 @@ use crate::queue::{
     PromptProfile, PromptProfileLookup, ThreadTags,
 };
 use crate::relay::{ChannelInfo, RestClient};
+use crate::turn_observer::{TurnMcpMode, TurnPolicy, VerifiedConversation, VerifiedTurnContext};
 
 /// Window within which agent activity before a hard-cap death qualifies
 /// the turn as "recently active" (eligible for requeue instead of dead-letter).
@@ -590,7 +591,7 @@ impl ChannelInfoResolver {
 
 pub struct PromptContext {
     pub mcp_servers: Vec<McpServer>,
-    pub turn_extension: Option<Arc<dyn crate::turn_observer::TurnExtension>>,
+    pub turn_extensions: Arc<crate::turn_extension_registry::TurnExtensionRegistry>,
     pub initial_message: Option<String>,
     pub idle_timeout: Duration,
     pub max_turn_duration: Duration,
@@ -642,6 +643,33 @@ pub struct PromptContext {
     /// the desktop keys per (agent, relay) pair, e.g. `session_config_captured`,
     /// mirroring the `managed_agent_runtime_lifecycle` frames.
     pub relay_url: String,
+}
+
+#[derive(Clone)]
+struct TurnRuntimePolicy {
+    mcp_servers: Vec<McpServer>,
+    base_prompt: Option<&'static str>,
+    max_turn_duration: Duration,
+    memory_enabled: bool,
+    requires_fresh_session: bool,
+}
+
+impl TurnRuntimePolicy {
+    fn resolve(context: &PromptContext, extension: Option<&TurnPolicy>) -> Self {
+        let extension = extension.copied().unwrap_or_default();
+        Self {
+            mcp_servers: match extension.mcp_mode {
+                TurnMcpMode::AppendStandard => context.mcp_servers.clone(),
+                TurnMcpMode::ReplaceStandard => Vec::new(),
+            },
+            base_prompt: extension.base_prompt.or(context.base_prompt),
+            max_turn_duration: extension
+                .max_turn_duration
+                .unwrap_or(context.max_turn_duration),
+            memory_enabled: context.memory_enabled && !extension.disable_memory,
+            requires_fresh_session: extension.requires_fresh_session,
+        }
+    }
 }
 
 impl AgentPool {
@@ -1009,6 +1037,7 @@ struct NewSessionChannelContext<'a> {
 async fn create_session_and_apply_model_with_turn_mcp(
     agent: &mut OwnedAgent,
     ctx: &PromptContext,
+    runtime: &TurnRuntimePolicy,
     agent_core: Option<&str>,
     channel: NewSessionChannelContext<'_>,
     turn_mcp_server: Option<&McpServer>,
@@ -1024,7 +1053,11 @@ async fn create_session_and_apply_model_with_turn_mcp(
         with_huddle_instructions(
             with_core(
                 with_team(
-                    framed_system_prompt(&ctx.cwd, ctx.base_prompt, ctx.system_prompt.as_deref()),
+                    framed_system_prompt(
+                        &ctx.cwd,
+                        runtime.base_prompt,
+                        ctx.system_prompt.as_deref(),
+                    ),
                     ctx.team_instructions.as_deref(),
                 ),
                 agent_core,
@@ -1039,7 +1072,7 @@ async fn create_session_and_apply_model_with_turn_mcp(
         .as_deref()
         .map(|agent_name| compose_session_title(agent_name, channel.name));
     let mut mcp_servers = mcp_servers_with_git_origin(
-        &ctx.mcp_servers,
+        &runtime.mcp_servers,
         channel.id,
         channel.channel_type,
         ctx.session_title.as_deref(),
@@ -1277,7 +1310,9 @@ async fn create_session_and_apply_model(
     agent_core: Option<&str>,
     channel: NewSessionChannelContext<'_>,
 ) -> Result<String, AcpError> {
-    create_session_and_apply_model_with_turn_mcp(agent, ctx, agent_core, channel, None).await
+    let runtime = TurnRuntimePolicy::resolve(ctx, None);
+    create_session_and_apply_model_with_turn_mcp(agent, ctx, &runtime, agent_core, channel, None)
+        .await
 }
 
 fn mcp_servers_with_git_origin(
@@ -1852,17 +1887,47 @@ pub async fn run_prompt_task(
         .and_then(|batch| batch.events.last())
         .map(|event| &event.event);
     let source_channel_id = batch.as_ref().map(|batch| batch.channel_id);
-    let mut turn_extension_access = if let Some(extension) = &ctx.turn_extension {
-        let agent_id = ctx.agent_keys.public_key().to_hex();
-        match extension
-            .begin_turn(crate::turn_observer::TurnExtensionRequest {
-                source_event,
-                channel_id: source_channel_id,
-                agent_id: &agent_id,
-                turn_id: &turn_id,
-            })
-            .await
-        {
+    let source_channel_info = match source_channel_id {
+        Some(channel_id) => ctx.channel_info.resolve(channel_id).await,
+        None => None,
+    };
+    let conversation = match source_channel_id {
+        Some(channel_id) => VerifiedConversation::Channel {
+            channel_id,
+            channel_type: source_channel_info
+                .as_ref()
+                .map(|info| info.channel_type.clone()),
+        },
+        None => VerifiedConversation::Heartbeat,
+    };
+    let agent_id = ctx.agent_keys.public_key().to_hex();
+    let trace_id = Uuid::new_v4().to_string();
+    let verified_context = VerifiedTurnContext {
+        source_event,
+        source_event_id: source_event.map(|event| event.id),
+        source_pubkey: source_event.map(|event| event.pubkey),
+        community_id: &ctx.relay_url,
+        conversation,
+        agent_id: &agent_id,
+        agent_turn_id: &turn_id,
+        trace_id: &trace_id,
+    };
+    let selected_extension = match ctx.turn_extensions.select(&verified_context) {
+        Ok(extension) => extension,
+        Err(error) => {
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::Error(AcpError::Protocol(error.to_string())),
+                None,
+            );
+            return;
+        }
+    };
+    let mut turn_extension_access = match selected_extension {
+        Some(extension) => match extension.begin_turn(verified_context).await {
             Ok(access) => access,
             Err(error) => {
                 send_prompt_result(
@@ -1875,12 +1940,15 @@ pub async fn run_prompt_task(
                 );
                 return;
             }
-        }
-    } else {
-        None
+        },
+        None => None,
     };
+    let runtime_policy = TurnRuntimePolicy::resolve(
+        &ctx,
+        turn_extension_access.as_ref().map(|access| access.policy()),
+    );
     if let Some(access) = &mut turn_extension_access {
-        if access.requires_fresh_session() {
+        if runtime_policy.requires_fresh_session {
             agent.state.invalidate(&source);
         }
         access.start_observation(&mut agent.acp);
@@ -1911,7 +1979,7 @@ pub async fn run_prompt_task(
     // `SessionState::invalidate_channel`).
     //
     // Operator opt-out: `--no-memory` / `BUZZ_ACP_NO_MEMORY` skips the fetch.
-    if ctx.memory_enabled {
+    if runtime_policy.memory_enabled {
         if let (PromptSource::Channel(cid), Some(owner_pk)) =
             (&source, ctx.agent_owner_pubkey.as_ref())
         {
@@ -1973,7 +2041,13 @@ pub async fn run_prompt_task(
         let needs_canvas = is_new_channel_session && !agent.state.canvas_sections.contains_key(cid);
         if is_new_channel_session {
             let (is_dm, resolved_channel, resolved_channel_type) =
-                resolve_new_session_channel_context(&ctx.channel_info, *cid).await;
+                if let Some(info) = source_channel_info.clone() {
+                    let is_dm = info.channel_type == "dm";
+                    let title = (!is_dm && info.name != UNKNOWN_CHANNEL_NAME).then_some(info.name);
+                    (is_dm, title, Some(info.channel_type))
+                } else {
+                    resolve_new_session_channel_context(&ctx.channel_info, *cid).await
+                };
             title_channel = resolved_channel;
             origin_channel_type = resolved_channel_type;
             if let Some(owner) = ctx.agent_owner_pubkey.as_ref() {
@@ -2021,6 +2095,7 @@ pub async fn run_prompt_task(
                 match create_session_and_apply_model_with_turn_mcp(
                     &mut agent,
                     &ctx,
+                    &runtime_policy,
                     agent_core.as_deref(),
                     NewSessionChannelContext {
                         huddle_instructions: huddle_instructions.as_deref(),
@@ -2089,6 +2164,7 @@ pub async fn run_prompt_task(
                 match create_session_and_apply_model_with_turn_mcp(
                     &mut agent,
                     &ctx,
+                    &runtime_policy,
                     None,
                     NewSessionChannelContext {
                         huddle_instructions: None,
@@ -2164,7 +2240,7 @@ pub async fn run_prompt_task(
     // whenever a session is invalidated — so the replacement session re-delivers
     // rather than leaving the agent unbriefed.
     let standing = crate::queue::StandingContext {
-        base_prompt: ctx.base_prompt,
+        base_prompt: runtime_policy.base_prompt,
         system_prompt: ctx.system_prompt.as_deref(),
         team_instructions: ctx.team_instructions.as_deref(),
         agent_core: agent_core.as_deref(),
@@ -2205,7 +2281,7 @@ pub async fn run_prompt_task(
                     &session_id,
                     &init_msg,
                     ctx.idle_timeout,
-                    ctx.max_turn_duration,
+                    runtime_policy.max_turn_duration,
                 )
                 .await;
 
@@ -2303,7 +2379,7 @@ pub async fn run_prompt_task(
                     tracing::error!(
                         target: "pool::session",
                         "hard timeout ({}s cap, silence {silence:?}, recently_active={recently_active}) during initial_message for channel {cid} — agent process is unrecoverable",
-                        ctx.max_turn_duration.as_secs()
+                        runtime_policy.max_turn_duration.as_secs()
                     );
                     agent.state.invalidate_all();
                     send_prompt_result(
@@ -2361,7 +2437,7 @@ pub async fn run_prompt_task(
                     1
                 },
                 &crate::queue::StandingContext {
-                    base_prompt: ctx.base_prompt,
+                    base_prompt: runtime_policy.base_prompt,
                     ..Default::default()
                 },
                 &text,
@@ -2480,7 +2556,7 @@ pub async fn run_prompt_task(
     let prompt_bytes: usize = prompt_blocks.iter().map(|block| block.len()).sum();
     let has_standing_context = match &source {
         PromptSource::Channel(_) => !standing.sections().is_empty(),
-        PromptSource::Heartbeat => ctx.base_prompt.is_some(),
+        PromptSource::Heartbeat => runtime_policy.base_prompt.is_some(),
     };
     let standing_context_included =
         !agent.has_system_prompt_support() && !standing_context_sent && has_standing_context;
@@ -2525,7 +2601,7 @@ pub async fn run_prompt_task(
                     &session_id,
                     &prompt_blocks,
                     ctx.idle_timeout,
-                    ctx.max_turn_duration,
+                    runtime_policy.max_turn_duration,
                 ) => result,
             }
         }
@@ -2536,7 +2612,7 @@ pub async fn run_prompt_task(
                     &session_id,
                     &prompt_blocks,
                     ctx.idle_timeout,
-                    ctx.max_turn_duration,
+                    runtime_policy.max_turn_duration,
                 ) => result,
                 mode = rx => {
                     let control_signal = mode.unwrap_or(ControlSignal::Cancel);
@@ -2728,28 +2804,24 @@ pub async fn run_prompt_task(
                 StopReason::MaxTokens | StopReason::MaxTurnRequests
             );
 
-            let should_rotate = should_rotate
-                || turn_extension_access
-                    .as_ref()
-                    .is_some_and(|access| access.requires_fresh_session())
-                || {
-                    let limit = ctx.max_turns_per_session;
-                    if limit > 0 {
-                        match &source {
-                            PromptSource::Channel(cid) => {
-                                let count = agent.state.turn_counts.entry(*cid).or_insert(0);
-                                *count += 1;
-                                *count >= limit
-                            }
-                            PromptSource::Heartbeat => {
-                                agent.state.heartbeat_turn_count += 1;
-                                agent.state.heartbeat_turn_count >= limit
-                            }
+            let should_rotate = should_rotate || runtime_policy.requires_fresh_session || {
+                let limit = ctx.max_turns_per_session;
+                if limit > 0 {
+                    match &source {
+                        PromptSource::Channel(cid) => {
+                            let count = agent.state.turn_counts.entry(*cid).or_insert(0);
+                            *count += 1;
+                            *count >= limit
                         }
-                    } else {
-                        false
+                        PromptSource::Heartbeat => {
+                            agent.state.heartbeat_turn_count += 1;
+                            agent.state.heartbeat_turn_count >= limit
+                        }
                     }
-                };
+                } else {
+                    false
+                }
+            };
 
             if should_rotate {
                 tracing::info!(
@@ -2894,7 +2966,7 @@ pub async fn run_prompt_task(
             tracing::error!(
                 target: "pool::prompt",
                 "hard timeout ({}s cap, silence {silence:?}, recently_active={recently_active}) — agent process is unrecoverable, invalidating all sessions",
-                ctx.max_turn_duration.as_secs()
+                runtime_policy.max_turn_duration.as_secs()
             );
             agent.state.invalidate_all();
             let usage = agent.acp.take_turn_usage();
@@ -7996,7 +8068,10 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         use crate::relay::RestClient;
         PromptContext {
             mcp_servers: vec![],
-            turn_extension: None,
+            turn_extensions: Arc::new(
+                crate::turn_extension_registry::TurnExtensionRegistry::new(vec![])
+                    .expect("empty extension registry"),
+            ),
             initial_message: None,
             idle_timeout: Duration::from_secs(60),
             max_turn_duration: Duration::from_secs(120),
@@ -8032,6 +8107,40 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             harness_name: "goose".to_string(),
             relay_url: "ws://127.0.0.1:3000".to_string(),
         }
+    }
+
+    #[test]
+    fn turn_runtime_policy_preserves_defaults_and_applies_extension_overrides() {
+        let mut context = make_prompt_context_no_owner();
+        context.mcp_servers.push(McpServer {
+            name: "standard".into(),
+            command: "standard-mcp".into(),
+            args: vec![],
+            env: vec![],
+        });
+        context.base_prompt = Some("default prompt");
+        context.memory_enabled = true;
+
+        let standard = TurnRuntimePolicy::resolve(&context, None);
+        assert_eq!(standard.mcp_servers.len(), 1);
+        assert_eq!(standard.base_prompt, Some("default prompt"));
+        assert_eq!(standard.max_turn_duration, Duration::from_secs(120));
+        assert!(standard.memory_enabled);
+        assert!(!standard.requires_fresh_session);
+
+        let extension = TurnPolicy {
+            mcp_mode: TurnMcpMode::ReplaceStandard,
+            max_turn_duration: Some(Duration::from_secs(30)),
+            base_prompt: Some("extension prompt"),
+            disable_memory: true,
+            requires_fresh_session: true,
+        };
+        let overridden = TurnRuntimePolicy::resolve(&context, Some(&extension));
+        assert!(overridden.mcp_servers.is_empty());
+        assert_eq!(overridden.base_prompt, Some("extension prompt"));
+        assert_eq!(overridden.max_turn_duration, Duration::from_secs(30));
+        assert!(!overridden.memory_enabled);
+        assert!(overridden.requires_fresh_session);
     }
 
     // ── huddle instructions ─────────────────────────────────────────────────
