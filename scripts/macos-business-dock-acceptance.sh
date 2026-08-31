@@ -80,5 +80,18 @@ if [[ ! -d "$app" ]]; then
   echo "Build with the V3.2 documented tauri command before acceptance."
   exit 1
 fi
+expected_account="${BUZZ_BUSINESS_EXPECTED_ACCOUNT:-authentik Default Admin}"
+expected_environment="${BUZZ_BUSINESS_EXPECTED_ENVIRONMENT:-Production}"
+acceptance_timeout="${BUZZ_BUSINESS_DOCK_ACCEPTANCE_TIMEOUT:-90}"
+app_process="${BUZZ_BUSINESS_DOCK_APP_PROCESS:-$(basename "$app" .app)}"
+
 echo "Relay ready; launching isolated Buzz Dev acceptance bundle. Relay log: $relay_log"
-open -W "$app"
+open "$app"
+xcrun swift scripts/macos-ax-text-check.swift \
+  --process "$app_process" \
+  --timeout "$acceptance_timeout" \
+  --expect "当前登录账号" \
+  --expect "$expected_account" \
+  --expect "真实数据" \
+  --expect "$expected_environment"
+echo "Business Dock account and environment acceptance passed."
