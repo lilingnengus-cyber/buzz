@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 14] = [
+const AGENT_SCOPES: [&str; 16] = [
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
@@ -27,10 +27,56 @@ const AGENT_SCOPES: [&str; 14] = [
     "goods_receipt:create",
     "customer_receipt:create",
     "supplier_payment:create",
+    "sales_order:approve",
+    "purchase_order:approve",
 ];
 
-fn scope_is_allowed(scope: &str, draft_write_enabled: bool) -> bool {
-    AGENT_SCOPES.contains(&scope) && (draft_write_enabled || !scope.ends_with(":create"))
+fn scope_is_allowed(scope: &str, draft_write_enabled: bool, chat_approval_enabled: bool) -> bool {
+    AGENT_SCOPES.contains(&scope)
+        && (draft_write_enabled || !scope.ends_with(":create"))
+        && (chat_approval_enabled || !scope.ends_with(":approve"))
+}
+
+#[derive(Debug, Clone)]
+struct ChatApprovalCommand {
+    decision: &'static str,
+    document_type: &'static str,
+    document_id: Uuid,
+    expected_version: i64,
+    preview_hash: String,
+    required_scope: &'static str,
+}
+
+fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
+    let mut parts = content.split_whitespace();
+    let decision = match parts.next()? {
+        "/approve" => "approve",
+        "/reject" => "reject",
+        _ => return None,
+    };
+    let (document_type, required_scope) = match parts.next()? {
+        "sales-order" => ("sales_order", "sales_order:approve"),
+        "purchase-order" => ("purchase_order", "purchase_order:approve"),
+        _ => return None,
+    };
+    let document_id = parts.next()?.parse().ok()?;
+    let expected_version = parts.next()?.strip_prefix('v')?.parse().ok()?;
+    let preview_hash = parts.next()?.to_ascii_lowercase();
+    if parts.next().is_some()
+        || expected_version <= 0
+        || preview_hash.len() != 64
+        || !preview_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(ChatApprovalCommand {
+        decision,
+        document_type,
+        document_id,
+        expected_version,
+        preview_hash,
+        required_scope,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,6 +141,11 @@ pub struct AgentDelegationContext {
     pub max_calls: i32,
     pub required_scope: String,
     pub effective_grant: EffectiveGrant,
+    pub approval_document_type: Option<String>,
+    pub approval_document_id: Option<Uuid>,
+    pub approval_expected_version: Option<i64>,
+    pub approval_preview_hash: Option<String>,
+    pub approval_decision: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -218,11 +269,25 @@ impl Store {
             && safe_id(&request.agent_id)
             && safe_id(&request.agent_turn_id)
             && security::safe_text(&request.source_channel_id, 1, 200);
+        let approval_command = parse_chat_approval_command(&request.source_event.content);
         let valid_scopes = !request.scopes.is_empty()
             && request.scopes.len() <= AGENT_SCOPES.len()
             && request.scopes.iter().all(|scope| {
-                scope_is_allowed(scope, self.config().business_agent_draft_write_enabled)
-            });
+                scope_is_allowed(
+                    scope,
+                    self.config().business_agent_draft_write_enabled,
+                    self.config().business_chat_approval_enabled,
+                )
+            })
+            && request
+                .scopes
+                .iter()
+                .filter(|scope| scope.ends_with(":approve"))
+                .all(|scope| {
+                    approval_command
+                        .as_ref()
+                        .is_some_and(|command| command.required_scope == scope)
+                });
         if !valid_source || !valid_ids || !valid_scopes {
             let mut audit = Audit::event("AGENT_TURN_REJECTED", "failure", facts);
             audit.reason = Some(if !valid_source {
@@ -316,8 +381,8 @@ impl Store {
             + Duration::from_std(self.config().agent_delegation_ttl)
                 .map_err(|_| Rejection::Database)?;
         let inserted = sqlx::query(
-            "INSERT INTO agent_read_delegations(id,token_hash,enterprise_user_id,identity_binding_id,agent_id,agent_turn_id,source_buzz_event_id,source_channel_id,audience,scopes,data_scope_hash,max_calls,expires_at,trace_id,iam_decision_id,agent_principal_id,effective_grants)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)",
+            "INSERT INTO agent_read_delegations(id,token_hash,enterprise_user_id,identity_binding_id,agent_id,agent_turn_id,source_buzz_event_id,source_channel_id,audience,scopes,data_scope_hash,max_calls,expires_at,trace_id,iam_decision_id,agent_principal_id,effective_grants,approval_document_type,approval_document_id,approval_expected_version,approval_preview_hash,approval_decision)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)",
         )
         .bind(id)
         .bind(security::hash(&token))
@@ -340,6 +405,11 @@ impl Store {
         .bind(grant.decision_id)
         .bind(grant.agent_principal_id)
         .bind(&grant.effective_grants)
+        .bind(approval_command.as_ref().map(|value| value.document_type))
+        .bind(approval_command.as_ref().map(|value| value.document_id))
+        .bind(approval_command.as_ref().map(|value| value.expected_version))
+        .bind(approval_command.as_ref().map(|value| &value.preview_hash))
+        .bind(approval_command.as_ref().map(|value| value.decision))
         .execute(&mut *tx)
         .await;
         if let Err(error) = inserted {
@@ -399,6 +469,7 @@ impl Store {
             || !scope_is_allowed(
                 &request.required_scope,
                 self.config().business_agent_draft_write_enabled,
+                self.config().business_chat_approval_enabled,
             )
         {
             return Err(Rejection::Unauthorized("delegation_invalid"));
@@ -418,7 +489,9 @@ impl Store {
                AND b.status='active' AND u.status='active'
              RETURNING d.id,d.enterprise_user_id,d.identity_binding_id,d.source_buzz_event_id,
                d.source_channel_id,d.agent_id,d.agent_turn_id,d.trace_id,d.used_calls,d.max_calls,
-               b.buzz_pubkey,d.status,d.effective_grants",
+               b.buzz_pubkey,d.status,d.effective_grants,d.approval_document_type,
+               d.approval_document_id,d.approval_expected_version,d.approval_preview_hash,
+               d.approval_decision",
         )
         .bind(security::hash(token))
         .bind(&self.config().business_read_mcp_audience)
@@ -500,6 +573,11 @@ impl Store {
             max_calls: row.get("max_calls"),
             required_scope: request.required_scope,
             effective_grant,
+            approval_document_type: row.get("approval_document_type"),
+            approval_document_id: row.get("approval_document_id"),
+            approval_expected_version: row.get("approval_expected_version"),
+            approval_preview_hash: row.get("approval_preview_hash"),
+            approval_decision: row.get("approval_decision"),
         };
         tx.commit().await.map_err(|_| Rejection::Database)?;
         Ok(context)
@@ -520,6 +598,7 @@ impl Store {
             || !scope_is_allowed(
                 &request.required_scope,
                 self.config().business_agent_draft_write_enabled,
+                self.config().business_chat_approval_enabled,
             )
         {
             return Err(Rejection::Forbidden("delegation_context_rejected"));
@@ -703,8 +782,30 @@ mod tests {
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
         assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
         assert!(!AGENT_SCOPES.contains(&"payment:execute"));
-        assert!(scope_is_allowed("sales_order:read", false));
-        assert!(!scope_is_allowed("sales_order:create", false));
-        assert!(scope_is_allowed("sales_order:create", true));
+        assert!(scope_is_allowed("sales_order:read", false, false));
+        assert!(!scope_is_allowed("sales_order:create", false, false));
+        assert!(scope_is_allowed("sales_order:create", true, false));
+        assert!(!scope_is_allowed("sales_order:approve", true, false));
+        assert!(scope_is_allowed("sales_order:approve", false, true));
+    }
+
+    #[test]
+    fn approval_command_is_exact_and_binds_every_authority_field() {
+        let id = Uuid::new_v4();
+        let hash = "b".repeat(64);
+        let command = parse_chat_approval_command(&format!("/approve sales-order {id} v7 {hash}"))
+            .expect("valid command");
+        assert_eq!(command.decision, "approve");
+        assert_eq!(command.document_type, "sales_order");
+        assert_eq!(command.document_id, id);
+        assert_eq!(command.expected_version, 7);
+        assert_eq!(command.preview_hash, hash);
+        assert_eq!(command.required_scope, "sales_order:approve");
+        assert!(parse_chat_approval_command("同意").is_none());
+        assert!(parse_chat_approval_command(&format!(
+            "/approve sales-order {id} v7 {} extra",
+            "b".repeat(64)
+        ))
+        .is_none());
     }
 }

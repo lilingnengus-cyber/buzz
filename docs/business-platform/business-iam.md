@@ -102,14 +102,18 @@ Agent 运行凭据不能调用该管理面；在线服务凭据与离线 break-g
 覆盖新授权。API URL 只允许 HTTPS，开发和 E2E 仅放行 loopback HTTP；请求只携带当前
 Workbench OIDC bearer token，不使用环境 Cookie，也不触发单独的 Step-up 验证。
 
-## 写权限契约（尚未开放执行）
+## 写权限契约
 
 IAM capability 目录已登记 `sales_order:write`、`purchase_order:write`、
 `inventory:adjust`、`payment:execute` 和 `business_approval:approve`。系统级默认义务与
 角色/直接授权上的附加义务取并集，授权人不能通过发放角色移除默认控制。
 
-这些记录只描述未来可能需要的权限和控制，不签发写委托，也不开放 `/execute`。当前产品
-没有自动业务执行能力；若未来重新提出写入需求，应作为新的产品与安全项目单独立项和评审。
+这些高风险能力仍不开放通用 `/execute`。例外是经过独立评审的销售订单和采购订单聊天审批：
+Gateway 只为完整签名的服务器生成命令签发 `sales_order:approve` 或
+`purchase_order:approve` 短时委托，模型不可提供或修改单据参数；合格审批人达到 Business Core
+配置的策略阈值后才运行既有幂等确认事务，阈值为一时单人即可确认。发货、收货、收付款、库存调整、
+银行付款和总账过账仍未开放。详见
+[`ADR 002`](../business-agent/adr/002-signed-chat-document-approval.md)。
 
 ## 当前状态与下一步
 

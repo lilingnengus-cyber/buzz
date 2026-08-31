@@ -1,8 +1,8 @@
 # Business Read MCP
 
 `services/business-read-mcp` uses the repository's `rmcp` stdio stack. It has no
-network listener and registers 28 read tools plus six fixed draft-creation
-tools. The 14
+network listener and registers 30 read tools, six fixed draft-creation tools,
+and two zero-argument signed chat approval tools. The 14
 authoritative Business Core reads are:
 
 1. `get_sales_order`
@@ -20,10 +20,18 @@ authoritative Business Core reads are:
 13. `get_operating_dashboard`
 14. `get_business_data_quality`
 
-The remaining read tools are eight deterministic anomaly reads and six
-action-lifecycle reads. The write allowlist contains only sales order, shipment,
+The remaining read tools are eight deterministic anomaly reads, six
+action-lifecycle reads, and two sales/purchase confirmation-preview reads. The
+draft-write allowlist contains only sales order, shipment,
 purchase order, goods receipt, customer receipt and supplier payment draft
-creation. It cannot confirm, approve, execute, allocate, post, reverse or edit.
+creation. Draft tools cannot confirm, approve, execute, allocate, post, reverse
+or edit.
+
+The separate `approve_sales_order` and `approve_purchase_order` tools can only
+consume an exact signed command already bound into the Delegation. They accept
+no document parameters. The server uses the configured Business Core approval
+policy threshold; when that threshold is one, one eligible approver invokes the
+existing idempotent confirmation transaction.
 
 There is no SQL, arbitrary URL/path, generic API, Shell, filesystem, browser, or
 generic write tool. Every call follows:

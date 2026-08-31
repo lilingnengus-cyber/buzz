@@ -35,7 +35,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 14] = [
+const READ_TOOLS: [&str; 16] = [
     "get_sales_order",
     "search_sales_orders",
     "get_purchase_order",
@@ -50,6 +50,8 @@ const READ_TOOLS: [&str; 14] = [
     "get_profit_evidence",
     "get_operating_dashboard",
     "get_business_data_quality",
+    "get_sales_order_approval_preview",
+    "get_purchase_order_approval_preview",
 ];
 const ANOMALY_TOOLS: [&str; 8] = [
     "search_business_anomalies",
@@ -61,13 +63,15 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 6] = [
+const WRITE_TOOLS: [&str; 8] = [
     "create_sales_order_draft",
     "create_shipment_draft",
     "create_purchase_order_draft",
     "create_goods_receipt_draft",
     "create_customer_receipt_draft",
     "create_supplier_payment_draft",
+    "approve_sales_order",
+    "approve_purchase_order",
 ];
 
 #[derive(Clone)]
@@ -80,6 +84,7 @@ struct ApiState {
     max_payload_bytes: usize,
     core: Option<CoreClient>,
     draft_write_enabled: bool,
+    chat_approval_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -110,6 +115,8 @@ struct RequestContext {
     trace_id: Uuid,
     used_calls: i32,
     required_scope: String,
+    source_buzz_event_id: String,
+    source_channel_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -189,6 +196,7 @@ fn router_with_verifier(
         128 * 1024,
         None,
         false,
+        false,
     )
 }
 
@@ -200,6 +208,7 @@ fn router_with_runtime(
     max_payload_bytes: usize,
     core: Option<CoreClient>,
     draft_write_enabled: bool,
+    chat_approval_enabled: bool,
 ) -> Result<Router, String> {
     let analytics = BusinessAnalyticsService::new(
         BusinessDataset::desensitized_acceptance().map_err(|e| e.to_string())?,
@@ -215,6 +224,7 @@ fn router_with_runtime(
         max_payload_bytes,
         core,
         draft_write_enabled,
+        chat_approval_enabled,
     };
     Ok(Router::new()
         .route("/health", get(|| async { "ok" }))
@@ -228,10 +238,15 @@ async fn write_tool(
     Path(tool): Path<String>,
     request: Request<Body>,
 ) -> Response {
-    if !state.draft_write_enabled {
+    if !WRITE_TOOLS.contains(&tool.as_str()) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    if !WRITE_TOOLS.contains(&tool.as_str()) {
+    let is_approval = matches!(
+        tool.as_str(),
+        "approve_sales_order" | "approve_purchase_order"
+    );
+    if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
+    {
         return StatusCode::NOT_FOUND.into_response();
     }
     if !authorized_service(
@@ -264,7 +279,11 @@ async fn write_tool(
     let Some(core) = state.core.as_ref() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    forward_draft_write(core, &tool, input, &context).await
+    if is_approval {
+        forward_chat_approval(core, &tool, input, &context).await
+    } else {
+        forward_draft_write(core, &tool, input, &context).await
+    }
 }
 
 fn valid_write_input(tool: &str, input: &Value) -> bool {
@@ -293,8 +312,72 @@ fn valid_write_input(tool: &str, input: &Value) -> bool {
             serde_json::from_value::<business_core::b3::model::CreateSupplierPayment>(input.clone())
                 .is_ok()
         }
+        "approve_sales_order" | "approve_purchase_order" => {
+            serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
+        }
         _ => false,
     }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatApprovalToolInput {
+    document_id: Uuid,
+    expected_version: i64,
+    preview_hash: String,
+    decision: business_core::document_approval::ApprovalDecision,
+}
+
+async fn forward_chat_approval(
+    core: &CoreClient,
+    tool: &str,
+    input: Value,
+    context: &RequestContext,
+) -> Response {
+    let Ok(input) = serde_json::from_value::<ChatApprovalToolInput>(input) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let path = match tool {
+        "approve_sales_order" => format!("v1/agent-approvals/sales-orders/{}", input.document_id),
+        "approve_purchase_order" => {
+            format!("v1/agent-approvals/purchase-orders/{}", input.document_id)
+        }
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let Ok(url) = core.base_url.join(&path) else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let response = core
+        .client
+        .post(url)
+        .header("x-business-service-credential", &core.credential)
+        .header("x-service-audience", "business-core")
+        .header(
+            "x-enterprise-user-id",
+            context.enterprise_user_id.to_string(),
+        )
+        .header("x-trace-id", context.trace_id.to_string())
+        .header(
+            "idempotency-key",
+            format!("agent:{}:{tool}", context.delegation_id),
+        )
+        .json(&json!({
+            "expectedVersion": input.expected_version,
+            "previewHash": input.preview_hash,
+            "decision": input.decision,
+            "sourceBuzzEventId": context.source_buzz_event_id,
+            "sourceChannelId": context.source_channel_id,
+        }))
+        .send()
+        .await;
+    let Ok(response) = response else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let status = response.status();
+    let Ok(value) = response.json::<Value>().await else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    (status, Json(value)).into_response()
 }
 
 async fn forward_draft_write(
@@ -816,6 +899,13 @@ fn authorized_service(headers: &HeaderMap, expected: &[u8; 32], audience: &str) 
 
 fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
     let text = |name: &'static str| headers.get(name)?.to_str().ok().map(str::to_owned);
+    let optional_text = |name: &'static str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+            .unwrap_or_default()
+    };
     Some(RequestContext {
         enterprise_user_id: text("x-enterprise-user-id")?.parse().ok()?,
         identity_binding_id: text("x-identity-binding-id")?.parse().ok()?,
@@ -825,6 +915,8 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
         trace_id: text("x-trace-id")?.parse().ok()?,
         used_calls: text("x-agent-used-calls")?.parse().ok()?,
         required_scope: text("x-agent-required-scope")?,
+        source_buzz_event_id: optional_text("x-source-buzz-event-id"),
+        source_channel_id: optional_text("x-source-channel-id"),
     })
 }
 
@@ -836,8 +928,14 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "create_goods_receipt_draft" => Some("goods_receipt:create"),
         "create_customer_receipt_draft" => Some("customer_receipt:create"),
         "create_supplier_payment_draft" => Some("supplier_payment:create"),
-        "get_sales_order" | "search_sales_orders" => Some("sales_order:read"),
-        "get_purchase_order" | "search_purchase_orders" => Some("purchase_order:read"),
+        "approve_sales_order" => Some("sales_order:approve"),
+        "approve_purchase_order" => Some("purchase_order:approve"),
+        "get_sales_order" | "search_sales_orders" | "get_sales_order_approval_preview" => {
+            Some("sales_order:read")
+        }
+        "get_purchase_order" | "search_purchase_orders" | "get_purchase_order_approval_preview" => {
+            Some("purchase_order:read")
+        }
         "query_inventory_balance" => Some("inventory:read"),
         "query_receivables" => Some("receivable:read"),
         "query_payables" => Some("payable:read"),
@@ -1298,11 +1396,36 @@ async fn core_read_result(
         "get_profit_evidence" => "v1/profit-evidence",
         "get_operating_dashboard" => "v1/operations/dashboard",
         "get_business_data_quality" => "v1/operations/data-quality",
+        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview" => "",
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     let Ok(mut url) = core.base_url.join(endpoint) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if matches!(
+        tool,
+        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview"
+    ) {
+        let Some(id) = input
+            .get("orderId")
+            .and_then(Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+        else {
+            return (StatusCode::BAD_REQUEST, "invalid_filter").into_response();
+        };
+        let kind = if tool == "get_sales_order_approval_preview" {
+            "sales-orders"
+        } else {
+            "purchase-orders"
+        };
+        let Ok(joined) = core
+            .base_url
+            .join(&format!("v1/agent-approval-previews/{kind}/{id}"))
+        else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        url = joined;
+    }
     if tool == "get_management_report_snapshot" {
         let Some(id) = input
             .get("snapshotId")
@@ -1384,11 +1507,18 @@ async fn core_read_result(
     let Ok(mut envelope) = response.json::<Value>().await else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    let approval_preview = matches!(
+        tool,
+        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview"
+    );
     let mut items = envelope
         .get_mut("items")
         .and_then(Value::as_array_mut)
         .map(std::mem::take)
         .unwrap_or_default();
+    if approval_preview {
+        items.push(envelope.clone());
+    }
     if items.is_empty()
         && matches!(
             tool,
@@ -1678,6 +1808,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             credential: config.core_credential,
         }),
         config.draft_write_enabled,
+        config.chat_approval_enabled,
     )?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()

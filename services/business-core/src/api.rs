@@ -281,6 +281,7 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::master_data_api::service_routes())
         .merge(crate::product_master_api::service_routes())
         .merge(crate::numbering_api::service_routes())
+        .merge(crate::document_approval::service_routes())
         .layer(DefaultBodyLimit::max(256 * 1024))
         .route_layer(middleware::from_fn_with_state(state.clone(), service_auth))
         .with_state(state.clone());

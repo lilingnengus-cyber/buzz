@@ -33,6 +33,29 @@ const AGENT_SCOPES: [&str; 14] = [
     "supplier_payment:create",
 ];
 
+fn chat_approval_scope(content: &str) -> Option<&'static str> {
+    let mut parts = content.split_whitespace();
+    if !matches!(parts.next()?, "/approve" | "/reject") {
+        return None;
+    }
+    let scope = match parts.next()? {
+        "sales-order" => "sales_order:approve",
+        "purchase-order" => "purchase_order:approve",
+        _ => return None,
+    };
+    let _: Uuid = parts.next()?.parse().ok()?;
+    let version = parts.next()?.strip_prefix('v')?.parse::<i64>().ok()?;
+    let hash = parts.next()?;
+    if parts.next().is_some()
+        || version <= 0
+        || hash.len() != 64
+        || !hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(scope)
+}
+
 #[derive(Clone)]
 pub(crate) struct BusinessAgentHostConfig {
     gateway_base_url: Url,
@@ -47,6 +70,7 @@ pub(crate) struct BusinessAgentHostConfig {
     default_limit: u64,
     max_limit: u64,
     draft_write_enabled: bool,
+    chat_approval_enabled: bool,
     client: reqwest::Client,
 }
 
@@ -386,6 +410,15 @@ impl BusinessAgentHostConfig {
             })
             .transpose()?
             .unwrap_or(false);
+        let chat_approval_enabled = std::env::var("BUSINESS_CHAT_APPROVAL_ENABLED")
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<bool>()
+                    .map_err(|_| "BUSINESS_CHAT_APPROVAL_ENABLED must be true or false".to_string())
+            })
+            .transpose()?
+            .unwrap_or(false);
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(10))
@@ -408,6 +441,7 @@ impl BusinessAgentHostConfig {
             default_limit,
             max_limit,
             draft_write_enabled,
+            chat_approval_enabled,
             client,
         }))
     }
@@ -424,11 +458,16 @@ impl BusinessAgentHostConfig {
             .gateway_base_url
             .join("internal/agent-delegations")
             .map_err(|_| "Business Agent gateway URL is invalid")?;
-        let requested_scopes = AGENT_SCOPES
+        let mut requested_scopes = AGENT_SCOPES
             .iter()
             .copied()
             .filter(|scope| self.draft_write_enabled || !scope.ends_with(":create"))
             .collect::<Vec<_>>();
+        if self.chat_approval_enabled {
+            if let Some(scope) = chat_approval_scope(&source_event.content) {
+                requested_scopes.push(scope);
+            }
+        }
         let response = self
             .client
             .post(url)
@@ -500,6 +539,10 @@ impl BusinessAgentHostConfig {
             env(
                 "BUSINESS_AGENT_DRAFT_WRITE_ENABLED",
                 self.draft_write_enabled.to_string(),
+            ),
+            env(
+                "BUSINESS_CHAT_APPROVAL_ENABLED",
+                self.chat_approval_enabled.to_string(),
             ),
             env("BUSINESS_READ_ADAPTER", &self.adapter),
             env(
@@ -578,6 +621,7 @@ mod tests {
             business_api_base_url: None,
             business_action_api_base_url: None,
             draft_write_enabled: false,
+            chat_approval_enabled: false,
             service_credential: "test-service-credential-at-least-32-bytes".into(),
             mcp_command: "business-read-mcp".into(),
             adapter: "mock".into(),
@@ -657,14 +701,16 @@ mod tests {
     }
 
     #[test]
-    fn action_prompt_requires_human_confirmation_and_refuses_execution() {
+    fn action_prompt_limits_chat_approval_to_signed_sales_and_purchase_commands() {
         let prompt = include_str!("business_agent_prompt.md");
         assert!(prompt.contains("需要你在 Business Dock 中确认后才会创建待办。"));
         for boundary in [
             "cannot create or update a Work Item",
             "create an Approval Draft",
-            "approve, reject",
-            "execute",
+            "approve an Approval Draft",
+            "signed source message",
+            "get_*_approval_preview",
+            "zero-argument approval tool",
             "Action Codes come only from the versioned catalog",
         ] {
             assert!(prompt.contains(boundary), "missing boundary: {boundary}");
@@ -749,7 +795,26 @@ mod tests {
         assert!(prompt.contains("Never guess identifiers"));
         assert!(prompt.contains("When required fields are missing"));
         assert!(
-            prompt.contains("confirmations, reversals, allocations, posting, payment execution")
+            prompt.contains("shipment/receipt/payment approvals, reversals, allocations, posting, payment execution")
+        );
+    }
+
+    #[test]
+    fn chat_approval_scope_requires_an_exact_structured_command() {
+        let id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        assert_eq!(
+            chat_approval_scope(&format!("/approve sales-order {id} v3 {hash}")),
+            Some("sales_order:approve")
+        );
+        assert_eq!(
+            chat_approval_scope(&format!("/reject purchase-order {id} v2 {hash}")),
+            Some("purchase_order:approve")
+        );
+        assert_eq!(chat_approval_scope("同意"), None);
+        assert_eq!(
+            chat_approval_scope(&format!("/approve sales-order {id} v3 {hash} 请执行")),
+            None
         );
     }
 }

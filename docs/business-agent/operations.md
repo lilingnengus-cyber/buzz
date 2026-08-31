@@ -2,13 +2,14 @@
 
 ## Production
 
-Run all Gateway migrations through `0028_business_agent_draft_create.sql`, provision a minimum 32-byte
+Run all Gateway migrations through `0032_business_document_chat_approvals.sql`, provision a minimum 32-byte
 service credential from the server secret store, deploy the Gateway and
 `business-read-mcp`, then configure the dedicated `buzz-acp` process:
 
 ```text
 BUSINESS_AGENT_READ_ENABLED=true
 BUSINESS_AGENT_DRAFT_WRITE_ENABLED=false # independent kill switch; enable only after scoped IAM grants
+BUSINESS_CHAT_APPROVAL_ENABLED=false # enable only on the sales/purchase approval canary
 BUZZ_ACP_AGENT_COMMAND=buzz-agent # recommended; other ACP runtimes are supported
 # When using buzz-agent, configure exactly one model provider, for example:
 BUZZ_AGENT_PROVIDER=openai
@@ -49,9 +50,9 @@ Business MCP server, but a general-purpose runtime may independently expose its
 own built-in tools; operators must evaluate and restrict those capabilities.
 
 Keep `BUSINESS_ACTION_ENABLED=false` until the production Action adapter has
-passed its separate execution acceptance. In this read-only mode
+passed its separate execution acceptance. With chat approval disabled,
 `BUSINESS_ACTION_API_BASE_URL` is intentionally not required; action-lifecycle
-tools fail closed as unavailable and no write execution endpoint is exposed.
+tools fail closed as unavailable and no Business Action execution endpoint is exposed.
 
 For `codex-acp`, select a model that exposes session-scoped MCP tools as direct
 tool calls. The verified local acceptance path uses `gpt-5.5`. Do not use
@@ -72,10 +73,19 @@ switch to `true` on the canary deployment. Switching it back to `false` stops
 new write delegations and makes both MCP invocation and the API write route
 fail closed; existing read tools continue normally.
 
+For chat approval, grant `sales_order:approve` and/or
+`purchase_order:approve` only to canary Human principals, configure matching
+Business Core approval policies, and set `BUSINESS_CHAT_APPROVAL_ENABLED=true`
+on the Agent Host, Gateway, and Business Read API. Obtain the exact command from
+the matching approval-preview tool. Verify that one vote remains pending, a
+second distinct eligible vote executes, duplicate users and event ids are
+rejected, a stale version/hash cannot vote, and `/approve` with trailing text
+receives no approval scope.
+
 When deploying with `buzz-agent`, run `just business-agent-runtime-acceptance`. The probe uses
 the real `buzz-agent -> session/new -> business-read-mcp` path and a loopback
-model stub, then asserts that the model sees exactly 28 fixed reads plus six
-fixed draft creates and no general-purpose tool. It does not call a model, consume a real
+model stub, then asserts that the model sees exactly 30 fixed reads, six fixed
+draft creates, two bound approval tools, and no general-purpose tool. It does not call a model, consume a real
 Delegation, or read business data.
 
 ## Debug fixture

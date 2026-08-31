@@ -1,9 +1,10 @@
 # Business Agent
 
-Business Agent provides a dedicated query path plus six fixed draft-creation
-commands. It does not change Nostr kinds, Relay behavior, or Business Dock
-authentication. Confirm, approve, reverse, allocate, post and payment-execution
-operations remain unavailable to the Agent.
+Business Agent provides a dedicated query path, six fixed draft-creation
+commands, and a canary signed chat approval path for sales and purchase orders.
+It does not change Nostr kinds, Relay behavior, or Business Dock authentication.
+Shipment, receipt, payment, reverse, allocate, post and payment-execution
+approvals remain unavailable to the Agent.
 
 ```text
 trusted Buzz event -> active identity binding -> short turn delegation
@@ -22,4 +23,5 @@ Start with [architecture.md](architecture.md), then
 [real-business-api-integration.md](real-business-api-integration.md),
 [production-adapter.md](production-adapter.md), and [operations.md](operations.md).
 The security decision is recorded in
-[ADR 001](adr/001-read-only-agent-delegation.md).
+[ADR 001](adr/001-read-only-agent-delegation.md) and
+[ADR 002](adr/002-signed-chat-document-approval.md).

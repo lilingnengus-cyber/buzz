@@ -59,6 +59,8 @@ read. Verify all of the following:
 5. the same query is denied for a Human without the capability;
 6. no Shell, filesystem, SQL, generic HTTP, or write execution tool is exposed.
 
-`BUSINESS_ACTION_ENABLED=false` is fixed in this Compose deployment. The current
-production Action execution adapter remains blocked; no business write endpoint
-is deployed here.
+`BUSINESS_ACTION_ENABLED=false` remains fixed in this Compose deployment. The
+Business Action execution adapter stays blocked. Sales/purchase document chat
+approval is a separate canary path controlled by
+`BUSINESS_CHAT_APPROVAL_ENABLED`; it is disabled by default and must have scoped
+IAM grants plus Business Core approval policies before it is enabled.

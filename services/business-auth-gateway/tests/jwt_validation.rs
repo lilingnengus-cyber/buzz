@@ -72,6 +72,7 @@ fn config(issuer: String) -> Config {
         global_logout_redirect_uri: "https://workbench.test/".into(),
         business_agent_read_enabled: false,
         business_agent_draft_write_enabled: false,
+        business_chat_approval_enabled: false,
         business_read_mcp_audience: "business-read-mcp".into(),
         agent_delegation_ttl: Duration::from_secs(300),
         agent_delegation_max_calls: 20,

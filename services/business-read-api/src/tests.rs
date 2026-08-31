@@ -290,7 +290,7 @@ async fn in_process_acceptance_cross_domain_p95_is_below_target() {
 }
 
 #[test]
-fn draft_write_allowlist_uses_create_capabilities_only() {
+fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
     let expected = [
         ("create_sales_order_draft", "sales_order:create"),
         ("create_shipment_draft", "shipment:create"),
@@ -303,7 +303,15 @@ fn draft_write_allowlist_uses_create_capabilities_only() {
         assert!(WRITE_TOOLS.contains(&tool));
         assert_eq!(required_capability(tool), Some(capability));
     }
-    assert_eq!(WRITE_TOOLS.len(), 6);
+    assert_eq!(
+        required_capability("approve_sales_order"),
+        Some("sales_order:approve")
+    );
+    assert_eq!(
+        required_capability("approve_purchase_order"),
+        Some("purchase_order:approve")
+    );
+    assert_eq!(WRITE_TOOLS.len(), 8);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -334,6 +342,20 @@ fn draft_write_inputs_are_strict_and_typed() {
         .expect("object")
         .remove("customerId");
     assert!(!valid_write_input("create_sales_order_draft", &missing));
+}
+
+#[test]
+fn chat_approval_input_is_closed_and_does_not_accept_source_identity() {
+    let valid = json!({
+        "documentId": Uuid::new_v4(),
+        "expectedVersion": 3,
+        "previewHash": "a".repeat(64),
+        "decision": "approve"
+    });
+    assert!(valid_write_input("approve_sales_order", &valid));
+    let mut injected = valid;
+    injected["sourceBuzzEventId"] = json!("b".repeat(64));
+    assert!(!valid_write_input("approve_sales_order", &injected));
 }
 
 #[tokio::test]
@@ -400,6 +422,8 @@ async fn draft_forwarding_uses_fixed_route_actor_and_server_idempotency() {
         trace_id,
         used_calls: 1,
         required_scope: "sales_order:create".into(),
+        source_buzz_event_id: "a".repeat(64),
+        source_channel_id: "channel-1".into(),
     };
     let response = forward_draft_write(
         &core,

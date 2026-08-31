@@ -14,6 +14,7 @@ pub struct Config {
     pub core_base_url: Url,
     pub core_credential: String,
     pub draft_write_enabled: bool,
+    pub chat_approval_enabled: bool,
 }
 
 impl Config {
@@ -111,6 +112,15 @@ impl Config {
             })
             .transpose()?
             .unwrap_or(false);
+        let chat_approval_enabled = std::env::var("BUSINESS_CHAT_APPROVAL_ENABLED")
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<bool>()
+                    .map_err(|_| "BUSINESS_CHAT_APPROVAL_ENABLED must be true or false".to_string())
+            })
+            .transpose()?
+            .unwrap_or(false);
         Ok(Self {
             bind: required("BUSINESS_READ_API_BIND")?
                 .parse()
@@ -124,6 +134,7 @@ impl Config {
             core_base_url,
             core_credential,
             draft_write_enabled,
+            chat_approval_enabled,
         })
     }
 }

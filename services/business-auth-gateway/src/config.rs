@@ -21,6 +21,7 @@ pub struct Config {
     pub global_logout_redirect_uri: String,
     pub business_agent_read_enabled: bool,
     pub business_agent_draft_write_enabled: bool,
+    pub business_chat_approval_enabled: bool,
     pub business_read_mcp_audience: String,
     pub agent_delegation_ttl: Duration,
     pub agent_delegation_max_calls: i32,
@@ -118,9 +119,16 @@ impl Config {
         let business_agent_read_enabled = boolean("BUSINESS_AGENT_READ_ENABLED", false)?;
         let business_agent_draft_write_enabled =
             boolean("BUSINESS_AGENT_DRAFT_WRITE_ENABLED", false)?;
+        let business_chat_approval_enabled = boolean("BUSINESS_CHAT_APPROVAL_ENABLED", false)?;
         if business_agent_draft_write_enabled && !business_agent_read_enabled {
             return Err(
                 "BUSINESS_AGENT_DRAFT_WRITE_ENABLED=true requires BUSINESS_AGENT_READ_ENABLED=true"
+                    .into(),
+            );
+        }
+        if business_chat_approval_enabled && !business_agent_read_enabled {
+            return Err(
+                "BUSINESS_CHAT_APPROVAL_ENABLED=true requires BUSINESS_AGENT_READ_ENABLED=true"
                     .into(),
             );
         }
@@ -183,6 +191,7 @@ impl Config {
             global_logout_redirect_uri: required("GLOBAL_LOGOUT_REDIRECT_URI")?,
             business_agent_read_enabled,
             business_agent_draft_write_enabled,
+            business_chat_approval_enabled,
             business_read_mcp_audience: audience,
             agent_delegation_ttl: seconds("AGENT_DELEGATION_TTL_SECONDS", 300, 30, 900)?,
             agent_delegation_max_calls: max_calls,
