@@ -1,13 +1,16 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import {
+  type ApiFailure,
   type NumberingLedger,
   type NumberingRule,
   type NumberingRuleCommandResult,
   type NumberingRuleList,
   type NumberingSegment,
   request,
+  toApiFailure,
 } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 import {
   appendEditableSegment,
   changeEditableScope,
@@ -49,8 +52,8 @@ export function NumberingRulesCenter() {
   const [ledger, setLedger] = React.useState<NumberingLedger | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [ledgerLoading, setLedgerLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [ledgerError, setLedgerError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<ApiFailure | null>(null);
+  const [ledgerError, setLedgerError] = React.useState<ApiFailure | null>(null);
   const [editing, setEditing] = React.useState<NumberingRule | null>(null);
 
   const load = React.useCallback(async () => {
@@ -59,7 +62,7 @@ export function NumberingRulesCenter() {
     try {
       setData(await request<NumberingRuleList>("/api/v1/numbering-rules"));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "编码规则加载失败");
+      setError(toApiFailure(reason, "编码规则加载失败"));
     } finally {
       setLoading(false);
     }
@@ -75,9 +78,7 @@ export function NumberingRulesCenter() {
     try {
       setLedger(await request<NumberingLedger>("/api/v1/numbering-ledger"));
     } catch (reason) {
-      setLedgerError(
-        reason instanceof Error ? reason.message : "编码使用台账加载失败",
-      );
+      setLedgerError(toApiFailure(reason, "编码使用台账加载失败"));
     } finally {
       setLedgerLoading(false);
     }
@@ -131,82 +132,89 @@ export function NumberingRulesCenter() {
       </div>
 
       <div hidden={view !== "rules"}>
-        <div className="numbering-summary">
-          <div>
-            <span>规则总数</span>
-            <b>{data?.items.length ?? 0}</b>
-          </div>
-          <div>
-            <span>已启用</span>
-            <b>{activeCount}</b>
-          </div>
-          <div>
-            <span>安全回退</span>
-            <b>{(data?.items.length ?? 0) - activeCount}</b>
-          </div>
-          <p>停用后，新记录继续使用服务端默认编码，不会中断业务开单。</p>
-        </div>
-
-        {error && <div className="numbering-message error">{error}</div>}
-        {loading ? (
+        {error ? (
+          <PageLoadFailure
+            failure={error}
+            resourceLabel="编码规则"
+            onRetry={() => void load()}
+          />
+        ) : loading ? (
           <div className="numbering-message">正在读取编码规则…</div>
         ) : (
-          <div className="numbering-groups">
-            {GROUPS.map((group) => {
-              const rules = (data?.items ?? []).filter(
-                (item) => RECORDS[item.recordType]?.group === group,
-              );
-              return (
-                <section className="numbering-group" key={group}>
-                  <header>
-                    <h2>{group}</h2>
-                    <span>{rules.length} 类记录</span>
-                  </header>
-                  <div className="numbering-grid">
-                    {rules.map((rule) => {
-                      const record = RECORDS[rule.recordType];
-                      return (
-                        <article className={rule.status} key={rule.id}>
-                          <div className="numbering-card-head">
-                            <span>{record?.code ?? rule.recordType}</span>
-                            <div>
-                              <h3>{record?.label ?? rule.name}</h3>
-                              <small>{rule.name}</small>
+          <>
+            <div className="numbering-summary">
+              <div>
+                <span>规则总数</span>
+                <b>{data?.items.length ?? 0}</b>
+              </div>
+              <div>
+                <span>已启用</span>
+                <b>{activeCount}</b>
+              </div>
+              <div>
+                <span>安全回退</span>
+                <b>{(data?.items.length ?? 0) - activeCount}</b>
+              </div>
+              <p>停用后，新记录继续使用服务端默认编码，不会中断业务开单。</p>
+            </div>
+            <div className="numbering-groups">
+              {GROUPS.map((group) => {
+                const rules = (data?.items ?? []).filter(
+                  (item) => RECORDS[item.recordType]?.group === group,
+                );
+                return (
+                  <section className="numbering-group" key={group}>
+                    <header>
+                      <h2>{group}</h2>
+                      <span>{rules.length} 类记录</span>
+                    </header>
+                    <div className="numbering-grid">
+                      {rules.map((rule) => {
+                        const record = RECORDS[rule.recordType];
+                        return (
+                          <article className={rule.status} key={rule.id}>
+                            <div className="numbering-card-head">
+                              <span>{record?.code ?? rule.recordType}</span>
+                              <div>
+                                <h3>{record?.label ?? rule.name}</h3>
+                                <small>{rule.name}</small>
+                              </div>
+                              <em>
+                                {rule.status === "active" ? "启用" : "回退"}
+                              </em>
                             </div>
-                            <em>
-                              {rule.status === "active" ? "启用" : "回退"}
-                            </em>
-                          </div>
-                          <div className="numbering-policy-tags">
-                            <span>{scopeLabel(rule.scopeDimension)}</span>
-                            <span>{resetLabel(rule.resetPeriod)}</span>
-                          </div>
-                          <NumberSegments segments={rule.segments} />
-                          <div className="numbering-preview">
-                            <span>当前预览</span>
-                            <code>{rule.preview}</code>
-                          </div>
-                          <footer>
-                            <small>
-                              版本 {rule.version} · {formatTime(rule.updatedAt)}
-                            </small>
-                            {data?.canManage && (
-                              <button
-                                type="button"
-                                onClick={() => setEditing(rule)}
-                              >
-                                编辑规则
-                              </button>
-                            )}
-                          </footer>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+                            <div className="numbering-policy-tags">
+                              <span>{scopeLabel(rule.scopeDimension)}</span>
+                              <span>{resetLabel(rule.resetPeriod)}</span>
+                            </div>
+                            <NumberSegments segments={rule.segments} />
+                            <div className="numbering-preview">
+                              <span>当前预览</span>
+                              <code>{rule.preview}</code>
+                            </div>
+                            <footer>
+                              <small>
+                                版本 {rule.version} ·{" "}
+                                {formatTime(rule.updatedAt)}
+                              </small>
+                              {data?.canManage && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditing(rule)}
+                                >
+                                  编辑规则
+                                </button>
+                              )}
+                            </footer>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
@@ -215,6 +223,7 @@ export function NumberingRulesCenter() {
           data={ledger}
           loading={ledgerLoading}
           error={ledgerError}
+          onRetry={() => void loadLedger()}
         />
       </div>
 
@@ -238,13 +247,22 @@ function NumberingLedgerView({
   data,
   loading,
   error,
+  onRetry,
 }: {
   data: NumberingLedger | null;
   loading: boolean;
-  error: string | null;
+  error: ApiFailure | null;
+  onRetry: () => void;
 }) {
   const [recordType, setRecordType] = React.useState("all");
-  if (error) return <div className="numbering-message error">{error}</div>;
+  if (error)
+    return (
+      <PageLoadFailure
+        failure={error}
+        resourceLabel="编码使用台账"
+        onRetry={onRetry}
+      />
+    );
   if (loading && !data)
     return <div className="numbering-message">正在读取编码使用台账…</div>;
   if (!data) return null;

@@ -1,13 +1,16 @@
 import React from "react";
 import {
+  type ApiFailure,
   type ProductMasterCommandResult,
   type ProductMasterDisableImpact,
   type ProductMasterList,
   type ProductMasterRecord,
   type ProductMasterType,
   request,
+  toApiFailure,
 } from "./api";
 import { MasterModal } from "./CoreMasterDataCenter";
+import { PageLoadFailure } from "./PageLoadFailure";
 import "./product-master-data.css";
 
 const TYPES: Array<{
@@ -98,7 +101,7 @@ export function ProductMasterDataCenter() {
   const [status, setStatus] = React.useState("all");
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<ApiFailure | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -110,7 +113,7 @@ export function ProductMasterDataCenter() {
         ),
       );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "商品主数据加载失败");
+      setError(toApiFailure(reason, "商品主数据加载失败"));
     } finally {
       setLoading(false);
     }
@@ -165,83 +168,94 @@ export function ProductMasterDataCenter() {
         )}
       </div>
 
-      <div
-        className="master-spine product-spine"
-        role="img"
-        aria-label="商品主数据关系结构：分类、品牌和单位定义商品，商品下建立 SKU、条码及单位换算"
-      >
-        <div>
-          <b>01</b>
-          <span>分类 · 品牌 · 单位</span>
-          <small>CATALOG RULES</small>
+      {!error && (
+        <div
+          className="master-spine product-spine"
+          role="img"
+          aria-label="商品主数据关系结构：分类、品牌和单位定义商品，商品下建立 SKU、条码及单位换算"
+        >
+          <div>
+            <b>01</b>
+            <span>分类 · 品牌 · 单位</span>
+            <small>CATALOG RULES</small>
+          </div>
+          <i>→</i>
+          <div>
+            <b>02</b>
+            <span>商品 / SPU</span>
+            <small>PRODUCT DEFINITION</small>
+          </div>
+          <i>→</i>
+          <div>
+            <b>03</b>
+            <span>SKU · 条码 · 换算</span>
+            <small>TRADE OBJECTS</small>
+          </div>
         </div>
-        <i>→</i>
-        <div>
-          <b>02</b>
-          <span>商品 / SPU</span>
-          <small>PRODUCT DEFINITION</small>
-        </div>
-        <i>→</i>
-        <div>
-          <b>03</b>
-          <span>SKU · 条码 · 换算</span>
-          <small>TRADE OBJECTS</small>
-        </div>
-      </div>
+      )}
 
-      <div
-        className="master-tabs product-tabs"
-        role="tablist"
-        aria-label="商品数据类别"
-      >
-        {TYPES.map((item) => (
+      {!error && (
+        <div
+          className="master-tabs product-tabs"
+          role="tablist"
+          aria-label="商品数据类别"
+        >
+          {TYPES.map((item) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeType === item.id}
+              className={activeType === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => setActiveType(item.id)}
+            >
+              <b>{item.short}</b>
+              <span>{item.label}</span>
+              <em>{counts[item.id]}</em>
+              <small>{item.description}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!error && (
+        <div className="master-toolbar">
+          <label>
+            <span>检索</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="编码、名称、条码、分类或品牌"
+            />
+          </label>
+          <label>
+            <span>状态</span>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="all">全部状态</option>
+              <option value="active">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </label>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeType === item.id}
-            className={activeType === item.id ? "active" : ""}
-            key={item.id}
-            onClick={() => setActiveType(item.id)}
+            className="master-secondary"
+            onClick={() => void load()}
           >
-            <b>{item.short}</b>
-            <span>{item.label}</span>
-            <em>{counts[item.id]}</em>
-            <small>{item.description}</small>
+            刷新
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      <div className="master-toolbar">
-        <label>
-          <span>检索</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="编码、名称、条码、分类或品牌"
-          />
-        </label>
-        <label>
-          <span>状态</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">全部状态</option>
-            <option value="active">启用</option>
-            <option value="disabled">停用</option>
-          </select>
-        </label>
-        <button
-          type="button"
-          className="master-secondary"
-          onClick={() => void load()}
-        >
-          刷新
-        </button>
-      </div>
-
-      {error && <div className="master-message error">{error}</div>}
-      {loading ? (
+      {error ? (
+        <PageLoadFailure
+          failure={error}
+          resourceLabel="商品主数据"
+          onRetry={() => void load()}
+        />
+      ) : loading ? (
         <div className="master-message">正在读取商品权威数据…</div>
       ) : current.length === 0 ? (
         <div className="master-empty">

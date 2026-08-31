@@ -1,10 +1,13 @@
 import React from "react";
 import {
+  type ApiFailure,
   type OperatingSubscription,
   type OperatingSubscriptionList,
   type OperatingTrendSeries,
   request,
+  toApiFailure,
 } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 
 type Cadence = "daily" | "weekly";
 
@@ -15,20 +18,26 @@ export function OperatingTrendsView() {
     React.useState<OperatingSubscriptionList | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<ApiFailure | null>(null);
 
   const load = React.useCallback(async () => {
-    const [nextSeries, nextSubscriptions] = await Promise.all([
-      request<OperatingTrendSeries>(
-        `/api/v1/operations/trends?cadence=${cadence}&currency=CNY&limit=14`,
-      ),
-      request<OperatingSubscriptionList>("/api/v1/operations/subscriptions"),
-    ]);
-    setSeries(nextSeries);
-    setSubscriptions(nextSubscriptions);
+    setLoadError(null);
+    try {
+      const [nextSeries, nextSubscriptions] = await Promise.all([
+        request<OperatingTrendSeries>(
+          `/api/v1/operations/trends?cadence=${cadence}&currency=CNY&limit=14`,
+        ),
+        request<OperatingSubscriptionList>("/api/v1/operations/subscriptions"),
+      ]);
+      setSeries(nextSeries);
+      setSubscriptions(nextSubscriptions);
+    } catch (reason) {
+      setLoadError(toApiFailure(reason, "日报与趋势加载失败"));
+    }
   }, [cadence]);
 
   React.useEffect(() => {
-    load().catch((error: Error) => setNotice(error.message));
+    void load();
   }, [load]);
 
   async function freeze() {
@@ -137,102 +146,121 @@ export function OperatingTrendsView() {
               </button>
             ))}
           </div>
-          <button type="button" onClick={freeze} disabled={busy}>
+          <button
+            type="button"
+            onClick={freeze}
+            disabled={busy || Boolean(loadError)}
+          >
             {busy ? "处理中…" : "冻结上一周期"}
           </button>
         </div>
       </header>
 
-      {notice && <p className="incident-notice">{notice}</p>}
+      {loadError && (
+        <PageLoadFailure
+          failure={loadError}
+          resourceLabel="日报与趋势"
+          onRetry={() => void load()}
+        />
+      )}
 
-      <section className="schedule-strip" aria-label="站内订阅计划">
-        <div>
-          <span>BUSINESS DOCK DELIVERY</span>
-          <strong>
-            {activeSubscription
-              ? `${activeSubscription.status === "active" ? "运行中" : "已暂停"} · 下次 ${formatInstant(activeSubscription.nextRunAt)}`
-              : "尚未设置站内快照"}
-          </strong>
-          <small>固定按当前时区 08:00 生成上一完整周期，不发送外部邮件。</small>
-        </div>
-        {activeSubscription ? (
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => toggle(activeSubscription)}
-            disabled={busy}
-          >
-            {activeSubscription.status === "active" ? "暂停订阅" : "恢复订阅"}
-          </button>
-        ) : (
-          <button type="button" onClick={subscribe} disabled={busy}>
-            订阅 {cadence === "daily" ? "日报" : "周报"}
-          </button>
-        )}
-      </section>
+      {!loadError && notice && <p className="incident-notice">{notice}</p>}
 
-      {!series ? (
-        <div className="empty">正在读取经营刻度…</div>
-      ) : series.items.length === 0 ? (
-        <div className="empty trend-empty">
-          <span>—</span>
-          <p>
-            还没有{cadence === "daily" ? "日报" : "周报"}
-            基线。先冻结上一完整周期。
-          </p>
-        </div>
-      ) : (
-        <section className="trend-ruler" aria-label="经营趋势快照">
-          <div className="ruler-legend">
-            <span>周期</span>
-            <span>销售额</span>
-            <span>出库收入</span>
-            <span>采购额</span>
-            <span>经营利润</span>
-            <span>SLA 超时</span>
+      {!loadError && (
+        <section className="schedule-strip" aria-label="站内订阅计划">
+          <div>
+            <span>BUSINESS DOCK DELIVERY</span>
+            <strong>
+              {activeSubscription
+                ? `${activeSubscription.status === "active" ? "运行中" : "已暂停"} · 下次 ${formatInstant(activeSubscription.nextRunAt)}`
+                : "尚未设置站内快照"}
+            </strong>
+            <small>
+              固定按当前时区 08:00 生成上一完整周期，不发送外部邮件。
+            </small>
           </div>
-          {series.items.map((item, index) => (
-            <article className="ruler-row" key={item.id}>
-              <div className="ruler-date">
-                <i>{String(series.items.length - index).padStart(2, "0")}</i>
-                <strong>{item.periodStart}</strong>
-                <small>{cadence === "daily" ? "DAY" : "WEEK"}</small>
-              </div>
-              <TrendValue
-                value={`¥ ${compactMoney(item.metrics.salesOrderAmount)}`}
-                change={item.change?.salesOrderAmount}
-              />
-              <TrendValue
-                value={`¥ ${compactMoney(item.metrics.shippedRevenue)}`}
-                change={item.change?.shippedRevenue}
-              />
-              <TrendValue
-                value={`¥ ${compactMoney(item.metrics.purchaseOrderAmount)}`}
-                change={item.change?.purchaseOrderAmount}
-              />
-              <TrendValue
-                value={`¥ ${compactMoney(item.metrics.managementOperatingProfit)}`}
-                change={item.change?.managementOperatingProfit}
-              />
-              <TrendValue
-                value={`${item.metrics.slaBreached}`}
-                change={item.change?.slaBreached}
-                risk={item.metrics.slaBreached > 0}
-              />
-              <footer>
-                <span className={`quality-mark ${item.dataQualityStatus}`}>
-                  {item.dataQualityStatus}
-                </span>
-                <span>平均解决 {item.metrics.averageResolutionHours}h</span>
-                <code>{item.sourceHash.slice(0, 10)}</code>
-              </footer>
-            </article>
-          ))}
+          {activeSubscription ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => toggle(activeSubscription)}
+              disabled={busy}
+            >
+              {activeSubscription.status === "active" ? "暂停订阅" : "恢复订阅"}
+            </button>
+          ) : (
+            <button type="button" onClick={subscribe} disabled={busy}>
+              订阅 {cadence === "daily" ? "日报" : "周报"}
+            </button>
+          )}
         </section>
       )}
-      <p className="report-warning">
-        库存价值与缺货数为快照生成时点值；趋势快照不可变，不是法定财务报表。
-      </p>
+
+      {!loadError &&
+        (!series ? (
+          <div className="empty">正在读取经营刻度…</div>
+        ) : series.items.length === 0 ? (
+          <div className="empty trend-empty">
+            <span>—</span>
+            <p>
+              还没有{cadence === "daily" ? "日报" : "周报"}
+              基线。先冻结上一完整周期。
+            </p>
+          </div>
+        ) : (
+          <section className="trend-ruler" aria-label="经营趋势快照">
+            <div className="ruler-legend">
+              <span>周期</span>
+              <span>销售额</span>
+              <span>出库收入</span>
+              <span>采购额</span>
+              <span>经营利润</span>
+              <span>SLA 超时</span>
+            </div>
+            {series.items.map((item, index) => (
+              <article className="ruler-row" key={item.id}>
+                <div className="ruler-date">
+                  <i>{String(series.items.length - index).padStart(2, "0")}</i>
+                  <strong>{item.periodStart}</strong>
+                  <small>{cadence === "daily" ? "DAY" : "WEEK"}</small>
+                </div>
+                <TrendValue
+                  value={`¥ ${compactMoney(item.metrics.salesOrderAmount)}`}
+                  change={item.change?.salesOrderAmount}
+                />
+                <TrendValue
+                  value={`¥ ${compactMoney(item.metrics.shippedRevenue)}`}
+                  change={item.change?.shippedRevenue}
+                />
+                <TrendValue
+                  value={`¥ ${compactMoney(item.metrics.purchaseOrderAmount)}`}
+                  change={item.change?.purchaseOrderAmount}
+                />
+                <TrendValue
+                  value={`¥ ${compactMoney(item.metrics.managementOperatingProfit)}`}
+                  change={item.change?.managementOperatingProfit}
+                />
+                <TrendValue
+                  value={`${item.metrics.slaBreached}`}
+                  change={item.change?.slaBreached}
+                  risk={item.metrics.slaBreached > 0}
+                />
+                <footer>
+                  <span className={`quality-mark ${item.dataQualityStatus}`}>
+                    {item.dataQualityStatus}
+                  </span>
+                  <span>平均解决 {item.metrics.averageResolutionHours}h</span>
+                  <code>{item.sourceHash.slice(0, 10)}</code>
+                </footer>
+              </article>
+            ))}
+          </section>
+        ))}
+      {!loadError && (
+        <p className="report-warning">
+          库存价值与缺货数为快照生成时点值；趋势快照不可变，不是法定财务报表。
+        </p>
+      )}
     </main>
   );
 }

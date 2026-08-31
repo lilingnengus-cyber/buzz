@@ -1,10 +1,12 @@
 import React from "react";
 import {
+  type ApiFailure,
   type Envelope,
   type InventoryBalance,
   type InventoryMovement,
   type InventoryOpening,
   request,
+  toApiFailure,
 } from "./api";
 import { InventoryCountPanel } from "./InventoryCountPanel";
 import { ReplenishmentPanel } from "./ReplenishmentPanel";
@@ -13,6 +15,7 @@ import {
   formatQuantity,
   formatSignedQuantity,
 } from "./formatters";
+import { PageLoadFailure } from "./PageLoadFailure";
 import "./inventory-ledger.css";
 
 type InventoryData = {
@@ -96,7 +99,7 @@ export function InventoryLedger({ skuId }: { skuId?: string }) {
         </button>
       </div>
 
-      <InventoryEquation totals={totals} />
+      {!state.error && <InventoryEquation totals={totals} />}
 
       <nav className="inventory-ledger-tabs">
         {VIEWS.map((item) => (
@@ -114,10 +117,11 @@ export function InventoryLedger({ skuId }: { skuId?: string }) {
       </nav>
 
       {state.error && (
-        <div className="inventory-ledger-error">
-          <strong>无法读取库存台账</strong>
-          <span>{state.error}</span>
-        </div>
+        <PageLoadFailure
+          failure={state.error}
+          resourceLabel="库存台账"
+          onRetry={refresh}
+        />
       )}
       {state.loading && !state.data && (
         <div className="inventory-ledger-loading">正在核对库存权威账簿…</div>
@@ -342,7 +346,9 @@ function BalanceTable({ items }: { items: InventoryBalance[] }) {
                     ? "—"
                     : formatAmount(item.averageUnitCost)}
                 </td>
-                <td data-label="库存价值">{formatAmount(item.inventoryValue)}</td>
+                <td data-label="库存价值">
+                  {formatAmount(item.inventoryValue)}
+                </td>
                 <td data-label="更新时间">{formatInstant(item.updatedAt)}</td>
               </tr>
             );
@@ -559,7 +565,7 @@ function InventoryEmpty({ text }: { text: string }) {
 function useInventoryData(skuId: string | undefined, revision: number) {
   const [state, setState] = React.useState<{
     data: InventoryData | null;
-    error: string | null;
+    error: ApiFailure | null;
     loading: boolean;
   }>({ data: null, error: null, loading: true });
   React.useEffect(() => {
@@ -584,9 +590,13 @@ function useInventoryData(skuId: string | undefined, revision: number) {
             loading: false,
           });
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (active)
-          setState({ data: null, error: error.message, loading: false });
+          setState({
+            data: null,
+            error: toApiFailure(error, "库存台账加载失败"),
+            loading: false,
+          });
       });
     return () => {
       active = false;

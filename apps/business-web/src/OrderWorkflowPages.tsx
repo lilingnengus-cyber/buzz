@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  type ApiFailure,
   type BusinessReturn,
   type Envelope,
   type GoodsReceipt,
@@ -11,6 +12,7 @@ import {
   type Shipment,
   type SupplierPayment,
   request,
+  toApiFailure,
 } from "./api";
 import { formatAmount } from "./formatters";
 import { GoodsReceiptConfirmation } from "./GoodsReceiptConfirmation";
@@ -45,6 +47,7 @@ import {
 } from "./ReturnDispositionForms";
 import { ShipmentConfirmation } from "./ShipmentConfirmation";
 import { ShipmentEntry } from "./ShipmentEntry";
+import { PageLoadFailure } from "./PageLoadFailure";
 import {
   CustomerReceiptEntry,
   CustomerReceiptSettlement,
@@ -75,7 +78,7 @@ type SalesWorkflowData = {
   receivables: Receivable[];
   receipts: Receipt[];
   returns: BusinessReturn[];
-  errors: Partial<Record<SalesTab, string>>;
+  errors: Partial<Record<SalesTab, ApiFailure>>;
 };
 
 type PurchaseWorkflowData = {
@@ -84,7 +87,7 @@ type PurchaseWorkflowData = {
   payables: Payable[];
   payments: SupplierPayment[];
   returns: BusinessReturn[];
-  errors: Partial<Record<PurchaseTab, string>>;
+  errors: Partial<Record<PurchaseTab, ApiFailure>>;
 };
 
 const salesStages: Array<{ id: SalesTab; code: string; label: string }> = [
@@ -185,21 +188,25 @@ export function SalesOrderWorkflowPage({ id }: { id?: string }) {
       title={id ? "销售订单全链路" : "销售订单闭环"}
       caption="从客户承诺、库存预占、分批出库到经营应收与收款核销，始终沿同一销售订单追溯。"
       primaryAction={
-        <button
-          type="button"
-          onClick={() => setModal({ kind: "sales-create" })}
-        >
-          <PlusIcon /> 新增销售订单
-        </button>
+        data && !data.errors.orders ? (
+          <button
+            type="button"
+            onClick={() => setModal({ kind: "sales-create" })}
+          >
+            <PlusIcon /> 新增销售订单
+          </button>
+        ) : undefined
       }
       secondaryAction={
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setModal({ kind: "shipment-create" })}
-        >
-          <TruckIcon /> 新建出库单
-        </button>
+        data && !data.errors.fulfillment ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setModal({ kind: "shipment-create" })}
+          >
+            <TruckIcon /> 新建出库单
+          </button>
+        ) : undefined
       }
     >
       <WorkflowRail
@@ -271,7 +278,12 @@ export function SalesOrderWorkflowPage({ id }: { id?: string }) {
       />
       {state.error || stageError ? (
         <WorkflowError
-          error={state.error ?? stageError ?? "业务数据加载失败"}
+          error={
+            state.error ?? stageError ?? toApiFailure(null, "业务数据加载失败")
+          }
+          resourceLabel={
+            salesStages.find((stage) => stage.id === tab)?.label ?? "销售闭环"
+          }
           onRetry={refresh}
         />
       ) : (
@@ -434,21 +446,25 @@ export function PurchaseOrderWorkflowPage({ id }: { id?: string }) {
       title={id ? "采购订单全链路" : "采购订单闭环"}
       caption="从采购承诺、实际到货、移动平均成本到经营应付与付款核销，所有变化保留来源凭据。"
       primaryAction={
-        <button
-          type="button"
-          onClick={() => setModal({ kind: "purchase-create" })}
-        >
-          <PlusIcon /> 新增采购订单
-        </button>
+        data && !data.errors.orders ? (
+          <button
+            type="button"
+            onClick={() => setModal({ kind: "purchase-create" })}
+          >
+            <PlusIcon /> 新增采购订单
+          </button>
+        ) : undefined
       }
       secondaryAction={
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setModal({ kind: "receipt-create" })}
-        >
-          <ReceiveIcon /> 新建收货单
-        </button>
+        data && !data.errors.receiving ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setModal({ kind: "receipt-create" })}
+          >
+            <ReceiveIcon /> 新建收货单
+          </button>
+        ) : undefined
       }
     >
       <WorkflowRail
@@ -513,7 +529,13 @@ export function PurchaseOrderWorkflowPage({ id }: { id?: string }) {
       />
       {state.error || stageError ? (
         <WorkflowError
-          error={state.error ?? stageError ?? "业务数据加载失败"}
+          error={
+            state.error ?? stageError ?? toApiFailure(null, "业务数据加载失败")
+          }
+          resourceLabel={
+            purchaseStages.find((stage) => stage.id === tab)?.label ??
+            "采购闭环"
+          }
           onRetry={refresh}
         />
       ) : (
@@ -792,19 +814,19 @@ function CommandConfirmation({
 
 function WorkflowError({
   error,
+  resourceLabel,
   onRetry,
 }: {
-  error: string;
+  error: ApiFailure;
+  resourceLabel: string;
   onRetry: () => void;
 }) {
   return (
-    <div className="workflow-error" role="alert">
-      <strong>业务数据暂不可用</strong>
-      <span>{error}</span>
-      <button type="button" className="secondary" onClick={onRetry}>
-        重新加载
-      </button>
-    </div>
+    <PageLoadFailure
+      failure={error}
+      resourceLabel={resourceLabel}
+      onRetry={onRetry}
+    />
   );
 }
 
@@ -815,7 +837,7 @@ function useWorkflowData<T>(
   const [state, setState] = React.useState<{
     data: T | null;
     loading: boolean;
-    error: string | null;
+    error: ApiFailure | null;
   }>({ data: null, loading: true, error: null });
   React.useEffect(() => {
     let active = true;
@@ -823,9 +845,13 @@ function useWorkflowData<T>(
     loader()
       .then((data) => active && setState({ data, loading: false, error: null }))
       .catch(
-        (error: Error) =>
+        (error: unknown) =>
           active &&
-          setState({ data: null, loading: false, error: error.message }),
+          setState({
+            data: null,
+            loading: false,
+            error: toApiFailure(error, "业务数据加载失败"),
+          }),
       );
     return () => {
       active = false;
@@ -837,7 +863,7 @@ function useWorkflowData<T>(
 
 async function loadWorkflowStage<T>(path: string): Promise<{
   items: T[];
-  error: string | null;
+  error: ApiFailure | null;
 }> {
   try {
     const response = await request<Envelope<T>>(path);
@@ -845,31 +871,30 @@ async function loadWorkflowStage<T>(path: string): Promise<{
   } catch (reason) {
     return {
       items: [],
-      error:
-        reason instanceof Error ? reason.message : "业务数据加载失败，请重试",
+      error: toApiFailure(reason, "业务数据加载失败，请重试"),
     };
   }
 }
 
 function compactErrors<T extends string>(
-  errors: Record<T, string | null>,
-): Partial<Record<T, string>> {
+  errors: Record<T, ApiFailure | null>,
+): Partial<Record<T, ApiFailure>> {
   return Object.fromEntries(
-    Object.entries(errors).filter((entry): entry is [string, string] =>
+    Object.entries(errors).filter((entry): entry is [string, ApiFailure] =>
       Boolean(entry[1]),
     ),
-  ) as Partial<Record<T, string>>;
+  ) as Partial<Record<T, ApiFailure>>;
 }
 
-function workflowMetric(error: string | undefined, value: string) {
+function workflowMetric(error: ApiFailure | undefined, value: string) {
   return error ? "暂不可用" : value;
 }
 
-function workflowValue(error: string | undefined, value: string) {
+function workflowValue(error: ApiFailure | undefined, value: string) {
   return error ? "—" : value;
 }
 
-function workflowNote(error: string | undefined, value: string) {
+function workflowNote(error: ApiFailure | undefined, value: string) {
   return error ? "当前账号无权读取" : value;
 }
 

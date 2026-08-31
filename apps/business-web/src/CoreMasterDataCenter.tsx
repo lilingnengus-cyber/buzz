@@ -1,14 +1,17 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import {
+  type ApiFailure,
   type CoreMasterCommandResult,
   type CoreMasterDisableImpact,
   type CoreMasterList,
   type CoreMasterRecord,
   type CoreMasterType,
   request,
+  toApiFailure,
 } from "./api";
 import { formatMoney } from "./formatters";
+import { PageLoadFailure } from "./PageLoadFailure";
 import "./core-master-data.css";
 
 const TYPES: Array<{
@@ -89,7 +92,7 @@ export function CoreMasterDataCenter() {
   const [status, setStatus] = React.useState("all");
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<ApiFailure | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -99,7 +102,7 @@ export function CoreMasterDataCenter() {
         await request<CoreMasterList>("/api/v1/core-master-data?limit=1000"),
       );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "核心数据加载失败");
+      setError(toApiFailure(reason, "核心数据加载失败"));
     } finally {
       setLoading(false);
     }
@@ -155,79 +158,90 @@ export function CoreMasterDataCenter() {
         )}
       </div>
 
-      <div
-        className="master-spine"
-        role="img"
-        aria-label="主数据关系结构：法定主体到经营主体，再到客户、供应商与仓库"
-      >
-        <div>
-          <b>01</b>
-          <span>法定主体</span>
-          <small>LEGAL OWNER</small>
+      {!error && (
+        <div
+          className="master-spine"
+          role="img"
+          aria-label="主数据关系结构：法定主体到经营主体，再到客户、供应商与仓库"
+        >
+          <div>
+            <b>01</b>
+            <span>法定主体</span>
+            <small>LEGAL OWNER</small>
+          </div>
+          <i>→</i>
+          <div>
+            <b>02</b>
+            <span>经营主体</span>
+            <small>OPERATING UNIT</small>
+          </div>
+          <i>→</i>
+          <div>
+            <b>03</b>
+            <span>客户 · 供应商 · 仓库</span>
+            <small>OPERATING OBJECTS</small>
+          </div>
         </div>
-        <i>→</i>
-        <div>
-          <b>02</b>
-          <span>经营主体</span>
-          <small>OPERATING UNIT</small>
-        </div>
-        <i>→</i>
-        <div>
-          <b>03</b>
-          <span>客户 · 供应商 · 仓库</span>
-          <small>OPERATING OBJECTS</small>
-        </div>
-      </div>
+      )}
 
-      <div className="master-tabs" role="tablist" aria-label="核心数据类别">
-        {TYPES.map((item) => (
+      {!error && (
+        <div className="master-tabs" role="tablist" aria-label="核心数据类别">
+          {TYPES.map((item) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeType === item.id}
+              className={activeType === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => setActiveType(item.id)}
+            >
+              <b>{item.short}</b>
+              <span>{item.label}</span>
+              <em>{counts[item.id]}</em>
+              <small>{item.description}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!error && (
+        <div className="master-toolbar">
+          <label>
+            <span>检索</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="编码、名称或上级主体"
+            />
+          </label>
+          <label>
+            <span>状态</span>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="all">全部状态</option>
+              <option value="active">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </label>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeType === item.id}
-            className={activeType === item.id ? "active" : ""}
-            key={item.id}
-            onClick={() => setActiveType(item.id)}
+            className="master-secondary"
+            onClick={() => void load()}
           >
-            <b>{item.short}</b>
-            <span>{item.label}</span>
-            <em>{counts[item.id]}</em>
-            <small>{item.description}</small>
+            刷新
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      <div className="master-toolbar">
-        <label>
-          <span>检索</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="编码、名称或上级主体"
-          />
-        </label>
-        <label>
-          <span>状态</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">全部状态</option>
-            <option value="active">启用</option>
-            <option value="disabled">停用</option>
-          </select>
-        </label>
-        <button
-          type="button"
-          className="master-secondary"
-          onClick={() => void load()}
-        >
-          刷新
-        </button>
-      </div>
-
-      {error && <div className="master-message error">{error}</div>}
-      {loading ? (
+      {error ? (
+        <PageLoadFailure
+          failure={error}
+          resourceLabel="核心数据"
+          onRetry={() => void load()}
+        />
+      ) : loading ? (
         <div className="master-message">正在读取权威主数据…</div>
       ) : current.length === 0 ? (
         <div className="master-empty">

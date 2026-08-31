@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   type AgentQueryRun,
   type AgentQueryRunList,
+  type ApiFailure,
   type Envelope,
   type GoodsReceipt,
   type DataQuality,
@@ -25,6 +26,7 @@ import {
   type Shipment,
   type SupplierPayment,
   request,
+  toApiFailure,
 } from "./api";
 import {
   connectBusinessDockAuthBridge,
@@ -36,6 +38,7 @@ import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
 import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
 import { NumberingRulesCenter } from "./NumberingRulesCenter";
+import { PageLoadFailure } from "./PageLoadFailure";
 import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
 import { OperatingTrendsView } from "./OperatingTrends";
 import { GoodsReceiptConfirmation } from "./GoodsReceiptConfirmation";
@@ -74,7 +77,12 @@ type Section =
   | "profitability"
   | "adjustments"
   | "reports";
-type LoadState<T> = { data: T; error: string | null; loading: boolean };
+type LoadState<T> = {
+  data: T;
+  error: ApiFailure | null;
+  loading: boolean;
+  retry: () => void;
+};
 
 type NavItem = { id: Section; label: string; index: string };
 
@@ -207,27 +215,34 @@ function useLoad<T>(
   loader: () => Promise<T>,
   deps: React.DependencyList,
 ): LoadState<T | null> {
-  const [state, setState] = React.useState<LoadState<T | null>>({
+  const [retryKey, setRetryKey] = React.useState(0);
+  const retry = React.useCallback(() => setRetryKey((value) => value + 1), []);
+  const [state, setState] = React.useState<Omit<LoadState<T | null>, "retry">>({
     data: null,
     error: null,
     loading: true,
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: callers provide explicit reload keys and retryKey intentionally reruns the loader.
   React.useEffect(() => {
+    void retryKey;
     let active = true;
     setState((current) => ({ ...current, loading: true, error: null }));
     loader()
       .then((data) => active && setState({ data, error: null, loading: false }))
       .catch(
-        (error: Error) =>
+        (error: unknown) =>
           active &&
-          setState({ data: null, error: error.message, loading: false }),
+          setState({
+            data: null,
+            error: toApiFailure(error),
+            loading: false,
+          }),
       );
     return () => {
       active = false;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: callers provide the explicit reload key list.
-  }, deps);
-  return state;
+  }, [...deps, retryKey]);
+  return { ...state, retry };
 }
 
 function App() {
@@ -468,7 +483,7 @@ function AgentQueryReceipt({ traceId }: { traceId?: string }) {
       title="业务查询记录"
       caption="仅展示当前账号自己的最小化审计信息；原始查询结果、令牌和授权凭据不会写入此记录。"
     >
-      <State state={state}>
+      <State state={state} resourceLabel="业务查询记录">
         {state.data && (
           <div className={`agent-query-receipt ${state.data.status}`}>
             <div className="agent-query-summary">
@@ -562,7 +577,7 @@ function OperationsDashboardView() {
       caption="销售、采购、库存和真实利润来自同一组权威业务事实；金额严格限定单一币种。"
     >
       <RecentAgentQueries />
-      <State state={state}>
+      <State state={state} resourceLabel="经营驾驶舱">
         {state.data && (
           <>
             <OperationsReadout
@@ -761,7 +776,7 @@ function DataQualityView() {
       title="业务数据质量中心"
       caption="统一核对销售、采购、库存和利润投影；只展示证据与安全恢复指引，不直接改写权威事实。"
     >
-      <State state={state}>
+      <State state={state} resourceLabel="数据质量">
         {state.data && (
           <>
             <OperationsReadout
@@ -895,12 +910,16 @@ function OperatingIncidentsView() {
       title="异常必须有人接住"
       caption="将数据质量异常变成有负责人、有时限、有处置轨迹的经营事件；底层条件未清除时不能标记解决。"
       actions={
-        <button type="button" onClick={scan} disabled={busy !== null}>
+        <button
+          type="button"
+          onClick={scan}
+          disabled={busy !== null || Boolean(state.error)}
+        >
           {busy === "scan" ? "扫描中…" : "扫描当前异常"}
         </button>
       }
     >
-      <State state={state}>
+      <State state={state} resourceLabel="异常处置">
         {state.data && (
           <>
             <section className="incident-totals" aria-label="异常处置摘要">
@@ -1466,31 +1485,33 @@ function ReceiptView({ id }: { id?: string }) {
       title={receipt?.receiptNumber ?? "收款与核销"}
       caption="收款先确认，再按同一主体、客户和币种核销应收。"
     >
-      <CommandConsole
-        title="收款 / 核销 / 冲销命令"
-        defaultPath={
-          receipt
-            ? `/api/v1/customer-receipts/${receipt.id}/allocations`
-            : "/api/v1/customer-receipts"
-        }
-        defaultMethod="POST"
-        sample={
-          receipt
-            ? {
-                expectedReceiptVersion: receipt.version,
-                allocations: [{ receivableId: "", amount: "0" }],
-              }
-            : {
-                legalEntityId: "",
-                customerId: "",
-                currency: "CNY",
-                receiptDate: today(),
-                amount: "0",
-                paymentMethod: "bank_transfer",
-              }
-        }
-        onDone={() => setRevision((value) => value + 1)}
-      />
+      {!state.error && (
+        <CommandConsole
+          title="收款 / 核销 / 冲销命令"
+          defaultPath={
+            receipt
+              ? `/api/v1/customer-receipts/${receipt.id}/allocations`
+              : "/api/v1/customer-receipts"
+          }
+          defaultMethod="POST"
+          sample={
+            receipt
+              ? {
+                  expectedReceiptVersion: receipt.version,
+                  allocations: [{ receivableId: "", amount: "0" }],
+                }
+              : {
+                  legalEntityId: "",
+                  customerId: "",
+                  currency: "CNY",
+                  receiptDate: today(),
+                  amount: "0",
+                  paymentMethod: "bank_transfer",
+                }
+          }
+          onDone={() => setRevision((value) => value + 1)}
+        />
+      )}
       <State state={state}>
         {receipt ? (
           <div className="receipt-slip">
@@ -1818,31 +1839,33 @@ function SupplierPayments({ id }: { id?: string }) {
       title={id ? "供应商付款详情" : "供应商付款"}
       caption="付款先确认，再按同一主体、供应商和币种核销应付。"
     >
-      <CommandConsole
-        title={payment ? "核销经营性应付" : "登记供应商付款"}
-        defaultPath={
-          payment
-            ? `/api/v1/supplier-payments/${payment.id}/allocations`
-            : "/api/v1/supplier-payments"
-        }
-        defaultMethod="POST"
-        sample={
-          payment
-            ? {
-                expectedPaymentVersion: payment.version,
-                allocations: [{ payableId: "", amount: "0" }],
-              }
-            : {
-                legalEntityId: "",
-                supplierId: "",
-                currency: "CNY",
-                paymentDate: today(),
-                amount: "0",
-                paymentMethod: "bank_transfer",
-              }
-        }
-        onDone={() => setRevision((value) => value + 1)}
-      />
+      {!state.error && (
+        <CommandConsole
+          title={payment ? "核销经营性应付" : "登记供应商付款"}
+          defaultPath={
+            payment
+              ? `/api/v1/supplier-payments/${payment.id}/allocations`
+              : "/api/v1/supplier-payments"
+          }
+          defaultMethod="POST"
+          sample={
+            payment
+              ? {
+                  expectedPaymentVersion: payment.version,
+                  allocations: [{ payableId: "", amount: "0" }],
+                }
+              : {
+                  legalEntityId: "",
+                  supplierId: "",
+                  currency: "CNY",
+                  paymentDate: today(),
+                  amount: "0",
+                  paymentMethod: "bank_transfer",
+                }
+          }
+          onDone={() => setRevision((value) => value + 1)}
+        />
+      )}
       <State state={state}>
         <div className="compact-list">
           {rows.map((item) => (
@@ -1896,7 +1919,7 @@ function OrderProfits({ id }: { id?: string }) {
       title={id ? "订单利润详情" : "订单真实利润"}
       caption="收入与产品成本来自已确认出库，经营费用来自已过账管理调整；该口径不是法定利润。"
     >
-      <State state={state}>
+      <State state={state} resourceLabel="订单真实利润">
         <div className="sheet">
           {state.data?.items.map((row) => (
             <article className="ledger-row" key={row.salesOrderId}>
@@ -1963,7 +1986,7 @@ function Profitability() {
         </select>
       }
     >
-      <State state={state}>
+      <State state={state} resourceLabel="多维盈利分析">
         <div className="sheet">
           {state.data?.items.map((row) => (
             <article
@@ -2009,28 +2032,30 @@ function ProfitAdjustments({ id }: { id?: string }) {
       title={id ? "经营费用批次" : "经营费用归集"}
       caption="草稿先预览；过账必须匹配预览哈希和事实水位，失效后明确返回 STALE_PREVIEW。"
     >
-      <CommandConsole
-        title="创建经营调整草稿"
-        defaultPath="/api/v1/profit-adjustments"
-        defaultMethod="POST"
-        sample={{
-          legalEntityId: "",
-          currency: "CNY",
-          managementPeriod: currentPeriod(),
-          lines: [
-            {
-              metricType: "outbound_freight",
-              amount: "0.00",
-              businessDate: today(),
-              allocationBasis: "direct",
-              directSalesOrderId: "",
-              reasonCode: "OPERATING_COST",
-            },
-          ],
-        }}
-        onDone={() => setRevision((value) => value + 1)}
-      />
-      <State state={state}>
+      {!state.error && (
+        <CommandConsole
+          title="创建经营调整草稿"
+          defaultPath="/api/v1/profit-adjustments"
+          defaultMethod="POST"
+          sample={{
+            legalEntityId: "",
+            currency: "CNY",
+            managementPeriod: currentPeriod(),
+            lines: [
+              {
+                metricType: "outbound_freight",
+                amount: "0.00",
+                businessDate: today(),
+                allocationBasis: "direct",
+                directSalesOrderId: "",
+                reasonCode: "OPERATING_COST",
+              },
+            ],
+          }}
+          onDone={() => setRevision((value) => value + 1)}
+        />
+      )}
+      <State state={state} resourceLabel="经营费用归集">
         <div className="compact-list">
           {rows.map((item) => (
             <article key={item.id}>
@@ -2092,19 +2117,21 @@ function ManagementReports({ id }: { id?: string }) {
       title="管理利润报表"
       caption="当前报表随事实更新；正式留痕使用不可变快照、来源水位与内容哈希。"
     >
-      <CommandConsole
-        title="生成管理报表快照"
-        defaultPath="/api/v1/management-report-snapshots"
-        defaultMethod="POST"
-        sample={{
-          reportType: "management_profit_statement",
-          managementPeriod: period,
-          currency: "CNY",
-          legalEntityIds: [],
-        }}
-        onDone={() => setRevision((value) => value + 1)}
-      />
-      <State state={state}>
+      {!state.error && (
+        <CommandConsole
+          title="生成管理报表快照"
+          defaultPath="/api/v1/management-report-snapshots"
+          defaultMethod="POST"
+          sample={{
+            reportType: "management_profit_statement",
+            managementPeriod: period,
+            currency: "CNY",
+            legalEntityIds: [],
+          }}
+          onDone={() => setRevision((value) => value + 1)}
+        />
+      )}
+      <State state={state} resourceLabel="管理利润报表">
         {state.data && (
           <>
             <div className="balance-callout">
@@ -2259,14 +2286,19 @@ function CommandConsole({
 function State<T>({
   state,
   children,
-}: React.PropsWithChildren<{ state: LoadState<T | null> }>) {
+  resourceLabel = "业务数据",
+}: React.PropsWithChildren<{
+  state: LoadState<T | null>;
+  resourceLabel?: string;
+}>) {
   if (state.loading) return <div className="loading">正在核对权威账簿…</div>;
   if (state.error)
     return (
-      <div className="error">
-        <strong>无法读取业务数据</strong>
-        <span>{state.error}</span>
-      </div>
+      <PageLoadFailure
+        failure={state.error}
+        resourceLabel={resourceLabel}
+        onRetry={state.retry}
+      />
     );
   return children;
 }

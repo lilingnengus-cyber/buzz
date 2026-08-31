@@ -30,7 +30,9 @@ export type AgentQueryRun = {
 };
 
 export type AgentQueryRunList = {
-  items: Array<Omit<AgentQueryRun, "sourceBuzzEventId" | "responseBuzzEventId" | "stages">>;
+  items: Array<
+    Omit<AgentQueryRun, "sourceBuzzEventId" | "responseBuzzEventId" | "stages">
+  >;
   dataAsOf: string;
 };
 
@@ -1300,16 +1302,88 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(apiErrorMessage(body, response.status));
+    const error = body as {
+      code?: unknown;
+      traceId?: unknown;
+    };
+    throw new ApiRequestError({
+      status: response.status,
+      message: apiErrorMessage(body, response.status),
+      code: typeof error.code === "string" ? error.code : undefined,
+      traceId: typeof error.traceId === "string" ? error.traceId : undefined,
+    });
   }
   return body as T;
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly traceId?: string;
+
+  constructor(input: {
+    status: number;
+    message: string;
+    code?: string;
+    traceId?: string;
+  }) {
+    super(input.message);
+    this.name = "ApiRequestError";
+    this.status = input.status;
+    this.code = input.code;
+    this.traceId = input.traceId;
+  }
+}
+
+export type ApiFailureKind =
+  | "access_denied"
+  | "session_expired"
+  | "service_unavailable"
+  | "unexpected";
+
+export type ApiFailure = {
+  kind: ApiFailureKind;
+  message: string;
+  traceId?: string;
+};
+
+export function toApiFailure(
+  reason: unknown,
+  fallback = "请求失败，请稍后重试",
+): ApiFailure {
+  if (reason instanceof ApiRequestError) {
+    const kind: ApiFailureKind =
+      reason.code === "not_found_or_forbidden" || reason.status === 403
+        ? "access_denied"
+        : reason.status === 401
+          ? "session_expired"
+          : reason.status >= 500
+            ? "service_unavailable"
+            : "unexpected";
+    return {
+      kind,
+      message: reason.message,
+      ...(reason.traceId ? { traceId: reason.traceId } : {}),
+    };
+  }
+  return {
+    kind: reason instanceof TypeError ? "service_unavailable" : "unexpected",
+    message: reason instanceof Error ? reason.message : fallback,
+  };
+}
+
+export function isUnavailableResourceError(reason: unknown): boolean {
+  return (
+    reason instanceof ApiRequestError &&
+    reason.code === "not_found_or_forbidden"
+  );
 }
 
 export function apiErrorMessage(body: unknown, status: number): string {
   if (body && typeof body === "object") {
     const error = body as { code?: unknown; message?: unknown };
     if (error.code === "not_found_or_forbidden") {
-      return "资源不存在，或当前账号无权访问";
+      return "当前账号无法访问此资源";
     }
     if (typeof error.message === "string" && error.message.length > 0) {
       return error.message;
