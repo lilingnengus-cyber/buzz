@@ -706,6 +706,22 @@ fn validate_multiple_event_handling(
     Ok(())
 }
 
+/// Parse an optional feature switch without silently accepting misspellings.
+///
+/// Product extensions use this helper so every switch defaults to disabled and
+/// startup fails closed for any value other than the literal `true` or `false`.
+pub(crate) fn parse_optional_feature_switch(
+    name: &str,
+    value: Option<&str>,
+) -> Result<bool, String> {
+    match value {
+        None => Ok(false),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(_) => Err(format!("{name} must be true or false")),
+    }
+}
+
 pub(crate) fn normalize_agent_command_identity(command: &str) -> String {
     let normalized = command.trim().replace('\\', "/");
     let trimmed = normalized.trim_end_matches('/');

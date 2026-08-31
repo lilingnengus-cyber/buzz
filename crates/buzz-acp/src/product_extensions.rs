@@ -9,8 +9,11 @@ use crate::turn_observer::TurnExtension;
 mod business_agent;
 #[path = "business_response.rs"]
 mod business_response;
+#[path = "life_agent.rs"]
+mod life_agent;
 
 pub(crate) fn load_from_env(agent_command: &str) -> Result<Arc<TurnExtensionRegistry>, String> {
+    life_agent::validate_from_env()?;
     build_registry(
         business_agent::BusinessAgentHostConfig::from_env()?,
         agent_command,
