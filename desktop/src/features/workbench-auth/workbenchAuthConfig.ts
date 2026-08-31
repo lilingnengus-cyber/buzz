@@ -25,7 +25,7 @@ function readAbsoluteUrl(value: string, label: string): URL {
   } catch {
     throw new Error(`${label} must be an absolute URL.`);
   }
-  if (!["https:", "http:", "buzz:", "buzz-dev:"].includes(url.protocol)) {
+  if (!["https:", "http:", "pacioli:", "pacioli-dev:"].includes(url.protocol)) {
     throw new Error(
       `${label} must use HTTPS, HTTP, or a Buzz callback scheme.`,
     );
@@ -73,7 +73,7 @@ export function readWorkbenchAuthConfig(env: WorkbenchAuthEnv): ConfigResult {
       logoutValue,
       "VITE_OIDC_POST_LOGOUT_REDIRECT_URI",
     );
-    if (issuer.protocol === "buzz:" || issuer.search) {
+    if (issuer.protocol === "pacioli:" || issuer.search) {
       throw new Error(
         "VITE_OIDC_ISSUER must be an HTTP(S) issuer without a query.",
       );

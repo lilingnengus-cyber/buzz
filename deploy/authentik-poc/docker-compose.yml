@@ -77,7 +77,7 @@ services:
       BUSINESS_COOKIE_SECURE: ${BUSINESS_COOKIE_SECURE:-true}
       BUSINESS_COOKIE_SAME_SITE: ${BUSINESS_COOKIE_SAME_SITE:-Lax}
       BUSINESS_EMBED_AUDIENCE: ${BUSINESS_EMBED_AUDIENCE:-business-dock}
-      BUSINESS_EMBED_CALLBACK_URI: ${BUSINESS_EMBED_CALLBACK_URI:-buzz://auth/business-bootstrap}
+      BUSINESS_EMBED_CALLBACK_URI: ${BUSINESS_EMBED_CALLBACK_URI:-pacioli://auth/business-bootstrap}
       BUSINESS_SESSION_DB: /data/business-sessions.sqlite
       PORT: 3000
     ports:
@@ -136,7 +136,7 @@ services:
       BUSINESS_SESSION_COOKIE_SECURE: "true"
       BUSINESS_SESSION_COOKIE_SAMESITE: None
       DEPLOYMENT_ID: local-v3-2
-      GLOBAL_LOGOUT_REDIRECT_URI: buzz://auth/logout-callback
+      GLOBAL_LOGOUT_REDIRECT_URI: pacioli://auth/logout-callback
       SSL_CERT_FILE: /certs/rootCA.pem
       RUST_LOG: business_auth_gateway=warn
     volumes:

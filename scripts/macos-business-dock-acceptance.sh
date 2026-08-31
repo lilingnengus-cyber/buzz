@@ -74,7 +74,7 @@ until curl --fail --silent --max-time 2 "http://127.0.0.1:${health_port}/_readin
   sleep 1
 done
 
-app="desktop/src-tauri/target/release/bundle/macos/Buzz Dev.app"
+app="desktop/src-tauri/target/release/bundle/macos/Pacioli Dev.app"
 if [[ ! -d "$app" ]]; then
   echo "Isolated Debug app is missing: $app"
   echo "Build with the V3.2 documented tauri command before acceptance."
@@ -87,7 +87,7 @@ app_bundle_id="${BUZZ_BUSINESS_DOCK_APP_BUNDLE_ID:-$(
   /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist"
 )}"
 
-echo "Relay ready; launching isolated Buzz Dev acceptance bundle. Relay log: $relay_log"
+echo "Relay ready; launching isolated Pacioli Dev acceptance bundle. Relay log: $relay_log"
 open "$app"
 xcrun swift scripts/macos-ax-text-check.swift \
   --bundle-id "$app_bundle_id" \

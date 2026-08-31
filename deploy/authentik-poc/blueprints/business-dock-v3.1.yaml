@@ -119,6 +119,12 @@ entries:
           url: buzz-dev://auth/callback
           redirect_uri_type: authorization
         - matching_mode: strict
+          url: pacioli://auth/callback
+          redirect_uri_type: authorization
+        - matching_mode: strict
+          url: pacioli-dev://auth/callback
+          redirect_uri_type: authorization
+        - matching_mode: strict
           url: https://workbench.bizfin.test/
           redirect_uri_type: logout
         - matching_mode: strict
@@ -129,6 +135,12 @@ entries:
           redirect_uri_type: logout
         - matching_mode: strict
           url: buzz-dev://auth/logout-callback
+          redirect_uri_type: logout
+        - matching_mode: strict
+          url: pacioli://auth/logout-callback
+          redirect_uri_type: logout
+        - matching_mode: strict
+          url: pacioli-dev://auth/logout-callback
           redirect_uri_type: logout
       property_mappings:
         - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]

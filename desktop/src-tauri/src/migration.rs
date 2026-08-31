@@ -21,7 +21,7 @@ use tauri::Manager;
 
 use crate::util::replace_with_symlink;
 
-const CANONICAL_DEV_IDENTIFIER: &str = "xyz.block.buzz.app.dev";
+const CANONICAL_DEV_IDENTIFIER: &str = "com.shiyueshizi.pacioli.dev";
 const LEGACY_CANONICAL_DEV_IDENTIFIER: &str = "xyz.block.sprout.app.dev";
 const LEGACY_RELEASE_IDENTIFIER: &str = "xyz.block.sprout.app";
 
@@ -58,8 +58,13 @@ fn canonical_dev_data_dir(current: &Path) -> Option<PathBuf> {
 
 pub(crate) fn legacy_app_data_dir(current: &Path) -> Option<PathBuf> {
     let name = current.file_name()?.to_str()?;
-    let legacy_name = if name.starts_with(CANONICAL_DEV_IDENTIFIER) {
-        name.replacen(CANONICAL_DEV_IDENTIFIER, LEGACY_CANONICAL_DEV_IDENTIFIER, 1)
+    // Pacioli is a separate application, not a rename-in-place migration.
+    // Never import Buzz or Sprout state into its independent data directory.
+    if name.starts_with("com.shiyueshizi.pacioli") {
+        return None;
+    }
+    let legacy_name = if name.starts_with("xyz.block.buzz.app.dev") {
+        name.replacen("xyz.block.buzz.app.dev", LEGACY_CANONICAL_DEV_IDENTIFIER, 1)
     } else if name.starts_with("xyz.block.buzz.app") {
         name.replacen("xyz.block.buzz.app", LEGACY_RELEASE_IDENTIFIER, 1)
     } else {

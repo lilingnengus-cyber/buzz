@@ -3,7 +3,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 import type { BusinessDockConfig } from "@/features/business-dock/businessDockConfig";
 
-const EMBED_CALLBACK = "buzz://auth/business-bootstrap";
+const EMBED_CALLBACK = "pacioli://auth/business-bootstrap";
 const EMBED_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export type BusinessSsoMode = "web-native" | "desktop-embed-session";

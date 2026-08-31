@@ -140,7 +140,7 @@ export function BusinessIamAdminDialog({
               <div>
                 <DialogTitle>Authority ledger</DialogTitle>
                 <DialogDescription>
-                  Human and Agent access changes, separated from Buzz
+                  Human and Agent access changes, separated from Pacioli
                   membership.
                 </DialogDescription>
               </div>

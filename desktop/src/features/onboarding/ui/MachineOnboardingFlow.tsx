@@ -311,11 +311,17 @@ export function MachineOnboardingFlow({
               direction={transitionDirection}
               transitionKey={`machine-identity-${transitionDirection}`}
             >
-              <img
-                alt="Buzz"
-                className="w-full max-w-[600px]"
-                src="/landing/buzz-wordmark.png"
-              />
+              <div className="flex items-center justify-center gap-5">
+                <img
+                  alt=""
+                  aria-hidden
+                  className="size-28 rounded-3xl shadow-sm"
+                  src="/pacioli-logo.png"
+                />
+                <span className="text-6xl font-semibold tracking-tight text-foreground">
+                  Pacioli
+                </span>
+              </div>
               <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
                 Your people, your agents, your projects —<br />
                 all in one place.
@@ -381,7 +387,7 @@ export function MachineOnboardingFlow({
                     "Enter your backup password to restore your identity."
                   ) : (
                     <p>
-                      Paste your private key to sign in to Buzz. You can also
+                      Paste your private key to sign in to Pacioli. You can also
                       use a{" "}
                       <button
                         className="rounded-sm font-medium underline decoration-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
@@ -450,7 +456,7 @@ export function MachineOnboardingFlow({
                       Restore from a backup file
                     </DialogTitle>
                     <DialogDescription className="mx-auto mt-4 max-w-[28rem] text-sm leading-6 text-foreground/80">
-                      Choose the encrypted backup file you saved from Buzz.
+                      Choose the encrypted backup file you saved from Pacioli.
                     </DialogDescription>
                     <NostrKeyImportForm
                       footerMode="inline"
@@ -480,12 +486,12 @@ export function MachineOnboardingFlow({
                     <DialogTitle className="text-balance px-8 text-3xl font-normal text-foreground">
                       {identityLost
                         ? "Recover from your phone"
-                        : "Use your Buzz identity"}
+                        : "Use your Pacioli identity"}
                     </DialogTitle>
                     <DialogDescription className="mt-4 text-sm leading-6 text-foreground/80">
                       {phoneRecoveryStep === "loading" ||
                       phoneRecoveryStep === "qr"
-                        ? "Scan this code with a signed-in Buzz phone."
+                        ? "Scan this code with a signed-in Pacioli phone."
                         : "Confirm the code before sharing your identity."}
                     </DialogDescription>
                     <div className="mt-5">

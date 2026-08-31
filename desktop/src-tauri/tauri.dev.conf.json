@@ -1,10 +1,10 @@
 {
-  "identifier": "xyz.block.buzz.app.dev",
-  "productName": "Buzz Dev",
+  "identifier": "com.shiyueshizi.pacioli.dev",
+  "productName": "Pacioli Dev",
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["buzz-dev"]
+        "schemes": ["pacioli-dev"]
       }
     }
   }

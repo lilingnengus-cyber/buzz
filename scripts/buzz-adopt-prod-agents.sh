@@ -62,8 +62,8 @@ set -euo pipefail
 # real invocation ever uses. Keychain service/account stay overridable because
 # they are read-only against prod (used to fixture-test the identity read).
 SUPPORT="$HOME/Library/Application Support"
-PROD_DIR="$SUPPORT/xyz.block.buzz.app"
-DEV_DIR="$SUPPORT/xyz.block.buzz.app.dev"
+PROD_DIR="$SUPPORT/com.shiyueshizi.pacioli"
+DEV_DIR="$SUPPORT/com.shiyueshizi.pacioli.dev"
 KEYCHAIN_SVC="${BUZZ_KEYCHAIN_SVC:-buzz-desktop}"
 KEYCHAIN_ACCT="${BUZZ_KEYCHAIN_ACCT:-secrets}"
 
@@ -173,7 +173,7 @@ say "[1/4] Preflight"
 # 1a. Refuse if a running DEV build is detected; a running installed DMG is
 #     allowed (read-only detection; never kills). The main app binary is
 #     `buzz-desktop` for both the installed DMG
-#     (/Applications/Buzz.app/Contents/MacOS/buzz-desktop) and dev builds
+#     (/Applications/Pacioli.app/Contents/MacOS/buzz-desktop) and dev builds
 #     (target/<profile>/buzz-desktop via `tauri dev`). Match that path component
 #     exactly so sidecars/helpers (buzz, buzz-dev-mcp, buzz-agent) don't
 #     false-positive.
@@ -194,7 +194,7 @@ say "[1/4] Preflight"
 #     and resolution (path unresolvable AND process gone) is ignored — it is no
 #     longer running. A PID still alive but unresolvable (permissions, exotic
 #     state) blocks.
-ALLOWED_PROD_EXE="/Applications/Buzz.app/Contents/MacOS/buzz-desktop"
+ALLOWED_PROD_EXE="/Applications/Pacioli.app/Contents/MacOS/buzz-desktop"
 
 # Echo a PID's true executable path (first txt-mapped vnode), or empty if none.
 # lsof exits nonzero when the PID is gone; callers use `|| true` so a raced exit

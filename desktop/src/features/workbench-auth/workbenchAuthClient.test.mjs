@@ -11,14 +11,14 @@ import {
 const config = {
   issuer: "https://auth.bizfin.localhost/application/o/workbench",
   clientId: "workbench-poc",
-  redirectUri: "buzz://auth/callback",
-  postLogoutRedirectUri: "buzz://auth/logout-callback",
+  redirectUri: "pacioli://auth/callback",
+  postLogoutRedirectUri: "pacioli://auth/logout-callback",
 };
 
 test("desktop OIDC callback matches only the registered exact route", () => {
   assert.equal(
     isWorkbenchAuthCallback(
-      "buzz://auth/callback?code=opaque&state=state",
+      "pacioli://auth/callback?code=opaque&state=state",
       config,
     ),
     true,
@@ -29,7 +29,7 @@ test("desktop OIDC callback matches only the registered exact route", () => {
   );
   assert.equal(
     isWorkbenchAuthCallback(
-      "buzz://auth/business-bootstrap?code=opaque",
+      "pacioli://auth/business-bootstrap?code=opaque",
       config,
     ),
     false,
@@ -38,7 +38,7 @@ test("desktop OIDC callback matches only the registered exact route", () => {
 
 test("duplicate desktop callbacks are consumed once", () => {
   const guard = createWorkbenchCallbackReplayGuard();
-  const callback = "buzz://auth/callback?code=opaque&state=state";
+  const callback = "pacioli://auth/callback?code=opaque&state=state";
   assert.equal(guard.accept(callback), true);
   assert.equal(guard.accept(callback), false);
   assert.equal(guard.accept(`${callback}-new`), true);

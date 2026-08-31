@@ -3,12 +3,13 @@ use super::*;
 
 #[test]
 fn canonical_dev_data_dir_replaces_last_component() {
-    let current =
-        PathBuf::from("/Users/me/Library/Application Support/xyz.block.buzz.app.dev.my-branch");
+    let current = PathBuf::from(
+        "/Users/me/Library/Application Support/com.shiyueshizi.pacioli.dev.my-branch",
+    );
     let canonical = canonical_dev_data_dir(&current).unwrap();
     assert_eq!(
         canonical,
-        PathBuf::from("/Users/me/Library/Application Support/xyz.block.buzz.app.dev")
+        PathBuf::from("/Users/me/Library/Application Support/com.shiyueshizi.pacioli.dev")
     );
 }
 
@@ -37,6 +38,18 @@ fn legacy_app_data_dir_maps_dev_worktree_identifier() {
         legacy,
         PathBuf::from("/Users/me/Library/Application Support/xyz.block.sprout.app.dev.my-branch",)
     );
+}
+
+#[test]
+fn pacioli_app_data_never_imports_buzz_or_sprout_state() {
+    for identifier in [
+        "com.shiyueshizi.pacioli",
+        "com.shiyueshizi.pacioli.dev",
+        "com.shiyueshizi.pacioli.dev.my-branch",
+    ] {
+        let current = PathBuf::from("/Users/me/Library/Application Support").join(identifier);
+        assert_eq!(legacy_app_data_dir(&current), None);
+    }
 }
 
 #[test]
@@ -69,8 +82,8 @@ fn copy_dir_all_preserves_nested_files_without_overwriting() {
 fn setup_sync_layout() -> (tempfile::TempDir, PathBuf, PathBuf) {
     let parent = tempfile::tempdir().unwrap();
     let canonical = parent.path().join(CANONICAL_DEV_IDENTIFIER);
-    let worktree = parent.path().join("xyz.block.buzz.app.dev.my-branch");
-    let main_instance = parent.path().join("xyz.block.buzz.app.dev.main");
+    let worktree = parent.path().join("com.shiyueshizi.pacioli.dev.my-branch");
+    let main_instance = parent.path().join("com.shiyueshizi.pacioli.dev.main");
 
     std::fs::create_dir_all(canonical.join("agents")).unwrap();
     std::fs::write(
@@ -351,7 +364,7 @@ fn seed_up_migrates_sibling_file_to_canonical_then_symlinks() {
     let sibling = canonical
         .parent()
         .unwrap()
-        .join("xyz.block.buzz.app.dev.main");
+        .join("com.shiyueshizi.pacioli.dev.main");
     std::fs::create_dir_all(sibling.join("agents")).unwrap();
     std::fs::write(sibling.join(rel), r#"[{"id":"brain"}]"#).unwrap();
 
@@ -397,7 +410,7 @@ fn seed_up_skipped_when_canonical_has_file() {
     let sibling = canonical
         .parent()
         .unwrap()
-        .join("xyz.block.buzz.app.dev.main");
+        .join("com.shiyueshizi.pacioli.dev.main");
     std::fs::create_dir_all(sibling.join("agents")).unwrap();
     std::fs::write(sibling.join(rel), r#"[{"id":"should-not-win"}]"#).unwrap();
 
@@ -424,7 +437,7 @@ fn seed_up_ignores_sibling_symlink_as_source() {
     let sibling = canonical
         .parent()
         .unwrap()
-        .join("xyz.block.buzz.app.dev.main");
+        .join("com.shiyueshizi.pacioli.dev.main");
     std::fs::create_dir_all(sibling.join("agents")).unwrap();
     std::os::unix::fs::symlink(
         PathBuf::from("/nonexistent/elsewhere.json"),
@@ -446,7 +459,8 @@ fn canonical_dev_data_dir_returns_self_for_canonical_instance() {
     // The env-var guards (BUZZ_SHARE_IDENTITY, BUZZ_PRIVATE_KEY)
     // require a live Tauri AppHandle and are covered by integration
     // testing only.
-    let current = PathBuf::from("/Users/me/Library/Application Support/xyz.block.buzz.app.dev");
+    let current =
+        PathBuf::from("/Users/me/Library/Application Support/com.shiyueshizi.pacioli.dev");
     assert_eq!(canonical_dev_data_dir(&current).unwrap(), current);
 
     // Also verify with a temp dir on the real filesystem.
@@ -483,7 +497,7 @@ fn sync_migrates_teams_from_sibling_to_canonical() {
     let main_instance = canonical
         .parent()
         .unwrap()
-        .join("xyz.block.buzz.app.dev.main");
+        .join("com.shiyueshizi.pacioli.dev.main");
 
     // Before sync: canonical has no teams, .main has the real team dir.
     assert!(!canonical.join("agents/teams").exists());

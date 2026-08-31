@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { BuzzMark } from "./BuzzMark";
 
 /**
  * The Buzz bee mark with flapping wings. Geometry is identical to the static
@@ -22,96 +22,11 @@ import { useId } from "react";
  * to the static silhouette via the CSS media query.
  */
 export function FlappingBee({ className }: { className?: string }) {
-  const maskId = `flapping-bee-cutouts-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-
-  // Wing geometry from the 466x309 mark: circles r=91.7 at (91.7, 154.5) and
-  // (374.3, 154.5). Each wing layer is the circle's bounding box, positioned
-  // as percentages of the mark: top 62.8/309, size 183.4/466 x 183.4/309.
-  const wingLayer =
-    "bee-wing-layer absolute top-[20.3236%] h-[59.3528%] w-[39.3562%]";
-  const wingSvg = "bee-wing block h-full w-full";
-
   return (
-    <div
-      aria-hidden="true"
-      className={[
-        "buzz-mark",
-        "bee-sprite",
-        "relative",
-        "aspect-[466/309]",
-        className,
-      ]
+    <BuzzMark
+      className={["buzz-logo--scale-pulse", className]
         .filter(Boolean)
         .join(" ")}
-    >
-      <div className={`${wingLayer} bee-wing-layer-left left-0`}>
-        <svg
-          aria-hidden="true"
-          className={`${wingSvg} bee-wing-left`}
-          viewBox="0 0 183.4 183.4"
-          fill="currentColor"
-        >
-          <circle cx="91.7" cy="91.7" r="91.7" />
-        </svg>
-      </div>
-      <div className={`${wingLayer} bee-wing-layer-right right-0`}>
-        <svg
-          aria-hidden="true"
-          className={`${wingSvg} bee-wing-right`}
-          viewBox="0 0 183.4 183.4"
-          fill="currentColor"
-        >
-          <circle cx="91.7" cy="91.7" r="91.7" />
-        </svg>
-      </div>
-      {/* Body last in DOM order and positioned, so it paints over the wings —
-          matching the single-SVG mark where the body rect draws on top. */}
-      <svg
-        aria-hidden="true"
-        className="relative block h-full w-full"
-        viewBox="0 0 466 309"
-        fill="currentColor"
-      >
-        <defs>
-          <mask
-            id={maskId}
-            x="-80"
-            y="-80"
-            width="626"
-            height="469"
-            maskUnits="userSpaceOnUse"
-            maskContentUnits="userSpaceOnUse"
-          >
-            <rect x="-80" y="-80" width="626" height="469" fill="#fff" />
-            <ellipse cx="193.3" cy="84.4" rx="27" ry="27" fill="#000" />
-            <ellipse cx="276" cy="84.4" rx="27" ry="27" fill="#000" />
-            <rect
-              x="166.3"
-              y="157.2"
-              width="136.9"
-              height="38.3"
-              rx="5"
-              fill="#000"
-            />
-            <rect
-              x="166.9"
-              y="235.1"
-              width="136.2"
-              height="37.6"
-              rx="5"
-              fill="#000"
-            />
-          </mask>
-        </defs>
-        <rect
-          x="128"
-          y="0"
-          width="210"
-          height="309"
-          rx="34"
-          mask={`url(#${maskId})`}
-        />
-      </svg>
-    </div>
+    />
   );
 }

@@ -23,16 +23,16 @@ const redirectUri = required('BUSINESS_OIDC_REDIRECT_URI');
 const postLogoutRedirectUri = required('BUSINESS_POST_LOGOUT_REDIRECT_URI');
 const embedAudience = process.env.BUSINESS_EMBED_AUDIENCE?.trim() || 'business-dock';
 const embedCallback = new URL(
-  process.env.BUSINESS_EMBED_CALLBACK_URI?.trim() || 'buzz://auth/business-bootstrap',
+  process.env.BUSINESS_EMBED_CALLBACK_URI?.trim() || 'pacioli://auth/business-bootstrap',
 );
 if (
-  embedCallback.protocol !== 'buzz:' ||
+  embedCallback.protocol !== 'pacioli:' ||
   embedCallback.host !== 'auth' ||
   embedCallback.pathname !== '/business-bootstrap' ||
   embedCallback.search ||
   embedCallback.hash
 ) {
-  throw new Error('BUSINESS_EMBED_CALLBACK_URI must be buzz://auth/business-bootstrap');
+  throw new Error('BUSINESS_EMBED_CALLBACK_URI must be pacioli://auth/business-bootstrap');
 }
 
 const workbenchOriginUrl = new URL(required('WORKBENCH_ORIGIN'));

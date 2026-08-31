@@ -30,13 +30,15 @@ test("embed login binds the request to an allowed Business target", () => {
 test("desktop callback accepts only the exact scheme and 256-bit code", () => {
   const code = "a".repeat(43);
   assert.equal(
-    parseBusinessEmbedCallback(`buzz://auth/business-bootstrap?code=${code}`),
+    parseBusinessEmbedCallback(
+      `pacioli://auth/business-bootstrap?code=${code}`,
+    ),
     code,
   );
   for (const value of [
     `buzz://evil/business-bootstrap?code=${code}`,
-    `buzz://auth/business-bootstrap?code=${code}&token=leak`,
-    "buzz://auth/business-bootstrap?code=short",
+    `pacioli://auth/business-bootstrap?code=${code}&token=leak`,
+    "pacioli://auth/business-bootstrap?code=short",
     `https://auth/business-bootstrap?code=${code}`,
   ])
     assert.equal(parseBusinessEmbedCallback(value), null);

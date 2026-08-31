@@ -26,24 +26,24 @@ test("OIDC config accepts HTTPS and Buzz desktop callbacks", () => {
   assert.equal(
     readWorkbenchAuthConfig({
       ...valid,
-      VITE_OIDC_REDIRECT_URI: "buzz://auth/callback",
-      VITE_OIDC_POST_LOGOUT_REDIRECT_URI: "buzz://auth/logout-callback",
+      VITE_OIDC_REDIRECT_URI: "pacioli://auth/callback",
+      VITE_OIDC_POST_LOGOUT_REDIRECT_URI: "pacioli://auth/logout-callback",
     }).config?.redirectUri,
-    "buzz://auth/callback",
+    "pacioli://auth/callback",
   );
 });
 
 test("OIDC config accepts the isolated development callback scheme", () => {
   const result = readWorkbenchAuthConfig({
     ...valid,
-    VITE_OIDC_REDIRECT_URI: "buzz-dev://auth/callback",
-    VITE_OIDC_POST_LOGOUT_REDIRECT_URI: "buzz-dev://auth/logout-callback",
+    VITE_OIDC_REDIRECT_URI: "pacioli-dev://auth/callback",
+    VITE_OIDC_POST_LOGOUT_REDIRECT_URI: "pacioli-dev://auth/logout-callback",
   });
   assert.equal(result.error, null);
-  assert.equal(result.config?.redirectUri, "buzz-dev://auth/callback");
+  assert.equal(result.config?.redirectUri, "pacioli-dev://auth/callback");
   assert.equal(
     result.config?.postLogoutRedirectUri,
-    "buzz-dev://auth/logout-callback",
+    "pacioli-dev://auth/logout-callback",
   );
 });
 
@@ -56,7 +56,7 @@ test("OIDC config rejects insecure remote HTTP and non-HTTP issuers", () => {
     /localhost/,
   );
   assert.match(
-    readWorkbenchAuthConfig({ ...valid, VITE_OIDC_ISSUER: "buzz://auth" })
+    readWorkbenchAuthConfig({ ...valid, VITE_OIDC_ISSUER: "pacioli://auth" })
       .error,
     /HTTP\(S\) issuer/,
   );
