@@ -111,7 +111,7 @@ export function RecordDetail({
         {state.fields.map((field) => (
           <div
             key={field.label}
-            className={`record-detail-field ${field.format ?? "text"}`}
+            className={`record-detail-field format-${field.format ?? "text"}`}
           >
             <dt>{field.label}</dt>
             <dd>

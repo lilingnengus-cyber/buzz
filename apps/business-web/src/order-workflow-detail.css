@@ -65,7 +65,7 @@
   font-weight: 700;
 }
 
-.record-detail-field.money dd {
+.record-detail-field.format-money dd {
   color: var(--workflow-accent-ink);
   font:
     700 19px "Arial Narrow",
@@ -73,20 +73,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-.record-detail-field.status dd {
-  display: inline-flex;
-  padding: 4px 7px;
+.record-detail-field.format-status dd {
   color: var(--workflow-accent-ink);
-  background: var(--workflow-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--workflow-accent) 35%, white);
   font-size: 11px;
 }
 
-.record-detail-field.id {
+.record-detail-field.format-id {
   grid-column: span 2;
 }
 
-.record-detail-field.id code {
+.record-detail-field.format-id code {
   color: var(--workflow-accent-ink);
   font-size: 11px;
   font-weight: 500;

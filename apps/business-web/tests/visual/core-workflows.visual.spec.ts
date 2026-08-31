@@ -364,6 +364,40 @@ test("左侧导航可以隐藏、恢复并记忆选择", async ({ page }) => {
   await expect(navigation).toBeVisible();
 });
 
+test("销售订单详情状态使用无胶囊的表格文本样式", async ({ page }) => {
+  await openPage(page, "sales", 100);
+  await page
+    .getByRole("button", { name: `查看销售订单 ${salesOrder.orderNumber}` })
+    .click();
+
+  const dialog = page.getByRole("dialog", {
+    name: `销售订单 · ${salesOrder.orderNumber}`,
+  });
+  const statusFields = dialog.locator(".record-detail-field.format-status");
+  await expect(statusFields).toHaveCount(3);
+
+  for (const field of await statusFields.all()) {
+    await expect(field).not.toHaveClass(/(^|\s)status(\s|$)/);
+    const valueStyle = await field.locator("dd").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderStyle: style.borderStyle,
+        borderRadius: style.borderRadius,
+        padding: style.padding,
+      };
+    });
+    expect(valueStyle).toEqual({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      borderStyle: "none",
+      borderRadius: "0px",
+      padding: "0px",
+    });
+  }
+
+  await expect(dialog).toHaveScreenshot("sales-record-detail-plain-status.png");
+});
+
 test.describe("窄版 Business Dock", () => {
   test.use({ viewport: { width: 520, height: 780 } });
 
