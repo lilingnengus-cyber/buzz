@@ -83,12 +83,14 @@ fi
 expected_account="${BUZZ_BUSINESS_EXPECTED_ACCOUNT:-authentik Default Admin}"
 expected_environment="${BUZZ_BUSINESS_EXPECTED_ENVIRONMENT:-Production}"
 acceptance_timeout="${BUZZ_BUSINESS_DOCK_ACCEPTANCE_TIMEOUT:-90}"
-app_process="${BUZZ_BUSINESS_DOCK_APP_PROCESS:-$(basename "$app" .app)}"
+app_bundle_id="${BUZZ_BUSINESS_DOCK_APP_BUNDLE_ID:-$(
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist"
+)}"
 
 echo "Relay ready; launching isolated Buzz Dev acceptance bundle. Relay log: $relay_log"
 open "$app"
 xcrun swift scripts/macos-ax-text-check.swift \
-  --process "$app_process" \
+  --bundle-id "$app_bundle_id" \
   --timeout "$acceptance_timeout" \
   --expect "当前登录账号" \
   --expect "$expected_account" \

@@ -6,6 +6,7 @@ import Foundation
 
 struct Options {
     var processName: String?
+    var bundleIdentifier: String?
     var inputPath: String?
     var timeoutSeconds = 30.0
     var expectations: [String] = []
@@ -14,7 +15,7 @@ struct Options {
 func usage() -> Never {
     FileHandle.standardError.write(
         Data(
-            "Usage: macos-ax-text-check.swift (--process NAME | --input PATH) [--timeout SECONDS] --expect TEXT [...]\n"
+            "Usage: macos-ax-text-check.swift (--process NAME | --bundle-id ID | --input PATH) [--timeout SECONDS] --expect TEXT [...]\n"
                 .utf8
         )
     )
@@ -33,6 +34,8 @@ func parseOptions() -> Options {
         switch argument {
         case "--process":
             options.processName = value
+        case "--bundle-id":
+            options.bundleIdentifier = value
         case "--input":
             options.inputPath = value
         case "--timeout":
@@ -45,9 +48,12 @@ func parseOptions() -> Options {
         }
     }
 
-    guard (options.processName == nil) != (options.inputPath == nil),
-          !options.expectations.isEmpty
-    else {
+    let sourceCount = [
+        options.processName != nil,
+        options.bundleIdentifier != nil,
+        options.inputPath != nil,
+    ].filter { $0 }.count
+    guard sourceCount == 1, !options.expectations.isEmpty else {
         usage()
     }
     return options
@@ -83,9 +89,12 @@ func childElements(of element: AXUIElement) -> [AXUIElement] {
     return children
 }
 
-func accessibilityText(for processName: String) -> String? {
+func accessibilityText(processName: String?, bundleIdentifier: String?) -> String? {
     guard let application = NSWorkspace.shared.runningApplications.first(where: {
-        $0.localizedName == processName
+        if let bundleIdentifier {
+            return $0.bundleIdentifier == bundleIdentifier
+        }
+        return $0.localizedName == processName
     }) else {
         return nil
     }
@@ -153,15 +162,18 @@ guard AXIsProcessTrusted() else {
     exit(1)
 }
 
-let processName = options.processName ?? ""
+let targetLabel = options.bundleIdentifier ?? options.processName ?? ""
 let deadline = Date().addingTimeInterval(options.timeoutSeconds)
 var lastMissing = options.expectations
 
 repeat {
-    if let text = accessibilityText(for: processName) {
+    if let text = accessibilityText(
+        processName: options.processName,
+        bundleIdentifier: options.bundleIdentifier
+    ) {
         lastMissing = missingExpectations(in: text, expectations: options.expectations)
         if lastMissing.isEmpty {
-            print("Accessibility text verification passed for \(processName): \(options.expectations.joined(separator: ", "))")
+            print("Accessibility text verification passed for \(targetLabel): \(options.expectations.joined(separator: ", "))")
             exit(0)
         }
     }
@@ -171,6 +183,6 @@ repeat {
 } while Date() < deadline
 
 FileHandle.standardError.write(
-    Data("Timed out waiting for \(processName) accessibility text: \(lastMissing.joined(separator: ", "))\n".utf8)
+    Data("Timed out waiting for \(targetLabel) accessibility text: \(lastMissing.joined(separator: ", "))\n".utf8)
 )
 exit(1)
