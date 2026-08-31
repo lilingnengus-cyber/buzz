@@ -1,5 +1,9 @@
 export { BusinessDock } from "@/features/business-dock/BusinessDock";
 export {
+  businessDockExtension,
+  createBusinessDockExtension,
+} from "@/features/business-dock/businessDockExtension";
+export {
   BusinessDockProvider,
   useOptionalBusinessDock,
   useBusinessDock,

@@ -55,6 +55,7 @@ import {
 import { useBusinessDockWidth } from "@/features/business-dock/useBusinessDockWidth";
 import { useWorkbenchAuth } from "@/features/workbench-auth";
 import { issueEmbedSession } from "@/features/workbench-auth/businessAuthGateway";
+import { useOptionalWorkspaceDockHost } from "@/features/workspace-dock";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import {
   AlertDialog,
@@ -174,6 +175,11 @@ export function BusinessDockProvider({
   const [navigation, setNavigation] = React.useState<BusinessNavigationState>(
     () => createBusinessNavigationState(initialResource),
   );
+  const workspaceDockHost = useOptionalWorkspaceDockHost();
+  const reportDockState = workspaceDockHost?.reportDockState;
+  const requestDockActivation = workspaceDockHost?.requestActivation;
+  const businessDockActive =
+    workspaceDockHost?.isActive("business") ?? state.open;
   const navigationRef = React.useRef(navigation);
   const stateRef = React.useRef(state);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
@@ -206,6 +212,34 @@ export function BusinessDockProvider({
   React.useEffect(() => {
     navigationRef.current = navigation;
   }, [navigation]);
+  React.useEffect(() => {
+    reportDockState?.("business", {
+      open: state.open,
+      pinned: state.pinned,
+      followConversation: state.followConversation,
+      fullscreen: state.fullscreen,
+      currentResource: state.currentResource,
+      history: navigation.entries,
+      dirty: state.dirty,
+    });
+  }, [
+    navigation.entries,
+    reportDockState,
+    state.currentResource,
+    state.dirty,
+    state.followConversation,
+    state.fullscreen,
+    state.open,
+    state.pinned,
+  ]);
+  React.useEffect(() => {
+    if (!state.open || !requestDockActivation) return;
+    const decision = requestDockActivation("business");
+    if (!decision.allowed) {
+      dispatch({ type: "close" });
+      toast.warning("Save or discard changes in the active workspace first.");
+    }
+  }, [requestDockActivation, state.open]);
   React.useEffect(() => {
     saveBusinessDockPreferences(getBusinessDockLocalStorage(), {
       followConversation: state.followConversation,
@@ -843,7 +877,13 @@ export function BusinessDockProvider({
       startBusinessSignIn,
       state,
       toggle: () => {
-        if (stateRef.current.open)
+        if (stateRef.current.open && !businessDockActive) {
+          const decision = requestDockActivation?.("business");
+          if (decision && !decision.allowed)
+            toast.warning(
+              "Save or discard changes in the active workspace first.",
+            );
+        } else if (stateRef.current.open)
           requestLeave(() => dispatch({ type: "close" }));
         else dispatch({ type: "open" });
       },
@@ -857,6 +897,7 @@ export function BusinessDockProvider({
     }),
     [
       bridgeVersion,
+      businessDockActive,
       businessAuth,
       config,
       configResult.error,
@@ -870,6 +911,7 @@ export function BusinessDockProvider({
       postV2,
       postV3,
       requestLeave,
+      requestDockActivation,
       ssoMode,
       startBusinessSignIn,
       state,
