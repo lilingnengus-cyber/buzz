@@ -462,15 +462,19 @@ admin-check: fmt-check
 relay-release: _ensure-migrations
     cargo run -p buzz-relay --release
 
-# Build an isolated V3.2 macOS acceptance bundle. The dev identifier keeps
-# keychain, WebKit and application data separate from the user's Buzz install.
-business-dock-macos-build: bootstrap _ensure-sidecar-stubs _ensure-migrations
+# Build an isolated V3.2 macOS acceptance bundle without starting runtime
+# infrastructure. The acceptance recipe owns Relay services and migrations.
+business-dock-macos-build: _ensure-sidecar-stubs
     #!/usr/bin/env bash
     set -euo pipefail
     export PATH="{{justfile_directory()}}/bin:$PATH"
     cargo build --release -p buzz-relay -p buzz-admin -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p buzz-cli -p git-credential-nostr
     cd {{desktop_dir}}
     pnpm tauri build --bundles app --config src-tauri/tauri.dev.conf.json
+
+# Keep the macOS bundle build independent from Docker and database state.
+business-dock-macos-build-test:
+    ./scripts/test-business-dock-macos-build.sh
 
 # Start Relay, wait for readiness, and launch the isolated packaged app.
 business-dock-macos-acceptance:
