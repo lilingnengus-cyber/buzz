@@ -363,3 +363,21 @@ test("左侧导航可以隐藏、恢复并记忆选择", async ({ page }) => {
   await page.reload();
   await expect(navigation).toBeVisible();
 });
+
+test.describe("窄版 Business Dock", () => {
+  test.use({ viewport: { width: 520, height: 780 } });
+
+  test("显示紧凑登录账号与生产环境标识", async ({ page }) => {
+    await openPage(page, "sales", 100);
+    const footer = page.locator(".rail-foot");
+
+    await expect(footer).toBeVisible();
+    await expect(footer.getByText("当前登录账号")).toBeVisible();
+    await expect(footer.locator(".rail-account-copy strong")).toHaveText(
+      "视觉巡检",
+    );
+    await expect(footer.getByText("真实数据 · Staging")).toBeVisible();
+    await expectNoHorizontalOverflow(page.locator(".rail"));
+    await expect(page).toHaveScreenshot("business-dock-narrow-account-520.png");
+  });
+});

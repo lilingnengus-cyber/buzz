@@ -1634,7 +1634,33 @@ a:focus-visible {
     display: none;
   }
   .rail-foot {
-    display: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+  .rail-account {
+    min-width: 0;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .rail-account-avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+  .rail-account-copy small {
+    font-size: 8px;
+  }
+  .rail-account-copy strong {
+    font-size: 11px;
+  }
+  .rail-environment {
+    flex: 0 0 auto;
+    font-size: 10px;
+    white-space: nowrap;
   }
   .topline {
     padding: 0 18px;
