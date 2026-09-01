@@ -32,6 +32,7 @@ members = [
     "crates/business-action-contracts",
     "crates/business-iam",
     "crates/life-iam",
+    "crates/life-workbench-contracts",
     "services/business-analytics",
     "services/business-action-service",
     "services/business-read-api",
