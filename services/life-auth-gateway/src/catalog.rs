@@ -309,6 +309,24 @@ static ENTRIES: &[CatalogEntry] = &[
         10,
         CONFIRM_STEP_UP
     ),
+    entry!(
+        "write_command:preview",
+        ["preview_life_write"],
+        Medium,
+        true,
+        5,
+        1,
+        NONE
+    ),
+    entry!(
+        "write_command:execute",
+        ["execute_confirmed_life_write"],
+        High,
+        true,
+        1,
+        1,
+        CONFIRM_STEP_UP
+    ),
     entry!("notification:read", [], Low, false, 100, 100, NONE),
     entry!("notification:acknowledge", [], Medium, true, 25, 25, NONE),
 ];

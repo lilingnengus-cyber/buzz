@@ -233,6 +233,8 @@ async fn catalog_and_authorization_are_complete_current_and_fail_closed() {
         "ai_execution:append_output",
         "ai_execution:finish",
         "ai_execution:policy_update",
+        "write_command:preview",
+        "write_command:execute",
         "notification:read",
         "notification:acknowledge",
     ];

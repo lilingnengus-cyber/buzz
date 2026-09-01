@@ -119,6 +119,13 @@ static TOOLS: &[ToolContract] = &[
         true,
         25
     ),
+    tool!(
+        "preview_life_write",
+        "write_command:preview",
+        Medium,
+        true,
+        1
+    ),
     // This is an execution envelope, not generic write authority. The
     // delegation remains bound to the confirmed command and original grant.
     tool!(
@@ -189,6 +196,7 @@ mod tests {
             "start_ai_execution",
             "append_ai_execution_output",
             "finish_ai_execution",
+            "preview_life_write",
             "execute_confirmed_life_write",
         ]);
         let names = tools()
