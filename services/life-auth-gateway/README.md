@@ -56,3 +56,36 @@ constant-time comparisons. The Ed25519 private key is a 32-byte seed encoded as
 64 lower-case hexadecimal characters. Configuration `Debug` and `Display`
 output redact database credentials, service credentials, and private key
 material.
+
+## Credential rotation and fail-closed operations
+
+Life, Business, and Hermes are separate security domains. Never copy a service
+credential, database role, delegation token, session cookie, signing seed, or
+verification key between them. Rotate each Life credential independently and
+record only its secret-manager version and change ticket, never the value:
+
+- **Service credentials:** rotate the Pacioli, MCP, and LifeOS credentials one
+  role at a time. The Gateway accepts one value per role, so coordinate the
+  producer/consumer deployment within a controlled maintenance window (or use
+  an external secret-distribution overlap), verify the fixed endpoint, and then
+  revoke the old value. A mismatch returns `401`; do not bypass it or fall back
+  to a browser cookie or another domain's credential.
+- **Call-grant signing key:** publish the new public key and `kid` to LifeOS
+  before switching `LIFE_AUTH_ED25519_PRIVATE_KEY`. LifeOS should accept the old
+  verification key only for the maximum issued grant lifetime plus its bounded
+  clock-skew allowance, then remove it. The current grant lifetime is at most 60
+  seconds. Never retain or distribute the old private seed.
+- **Database credential:** create a new least-privilege Life database role or
+  password, grant only the Life schema permissions, deploy
+  `LIFE_AUTH_DATABASE_URL`, verify `/health/ready`, and revoke the old role.
+  Business or Hermes schemas must not be on the role's search path.
+
+For routine revocation, call the fixed delegation revoke endpoint for every
+known active delegation. Revoking an identity binding also revokes its active
+delegations and Embed Sessions atomically. During suspected credential or
+signing-key compromise, first stop new issuance, revoke affected active
+delegations, rotate the compromised material, and restore issuance only after
+readiness and negative cross-domain checks pass. A database, resolver, audit,
+or signing failure is fail-closed: do not mint delegations, reuse an MCP
+process, connect directly to the Life database, or substitute Business/Hermes
+credentials.
