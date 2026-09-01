@@ -496,7 +496,7 @@ impl Store {
                     d.obligations,d.resource_context,d.conversation_context,d.status,
                     (d.expires_at>now()) AS delegation_current,d.max_calls,
                     d.remaining_calls,d.workbench_user_id,d.workbench_session_id,
-                    u.status AS user_status,u.authority_sync_status,
+                    u.life_os_user_id,u.status AS user_status,u.authority_sync_status,
                     b.status AS binding_status,s.status AS session_status,
                     (s.expires_at>now()) AS session_current,
                     p.status AS principal_status
@@ -636,6 +636,7 @@ impl Store {
         }
         let grant = signer.issue(CallGrantInput {
             delegation_id,
+            life_os_user_id: row.get("life_os_user_id"),
             call_id,
             capability: &request.capability,
             data_scope,

@@ -26,6 +26,8 @@ pub struct LifeCallGrantClaims {
     pub exp: i64,
     /// Consumed delegation identifier.
     pub delegation_id: Uuid,
+    /// Canonical opaque LifeOS user identifier resolved by the Gateway.
+    pub life_os_user_id: String,
     /// Unique call identifier persisted before signing.
     pub call_id: Uuid,
     /// Exact authorized capability.
@@ -68,6 +70,7 @@ pub struct CallGrantSigner {
 
 pub(crate) struct CallGrantInput<'a> {
     pub delegation_id: Uuid,
+    pub life_os_user_id: &'a str,
     pub call_id: Uuid,
     pub capability: &'a str,
     pub data_scope: DataScope,
@@ -124,6 +127,9 @@ impl CallGrantSigner {
         &self,
         input: CallGrantInput<'_>,
     ) -> Result<SignedLifeCallGrant, CallGrantError> {
+        if !safe_identifier(input.life_os_user_id) {
+            return Err(CallGrantError::Invalid);
+        }
         let issued_at = Utc::now().timestamp();
         let ttl = i64::try_from(self.ttl.as_secs()).map_err(|_| CallGrantError::Invalid)?;
         let claims = LifeCallGrantClaims {
@@ -132,6 +138,7 @@ impl CallGrantSigner {
             iat: issued_at,
             exp: issued_at + ttl,
             delegation_id: input.delegation_id,
+            life_os_user_id: input.life_os_user_id.to_owned(),
             call_id: input.call_id,
             capability: input.capability.to_owned(),
             data_scope: RequestedDataScope::from_data_scope(&input.data_scope),

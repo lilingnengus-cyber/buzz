@@ -319,10 +319,15 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
         consumed.claims.delegation_id,
         issued.delegation_id.as_uuid()
     );
+    assert_eq!(consumed.claims.life_os_user_id, "life-user");
     assert_eq!(consumed.claims.capability, "action:status_update");
     assert_eq!(consumed.claims.expected_version, Some(7));
     assert_eq!(consumed.token.split('.').count(), 3);
     let parts = consumed.token.split('.').collect::<Vec<_>>();
+    let payload: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).expect("grant payload"))
+            .expect("grant claims JSON");
+    assert_eq!(payload["lifeOsUserId"], "life-user");
     let signature = Signature::from_slice(&URL_SAFE_NO_PAD.decode(parts[2]).expect("signature"))
         .expect("Ed25519 signature");
     VerifyingKey::from_bytes(&signer.verifying_key_bytes())

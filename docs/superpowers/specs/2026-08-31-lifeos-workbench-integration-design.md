@@ -428,7 +428,7 @@ Authorization: Bearer <delegation-token>
 
 一次 PostgreSQL 原子更新同时检查 status、expiry、audience、Agent、Turn、binding/user/principal 状态、capability、data scope、obligations 和 call budget，然后递增 `used_calls`。达到预算的那次调用可以成功并把状态置为 exhausted；之后的调用失败。
 
-Consume 返回一个短时、单调用、由 Gateway Ed25519 签名的 `LifeCallGrant`。其 claims 绑定 delegation、call ID、LifeOS API audience、capability、data scope、resource、expectedVersion、normalizedInputHash、idempotency key、expiry 和 trace。MCP 以独立服务身份把该 Grant 交给 LifeOS API。LifeOS API 验证签名、issuer、audience、expiry、request hash 和 call ID，并防止同一 call ID 被不同 payload 使用。
+Consume 返回一个短时、单调用、由 Gateway Ed25519 签名的 `LifeCallGrant`。其 claims 绑定 delegation、canonical `lifeOsUserId`、call ID、LifeOS API audience、capability、data scope、resource、expectedVersion、normalizedInputHash、idempotency key、expiry 和 trace。MCP 以独立服务身份把该 Grant 交给 LifeOS API。LifeOS API 验证签名、issuer、audience、expiry、request hash 和 call ID，并用签名绑定的 `lifeOsUserId` 重新检查当前用户状态与 Workspace membership；请求 body 不能覆盖该身份。LifeOS 同时防止同一 call ID 被不同 payload 使用。
 
 ## 7. MCP 工具与 LifeOS Workbench API
 
@@ -440,6 +440,7 @@ Consume 返回一个短时、单调用、由 Gateway Ed25519 签名的 `LifeCall
 LIFE_DELEGATION_TOKEN
 LIFE_AUTH_GATEWAY_URL
 LIFE_API_URL
+LIFE_WORKBENCH_MCP_SERVICE_TOKEN
 LIFE_AGENT_ID
 LIFE_AGENT_TURN_ID
 LIFE_TRACE_ID

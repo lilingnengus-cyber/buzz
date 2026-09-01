@@ -106,7 +106,7 @@ model LifeNotificationOutbox { id String @id; workspaceId String; category Strin
 
 **Step 4: 实现 grant 验证**
 
-只接受 Life Gateway Ed25519 public key；校验 service identity、issuer、audience、expiry、call ID、normalizedInputHash、idempotency key、capability、resource 和 trace。验证后返回不可由 route body 覆盖的 `WorkbenchCallContext`。
+只接受 Life Gateway Ed25519 public key；校验 service identity、issuer、audience、expiry、canonical `lifeOsUserId`、call ID、normalizedInputHash、idempotency key、capability、resource 和 trace。验证后返回不可由 route body 覆盖身份、Workspace、role 或授权范围的 `WorkbenchCallContext`。
 
 **Step 5: 生成 client 并运行测试**
 
@@ -224,7 +224,7 @@ git commit -m "feat: add scoped life workbench read api"
 
 **Step 1: 写失败测试**
 
-固定 `tools/list`，拒绝额外字段/任意 URL/SQL/Prisma where，缺失六个 env fail closed，consume 请求字段完整，输出限额，错误脱敏，token 不出现在 Debug/日志/result。
+固定 `tools/list`，拒绝额外字段/任意 URL/SQL/Prisma where，缺失七个 env fail closed，consume 请求字段完整，输出限额，错误脱敏，token 不出现在 Debug/日志/result。
 
 **Step 2: 运行并确认失败**
 
@@ -238,7 +238,7 @@ Expected: FAIL。
 
 **Step 3: 实现 stdio MCP**
 
-只读取：`LIFE_DELEGATION_TOKEN`、`LIFE_AUTH_GATEWAY_URL`、`LIFE_API_URL`、`LIFE_AGENT_ID`、`LIFE_AGENT_TURN_ID`、`LIFE_TRACE_ID`。API base URL 启动时固定，tool 参数不能覆盖 host/path。
+只读取：`LIFE_DELEGATION_TOKEN`、`LIFE_AUTH_GATEWAY_URL`、`LIFE_API_URL`、`LIFE_WORKBENCH_MCP_SERVICE_TOKEN`、`LIFE_AGENT_ID`、`LIFE_AGENT_TURN_ID`、`LIFE_TRACE_ID`。API base URL 启动时固定，tool 参数不能覆盖 host/path。
 
 每个调用流程：validate schema → canonical hash → Gateway consume → 固定 route → 清洗结果。只读暂时错误可有限重试；consume/授权/输入错误不重试。
 
