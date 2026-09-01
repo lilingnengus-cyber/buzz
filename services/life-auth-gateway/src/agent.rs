@@ -74,6 +74,9 @@ pub enum ConversationAudience {
     Channel {
         /// Optional trusted participant snapshot; it never grants authority.
         participant_pubkeys: Vec<String>,
+        /// Trusted Pacioli classification for a Buzz channel whose metadata type is `dm`.
+        #[serde(default)]
+        direct_message: bool,
     },
 }
 
@@ -367,6 +370,7 @@ impl Store {
                 conversation: context,
                 satisfaction: ObligationSatisfaction {
                     human_confirmation: request.write_command_id.is_some(),
+                    step_up_authentication: request.write_command_id.is_some(),
                     ..ObligationSatisfaction::default()
                 },
                 batch_size: 1,
@@ -694,6 +698,7 @@ fn validate_issue(request: &IssueDelegationRequest) -> Result<ConversationContex
         (
             ConversationAudience::Channel {
                 participant_pubkeys,
+                direct_message,
             },
             Some(channel),
         ) => {
@@ -707,7 +712,11 @@ fn validate_issue(request: &IssueDelegationRequest) -> Result<ConversationContex
             {
                 return Err(AgentError::Invalid);
             }
-            Ok(ConversationContext::MultiPartyChannel)
+            Ok(if *direct_message {
+                ConversationContext::DirectMessage
+            } else {
+                ConversationContext::MultiPartyChannel
+            })
         }
         (
             ConversationAudience::DirectMessage {
@@ -939,7 +948,16 @@ fn obligations_satisfied(
 ) -> bool {
     obligations.iter().all(|obligation| match obligation {
         Obligation::MaxBatch(limit) => *limit >= 1,
-        Obligation::DmOnly => matches!(conversation, ConversationAudience::DirectMessage { .. }),
+        Obligation::DmOnly => {
+            matches!(conversation, ConversationAudience::DirectMessage { .. })
+                || matches!(
+                    conversation,
+                    ConversationAudience::Channel {
+                        direct_message: true,
+                        ..
+                    }
+                )
+        }
         Obligation::HumanConfirmation
         | Obligation::StepUpAuthentication
         | Obligation::DualControl

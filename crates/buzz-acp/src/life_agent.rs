@@ -247,17 +247,11 @@ impl LifeAgentHostConfig {
                 "previewHash":value.preview_hash
             })
         });
-        let conversation = if exact_confirmation.is_some() {
-            serde_json::json!({
-                "type":"direct_message",
-                "participantPubkeys":[source_pubkey, agent_id]
-            })
-        } else {
-            serde_json::json!({
-                "type":"channel",
-                "participantPubkeys":[source_pubkey, agent_id]
-            })
-        };
+        let conversation = serde_json::json!({
+            "type":"channel",
+            "participantPubkeys":[source_pubkey, agent_id],
+            "directMessage":true
+        });
         let response = self
             .client
             .post(url)
@@ -1239,7 +1233,8 @@ mod tests {
         assert_eq!(validations[0]["expectedVersion"], 9);
         assert_eq!(validations[0]["previewHash"], preview_hash);
         let issues = state.issues.lock().expect("issues");
-        assert_eq!(issues[0]["conversation"]["type"], "direct_message");
+        assert_eq!(issues[0]["conversation"]["type"], "channel");
+        assert_eq!(issues[0]["conversation"]["directMessage"], true);
         assert_eq!(
             issues[0]["requestedCapabilities"],
             json!([EXECUTE_WRITE_CAPABILITY])

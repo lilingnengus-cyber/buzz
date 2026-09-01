@@ -154,6 +154,7 @@ fn issue_request(event: nostr::Event, channel: Uuid, turn: &str) -> IssueDelegat
         source_channel_id: Some(channel.to_string()),
         conversation: ConversationAudience::Channel {
             participant_pubkeys: vec![],
+            direct_message: false,
         },
         agent_id: "life-agent".into(),
         agent_turn_id: turn.into(),
@@ -367,6 +368,131 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
         )
         .await
         .is_err());
+
+    database.cleanup().await;
+}
+
+#[tokio::test]
+async fn buzz_dm_exact_confirmation_satisfies_step_up_and_binds_one_execute_call() {
+    let Some(database) = TestDatabase::create().await else {
+        return;
+    };
+    let keys = Keys::generate();
+    let store = seed_authority(&database.pool, &keys).await;
+    let channel = Uuid::new_v4();
+    let command_id = Uuid::new_v4();
+    let preview_hash = "c".repeat(64);
+    let source = EventBuilder::new(
+        Kind::Custom(40002),
+        format!("/confirm life-write {command_id} v7 {preview_hash}"),
+    )
+    .tags([Tag::custom(
+        TagKind::Custom("h".into()),
+        [channel.to_string()],
+    )])
+    .sign_with_keys(&keys)
+    .expect("signed confirmation");
+    let identity = sqlx::query(
+        "SELECT u.id AS user_id,s.id AS session_id
+         FROM life_workbench_users u
+         JOIN life_workbench_sessions s ON s.workbench_user_id=u.id
+         WHERE u.life_os_user_id='life-user' AND s.status='active'",
+    )
+    .fetch_one(&database.pool)
+    .await
+    .expect("identity");
+    sqlx::query(
+        "INSERT INTO life_write_command_confirmations
+         (id,command_id,workbench_user_id,workbench_session_id,source_event_id,
+          expected_version,preview_hash,status,expires_at,trace_id)
+         VALUES($1,$2,$3,$4,$5,7,$6,'active',now()+interval '10 minutes',$7)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(command_id)
+    .bind(identity.get::<Uuid, _>("user_id"))
+    .bind(identity.get::<Uuid, _>("session_id"))
+    .bind(source.id.to_hex())
+    .bind(hex::decode(&preview_hash).expect("preview hash"))
+    .bind(Uuid::new_v4())
+    .execute(&database.pool)
+    .await
+    .expect("confirmation grant");
+
+    let issued = store
+        .issue_agent_delegation(
+            IssueDelegationRequest {
+                source_event: source,
+                source_channel_id: Some(channel.to_string()),
+                conversation: ConversationAudience::Channel {
+                    participant_pubkeys: vec![],
+                    direct_message: true,
+                },
+                agent_id: "life-agent".into(),
+                agent_turn_id: "confirmed-turn".into(),
+                requested_capabilities: vec!["write_command:execute".into()],
+                requested_data_scope: RequestedDataScope {
+                    workspace: vec!["workspace-1".into()],
+                    resource: vec![command_id.to_string()],
+                    ..RequestedDataScope::default()
+                },
+                resource_context: Some(ResourceContext {
+                    resource_type: "write_command".into(),
+                    id: command_id.to_string(),
+                    expected_version: Some(7),
+                    preview_hash: Some(preview_hash.clone()),
+                }),
+                write_command_id: Some(command_id),
+                trace_id: Uuid::new_v4(),
+            },
+            &policy(),
+            &current_identity(),
+        )
+        .await
+        .expect("high-risk delegation");
+    assert_eq!(issued.max_calls, 1);
+    assert_eq!(
+        issued.effective_capabilities,
+        vec![Capability::parse("write_command:execute").expect("capability")]
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT status FROM life_write_command_confirmations WHERE command_id=$1",
+        )
+        .bind(command_id)
+        .fetch_one(&database.pool)
+        .await
+        .expect("confirmation status"),
+        "consumed"
+    );
+
+    let signer = CallGrantSigner::new(
+        "life-auth-test",
+        "lifeos-workbench-api",
+        Duration::from_secs(30),
+        SigningKeyMaterial::parse(&"33".repeat(32)).expect("signing key"),
+    )
+    .expect("signer");
+    let grant = store
+        .consume_agent_delegation(
+            &issued.token,
+            ConsumeDelegationRequest {
+                agent_id: "life-agent".into(),
+                agent_turn_id: "confirmed-turn".into(),
+                tool: "execute_confirmed_life_write".into(),
+                capability: "write_command:execute".into(),
+                resource: None,
+                normalized_input_hash: format!("sha256:{}", "0".repeat(64)),
+                idempotency_key: Uuid::new_v4().to_string(),
+                trace_id: issued.trace_id,
+            },
+            &signer,
+        )
+        .await
+        .expect("consume confirmed execution");
+    assert_eq!(grant.claims.resource_type, "write_command");
+    assert_eq!(grant.claims.resource_id, command_id.to_string());
+    assert_eq!(grant.claims.expected_version, Some(7));
+    assert_eq!(grant.claims.preview_hash, Some(preview_hash));
 
     database.cleanup().await;
 }
