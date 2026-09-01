@@ -7,6 +7,7 @@ use axum::{
 use life_workbench_contracts::normalized_input_hash;
 use life_workbench_mcp::{
     client::LifeClient, config::Config, read_tool_names, registered_tools, validate_tool_call,
+    write_tool_names,
 };
 use serde_json::{json, Value};
 use std::{
@@ -116,6 +117,51 @@ async fn temporary_api_failure_retries_only_api_and_oversized_output_is_rejected
     oversized_server.abort();
 }
 
+#[tokio::test]
+async fn write_transport_failure_is_never_retried_blindly() {
+    let trace_id = Uuid::new_v4();
+    let state = Arc::new(MockState::default());
+    state.fail_first_api.store(true, Ordering::SeqCst);
+    let (origin, server) = mock_server(state.clone(), trace_id).await;
+    let client = LifeClient::new(config(&origin, trace_id)).expect("client");
+    let error = client
+        .invoke(
+            "update_action_status",
+            json!({"actionId":"action-1","expectedVersion":7,"status":"DONE"}),
+        )
+        .await
+        .expect_err("write outcome must remain unknown");
+    assert!(matches!(
+        error,
+        life_workbench_mcp::client::ClientError::WriteOutcomeUnknown
+    ));
+    assert_eq!(state.api_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        state.consume_requests.lock().expect("consume lock").len(),
+        1
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn identical_calls_in_one_turn_use_one_deterministic_idempotency_key() {
+    let trace_id = Uuid::new_v4();
+    let state = Arc::new(MockState::default());
+    let (origin, server) = mock_server(state.clone(), trace_id).await;
+    let client = LifeClient::new(config(&origin, trace_id)).expect("client");
+    for _ in 0..2 {
+        client
+            .invoke("list_projects", json!({"workspaceId":"workspace-1"}))
+            .await
+            .expect("call");
+    }
+    let requests = state.consume_requests.lock().expect("consume lock");
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0]["idempotencyKey"], requests[1]["idempotencyKey"]);
+    drop(requests);
+    server.abort();
+}
+
 #[test]
 fn tools_list_is_exact_and_every_schema_is_closed() {
     let expected = BTreeSet::from([
@@ -144,10 +190,33 @@ fn tools_list_is_exact_and_every_schema_is_closed() {
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(declared, expected);
+    let expected_writes = BTreeSet::from([
+        "append_ai_execution_output",
+        "apply_weekly_review",
+        "create_action",
+        "create_daily_review",
+        "create_goal",
+        "create_journal_entry",
+        "create_knowledge_item",
+        "create_project",
+        "create_project_review",
+        "finish_ai_execution",
+        "reorder_action_children",
+        "set_today_focus",
+        "start_ai_execution",
+        "update_action",
+        "update_action_status",
+    ]);
     assert_eq!(
-        registered,
-        expected.into_iter().map(str::to_owned).collect()
+        write_tool_names().iter().copied().collect::<BTreeSet<_>>(),
+        expected_writes
     );
+    let all_expected = expected
+        .into_iter()
+        .chain(expected_writes)
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(registered, all_expected);
 }
 
 #[test]
@@ -244,6 +313,7 @@ async fn mock_server(
     let app = Router::new()
         .route("/v1/life-agent/delegations/consume", post(consume))
         .route("/api/workbench/projects", post(projects))
+        .route("/api/workbench/actions/status", post(projects))
         .with_state((state, trace_id));
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("mock server");

@@ -3,7 +3,6 @@ use life_workbench_contracts::{catalog, normalized_input_hash};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 pub(crate) const READ_TOOL_NAMES: [&str; 12] = [
     "get_today_context",
@@ -18,6 +17,25 @@ pub(crate) const READ_TOOL_NAMES: [&str; 12] = [
     "search_knowledge",
     "get_knowledge_item",
     "get_ai_execution_context",
+];
+
+pub(crate) const WRITE_TOOL_NAMES: [&str; 16] = [
+    "create_goal",
+    "create_project",
+    "create_action",
+    "update_action",
+    "update_action_status",
+    "reorder_action_children",
+    "set_today_focus",
+    "create_journal_entry",
+    "create_daily_review",
+    "create_project_review",
+    "apply_weekly_review",
+    "create_knowledge_item",
+    "start_ai_execution",
+    "append_ai_execution_output",
+    "finish_ai_execution",
+    "execute_confirmed_life_write",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -37,7 +55,7 @@ pub(crate) struct Invocation {
     pub(crate) resource: ResourceContext,
     pub(crate) api_input: Value,
     pub(crate) normalized_input_hash: String,
-    pub(crate) idempotency_key: Uuid,
+    pub(crate) is_write: bool,
 }
 
 impl Invocation {
@@ -64,7 +82,41 @@ impl Invocation {
             },
             normalized_input_hash: normalized_input_hash(&api_input).map_err(|_| ToolInputError)?,
             api_input,
-            idempotency_key: Uuid::new_v4(),
+            is_write: false,
+        })
+    }
+
+    fn write(
+        tool: &'static str,
+        route: &str,
+        resource_type: &str,
+        resource_id: String,
+        expected_version: Option<i64>,
+        api_input: Value,
+    ) -> Result<Self, ToolInputError> {
+        safe_id(&resource_id)?;
+        let contract = catalog::tool(tool).ok_or(ToolInputError)?;
+        if !WRITE_TOOL_NAMES.contains(&tool)
+            || tool == "execute_confirmed_life_write"
+            || contract.risk == catalog::Risk::Read
+            || contract.requires_expected_version != expected_version.is_some()
+            || expected_version.is_some_and(|version| version < 1)
+        {
+            return Err(ToolInputError);
+        }
+        validate_bounded_value(&api_input, 0)?;
+        Ok(Self {
+            tool,
+            capability: contract.capability,
+            route: route.into(),
+            resource: ResourceContext {
+                resource_type: resource_type.into(),
+                id: resource_id,
+                expected_version,
+            },
+            normalized_input_hash: normalized_input_hash(&api_input).map_err(|_| ToolInputError)?,
+            api_input,
+            is_write: true,
         })
     }
 }
@@ -206,6 +258,177 @@ pub(crate) struct KnowledgeInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AiExecutionInput {
     pub(crate) ai_execution_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CreateGoalInput {
+    pub(crate) workspace_id: String,
+    pub(crate) title: String,
+    pub(crate) description: Option<String>,
+    pub(crate) domain_id: Option<String>,
+    pub(crate) parent_id: Option<String>,
+    pub(crate) horizon: Option<String>,
+    pub(crate) starts_at: Option<String>,
+    pub(crate) ends_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CreateProjectInput {
+    pub(crate) workspace_id: String,
+    pub(crate) name: String,
+    pub(crate) purpose: Option<String>,
+    pub(crate) domain_id: Option<String>,
+    pub(crate) goal_id: Option<String>,
+    pub(crate) color: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CreateActionInput {
+    pub(crate) workspace_id: String,
+    pub(crate) project_id: String,
+    pub(crate) parent_id: Option<String>,
+    pub(crate) title: String,
+    pub(crate) note: Option<String>,
+    pub(crate) priority: Option<String>,
+    pub(crate) due_date: Option<String>,
+    pub(crate) focus_date: Option<String>,
+    pub(crate) estimate_min: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct UpdateActionInput {
+    pub(crate) action_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) title: Option<String>,
+    pub(crate) note: Option<String>,
+    pub(crate) priority: Option<String>,
+    pub(crate) due_date: Option<String>,
+    pub(crate) focus_date: Option<String>,
+    pub(crate) estimate_min: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ActionStatusWriteInput {
+    pub(crate) action_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) status: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct VersionedId {
+    pub(crate) id: String,
+    pub(crate) expected_version: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ReorderActionsInput {
+    pub(crate) parent_action_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) children: Vec<VersionedId>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct FocusWriteInput {
+    pub(crate) workspace_id: String,
+    pub(crate) membership_version: i64,
+    pub(crate) date: String,
+    pub(crate) mode: Option<String>,
+    pub(crate) actions: Vec<VersionedId>,
+    pub(crate) current: Option<Vec<VersionedId>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct JournalWriteInput {
+    pub(crate) workspace_id: String,
+    pub(crate) title: String,
+    pub(crate) content: String,
+    pub(crate) mood: Option<String>,
+    pub(crate) energy: Option<i32>,
+    pub(crate) entry_date: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct DailyReviewWriteInput {
+    pub(crate) workspace_id: String,
+    pub(crate) title: String,
+    pub(crate) content: String,
+    pub(crate) happened_on: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ProjectReviewWriteInput {
+    pub(crate) project_id: String,
+    pub(crate) title: String,
+    pub(crate) content: String,
+    pub(crate) happened_on: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct WeeklyReviewWriteInput {
+    pub(crate) review_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) title: Option<String>,
+    pub(crate) content: String,
+    pub(crate) happened_on: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct KnowledgeWriteInput {
+    pub(crate) workspace_id: String,
+    pub(crate) project_id: Option<String>,
+    pub(crate) title: String,
+    pub(crate) r#type: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) summary: Option<String>,
+    pub(crate) content: String,
+    pub(crate) tags: Option<Vec<String>>,
+    pub(crate) source: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StartAiExecutionInput {
+    pub(crate) action_id: String,
+    pub(crate) risk_level: Option<String>,
+    pub(crate) action_type: String,
+    pub(crate) reason: Option<String>,
+    pub(crate) plan: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct AppendAiOutputInput {
+    pub(crate) ai_execution_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) r#type: String,
+    pub(crate) title: String,
+    pub(crate) content: Option<String>,
+    pub(crate) data: Option<Value>,
+    pub(crate) source_urls: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct FinishAiExecutionInput {
+    pub(crate) ai_execution_id: String,
+    pub(crate) expected_version: i64,
+    pub(crate) status: String,
+    pub(crate) error: Option<String>,
+    pub(crate) block_reason: Option<String>,
+    pub(crate) notification_summary: Option<String>,
 }
 
 pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocation, ToolInputError> {
@@ -378,6 +601,220 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 json!({}),
             )
         }
+        "create_goal" => {
+            let input: CreateGoalInput = strict(arguments)?;
+            Invocation::write(
+                "create_goal",
+                "/api/workbench/goals",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(json!({
+                    "title":input.title,"description":input.description,"domainId":input.domain_id,
+                    "parentId":input.parent_id,"horizon":input.horizon,"startsAt":input.starts_at,"endsAt":input.ends_at
+                })),
+            )
+        }
+        "create_project" => {
+            let input: CreateProjectInput = strict(arguments)?;
+            Invocation::write(
+                "create_project",
+                "/api/workbench/projects/write",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(
+                    json!({"name":input.name,"purpose":input.purpose,"domainId":input.domain_id,"goalId":input.goal_id,"color":input.color}),
+                ),
+            )
+        }
+        "create_action" => {
+            let input: CreateActionInput = strict(arguments)?;
+            optional_date(input.due_date.as_deref())?;
+            optional_date(input.focus_date.as_deref())?;
+            Invocation::write(
+                "create_action",
+                "/api/workbench/actions/write",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(json!({"operation":"create","value":{
+                    "projectId":input.project_id,"parentId":input.parent_id,"title":input.title,"note":input.note,
+                    "priority":input.priority,"dueDate":input.due_date,"focusDate":input.focus_date,"estimateMin":input.estimate_min
+                }})),
+            )
+        }
+        "update_action" => {
+            let input: UpdateActionInput = strict(arguments)?;
+            optional_date(input.due_date.as_deref())?;
+            optional_date(input.focus_date.as_deref())?;
+            Invocation::write(
+                "update_action",
+                "/api/workbench/actions/write",
+                "action",
+                input.action_id,
+                Some(input.expected_version),
+                without_nulls_deep(json!({"operation":"update","value":{
+                    "title":input.title,"note":input.note,"priority":input.priority,"dueDate":input.due_date,
+                    "focusDate":input.focus_date,"estimateMin":input.estimate_min
+                }})),
+            )
+        }
+        "update_action_status" => {
+            let input: ActionStatusWriteInput = strict(arguments)?;
+            one_of(&input.status, &["PENDING", "DOING", "BLOCKED", "DONE"])?;
+            Invocation::write(
+                "update_action_status",
+                "/api/workbench/actions/status",
+                "action",
+                input.action_id,
+                Some(input.expected_version),
+                json!({"status":input.status}),
+            )
+        }
+        "reorder_action_children" => {
+            let input: ReorderActionsInput = strict(arguments)?;
+            validate_versioned_ids(&input.children, 25)?;
+            Invocation::write(
+                "reorder_action_children",
+                "/api/workbench/actions/reorder",
+                "action",
+                input.parent_action_id,
+                Some(input.expected_version),
+                json!({"children":input.children}),
+            )
+        }
+        "set_today_focus" => {
+            let input: FocusWriteInput = strict(arguments)?;
+            optional_date(Some(&input.date))?;
+            if let Some(mode) = &input.mode {
+                one_of(mode, &["append", "replace"])?;
+            }
+            validate_versioned_ids(&input.actions, 5)?;
+            if let Some(current) = &input.current {
+                validate_versioned_ids(current, 5)?;
+            }
+            Invocation::write(
+                "set_today_focus",
+                "/api/workbench/focus",
+                "workspace",
+                input.workspace_id,
+                Some(input.membership_version),
+                without_nulls_deep(
+                    json!({"date":input.date,"mode":input.mode,"actions":input.actions,"current":input.current}),
+                ),
+            )
+        }
+        "create_journal_entry" => {
+            let input: JournalWriteInput = strict(arguments)?;
+            Invocation::write(
+                "create_journal_entry",
+                "/api/workbench/journal",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(
+                    json!({"title":input.title,"content":input.content,"mood":input.mood,"energy":input.energy,"entryDate":input.entry_date,"sensitivity":"normal"}),
+                ),
+            )
+        }
+        "create_daily_review" => {
+            let input: DailyReviewWriteInput = strict(arguments)?;
+            Invocation::write(
+                "create_daily_review",
+                "/api/workbench/reviews",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(
+                    json!({"operation":"create_daily","title":input.title,"content":input.content,"happenedOn":input.happened_on}),
+                ),
+            )
+        }
+        "create_project_review" => {
+            let input: ProjectReviewWriteInput = strict(arguments)?;
+            let project_id = input.project_id;
+            Invocation::write(
+                "create_project_review",
+                "/api/workbench/reviews",
+                "project",
+                project_id.clone(),
+                None,
+                without_nulls_deep(
+                    json!({"operation":"create_project","projectId":project_id,"title":input.title,"content":input.content,"happenedOn":input.happened_on}),
+                ),
+            )
+        }
+        "apply_weekly_review" => {
+            let input: WeeklyReviewWriteInput = strict(arguments)?;
+            Invocation::write(
+                "apply_weekly_review",
+                "/api/workbench/reviews",
+                "review",
+                input.review_id,
+                Some(input.expected_version),
+                without_nulls_deep(
+                    json!({"operation":"apply_weekly","title":input.title,"content":input.content,"happenedOn":input.happened_on}),
+                ),
+            )
+        }
+        "create_knowledge_item" => {
+            let input: KnowledgeWriteInput = strict(arguments)?;
+            Invocation::write(
+                "create_knowledge_item",
+                "/api/workbench/knowledge",
+                "workspace",
+                input.workspace_id,
+                None,
+                without_nulls_deep(
+                    json!({"projectId":input.project_id,"title":input.title,"type":input.r#type,"status":input.status,
+                    "summary":input.summary,"content":input.content,"tags":input.tags,"source":input.source}),
+                ),
+            )
+        }
+        "start_ai_execution" => {
+            let input: StartAiExecutionInput = strict(arguments)?;
+            let action_id = input.action_id;
+            Invocation::write(
+                "start_ai_execution",
+                "/api/workbench/ai-executions",
+                "action",
+                action_id.clone(),
+                None,
+                without_nulls_deep(
+                    json!({"operation":"start","actionId":action_id,"riskLevel":input.risk_level,
+                    "actionType":input.action_type,"reason":input.reason,"plan":input.plan}),
+                ),
+            )
+        }
+        "append_ai_execution_output" => {
+            let input: AppendAiOutputInput = strict(arguments)?;
+            Invocation::write(
+                "append_ai_execution_output",
+                "/api/workbench/ai-executions",
+                "ai_execution",
+                input.ai_execution_id,
+                Some(input.expected_version),
+                without_nulls_deep(
+                    json!({"operation":"append_output","type":input.r#type,"title":input.title,"content":input.content,
+                    "data":input.data,"sourceUrls":input.source_urls}),
+                ),
+            )
+        }
+        "finish_ai_execution" => {
+            let input: FinishAiExecutionInput = strict(arguments)?;
+            Invocation::write(
+                "finish_ai_execution",
+                "/api/workbench/ai-executions",
+                "ai_execution",
+                input.ai_execution_id,
+                Some(input.expected_version),
+                without_nulls_deep(
+                    json!({"operation":"finish","status":input.status,"error":input.error,
+                    "blockReason":input.block_reason,"notificationSummary":input.notification_summary}),
+                ),
+            )
+        }
         _ => Err(ToolInputError),
     }
 }
@@ -391,6 +828,64 @@ fn without_nulls(mut value: Value) -> Value {
         fields.retain(|_, value| !value.is_null());
     }
     value
+}
+
+fn without_nulls_deep(mut value: Value) -> Value {
+    match &mut value {
+        Value::Object(fields) => {
+            fields.retain(|_, value| !value.is_null());
+            for value in fields.values_mut() {
+                *value = without_nulls_deep(std::mem::take(value));
+            }
+        }
+        Value::Array(items) => {
+            for value in items {
+                *value = without_nulls_deep(std::mem::take(value));
+            }
+        }
+        _ => {}
+    }
+    value
+}
+
+fn validate_bounded_value(value: &Value, depth: usize) -> Result<(), ToolInputError> {
+    if depth > 8 {
+        return Err(ToolInputError);
+    }
+    match value {
+        Value::String(value) if value.chars().count() > 30_000 => Err(ToolInputError),
+        Value::Array(items) if items.len() > 25 => Err(ToolInputError),
+        Value::Array(items) => items
+            .iter()
+            .try_for_each(|value| validate_bounded_value(value, depth + 1)),
+        Value::Object(fields) if fields.len() > 64 => Err(ToolInputError),
+        Value::Object(fields) => fields
+            .values()
+            .try_for_each(|value| validate_bounded_value(value, depth + 1)),
+        _ => Ok(()),
+    }
+}
+
+fn one_of(value: &str, allowed: &[&str]) -> Result<(), ToolInputError> {
+    if allowed.contains(&value) {
+        Ok(())
+    } else {
+        Err(ToolInputError)
+    }
+}
+
+fn validate_versioned_ids(values: &[VersionedId], maximum: usize) -> Result<(), ToolInputError> {
+    if values.is_empty() || values.len() > maximum {
+        return Err(ToolInputError);
+    }
+    let mut ids = std::collections::HashSet::new();
+    for value in values {
+        safe_id(&value.id)?;
+        if value.expected_version < 1 || !ids.insert(&value.id) {
+            return Err(ToolInputError);
+        }
+    }
+    Ok(())
 }
 
 fn safe_id(value: &str) -> Result<(), ToolInputError> {
@@ -586,5 +1081,64 @@ mod tests {
                 catalog::tool(tool).expect("catalog").capability
             );
         }
+    }
+
+    #[test]
+    fn versioned_write_tools_map_to_fixed_routes_and_strip_selectors() {
+        let cases = [
+            (
+                "create_goal",
+                json!({"workspaceId":"workspace-1","title":"Goal"}),
+                "/api/workbench/goals",
+                "workspace",
+                None,
+            ),
+            (
+                "update_action_status",
+                json!({"actionId":"action-1","expectedVersion":7,"status":"DONE"}),
+                "/api/workbench/actions/status",
+                "action",
+                Some(7),
+            ),
+            (
+                "apply_weekly_review",
+                json!({"reviewId":"review-1","expectedVersion":3,"content":"Weekly review"}),
+                "/api/workbench/reviews",
+                "review",
+                Some(3),
+            ),
+        ];
+        for (tool, input, route, resource_type, version) in cases {
+            let invocation = parse_invocation(tool, input).expect("valid write");
+            assert!(invocation.is_write);
+            assert_eq!(invocation.route, route);
+            assert_eq!(invocation.resource.resource_type, resource_type);
+            assert_eq!(invocation.resource.expected_version, version);
+            assert!(!invocation.api_input.to_string().contains("expectedVersion"));
+            assert_eq!(
+                invocation.capability,
+                catalog::tool(tool).expect("catalog").capability
+            );
+        }
+    }
+
+    #[test]
+    fn writes_reject_missing_versions_batches_and_high_risk_fields() {
+        assert!(parse_invocation(
+            "update_action",
+            json!({"actionId":"action-1","title":"No version"})
+        )
+        .is_err());
+        assert!(parse_invocation(
+            "reorder_action_children",
+            json!({"parentActionId":"action-1","expectedVersion":1,"children":[]})
+        )
+        .is_err());
+        assert!(parse_invocation(
+            "update_action",
+            json!({"actionId":"action-1","expectedVersion":1,"delete":true})
+        )
+        .is_err());
+        assert!(parse_invocation("execute_confirmed_life_write", json!({})).is_err());
     }
 }

@@ -6,6 +6,7 @@ use life_workbench_contracts::result::WorkbenchResult;
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -40,6 +41,7 @@ impl LifeClient {
     }
 
     async fn invoke_prepared(&self, invocation: &Invocation) -> Result<String, ClientError> {
+        let idempotency_key = deterministic_idempotency_key(&self.config.agent_turn_id, invocation);
         let consume = ConsumeRequest {
             agent_id: &self.config.agent_id,
             agent_turn_id: &self.config.agent_turn_id,
@@ -47,7 +49,7 @@ impl LifeClient {
             capability: invocation.capability,
             resource: &invocation.resource,
             normalized_input_hash: &invocation.normalized_input_hash,
-            idempotency_key: invocation.idempotency_key,
+            idempotency_key,
             trace_id: self.config.trace_id,
         };
         let gateway_url = self
@@ -74,7 +76,7 @@ impl LifeClient {
         let envelope = WorkbenchEnvelope {
             input: &invocation.api_input,
             resource: &invocation.resource,
-            idempotency_key: invocation.idempotency_key,
+            idempotency_key,
             trace_id: self.config.trace_id,
         };
         let api_url = self
@@ -82,8 +84,13 @@ impl LifeClient {
             .life_api_base_url
             .join(invocation.route.trim_start_matches('/'))
             .map_err(|_| ClientError::Internal)?;
-        let mut last_error = ClientError::LifeApiUnavailable;
-        for attempt in 0..2 {
+        let attempts = if invocation.is_write { 1 } else { 2 };
+        let mut last_error = if invocation.is_write {
+            ClientError::WriteOutcomeUnknown
+        } else {
+            ClientError::LifeApiUnavailable
+        };
+        for attempt in 0..attempts {
             let response = self
                 .http
                 .post(api_url.clone())
@@ -94,9 +101,13 @@ impl LifeClient {
                 .await;
             let response = match response {
                 Ok(response) => response,
-                Err(_) if attempt == 0 => continue,
+                Err(_) if !invocation.is_write && attempt == 0 => continue,
+                Err(_) if invocation.is_write => return Err(ClientError::WriteOutcomeUnknown),
                 Err(_) => return Err(ClientError::LifeApiUnavailable),
             };
+            if is_temporary(response.status()) && invocation.is_write {
+                return Err(ClientError::WriteOutcomeUnknown);
+            }
             if is_temporary(response.status()) && attempt == 0 {
                 last_error = ClientError::LifeApiUnavailable;
                 continue;
@@ -119,6 +130,26 @@ impl LifeClient {
         }
         Err(last_error)
     }
+}
+
+fn deterministic_idempotency_key(agent_turn_id: &str, invocation: &Invocation) -> Uuid {
+    let mut hasher = Sha256::new();
+    for value in [
+        agent_turn_id,
+        invocation.tool,
+        &invocation.resource.resource_type,
+        &invocation.resource.id,
+        &invocation.normalized_input_hash,
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
 }
 
 #[derive(Serialize)]
@@ -224,6 +255,8 @@ pub enum ClientError {
     GatewayUnavailable,
     #[error("LifeOS Workbench API is unavailable")]
     LifeApiUnavailable,
+    #[error("LifeOS write outcome is unknown")]
+    WriteOutcomeUnknown,
     #[error("LifeOS returned an invalid response")]
     InvalidResponse,
     #[error("Life Workbench internal error")]
@@ -245,6 +278,11 @@ impl ClientError {
                 "life_api_unavailable",
                 "LifeOS is temporarily unavailable",
                 true,
+            ),
+            Self::WriteOutcomeUnknown => (
+                "write_outcome_unknown",
+                "LifeOS write outcome is unknown; do not retry blindly",
+                false,
             ),
             Self::InvalidResponse | Self::Internal => (
                 "internal_error",
