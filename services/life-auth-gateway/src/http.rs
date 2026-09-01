@@ -1,9 +1,11 @@
 use crate::{
+    agent::{AgentError, ConsumeDelegationRequest, DelegationPolicy, IssueDelegationRequest},
     auth::{bearer, OidcVerifier},
+    call_grant::CallGrantSigner,
     config::Config,
     identity::{IdentityError, LifeOsIdentityClient},
     membership::{MembershipError, MembershipEvent},
-    model::{IdentityBindingChallengeId, IdentityBindingId},
+    model::{AgentDelegationId, IdentityBindingChallengeId, IdentityBindingId},
     security::{ServiceToken, SigningKeyMaterial},
     Store,
 };
@@ -25,6 +27,9 @@ struct IdentityRuntime {
     deployment_id: String,
     challenge_ttl: Duration,
     lifeos_service_token: ServiceToken,
+    pacioli_service_token: ServiceToken,
+    delegation_policy: DelegationPolicy,
+    call_grant_signer: CallGrantSigner,
 }
 
 /// Runtime state shared by health and fixed Life identity endpoints.
@@ -62,6 +67,19 @@ impl AppState {
                 deployment_id: config.deployment_id().to_owned(),
                 challenge_ttl: config.identity_challenge_ttl(),
                 lifeos_service_token: config.lifeos_service_token().clone(),
+                pacioli_service_token: config.pacioli_service_token().clone(),
+                delegation_policy: DelegationPolicy::new(
+                    config.delegation_audience(),
+                    config.delegation_ttl(),
+                )
+                .map_err(|_| IdentityError::Unavailable)?,
+                call_grant_signer: CallGrantSigner::new(
+                    config.call_grant_issuer(),
+                    config.call_grant_audience(),
+                    config.call_grant_ttl(),
+                    config.signing_key().clone(),
+                )
+                .map_err(|_| IdentityError::Unavailable)?,
             }),
         })
     }
@@ -71,6 +89,7 @@ impl AppState {
 enum ApiError {
     Identity(IdentityError),
     Membership(MembershipError),
+    Agent(AgentError),
 }
 
 impl From<IdentityError> for ApiError {
@@ -85,9 +104,24 @@ impl From<MembershipError> for ApiError {
     }
 }
 
+impl From<AgentError> for ApiError {
+    fn from(value: AgentError) -> Self {
+        Self::Agent(value)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code) = match self {
+            Self::Agent(AgentError::Invalid) => (StatusCode::BAD_REQUEST, "validation_failed"),
+            Self::Agent(AgentError::Unauthorized) => {
+                (StatusCode::UNAUTHORIZED, "delegation_rejected")
+            }
+            Self::Agent(AgentError::Denied) => (StatusCode::FORBIDDEN, "scope_denied"),
+            Self::Agent(AgentError::Conflict) => (StatusCode::CONFLICT, "delegation_conflict"),
+            Self::Agent(AgentError::Database | AgentError::Signing) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "gateway_unavailable")
+            }
             Self::Membership(MembershipError::Invalid) => {
                 (StatusCode::BAD_REQUEST, "invalid_request")
             }
@@ -117,11 +151,95 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/ready", get(ready))
         .route("/v1/workbench/sessions", post(create_session))
         .route("/v1/workbench/membership-events", post(membership_event))
+        .route("/v1/life-agent/delegations", post(issue_delegation))
+        .route(
+            "/v1/life-agent/delegations/consume",
+            post(consume_delegation),
+        )
+        .route(
+            "/v1/life-agent/delegations/{delegation_id}/revoke",
+            post(revoke_delegation),
+        )
         .route("/v1/identity-bindings/challenges", post(create_challenge))
         .route("/v1/identity-bindings", post(verify_binding))
         .route("/v1/identity-bindings/{binding_id}", delete(revoke_binding))
         .route("/v1/me", get(me))
         .with_state(Arc::new(state))
+}
+
+async fn issue_delegation(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<IssueDelegationRequest>,
+) -> Result<Json<crate::agent::IssueDelegationResponse>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    let (user_id, issuer, subject, _) = state
+        .store
+        .delegation_identity(&request.source_event.pubkey.to_hex())
+        .await?;
+    let resolved = match runtime.resolver.resolve(&issuer, &subject).await {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            state
+                .store
+                .mark_membership_sync_failed(user_id, request.trace_id)
+                .await?;
+            return Err(error.into());
+        }
+    };
+    Ok(Json(
+        state
+            .store
+            .issue_agent_delegation(request, &runtime.delegation_policy, &resolved)
+            .await?,
+    ))
+}
+
+async fn consume_delegation(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<ConsumeDelegationRequest>,
+) -> Result<Json<crate::call_grant::SignedLifeCallGrant>, ApiError> {
+    let runtime = runtime(&state)?;
+    let token = bearer(&headers).ok_or(AgentError::Unauthorized)?;
+    Ok(Json(
+        state
+            .store
+            .consume_agent_delegation(token, request, &runtime.call_grant_signer)
+            .await?,
+    ))
+}
+
+async fn revoke_delegation(
+    State(state): State<Arc<AppState>>,
+    Path(delegation_id): Path<AgentDelegationId>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    let revoked = state
+        .store
+        .revoke_agent_delegation(delegation_id)
+        .await
+        .map_err(|_| AgentError::Database)?;
+    if !revoked {
+        return Err(IdentityError::NotFound.into());
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn require_service(headers: &HeaderMap, expected: &ServiceToken) -> Result<(), ApiError> {
+    let presented = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Service "))
+        .filter(|value| !value.is_empty() && !value.chars().any(char::is_whitespace))
+        .ok_or(IdentityError::Unauthorized)?;
+    if !expected.matches(presented) {
+        return Err(IdentityError::Unauthorized.into());
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -300,4 +418,30 @@ fn trace_id(headers: &HeaderMap) -> Uuid {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| Uuid::parse_str(value).ok())
         .unwrap_or_else(Uuid::new_v4)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn pacioli_service_authorization_is_exact() {
+        let raw = "p".repeat(32);
+        let expected = ServiceToken::parse("TEST_TOKEN", raw.clone()).expect("service token");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            HeaderValue::from_str(&format!("Service {raw}")).expect("header"),
+        );
+        assert!(require_service(&headers, &expected).is_ok());
+
+        for invalid in [format!("Bearer {raw}"), format!("Service  {raw}"), raw] {
+            headers.insert(
+                "authorization",
+                HeaderValue::from_str(&invalid).expect("invalid test header"),
+            );
+            assert!(require_service(&headers, &expected).is_err());
+        }
+    }
 }

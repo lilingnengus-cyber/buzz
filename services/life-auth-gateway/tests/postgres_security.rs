@@ -157,7 +157,7 @@ async fn postgres_security_contract_is_enforced() {
     .bind(Uuid::new_v4())
     .bind(user_a)
     .bind(&pubkey)
-    .bind("f".repeat(64))
+    .bind("c".repeat(64))
     .execute(pool)
     .await
     .expect("first active binding");
@@ -340,7 +340,7 @@ async fn postgres_security_contract_is_enforced() {
     .bind(vec![11_u8; 32])
     .bind(user_a)
     .bind(workbench_session)
-    .bind("c".repeat(64))
+    .bind("f".repeat(64))
     .bind(&pubkey)
     .bind(Uuid::new_v4())
     .execute(pool)
@@ -404,6 +404,8 @@ fn migrations_do_not_reference_business_domain() {
         include_str!("../migrations/0002_life_iam.sql"),
         include_str!("../migrations/0003_life_delegations.sql"),
         include_str!("../migrations/0004_life_embed_and_commands.sql"),
+        include_str!("../migrations/0005_life_identity_runtime.sql"),
+        include_str!("../migrations/0006_life_delegation_runtime.sql"),
     )
     .to_ascii_lowercase();
     assert!(!migrations.contains("business"));

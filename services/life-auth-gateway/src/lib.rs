@@ -12,8 +12,12 @@ use axum::{
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 
+/// Signed-source Agent turn delegations and atomic call consumption.
+pub mod agent;
 /// OIDC validation for Workbench access tokens.
 pub mod auth;
+/// Ed25519 LifeCallGrant construction.
+pub mod call_grant;
 /// Versioned LifeOS capability and fixed-tool catalog.
 pub mod catalog;
 /// Strong environment configuration.

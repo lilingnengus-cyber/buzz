@@ -68,22 +68,38 @@ impl Store {
         delegation_id: AgentDelegationId,
     ) -> Result<bool, StoreError> {
         let mut transaction = self.transaction().await?;
-        let revoked = sqlx::query_scalar::<_, uuid::Uuid>(
+        let revoked = sqlx::query(
             "UPDATE life_agent_delegations
-             SET status='revoked', revoked_at=now()
-             WHERE id=$1 AND status='active'
-             RETURNING id",
+             SET status='revoked', revoked_at=now(),version=version+1
+             WHERE id=$1 AND status IN ('active','exhausted')
+             RETURNING workbench_user_id,agent_id,source_event_id,trace_id",
         )
         .bind(delegation_id.as_uuid())
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| StoreError::Database)?
-        .is_some();
+        .map_err(|_| StoreError::Database)?;
+        if let Some(row) = &revoked {
+            use sqlx::Row as _;
+            sqlx::query(
+                "INSERT INTO life_security_audit
+                 (event_type,outcome,subject_kind,subject_id,workbench_user_id,
+                  delegation_id,source_event_id,trace_id)
+                 VALUES('LIFE_DELEGATION_REVOKED','success','agent',$1,$2,$3,$4,$5)",
+            )
+            .bind(row.get::<String, _>("agent_id"))
+            .bind(row.get::<uuid::Uuid, _>("workbench_user_id"))
+            .bind(delegation_id.as_uuid())
+            .bind(row.get::<String, _>("source_event_id"))
+            .bind(row.get::<uuid::Uuid, _>("trace_id"))
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| StoreError::Database)?;
+        }
         transaction
             .commit()
             .await
             .map_err(|_| StoreError::Database)?;
-        Ok(revoked)
+        Ok(revoked.is_some())
     }
 
     pub(crate) async fn transaction(&self) -> Result<Transaction<'_, Postgres>, StoreError> {

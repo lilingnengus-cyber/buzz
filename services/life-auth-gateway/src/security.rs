@@ -1,4 +1,4 @@
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer as _, SigningKey};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use subtle::ConstantTimeEq as _;
@@ -114,6 +114,10 @@ impl SigningKeyMaterial {
     /// Returns the public verification-key bytes without exposing private key material.
     pub fn verifying_key_bytes(&self) -> [u8; 32] {
         self.key.verifying_key().to_bytes()
+    }
+
+    pub(crate) fn sign(&self, payload: &[u8]) -> [u8; 64] {
+        self.key.sign(payload).to_bytes()
     }
 }
 

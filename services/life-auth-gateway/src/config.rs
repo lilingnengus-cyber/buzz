@@ -162,6 +162,30 @@ impl Config {
         &self.signing_key
     }
 
+    pub(crate) fn pacioli_service_token(&self) -> &ServiceToken {
+        &self.pacioli_service_token
+    }
+
+    pub(crate) fn delegation_audience(&self) -> &str {
+        &self.delegation_audience
+    }
+
+    pub(crate) fn delegation_ttl(&self) -> Duration {
+        self.delegation_ttl
+    }
+
+    pub(crate) fn call_grant_issuer(&self) -> &str {
+        &self.call_grant_issuer
+    }
+
+    pub(crate) fn call_grant_audience(&self) -> &str {
+        &self.call_grant_audience
+    }
+
+    pub(crate) fn call_grant_ttl(&self) -> Duration {
+        self.call_grant_ttl
+    }
+
     pub(crate) fn deployment_id(&self) -> &str {
         &self.deployment_id
     }

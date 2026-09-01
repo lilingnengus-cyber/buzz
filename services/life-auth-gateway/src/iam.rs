@@ -62,6 +62,8 @@ pub struct AuthorizationRequest {
 pub struct AuthorizationOutcome {
     /// Immutable decision record identifier.
     pub decision_id: Uuid,
+    /// Human or independent-Agent principal selected for this decision.
+    pub principal_id: Uuid,
     /// Pure evaluator decision after obligation satisfaction gates.
     pub decision: Decision,
     /// Catalog version used for this decision.
@@ -88,59 +90,65 @@ impl Store {
         &self,
         request: AuthorizationRequest,
     ) -> Result<AuthorizationOutcome, AuthorizationError> {
-        validate_request(&request)?;
         let mut transaction = self.pool.begin().await.map_err(database)?;
-        validate_context(&mut transaction, &request).await?;
-        validate_current_catalog(&mut transaction).await?;
-        let human_principal_id =
-            ensure_human_principal(&mut transaction, request.principal.user_id.as_uuid()).await?;
-
-        let known = request
-            .requested
-            .keys()
-            .all(|capability| catalog::capability(capability.as_str()).is_some());
-        let (selected_principal, mut decision) = if !known {
-            (
-                human_principal_id,
-                deny_all(&request.requested, DecisionReason::NoEffectivePermission),
-            )
-        } else if let Some(agent) =
-            independent_authority(&mut transaction, &request.agent_id).await?
-        {
-            let principal_id =
-                Uuid::parse_str(&agent.principal_id).map_err(|_| AuthorizationError::Database)?;
-            let input = EvaluationInput::independent_agent(
-                agent,
-                request.requested.clone(),
-                request.runtime_ceiling.clone(),
-                request.conversation,
-            );
-            (principal_id, evaluate(input))
-        } else {
-            let authority = human_authority(
-                &mut transaction,
-                human_principal_id,
-                request.principal.user_id.as_uuid(),
-            )
-            .await?;
-            let input = EvaluationInput::proxy_agent(
-                authority,
-                request.requested.clone(),
-                request.runtime_ceiling.clone(),
-                request.conversation,
-            );
-            (human_principal_id, evaluate(input))
-        };
-        enforce_satisfaction(&mut decision, &request.satisfaction, request.batch_size);
-        let decision_id =
-            persist_decision(&mut transaction, selected_principal, &request, &decision).await?;
+        let outcome = authorize_in_transaction(&mut transaction, request).await?;
         transaction.commit().await.map_err(database)?;
-        Ok(AuthorizationOutcome {
-            decision_id,
-            decision,
-            catalog_version: CATALOG_VERSION,
-        })
+        Ok(outcome)
     }
+}
+
+pub(crate) async fn authorize_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    request: AuthorizationRequest,
+) -> Result<AuthorizationOutcome, AuthorizationError> {
+    validate_request(&request)?;
+    validate_context(transaction, &request).await?;
+    validate_current_catalog(transaction).await?;
+    let human_principal_id =
+        ensure_human_principal(transaction, request.principal.user_id.as_uuid()).await?;
+    let known = request
+        .requested
+        .keys()
+        .all(|capability| catalog::capability(capability.as_str()).is_some());
+    let (selected_principal, mut decision) = if !known {
+        (
+            human_principal_id,
+            deny_all(&request.requested, DecisionReason::NoEffectivePermission),
+        )
+    } else if let Some(agent) = independent_authority(transaction, &request.agent_id).await? {
+        let principal_id =
+            Uuid::parse_str(&agent.principal_id).map_err(|_| AuthorizationError::Database)?;
+        let input = EvaluationInput::independent_agent(
+            agent,
+            request.requested.clone(),
+            request.runtime_ceiling.clone(),
+            request.conversation,
+        );
+        (principal_id, evaluate(input))
+    } else {
+        let authority = human_authority(
+            transaction,
+            human_principal_id,
+            request.principal.user_id.as_uuid(),
+        )
+        .await?;
+        let input = EvaluationInput::proxy_agent(
+            authority,
+            request.requested.clone(),
+            request.runtime_ceiling.clone(),
+            request.conversation,
+        );
+        (human_principal_id, evaluate(input))
+    };
+    enforce_satisfaction(&mut decision, &request.satisfaction, request.batch_size);
+    let decision_id =
+        persist_decision(transaction, selected_principal, &request, &decision).await?;
+    Ok(AuthorizationOutcome {
+        decision_id,
+        principal_id: selected_principal,
+        decision,
+        catalog_version: CATALOG_VERSION,
+    })
 }
 
 async fn validate_current_catalog(
