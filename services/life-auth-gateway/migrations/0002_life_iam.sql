@@ -1,3 +1,9 @@
+ALTER TABLE life_workbench_users
+    ADD COLUMN authority_version bigint NOT NULL DEFAULT 0 CHECK (authority_version >= 0),
+    ADD COLUMN authority_sync_status text NOT NULL DEFAULT 'stale'
+        CHECK (authority_sync_status IN ('current', 'stale')),
+    ADD COLUMN authority_synced_at timestamptz;
+
 CREATE TABLE life_workspace_memberships (
     id uuid PRIMARY KEY,
     workbench_user_id uuid NOT NULL REFERENCES life_workbench_users(id),
@@ -57,6 +63,56 @@ CREATE UNIQUE INDEX life_capability_catalog_active
     ON life_capability_catalog(capability)
     WHERE status = 'active';
 
+INSERT INTO life_capability_catalog
+    (capability,allowed_tools,risk_class,requires_expected_version,
+     default_max_calls,max_batch_size,obligations,catalog_version,status)
+VALUES
+('workspace:read','["get_system_overview"]','low',false,100,100,'[]',1,'active'),
+('domain:read','[]','low',false,100,100,'[]',1,'active'),
+('domain:create','[]','medium',false,25,25,'[]',1,'active'),
+('domain:update','[]','medium',true,25,25,'[]',1,'active'),
+('goal:read','[]','low',false,100,100,'[]',1,'active'),
+('goal:create','["create_goal"]','medium',false,25,25,'[]',1,'active'),
+('goal:update','[]','medium',true,25,25,'[]',1,'active'),
+('goal:archive','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('project:read','["list_projects","get_project_context"]','low',false,100,100,'[]',1,'active'),
+('project:create','["create_project"]','medium',false,25,25,'[]',1,'active'),
+('project:update','[]','medium',true,25,25,'[]',1,'active'),
+('project:archive','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('action:read','["list_actions","get_action_detail"]','low',false,100,100,'[]',1,'active'),
+('action:create','["create_action"]','medium',false,25,25,'[]',1,'active'),
+('action:update','["update_action"]','medium',true,25,25,'[]',1,'active'),
+('action:status_update','["update_action_status"]','medium',true,25,25,'[]',1,'active'),
+('action:reorder','["reorder_action_children"]','medium',true,25,25,'[]',1,'active'),
+('action:delete','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('focus:read','["get_today_context"]','low',false,100,100,'[]',1,'active'),
+('focus:update','[]','medium',true,25,25,'[]',1,'active'),
+('focus:replace','["set_today_focus"]','medium',true,25,25,'[]',1,'active'),
+('calendar:read','[]','low',false,100,100,'[]',1,'active'),
+('calendar:create','[]','medium',false,25,25,'[]',1,'active'),
+('calendar:update','[]','medium',true,25,25,'[]',1,'active'),
+('calendar:delete','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('calendar:invite','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('journal:read','["search_journal"]','low',false,100,100,'[]',1,'active'),
+('journal:create','["create_journal_entry"]','medium',false,25,25,'[]',1,'active'),
+('journal:update','[]','medium',true,25,25,'[]',1,'active'),
+('journal:delete','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('knowledge:read','["search_knowledge","get_knowledge_item"]','low',false,100,100,'[]',1,'active'),
+('knowledge:create','["create_knowledge_item"]','medium',false,25,25,'[]',1,'active'),
+('knowledge:update','[]','medium',true,25,25,'[]',1,'active'),
+('knowledge:delete','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('knowledge:export','[]','high',false,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('review:read','["get_review_context","get_weekly_review_context"]','low',false,100,100,'[]',1,'active'),
+('review:create','["create_daily_review","create_project_review"]','medium',false,25,25,'[]',1,'active'),
+('review:update','["apply_weekly_review"]','medium',true,25,25,'[]',1,'active'),
+('ai_execution:read','["get_ai_execution_context"]','low',false,100,100,'[]',1,'active'),
+('ai_execution:start','["start_ai_execution"]','medium',false,25,25,'[]',1,'active'),
+('ai_execution:append_output','["append_ai_execution_output"]','medium',true,25,25,'[]',1,'active'),
+('ai_execution:finish','["finish_ai_execution"]','medium',true,25,25,'[]',1,'active'),
+('ai_execution:policy_update','[]','high',true,5,10,'["human_confirmation","step_up_authentication"]',1,'active'),
+('notification:read','[]','low',false,100,100,'[]',1,'active'),
+('notification:acknowledge','[]','medium',true,25,25,'[]',1,'active');
+
 CREATE TABLE life_principal_capabilities (
     principal_id uuid NOT NULL REFERENCES life_principals(id),
     capability text NOT NULL,
@@ -104,3 +160,22 @@ CREATE TABLE life_iam_decisions (
 );
 
 CREATE INDEX life_iam_decisions_trace ON life_iam_decisions(trace_id, created_at);
+
+CREATE FUNCTION life_reject_iam_decision_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'life_iam_decisions is append-only' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE TRIGGER life_iam_decisions_no_update
+    BEFORE UPDATE ON life_iam_decisions
+    FOR EACH ROW EXECUTE FUNCTION life_reject_iam_decision_mutation();
+
+CREATE TRIGGER life_iam_decisions_no_delete
+    BEFORE DELETE ON life_iam_decisions
+    FOR EACH ROW EXECUTE FUNCTION life_reject_iam_decision_mutation();
+
+REVOKE UPDATE, DELETE, TRUNCATE ON life_iam_decisions FROM PUBLIC;

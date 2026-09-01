@@ -250,7 +250,7 @@ async fn postgres_security_contract_is_enforced() {
         "INSERT INTO life_capability_catalog
          (capability,allowed_tools,risk_class,requires_expected_version,
           default_max_calls,max_batch_size,obligations,catalog_version,status)
-         VALUES('action:update',$1,'medium',true,4,10,$2,7,'active')",
+         VALUES('action:update',$1,'high',true,4,10,$2,7,'retired')",
     )
     .bind(serde_json::json!(["update_action"]))
     .bind(serde_json::json!(["human_confirmation"]))
@@ -260,12 +260,13 @@ async fn postgres_security_contract_is_enforced() {
     let catalog = sqlx::query(
         "SELECT allowed_tools,risk_class,requires_expected_version,
                 default_max_calls,max_batch_size,obligations,catalog_version
-         FROM life_capability_catalog WHERE capability='action:update'",
+         FROM life_capability_catalog
+         WHERE capability='action:update' AND catalog_version=7",
     )
     .fetch_one(pool)
     .await
     .expect("read catalog entry");
-    assert_eq!(catalog.get::<String, _>("risk_class"), "medium");
+    assert_eq!(catalog.get::<String, _>("risk_class"), "high");
     assert!(catalog.get::<bool, _>("requires_expected_version"));
     assert_eq!(catalog.get::<i32, _>("default_max_calls"), 4);
     assert_eq!(catalog.get::<i32, _>("max_batch_size"), 10);

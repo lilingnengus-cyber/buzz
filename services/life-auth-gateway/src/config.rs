@@ -174,6 +174,10 @@ impl Config {
         &self.lifeos_outbound_credential
     }
 
+    pub(crate) fn lifeos_service_token(&self) -> &ServiceToken {
+        &self.lifeos_service_token
+    }
+
     pub(crate) fn workbench_oidc_issuer(&self) -> &str {
         &self.workbench_oidc_issuer
     }

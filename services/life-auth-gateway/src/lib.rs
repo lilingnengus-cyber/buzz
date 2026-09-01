@@ -14,12 +14,18 @@ use std::time::Duration;
 
 /// OIDC validation for Workbench access tokens.
 pub mod auth;
+/// Versioned LifeOS capability and fixed-tool catalog.
+pub mod catalog;
 /// Strong environment configuration.
 pub mod config;
 /// Fixed HTTP surface for Life identity and health operations.
 pub mod http;
+/// Transactional authorization over current Life identities and authority.
+pub mod iam;
 /// Explicit LifeOS identity resolution and Nostr binding workflows.
 pub mod identity;
+/// Monotonic LifeOS membership snapshot ingestion.
+pub mod membership;
 /// Wire models introduced as the Gateway gains fixed endpoints.
 pub mod model;
 /// Secret comparison and Ed25519 key material.
@@ -59,7 +65,10 @@ pub async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send 
     let pool = PgPoolOptions::new()
         .max_connections(20)
         .acquire_timeout(Duration::from_secs(2))
-        .connect_lazy(config.database_url())?;
+        .connect(config.database_url())
+        .await?;
+    Store::migrate(&pool).await?;
+    catalog::validate_persisted(&pool).await?;
     let state = AppState::configured(pool, &config)?;
     let listener = tokio::net::TcpListener::bind(config.bind_addr()).await?;
     tracing::info!(address = %config.bind_addr(), "life auth gateway listening");

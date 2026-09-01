@@ -2,8 +2,9 @@ use crate::{
     auth::{bearer, OidcVerifier},
     config::Config,
     identity::{IdentityError, LifeOsIdentityClient},
+    membership::{MembershipError, MembershipEvent},
     model::{IdentityBindingChallengeId, IdentityBindingId},
-    security::SigningKeyMaterial,
+    security::{ServiceToken, SigningKeyMaterial},
     Store,
 };
 use axum::{
@@ -13,7 +14,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
@@ -23,6 +24,7 @@ struct IdentityRuntime {
     resolver: LifeOsIdentityClient,
     deployment_id: String,
     challenge_ttl: Duration,
+    lifeos_service_token: ServiceToken,
 }
 
 /// Runtime state shared by health and fixed Life identity endpoints.
@@ -59,30 +61,51 @@ impl AppState {
                 )?,
                 deployment_id: config.deployment_id().to_owned(),
                 challenge_ttl: config.identity_challenge_ttl(),
+                lifeos_service_token: config.lifeos_service_token().clone(),
             }),
         })
     }
 }
 
 #[derive(Debug)]
-struct ApiError(IdentityError);
+enum ApiError {
+    Identity(IdentityError),
+    Membership(MembershipError),
+}
 
 impl From<IdentityError> for ApiError {
     fn from(value: IdentityError) -> Self {
-        Self(value)
+        Self::Identity(value)
+    }
+}
+
+impl From<MembershipError> for ApiError {
+    fn from(value: MembershipError) -> Self {
+        Self::Membership(value)
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, code) = match self.0 {
-            IdentityError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
-            IdentityError::Invalid => (StatusCode::BAD_REQUEST, "invalid_request"),
-            IdentityError::NotMapped => (StatusCode::FORBIDDEN, "identity_not_mapped"),
-            IdentityError::Inactive => (StatusCode::FORBIDDEN, "identity_inactive"),
-            IdentityError::Conflict => (StatusCode::CONFLICT, "identity_conflict"),
-            IdentityError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
-            IdentityError::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable"),
+        let (status, code) = match self {
+            Self::Membership(MembershipError::Invalid) => {
+                (StatusCode::BAD_REQUEST, "invalid_request")
+            }
+            Self::Membership(MembershipError::NotFound) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::Membership(MembershipError::Database) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
+            }
+            Self::Identity(error) => match error {
+                IdentityError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+                IdentityError::Invalid => (StatusCode::BAD_REQUEST, "invalid_request"),
+                IdentityError::NotMapped => (StatusCode::FORBIDDEN, "identity_not_mapped"),
+                IdentityError::Inactive => (StatusCode::FORBIDDEN, "identity_inactive"),
+                IdentityError::Conflict => (StatusCode::CONFLICT, "identity_conflict"),
+                IdentityError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+                IdentityError::Unavailable => {
+                    (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
+                }
+            },
         };
         (status, Json(serde_json::json!({"error": code}))).into_response()
     }
@@ -93,11 +116,41 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/v1/workbench/sessions", post(create_session))
+        .route("/v1/workbench/membership-events", post(membership_event))
         .route("/v1/identity-bindings/challenges", post(create_challenge))
         .route("/v1/identity-bindings", post(verify_binding))
         .route("/v1/identity-bindings/{binding_id}", delete(revoke_binding))
         .route("/v1/me", get(me))
         .with_state(Arc::new(state))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MembershipEventResponse {
+    applied: bool,
+    membership_version: i64,
+}
+
+async fn membership_event(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(event): Json<MembershipEvent>,
+) -> Result<Json<MembershipEventResponse>, ApiError> {
+    let runtime = runtime(&state)?;
+    let presented = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Service "))
+        .filter(|value| !value.is_empty() && !value.chars().any(char::is_whitespace))
+        .ok_or(IdentityError::Unauthorized)?;
+    if !runtime.lifeos_service_token.matches(presented) {
+        return Err(IdentityError::Unauthorized.into());
+    }
+    let applied = state.store.apply_membership_event(&event).await?;
+    Ok(Json(MembershipEventResponse {
+        applied,
+        membership_version: event.membership_version,
+    }))
 }
 
 async fn live() -> StatusCode {

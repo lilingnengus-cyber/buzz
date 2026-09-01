@@ -763,6 +763,22 @@ async fn sync_memberships(
             .map_err(database)?;
         }
     }
+    let authority_version = memberships
+        .iter()
+        .map(|membership| membership.membership_version)
+        .max()
+        .unwrap_or(0);
+    sqlx::query(
+        "UPDATE life_workbench_users
+         SET authority_version=GREATEST(authority_version,$2),
+             authority_sync_status='current',authority_synced_at=now(),updated_at=now()
+         WHERE id=$1",
+    )
+    .bind(user_id)
+    .bind(authority_version)
+    .execute(&mut **transaction)
+    .await
+    .map_err(database)?;
     Ok(())
 }
 
