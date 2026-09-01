@@ -37,6 +37,7 @@ members = [
     "services/business-action-service",
     "services/business-read-api",
     "services/business-read-mcp",
+    "services/life-workbench-mcp",
     "crates/buzz-voice",
     "services/business-auth-gateway",
     "services/life-auth-gateway",

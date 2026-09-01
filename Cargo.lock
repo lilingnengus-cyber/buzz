@@ -4943,6 +4943,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "life-workbench-mcp"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "life-workbench-contracts",
+ "reqwest 0.13.4",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "line-clipping"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
