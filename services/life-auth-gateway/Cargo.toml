@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+chrono = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 life-iam = { path = "../../crates/life-iam" }
@@ -17,10 +18,12 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }
 subtle = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true }

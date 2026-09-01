@@ -19,20 +19,26 @@ pub mod config;
 pub mod model;
 /// Secret comparison and Ed25519 key material.
 pub mod security;
+/// Transactional persistence over the isolated Life security schema.
+pub mod store;
 
 pub use config::Config;
+pub use store::Store;
 
 /// Minimal application state required by liveness and readiness probes.
 #[derive(Clone)]
 pub struct AppState {
-    pool: PgPool,
+    store: Store,
     signing_key: security::SigningKeyMaterial,
 }
 
 impl AppState {
     /// Creates health state from an isolated database pool and signing key.
     pub fn new(pool: PgPool, signing_key: security::SigningKeyMaterial) -> Self {
-        Self { pool, signing_key }
+        Self {
+            store: Store::new(pool),
+            signing_key,
+        }
     }
 }
 
@@ -54,12 +60,9 @@ async fn ready(State(state): State<Arc<AppState>>) -> StatusCode {
     if !state.signing_key.ready() {
         return StatusCode::SERVICE_UNAVAILABLE;
     }
-    match sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&state.pool)
-        .await
-    {
-        Ok(1) => StatusCode::NO_CONTENT,
-        Ok(_) | Err(_) => StatusCode::SERVICE_UNAVAILABLE,
+    match state.store.ready().await {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 

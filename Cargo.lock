@@ -4899,6 +4899,7 @@ name = "life-auth-gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "ed25519-dalek",
  "hex",
  "life-iam",
@@ -4907,11 +4908,13 @@ dependencies = [
  "sha2 0.11.0",
  "sqlx",
  "subtle",
+ "thiserror 2.0.18",
  "tokio",
  "tower",
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
 ]
 
 [[package]]
