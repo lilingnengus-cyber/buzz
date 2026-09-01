@@ -4895,6 +4895,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "life-auth-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "ed25519-dalek",
+ "hex",
+ "life-iam",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "subtle",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "life-iam"
 version = "0.1.0"
 dependencies = [

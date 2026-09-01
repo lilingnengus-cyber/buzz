@@ -1,0 +1,26 @@
+[package]
+name = "life-auth-gateway"
+description = "Isolated identity, authorization, and delegation gateway for LifeOS Workbench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+life-iam = { path = "../../crates/life-iam" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+subtle = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
