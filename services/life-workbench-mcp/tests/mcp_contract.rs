@@ -162,6 +162,37 @@ async fn identical_calls_in_one_turn_use_one_deterministic_idempotency_key() {
     server.abort();
 }
 
+#[tokio::test]
+async fn confirmed_write_uses_only_the_gateway_bound_command_resource() {
+    let trace_id = Uuid::new_v4();
+    let state = Arc::new(MockState::default());
+    let (origin, server) = mock_server(state.clone(), trace_id).await;
+    let client = LifeClient::new(config(&origin, trace_id)).expect("client");
+
+    client
+        .invoke("execute_confirmed_life_write", json!({}))
+        .await
+        .expect("confirmed write");
+
+    let consumes = state.consume_requests.lock().expect("consume lock");
+    assert_eq!(consumes.len(), 1);
+    assert_eq!(consumes[0]["capability"], "write_command:execute");
+    assert!(consumes[0].get("resource").is_none());
+    let api = state.api_requests.lock().expect("API lock");
+    assert_eq!(api.len(), 1);
+    assert_eq!(api[0]["input"], json!({}));
+    assert_eq!(api[0]["resource"]["type"], "write_command");
+    assert_eq!(
+        api[0]["resource"]["id"],
+        "018f4d22-8df1-7a67-8ec1-432ad80c615a"
+    );
+    assert_eq!(api[0]["resource"]["expectedVersion"], 7);
+    assert_eq!(api[0]["resource"]["previewHash"], "a".repeat(64));
+    drop(api);
+    drop(consumes);
+    server.abort();
+}
+
 #[test]
 fn tools_list_is_exact_and_every_schema_is_closed() {
     let expected = BTreeSet::from([
@@ -201,6 +232,7 @@ fn tools_list_is_exact_and_every_schema_is_closed() {
         "create_project",
         "create_project_review",
         "finish_ai_execution",
+        "preview_life_write",
         "reorder_action_children",
         "set_today_focus",
         "start_ai_execution",
@@ -214,9 +246,17 @@ fn tools_list_is_exact_and_every_schema_is_closed() {
     let all_expected = expected
         .into_iter()
         .chain(expected_writes)
+        .chain(["execute_confirmed_life_write"])
         .map(str::to_owned)
         .collect::<BTreeSet<_>>();
     assert_eq!(registered, all_expected);
+
+    let confirmed = registered_tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "execute_confirmed_life_write")
+        .expect("confirmed tool");
+    assert!(confirmed["inputSchema"].get("properties").is_none());
+    assert_eq!(confirmed["inputSchema"]["additionalProperties"], false);
 }
 
 #[test]
@@ -252,15 +292,27 @@ async fn mock_server(
             .lock()
             .expect("consume lock")
             .push(request.clone());
+        let confirmed = request["capability"] == "write_command:execute";
+        let resource = if confirmed {
+            json!({
+                "type":"write_command",
+                "id":"018f4d22-8df1-7a67-8ec1-432ad80c615a",
+                "expectedVersion":7,
+                "previewHash":"a".repeat(64)
+            })
+        } else {
+            request["resource"].clone()
+        };
         (
             StatusCode::OK,
             Json(json!({
                 "token":"grant-secret-that-must-not-leak",
                 "claims": {
                     "capability": request["capability"],
-                    "resourceType": request["resource"]["type"],
-                    "resourceId": request["resource"]["id"],
-                    "expectedVersion": request["resource"]["expectedVersion"],
+                    "resourceType": resource["type"],
+                    "resourceId": resource["id"],
+                    "expectedVersion": resource["expectedVersion"],
+                    "previewHash": resource.get("previewHash"),
                     "normalizedInputHash": request["normalizedInputHash"],
                     "idempotencyKey": request["idempotencyKey"],
                     "traceId": trace_id
@@ -314,6 +366,7 @@ async fn mock_server(
         .route("/v1/life-agent/delegations/consume", post(consume))
         .route("/api/workbench/projects", post(projects))
         .route("/api/workbench/actions/status", post(projects))
+        .route("/api/workbench/write-commands/execute", post(projects))
         .with_state((state, trace_id));
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("mock server");

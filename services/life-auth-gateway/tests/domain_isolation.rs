@@ -69,11 +69,12 @@ fn consume_request() -> ConsumeDelegationRequest {
         agent_turn_id: "turn-domain-isolation".into(),
         tool: "get_action_detail".into(),
         capability: "action:read".into(),
-        resource: ResourceContext {
+        resource: Some(ResourceContext {
             resource_type: "action".into(),
             id: "action-1".into(),
             expected_version: None,
-        },
+            preview_hash: None,
+        }),
         normalized_input_hash: format!("sha256:{}", "1".repeat(64)),
         idempotency_key: Uuid::new_v4().to_string(),
         trace_id: Uuid::new_v4(),

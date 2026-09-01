@@ -41,6 +41,26 @@ const READ_CAPABILITIES: [&str; 8] = [
     "ai_execution:read",
 ];
 
+const WRITE_CAPABILITIES: [&str; 15] = [
+    "goal:create",
+    "project:create",
+    "action:create",
+    "action:update",
+    "action:status_update",
+    "action:reorder",
+    "focus:replace",
+    "journal:create",
+    "review:create",
+    "review:update",
+    "knowledge:create",
+    "ai_execution:start",
+    "ai_execution:append_output",
+    "ai_execution:finish",
+    "write_command:preview",
+];
+
+const EXECUTE_WRITE_CAPABILITY: &str = "write_command:execute";
+
 #[derive(Debug, Clone, Copy, Default)]
 struct LifeFeatureSwitches {
     extension: bool,
@@ -58,7 +78,16 @@ pub(crate) struct LifeAgentHostConfig {
     pacioli_service_token: String,
     mcp_service_token: String,
     mcp_command: String,
+    write_enabled: bool,
+    high_risk_write_enabled: bool,
     client: reqwest::Client,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExactWriteConfirmation {
+    command_id: Uuid,
+    expected_version: i64,
+    preview_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +161,8 @@ impl LifeAgentHostConfig {
             pacioli_service_token,
             mcp_service_token,
             mcp_command,
+            write_enabled: switches.agent_write,
+            high_risk_write_enabled: switches.chat_high_risk_write,
             client,
         }))
     }
@@ -155,11 +186,78 @@ impl LifeAgentHostConfig {
         trace_id: &str,
     ) -> Result<LifeTurnAccess, String> {
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
+        let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
+        if exact_confirmation.is_some() && !self.high_risk_write_enabled {
+            return Err("LifeOS high-risk chat writes are disabled".into());
+        }
+        if let Some(confirmation) = &exact_confirmation {
+            let validation_url = self
+                .gateway_base_url
+                .join("v1/write-confirmations/validate")
+                .map_err(|_| "Life Agent gateway URL is invalid")?;
+            let validation = self
+                .client
+                .post(validation_url)
+                .header(
+                    "authorization",
+                    format!("Service {}", self.pacioli_service_token),
+                )
+                .header("x-trace-id", trace_id.to_string())
+                .json(&serde_json::json!({
+                    "signedEvent": source_event,
+                    "commandId": confirmation.command_id,
+                    "expectedVersion": confirmation.expected_version,
+                    "previewHash": confirmation.preview_hash,
+                    "traceId": trace_id
+                }))
+                .send()
+                .await
+                .map_err(|_| "Life write confirmation gateway is unavailable")?;
+            if !validation.status().is_success() {
+                return Err(match validation.status().as_u16() {
+                    409 => "This Life write confirmation was already used".into(),
+                    _ => "Life write confirmation was rejected".into(),
+                });
+            }
+        }
         let url = self
             .gateway_base_url
             .join("v1/life-agent/delegations")
             .map_err(|_| "Life Agent gateway URL is invalid")?;
         let source_pubkey = source_event.pubkey.to_hex();
+        let mut requested_capabilities = READ_CAPABILITIES.to_vec();
+        if self.write_enabled {
+            requested_capabilities.extend(WRITE_CAPABILITIES);
+        }
+        let exact_capabilities = [EXECUTE_WRITE_CAPABILITY];
+        let requested_capabilities = if exact_confirmation.is_some() {
+            exact_capabilities.as_slice()
+        } else {
+            requested_capabilities.as_slice()
+        };
+        let command_id = exact_confirmation.as_ref().map(|value| value.command_id);
+        let requested_resources = command_id
+            .map(|value| vec![value.to_string()])
+            .unwrap_or_default();
+        let resource_context = exact_confirmation.as_ref().map(|value| {
+            serde_json::json!({
+                "type":"write_command",
+                "id":value.command_id,
+                "expectedVersion":value.expected_version,
+                "previewHash":value.preview_hash
+            })
+        });
+        let conversation = if exact_confirmation.is_some() {
+            serde_json::json!({
+                "type":"direct_message",
+                "participantPubkeys":[source_pubkey, agent_id]
+            })
+        } else {
+            serde_json::json!({
+                "type":"channel",
+                "participantPubkeys":[source_pubkey, agent_id]
+            })
+        };
         let response = self
             .client
             .post(url)
@@ -171,19 +269,16 @@ impl LifeAgentHostConfig {
             .json(&serde_json::json!({
                 "sourceEvent": source_event,
                 "sourceChannelId": source_channel_id,
-                "conversation": {
-                    "type": "channel",
-                    "participantPubkeys": [source_pubkey, agent_id]
-                },
+                "conversation": conversation,
                 "agentId": agent_id,
                 "agentTurnId": agent_turn_id,
-                "requestedCapabilities": READ_CAPABILITIES,
+                "requestedCapabilities": requested_capabilities,
                 "requestedDataScope": {
-                    "workspace": [], "domain": [], "project": [], "resource": [],
+                    "workspace": [], "domain": [], "project": [], "resource": requested_resources,
                     "sensitivity": [], "operationCount": []
                 },
-                "resourceContext": null,
-                "writeCommandId": null,
+                "resourceContext": resource_context,
+                "writeCommandId": command_id,
                 "traceId": trace_id
             }))
             .send()
@@ -211,7 +306,14 @@ impl LifeAgentHostConfig {
         }
         let issued: IssueResponse = serde_json::from_slice(&bytes)
             .map_err(|_| "Life Agent authorization response was invalid")?;
-        self.access_from_issue(issued, agent_id, agent_turn_id, trace_id)
+        self.access_from_issue(
+            issued,
+            agent_id,
+            agent_turn_id,
+            trace_id,
+            requested_capabilities,
+            exact_confirmation.is_some(),
+        )
     }
 
     fn access_from_issue(
@@ -220,6 +322,8 @@ impl LifeAgentHostConfig {
         agent_id: &str,
         agent_turn_id: &str,
         trace_id: Uuid,
+        requested_capabilities: &[&str],
+        exact_confirmation: bool,
     ) -> Result<LifeTurnAccess, String> {
         let effective = issued
             .effective_capabilities
@@ -230,6 +334,7 @@ impl LifeAgentHostConfig {
             || issued.audience != "life-workbench-mcp"
             || issued.max_calls <= 0
             || issued.max_calls > 100
+            || (exact_confirmation && issued.max_calls != 1)
             || issued.token.len() != 43
             || !issued
                 .token
@@ -239,7 +344,9 @@ impl LifeAgentHostConfig {
             || effective.is_empty()
             || effective
                 .iter()
-                .any(|capability| !READ_CAPABILITIES.contains(capability))
+                .any(|capability| !requested_capabilities.contains(capability))
+            || (exact_confirmation
+                && (effective.len() != 1 || !effective.contains(EXECUTE_WRITE_CAPABILITY)))
         {
             return Err("Life Agent delegation context mismatch".into());
         }
@@ -277,6 +384,8 @@ impl LifeAgentHostConfig {
             pacioli_service_token: "p".repeat(32),
             mcp_service_token: "m".repeat(32),
             mcp_command: "life-workbench-mcp".into(),
+            write_enabled: true,
+            high_risk_write_enabled: true,
             client: reqwest::Client::new(),
         }
     }
@@ -295,6 +404,14 @@ impl TurnExtension for LifeAgentHostConfig {
             return Ok(TurnApplicability::NotApplicable);
         };
         let content = &event.content;
+        let exact_confirmation = match parse_exact_write_confirmation(content) {
+            Ok(value) => value,
+            Err(_) => {
+                return Ok(TurnApplicability::Ambiguous {
+                    reason: "invalid LifeOS exact-confirmation command",
+                });
+            }
+        };
         let life_uri = contains_valid_uri(content, "life");
         let has_life = life_uri || explicit_life_domain(content) || content.contains("life://");
         let has_business = contains_valid_uri(content, "biz") || explicit_business_domain(content);
@@ -314,7 +431,7 @@ impl TurnExtension for LifeAgentHostConfig {
             } if channel_type == "dm"
         );
         if !is_dm {
-            return Ok(if has_life {
+            return Ok(if has_life || exact_confirmation.is_some() {
                 TurnApplicability::Ambiguous {
                     reason: "LifeOS disclosure policy is required outside a direct message",
                 }
@@ -322,7 +439,18 @@ impl TurnExtension for LifeAgentHostConfig {
                 TurnApplicability::NotApplicable
             });
         }
-        Ok(if life_uri {
+        Ok(if exact_confirmation.is_some() {
+            if self.high_risk_write_enabled {
+                TurnApplicability::Applicable {
+                    priority: 400,
+                    reason: "exact LifeOS write confirmation",
+                }
+            } else {
+                TurnApplicability::Ambiguous {
+                    reason: "LifeOS high-risk chat writes are disabled",
+                }
+            }
+        } else if life_uri {
             TurnApplicability::Applicable {
                 priority: 300,
                 reason: "valid life resource reference",
@@ -618,6 +746,55 @@ fn safe_uri_id(value: &str) -> bool {
         })
 }
 
+fn parse_exact_write_confirmation(value: &str) -> Result<Option<ExactWriteConfirmation>, String> {
+    if !value.contains("/confirm life-write") {
+        return Ok(None);
+    }
+    let mut fields = value.split(' ');
+    if fields.next() != Some("/confirm") || fields.next() != Some("life-write") {
+        return Err("Life write confirmation command is invalid".into());
+    }
+    let raw_id = fields
+        .next()
+        .ok_or_else(|| "Life write confirmation command is invalid".to_owned())?;
+    let raw_version = fields
+        .next()
+        .ok_or_else(|| "Life write confirmation command is invalid".to_owned())?;
+    let preview_hash = fields
+        .next()
+        .ok_or_else(|| "Life write confirmation command is invalid".to_owned())?;
+    if fields.next().is_some() {
+        return Err("Life write confirmation command is invalid".into());
+    }
+    let command_id = Uuid::parse_str(raw_id)
+        .map_err(|_| "Life write confirmation command is invalid".to_owned())?;
+    let version = raw_version
+        .strip_prefix('v')
+        .ok_or_else(|| "Life write confirmation command is invalid".to_owned())?;
+    let expected_version = version
+        .parse::<i64>()
+        .map_err(|_| "Life write confirmation command is invalid".to_owned())?;
+    if command_id.to_string() != raw_id
+        || expected_version < 1
+        || expected_version.to_string() != version
+        || preview_hash.len() != 64
+        || !preview_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err("Life write confirmation command is invalid".into());
+    }
+    Ok(Some(ExactWriteConfirmation {
+        command_id,
+        expected_version,
+        preview_hash: preview_hash.to_owned(),
+    }))
+}
+
+pub(super) fn is_exact_write_confirmation(value: &str) -> bool {
+    matches!(parse_exact_write_confirmation(value), Ok(Some(_)))
+}
+
 fn explicit_life_domain(content: &str) -> bool {
     let lower = content.to_ascii_lowercase();
     lower.contains("lifeos")
@@ -644,7 +821,7 @@ mod tests {
         Json, Router,
     };
     use nostr::{EventBuilder, Keys, Kind, Tag};
-    use serde_json::Value;
+    use serde_json::{json, Value};
     use std::sync::Mutex;
     use tokio::net::TcpListener;
 
@@ -742,6 +919,55 @@ mod tests {
     }
 
     #[test]
+    fn exact_confirmation_parser_and_routing_reject_every_noncanonical_variant() {
+        let command_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let command = format!("/confirm life-write {command_id} v7 {hash}");
+        assert_eq!(
+            parse_exact_write_confirmation(&command).expect("canonical"),
+            Some(ExactWriteConfirmation {
+                command_id,
+                expected_version: 7,
+                preview_hash: hash.clone(),
+            })
+        );
+        for invalid in [
+            format!("{command} "),
+            format!("{command} extra"),
+            format!("> {command}"),
+            command.replace(" v7 ", " v07 "),
+            command.replace(&hash, &hash.to_ascii_uppercase()),
+        ] {
+            assert!(parse_exact_write_confirmation(&invalid).is_err());
+        }
+        assert_eq!(
+            parse_exact_write_confirmation("确认").expect("ordinary text"),
+            None
+        );
+
+        let config = LifeAgentHostConfig::test_mock();
+        let channel_id = Uuid::new_v4();
+        let source = event(&command, channel_id);
+        let context = VerifiedTurnContext {
+            source_event: Some(&source),
+            source_event_id: Some(source.id),
+            source_pubkey: Some(source.pubkey),
+            community_id: "community",
+            conversation: VerifiedConversation::Channel {
+                channel_id,
+                channel_type: Some("dm".into()),
+            },
+            agent_id: "a",
+            agent_turn_id: "turn",
+            trace_id: "trace",
+        };
+        assert!(matches!(
+            config.classify_turn(&context).expect("classification"),
+            TurnApplicability::Applicable { priority: 400, .. }
+        ));
+    }
+
+    #[test]
     fn multi_party_channels_never_receive_life_data_tools_without_disclosure_policy() {
         let config = LifeAgentHostConfig::test_mock();
         let channel_id = Uuid::new_v4();
@@ -782,6 +1008,8 @@ mod tests {
                 &"a".repeat(64),
                 "turn-1",
                 trace_id,
+                &READ_CAPABILITIES,
+                false,
             )
             .expect("access");
         let names = access
@@ -860,6 +1088,8 @@ mod tests {
             pacioli_service_token: "p".repeat(32),
             mcp_service_token: "m".repeat(32),
             mcp_command: "life-workbench-mcp".into(),
+            write_enabled: false,
+            high_risk_write_enabled: false,
             client: reqwest::Client::new(),
         };
         let channel_id = Uuid::new_v4();
@@ -913,6 +1143,112 @@ mod tests {
         );
         drop(revokes);
         drop(access);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn exact_confirmation_is_validated_before_one_call_command_delegation() {
+        #[derive(Default)]
+        struct StateData {
+            order: Mutex<Vec<&'static str>>,
+            validations: Mutex<Vec<Value>>,
+            issues: Mutex<Vec<Value>>,
+        }
+        async fn validate(
+            State((state, trace_id)): State<(Arc<StateData>, Uuid)>,
+            headers: HeaderMap,
+            Json(body): Json<Value>,
+        ) -> Json<Value> {
+            assert_eq!(
+                headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok()),
+                Some(format!("Service {}", "p".repeat(32)).as_str())
+            );
+            state.order.lock().expect("order").push("validate");
+            state.validations.lock().expect("validations").push(body);
+            Json(json!({
+                "confirmationId":Uuid::new_v4(),
+                "commandId":Uuid::new_v4(),
+                "userId":Uuid::new_v4(),
+                "workbenchSessionId":Uuid::new_v4(),
+                "expiresAt":"2026-09-02T12:00:00Z",
+                "traceId":trace_id
+            }))
+        }
+        async fn issue(
+            State((state, trace_id)): State<(Arc<StateData>, Uuid)>,
+            Json(body): Json<Value>,
+        ) -> Json<Value> {
+            state.order.lock().expect("order").push("issue");
+            state.issues.lock().expect("issues").push(body);
+            Json(json!({
+                "delegationId":Uuid::new_v4(),
+                "token":"d".repeat(43),
+                "audience":"life-workbench-mcp",
+                "effectiveCapabilities":[EXECUTE_WRITE_CAPABILITY],
+                "maxCalls":1,
+                "traceId":trace_id
+            }))
+        }
+
+        let trace_id = Uuid::new_v4();
+        let state = Arc::new(StateData::default());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let origin = format!("http://{}", listener.local_addr().expect("address"));
+        let app = Router::new()
+            .route("/v1/write-confirmations/validate", post(validate))
+            .route("/v1/life-agent/delegations", post(issue))
+            .with_state((state.clone(), trace_id));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("mock gateway");
+        });
+        let config = LifeAgentHostConfig {
+            gateway_base_url: Url::parse(&origin).expect("origin"),
+            life_api_base_url: Url::parse("https://life.example.com").expect("API URL"),
+            pacioli_service_token: "p".repeat(32),
+            mcp_service_token: "m".repeat(32),
+            mcp_command: "life-workbench-mcp".into(),
+            write_enabled: true,
+            high_risk_write_enabled: true,
+            client: reqwest::Client::new(),
+        };
+        let channel_id = Uuid::new_v4();
+        let command_id = Uuid::new_v4();
+        let preview_hash = "b".repeat(64);
+        let source = event(
+            &format!("/confirm life-write {command_id} v9 {preview_hash}"),
+            channel_id,
+        );
+        let agent_id = Keys::generate().public_key().to_hex();
+        let access = config
+            .authorize_turn(
+                &source,
+                channel_id,
+                &agent_id,
+                "turn-confirm",
+                &trace_id.to_string(),
+            )
+            .await
+            .expect("confirmed access");
+
+        assert_eq!(*state.order.lock().expect("order"), ["validate", "issue"]);
+        let validations = state.validations.lock().expect("validations");
+        assert_eq!(validations[0]["signedEvent"]["id"], source.id.to_hex());
+        assert_eq!(validations[0]["commandId"], command_id.to_string());
+        assert_eq!(validations[0]["expectedVersion"], 9);
+        assert_eq!(validations[0]["previewHash"], preview_hash);
+        let issues = state.issues.lock().expect("issues");
+        assert_eq!(issues[0]["conversation"]["type"], "direct_message");
+        assert_eq!(
+            issues[0]["requestedCapabilities"],
+            json!([EXECUTE_WRITE_CAPABILITY])
+        );
+        assert_eq!(issues[0]["writeCommandId"], command_id.to_string());
+        assert_eq!(issues[0]["resourceContext"]["type"], "write_command");
+        assert_eq!(issues[0]["resourceContext"]["previewHash"], preview_hash);
+        assert_eq!(access.mcp_server.env.len(), 7);
+        std::mem::forget(access);
         server.abort();
     }
 }

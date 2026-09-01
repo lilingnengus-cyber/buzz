@@ -167,6 +167,7 @@ fn issue_request(event: nostr::Event, channel: Uuid, turn: &str) -> IssueDelegat
             resource_type: "action".into(),
             id: "action-1".into(),
             expected_version: Some(7),
+            preview_hash: None,
         }),
         write_command_id: None,
         trace_id: Uuid::new_v4(),
@@ -271,11 +272,12 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
                 agent_turn_id: "turn-1".into(),
                 tool: "update_action_status".into(),
                 capability: "action:status_update".into(),
-                resource: ResourceContext {
+                resource: Some(ResourceContext {
                     resource_type: "action".into(),
                     id: "action-other".into(),
                     expected_version: Some(7),
-                },
+                    preview_hash: None,
+                }),
                 normalized_input_hash: format!("sha256:{}", "b".repeat(64)),
                 idempotency_key: Uuid::new_v4().to_string(),
                 trace_id: issued.trace_id,
@@ -302,11 +304,12 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
                 agent_turn_id: "turn-1".into(),
                 tool: "update_action_status".into(),
                 capability: "action:status_update".into(),
-                resource: ResourceContext {
+                resource: Some(ResourceContext {
                     resource_type: "action".into(),
                     id: "action-1".into(),
                     expected_version: Some(7),
-                },
+                    preview_hash: None,
+                }),
                 normalized_input_hash: format!("sha256:{}", "b".repeat(64)),
                 idempotency_key: Uuid::new_v4().to_string(),
                 trace_id: issued.trace_id,
@@ -350,11 +353,12 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
                 agent_turn_id: "turn-1".into(),
                 tool: "update_action_status".into(),
                 capability: "action:status_update".into(),
-                resource: ResourceContext {
+                resource: Some(ResourceContext {
                     resource_type: "action".into(),
                     id: "action-1".into(),
-                    expected_version: Some(7)
-                },
+                    expected_version: Some(7),
+                    preview_hash: None,
+                }),
                 normalized_input_hash: format!("sha256:{}", "b".repeat(64)),
                 idempotency_key: Uuid::new_v4().to_string(),
                 trace_id: issued.trace_id,

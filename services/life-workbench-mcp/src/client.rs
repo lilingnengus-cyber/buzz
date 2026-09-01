@@ -47,7 +47,7 @@ impl LifeClient {
             agent_turn_id: &self.config.agent_turn_id,
             tool: invocation.tool,
             capability: invocation.capability,
-            resource: &invocation.resource,
+            resource: invocation.resource.as_ref(),
             normalized_input_hash: &invocation.normalized_input_hash,
             idempotency_key,
             trace_id: self.config.trace_id,
@@ -71,11 +71,11 @@ impl LifeClient {
         let grant: SignedGrant = bounded_json(gateway_response, MAX_RESPONSE_BYTES)
             .await
             .map_err(|_| ClientError::GatewayUnavailable)?;
-        grant.validate(&consume)?;
+        let granted_resource = grant.validate(&consume)?;
 
         let envelope = WorkbenchEnvelope {
             input: &invocation.api_input,
-            resource: &invocation.resource,
+            resource: &granted_resource,
             idempotency_key,
             trace_id: self.config.trace_id,
         };
@@ -137,8 +137,14 @@ fn deterministic_idempotency_key(agent_turn_id: &str, invocation: &Invocation) -
     for value in [
         agent_turn_id,
         invocation.tool,
-        &invocation.resource.resource_type,
-        &invocation.resource.id,
+        invocation
+            .resource
+            .as_ref()
+            .map_or("confirmed", |resource| resource.resource_type.as_str()),
+        invocation
+            .resource
+            .as_ref()
+            .map_or("bound-command", |resource| resource.id.as_str()),
         &invocation.normalized_input_hash,
     ] {
         hasher.update((value.len() as u64).to_be_bytes());
@@ -159,7 +165,8 @@ struct ConsumeRequest<'a> {
     agent_turn_id: &'a str,
     tool: &'a str,
     capability: &'a str,
-    resource: &'a ResourceContext,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource: Option<&'a ResourceContext>,
     normalized_input_hash: &'a str,
     idempotency_key: Uuid,
     trace_id: Uuid,
@@ -188,27 +195,54 @@ struct GrantClaims {
     resource_type: String,
     resource_id: String,
     expected_version: Option<i64>,
+    preview_hash: Option<String>,
     normalized_input_hash: String,
     idempotency_key: String,
     trace_id: Uuid,
 }
 
 impl SignedGrant {
-    fn validate(&self, request: &ConsumeRequest<'_>) -> Result<(), ClientError> {
+    fn validate(&self, request: &ConsumeRequest<'_>) -> Result<ResourceContext, ClientError> {
         if self.token.expose().is_empty()
             || self.token.expose().len() > 16_384
             || self.claims.capability != request.capability
-            || self.claims.resource_type != request.resource.resource_type
-            || self.claims.resource_id != request.resource.id
-            || self.claims.expected_version != request.resource.expected_version
             || self.claims.normalized_input_hash != request.normalized_input_hash
             || self.claims.idempotency_key != request.idempotency_key.to_string()
             || self.claims.trace_id != request.trace_id
         {
             return Err(ClientError::GatewayUnavailable);
         }
-        Ok(())
+        let resource = ResourceContext {
+            resource_type: self.claims.resource_type.clone(),
+            id: self.claims.resource_id.clone(),
+            expected_version: self.claims.expected_version,
+            preview_hash: self.claims.preview_hash.clone(),
+        };
+        let resource_matches = request
+            .resource
+            .is_some_and(|expected| expected == &resource);
+        let confirmed_resource = request.resource.is_none()
+            && request.tool == "execute_confirmed_life_write"
+            && request.capability == "write_command:execute"
+            && resource.resource_type == "write_command"
+            && Uuid::parse_str(&resource.id).is_ok()
+            && resource.expected_version.is_some_and(|version| version > 0)
+            && resource
+                .preview_hash
+                .as_deref()
+                .is_some_and(valid_preview_hash);
+        if !resource_matches && !confirmed_resource {
+            return Err(ClientError::GatewayUnavailable);
+        }
+        Ok(resource)
     }
+}
+
+fn valid_preview_hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 async fn bounded_json<T: DeserializeOwned>(

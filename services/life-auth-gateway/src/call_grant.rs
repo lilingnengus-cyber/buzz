@@ -40,6 +40,9 @@ pub struct LifeCallGrantClaims {
     pub resource_id: String,
     /// Optimistic version required for mutation capabilities.
     pub expected_version: Option<i64>,
+    /// Exact confirmed preview digest for a high-risk WriteCommand.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_hash: Option<String>,
     /// SHA-256 digest of normalized tool input.
     pub normalized_input_hash: String,
     /// Caller idempotency key bound to this payload.
@@ -145,6 +148,7 @@ impl CallGrantSigner {
             resource_type: input.resource.resource_type.clone(),
             resource_id: input.resource.id.clone(),
             expected_version: input.resource.expected_version,
+            preview_hash: input.resource.preview_hash.clone(),
             normalized_input_hash: input.normalized_input_hash.to_owned(),
             idempotency_key: input.idempotency_key.to_owned(),
             trace_id: input.trace_id,

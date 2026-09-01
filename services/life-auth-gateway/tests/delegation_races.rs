@@ -119,6 +119,7 @@ fn request(keys: &Keys, turn: &str) -> IssueDelegationRequest {
             resource_type: "action".into(),
             id: "action-1".into(),
             expected_version: None,
+            preview_hash: None,
         }),
         write_command_id: None,
         trace_id: Uuid::new_v4(),
@@ -143,11 +144,12 @@ fn consume(turn: &str, trace_id: Uuid) -> ConsumeDelegationRequest {
         agent_turn_id: turn.into(),
         tool: "get_action_detail".into(),
         capability: "action:read".into(),
-        resource: ResourceContext {
+        resource: Some(ResourceContext {
             resource_type: "action".into(),
             id: "action-1".into(),
             expected_version: None,
-        },
+            preview_hash: None,
+        }),
         normalized_input_hash: format!("sha256:{}", "d".repeat(64)),
         idempotency_key: Uuid::new_v4().to_string(),
         trace_id,

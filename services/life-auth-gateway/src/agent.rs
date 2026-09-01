@@ -125,6 +125,9 @@ pub struct ResourceContext {
     pub id: String,
     /// Current optimistic version for mutation capabilities.
     pub expected_version: Option<i64>,
+    /// Confirmed preview digest, present only for a bound WriteCommand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_hash: Option<String>,
 }
 
 /// Pacioli-host request to authorize one signed source event and Agent turn.
@@ -192,7 +195,8 @@ pub struct ConsumeDelegationRequest {
     /// Catalog capability required by the tool.
     pub capability: String,
     /// Exact target resource.
-    pub resource: ResourceContext,
+    #[serde(default)]
+    pub resource: Option<ResourceContext>,
     /// `sha256:` followed by 64 lower-case hexadecimal characters.
     pub normalized_input_hash: String,
     /// UUID idempotency key for this exact call.
@@ -330,7 +334,7 @@ impl Store {
                 .as_ref()
                 .and_then(|resource| resource.expected_version)
                 .ok_or(AgentError::Invalid)?;
-            consume_write_confirmation_in_transaction(
+            let confirmation = consume_write_confirmation_in_transaction(
                 &mut transaction,
                 command_id,
                 user_id,
@@ -339,6 +343,16 @@ impl Store {
                 expected_version,
             )
             .await?;
+            let resource = request
+                .resource_context
+                .as_ref()
+                .ok_or(AgentError::Invalid)?;
+            if resource.resource_type != "write_command"
+                || resource.id != command_id.to_string()
+                || resource.preview_hash.as_deref() != Some(confirmation.preview_hash.as_str())
+            {
+                return Err(AgentError::Invalid);
+            }
         }
         let authorization = authorize_in_transaction(
             &mut transaction,
@@ -547,6 +561,13 @@ impl Store {
             .transpose()?;
         let capability =
             Capability::parse(request.capability.clone()).map_err(|_| AgentError::Invalid)?;
+        let execute_confirmed = request.tool == "execute_confirmed_life_write"
+            && request.capability == "write_command:execute";
+        let resource = if execute_confirmed {
+            stored_resource.as_ref().ok_or(AgentError::Unauthorized)?
+        } else {
+            request.resource.as_ref().ok_or(AgentError::Unauthorized)?
+        };
         let valid = status == "active"
             && row.get::<i32, _>("remaining_calls") > 0
             && row.get::<String, _>("audience") == DELEGATION_AUDIENCE
@@ -561,11 +582,15 @@ impl Store {
             && capabilities.contains(&capability)
             && catalog::tool(&request.tool)
                 .is_some_and(|tool| tool.capability == request.capability)
-            && stored_resource
-                .as_ref()
-                .is_none_or(|resource| resource == &request.resource)
-            && resource_allowed(&data_scope, &request.resource.id)
-            && expected_version_allowed(&request.capability, &request.resource)
+            && if execute_confirmed {
+                request.resource.is_none()
+            } else {
+                stored_resource
+                    .as_ref()
+                    .is_none_or(|stored| stored == resource)
+            }
+            && resource_allowed(&data_scope, &resource.id)
+            && expected_version_allowed(&request.capability, resource)
             && obligations_satisfied(&obligations, &conversation);
         if !valid {
             return Err(AgentError::Unauthorized);
@@ -582,9 +607,9 @@ impl Store {
         .bind(&request.capability)
         .bind(input_hash)
         .bind(&request.idempotency_key)
-        .bind(&request.resource.resource_type)
-        .bind(&request.resource.id)
-        .bind(request.resource.expected_version)
+        .bind(&resource.resource_type)
+        .bind(&resource.id)
+        .bind(resource.expected_version)
         .bind(request.trace_id)
         .execute(&mut *transaction)
         .await;
@@ -640,7 +665,7 @@ impl Store {
             call_id,
             capability: &request.capability,
             data_scope,
-            resource: &request.resource,
+            resource,
             normalized_input_hash: &request.normalized_input_hash,
             idempotency_key: &request.idempotency_key,
             trace_id: request.trace_id,
@@ -818,6 +843,9 @@ fn validate_resource_binding(
     resource: Option<&ResourceContext>,
 ) -> Result<(), AgentError> {
     if let Some(resource) = resource {
+        let write_execute = capabilities
+            .iter()
+            .any(|capability| capability.as_str() == "write_command:execute");
         if !safe_id(&resource.resource_type, 128)
             || !safe_text(&resource.id, 512)
             || resource.expected_version.is_some_and(|version| version < 0)
@@ -825,6 +853,14 @@ fn validate_resource_binding(
             || capabilities
                 .iter()
                 .any(|capability| !expected_version_allowed(capability.as_str(), resource))
+            || (write_execute
+                && (resource.resource_type != "write_command"
+                    || Uuid::parse_str(&resource.id).is_err()
+                    || resource
+                        .preview_hash
+                        .as_deref()
+                        .is_none_or(|hash| !valid_preview_hash(hash))))
+            || (!write_execute && resource.preview_hash.is_some())
         {
             return Err(AgentError::Invalid);
         }
@@ -838,6 +874,13 @@ fn validate_resource_binding(
 }
 
 fn validate_consume(token: &str, request: &ConsumeDelegationRequest) -> Result<(), AgentError> {
+    let execute_confirmed = request.tool == "execute_confirmed_life_write"
+        && request.capability == "write_command:execute";
+    let resource_valid = request.resource.as_ref().is_some_and(|resource| {
+        safe_id(&resource.resource_type, 128)
+            && safe_text(&resource.id, 512)
+            && resource.preview_hash.is_none()
+    });
     if URL_SAFE_NO_PAD
         .decode(token)
         .ok()
@@ -847,12 +890,19 @@ fn validate_consume(token: &str, request: &ConsumeDelegationRequest) -> Result<(
         || !safe_id(&request.tool, 128)
         || !safe_id(&request.capability, 128)
         || Uuid::parse_str(&request.idempotency_key).is_err()
-        || !safe_id(&request.resource.resource_type, 128)
-        || !safe_text(&request.resource.id, 512)
+        || (execute_confirmed && request.resource.is_some())
+        || (!execute_confirmed && !resource_valid)
     {
         return Err(AgentError::Invalid);
     }
     Ok(())
+}
+
+fn valid_preview_hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn normalized_hash(value: &str) -> Result<Vec<u8>, AgentError> {
@@ -980,4 +1030,67 @@ async fn audit(
 
 fn database(_: sqlx::Error) -> AgentError {
     AgentError::Database
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confirmed_write_resource_requires_exact_command_shape_and_digest() {
+        let command_id = Uuid::new_v4().to_string();
+        let capabilities = vec![Capability::parse("write_command:execute").expect("capability")];
+        let scope = DataScope {
+            resources: ScopeSet::restricted([command_id.clone()]).expect("scope"),
+            ..DataScope::default()
+        };
+        let resource = ResourceContext {
+            resource_type: "write_command".into(),
+            id: command_id,
+            expected_version: Some(7),
+            preview_hash: Some("a".repeat(64)),
+        };
+        validate_resource_binding(&capabilities, &scope, Some(&resource))
+            .expect("valid confirmed command");
+
+        for invalid in [
+            ResourceContext {
+                preview_hash: None,
+                ..resource.clone()
+            },
+            ResourceContext {
+                preview_hash: Some("A".repeat(64)),
+                ..resource.clone()
+            },
+            ResourceContext {
+                resource_type: "action".into(),
+                ..resource.clone()
+            },
+        ] {
+            assert!(validate_resource_binding(&capabilities, &scope, Some(&invalid)).is_err());
+        }
+    }
+
+    #[test]
+    fn confirmed_consume_has_no_caller_controlled_resource() {
+        let token = URL_SAFE_NO_PAD.encode([7_u8; 32]);
+        let mut request = ConsumeDelegationRequest {
+            agent_id: "life-agent".into(),
+            agent_turn_id: "turn-1".into(),
+            tool: "execute_confirmed_life_write".into(),
+            capability: "write_command:execute".into(),
+            resource: None,
+            normalized_input_hash: format!("sha256:{}", "1".repeat(64)),
+            idempotency_key: Uuid::new_v4().to_string(),
+            trace_id: Uuid::new_v4(),
+        };
+        validate_consume(&token, &request).expect("server-bound command");
+        request.resource = Some(ResourceContext {
+            resource_type: "write_command".into(),
+            id: Uuid::new_v4().to_string(),
+            expected_version: Some(7),
+            preview_hash: Some("a".repeat(64)),
+        });
+        assert!(validate_consume(&token, &request).is_err());
+    }
 }

@@ -18,12 +18,12 @@ use serde_json::Value;
 use std::sync::Arc;
 use tools::{
     ActionInput, ActionListInput, ActionStatusWriteInput, AiExecutionInput, AppendAiOutputInput,
-    CreateActionInput, CreateGoalInput, CreateProjectInput, DailyReviewWriteInput,
+    CreateActionInput, CreateGoalInput, CreateProjectInput, DailyReviewWriteInput, EmptyInput,
     FinishAiExecutionInput, FocusWriteInput, JournalSearchInput, JournalWriteInput, KnowledgeInput,
-    KnowledgeSearchInput, KnowledgeWriteInput, ProjectInput, ProjectListInput,
-    ProjectReviewWriteInput, ReorderActionsInput, ReviewContextInput, StartAiExecutionInput,
-    TodayInput, UpdateActionInput, WeeklyReviewInput, WeeklyReviewWriteInput, WorkspaceInput,
-    READ_TOOL_NAMES, WRITE_TOOL_NAMES,
+    KnowledgeSearchInput, KnowledgeWriteInput, PreviewLifeWriteInput, ProjectInput,
+    ProjectListInput, ProjectReviewWriteInput, ReorderActionsInput, ReviewContextInput,
+    StartAiExecutionInput, TodayInput, UpdateActionInput, WeeklyReviewInput,
+    WeeklyReviewWriteInput, WorkspaceInput, READ_TOOL_NAMES, WRITE_TOOL_NAMES,
 };
 
 #[derive(Clone)]
@@ -341,6 +341,28 @@ impl LifeWorkbenchMcp {
         Parameters(input): Parameters<FinishAiExecutionInput>,
     ) -> Result<String, ErrorData> {
         self.call("finish_ai_execution", input).await
+    }
+
+    #[tool(
+        name = "preview_life_write",
+        description = "Create one immutable ten-minute preview for a fixed high-risk LifeOS operation. It does not execute the operation."
+    )]
+    async fn preview_life_write(
+        &self,
+        Parameters(input): Parameters<PreviewLifeWriteInput>,
+    ) -> Result<String, ErrorData> {
+        self.call("preview_life_write", input).await
+    }
+
+    #[tool(
+        name = "execute_confirmed_life_write",
+        description = "Execute only the exact high-risk LifeOS WriteCommand already bound to this signed confirmation turn. This tool accepts no fields."
+    )]
+    async fn execute_confirmed_life_write(
+        &self,
+        Parameters(input): Parameters<EmptyInput>,
+    ) -> Result<String, ErrorData> {
+        self.call("execute_confirmed_life_write", input).await
     }
 }
 

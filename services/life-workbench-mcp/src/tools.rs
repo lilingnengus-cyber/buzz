@@ -19,7 +19,7 @@ pub(crate) const READ_TOOL_NAMES: [&str; 12] = [
     "get_ai_execution_context",
 ];
 
-pub(crate) const WRITE_TOOL_NAMES: [&str; 16] = [
+pub(crate) const WRITE_TOOL_NAMES: [&str; 17] = [
     "create_goal",
     "create_project",
     "create_action",
@@ -35,6 +35,7 @@ pub(crate) const WRITE_TOOL_NAMES: [&str; 16] = [
     "start_ai_execution",
     "append_ai_execution_output",
     "finish_ai_execution",
+    "preview_life_write",
     "execute_confirmed_life_write",
 ];
 
@@ -45,6 +46,8 @@ pub(crate) struct ResourceContext {
     pub(crate) resource_type: String,
     pub(crate) id: String,
     pub(crate) expected_version: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) preview_hash: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,7 +55,7 @@ pub(crate) struct Invocation {
     pub(crate) tool: &'static str,
     pub(crate) capability: &'static str,
     pub(crate) route: String,
-    pub(crate) resource: ResourceContext,
+    pub(crate) resource: Option<ResourceContext>,
     pub(crate) api_input: Value,
     pub(crate) normalized_input_hash: String,
     pub(crate) is_write: bool,
@@ -75,11 +78,12 @@ impl Invocation {
             tool,
             capability: contract.capability,
             route,
-            resource: ResourceContext {
+            resource: Some(ResourceContext {
                 resource_type: resource_type.to_owned(),
                 id: resource_id,
                 expected_version: None,
-            },
+                preview_hash: None,
+            }),
             normalized_input_hash: normalized_input_hash(&api_input).map_err(|_| ToolInputError)?,
             api_input,
             is_write: false,
@@ -109,11 +113,30 @@ impl Invocation {
             tool,
             capability: contract.capability,
             route: route.into(),
-            resource: ResourceContext {
+            resource: Some(ResourceContext {
                 resource_type: resource_type.into(),
                 id: resource_id,
                 expected_version,
-            },
+                preview_hash: None,
+            }),
+            normalized_input_hash: normalized_input_hash(&api_input).map_err(|_| ToolInputError)?,
+            api_input,
+            is_write: true,
+        })
+    }
+
+    fn confirmed() -> Result<Self, ToolInputError> {
+        let tool = "execute_confirmed_life_write";
+        let contract = catalog::tool(tool).ok_or(ToolInputError)?;
+        if contract.capability != "write_command:execute" {
+            return Err(ToolInputError);
+        }
+        let api_input = json!({});
+        Ok(Self {
+            tool,
+            capability: contract.capability,
+            route: "/api/workbench/write-commands/execute".into(),
+            resource: None,
             normalized_input_hash: normalized_input_hash(&api_input).map_err(|_| ToolInputError)?,
             api_input,
             is_write: true,
@@ -430,6 +453,41 @@ pub(crate) struct FinishAiExecutionInput {
     pub(crate) block_reason: Option<String>,
     pub(crate) notification_summary: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HighRiskOperation {
+    DeleteAction,
+    ArchiveProject,
+    DeleteJournal,
+    DeleteKnowledge,
+    ExportKnowledge,
+}
+
+impl HighRiskOperation {
+    fn resource_type(self) -> &'static str {
+        match self {
+            Self::DeleteAction => "action",
+            Self::ArchiveProject => "project",
+            Self::DeleteJournal => "journal",
+            Self::DeleteKnowledge | Self::ExportKnowledge => "knowledge",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PreviewLifeWriteInput {
+    pub(crate) operation: HighRiskOperation,
+    pub(crate) resource_id: String,
+    pub(crate) expected_version: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include_history: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EmptyInput {}
 
 pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocation, ToolInputError> {
     match tool {
@@ -815,6 +873,33 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 ),
             )
         }
+        "preview_life_write" => {
+            let input: PreviewLifeWriteInput = strict(arguments)?;
+            if input.expected_version < 1
+                || input.include_history == Some(true)
+                || (input.include_history.is_some()
+                    && !matches!(input.operation, HighRiskOperation::ExportKnowledge))
+            {
+                return Err(ToolInputError);
+            }
+            let resource_type = input.operation.resource_type();
+            let resource_id = input.resource_id;
+            Invocation::write(
+                "preview_life_write",
+                "/api/workbench/write-commands/preview",
+                resource_type,
+                resource_id,
+                Some(input.expected_version),
+                without_nulls_deep(json!({
+                    "operation": input.operation,
+                    "includeHistory": input.include_history
+                })),
+            )
+        }
+        "execute_confirmed_life_write" => {
+            let _: EmptyInput = strict(arguments)?;
+            Invocation::confirmed()
+        }
         _ => Err(ToolInputError),
     }
 }
@@ -970,8 +1055,9 @@ mod tests {
         )
         .expect("valid invocation");
         assert_eq!(invocation.route, "/api/workbench/projects");
-        assert_eq!(invocation.resource.resource_type, "workspace");
-        assert_eq!(invocation.resource.id, "workspace-1");
+        let resource = invocation.resource.as_ref().expect("bound resource");
+        assert_eq!(resource.resource_type, "workspace");
+        assert_eq!(resource.id, "workspace-1");
         assert_eq!(invocation.api_input, json!({"limit":25}));
         assert_eq!(
             invocation.normalized_input_hash,
@@ -1075,7 +1161,14 @@ mod tests {
         for (tool, input, route, resource_type) in cases {
             let invocation = parse_invocation(tool, input).expect("valid fixed tool");
             assert_eq!(invocation.route, route);
-            assert_eq!(invocation.resource.resource_type, resource_type);
+            assert_eq!(
+                invocation
+                    .resource
+                    .as_ref()
+                    .expect("bound resource")
+                    .resource_type,
+                resource_type
+            );
             assert_eq!(
                 invocation.capability,
                 catalog::tool(tool).expect("catalog").capability
@@ -1112,8 +1205,9 @@ mod tests {
             let invocation = parse_invocation(tool, input).expect("valid write");
             assert!(invocation.is_write);
             assert_eq!(invocation.route, route);
-            assert_eq!(invocation.resource.resource_type, resource_type);
-            assert_eq!(invocation.resource.expected_version, version);
+            let resource = invocation.resource.as_ref().expect("bound resource");
+            assert_eq!(resource.resource_type, resource_type);
+            assert_eq!(resource.expected_version, version);
             assert!(!invocation.api_input.to_string().contains("expectedVersion"));
             assert_eq!(
                 invocation.capability,
@@ -1139,6 +1233,48 @@ mod tests {
             json!({"actionId":"action-1","expectedVersion":1,"delete":true})
         )
         .is_err());
-        assert!(parse_invocation("execute_confirmed_life_write", json!({})).is_err());
+        assert!(parse_invocation("execute_confirmed_life_write", json!({})).is_ok());
+        assert!(parse_invocation(
+            "execute_confirmed_life_write",
+            json!({"writeCommandId":"attacker-controlled"})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn high_risk_preview_and_confirmed_execution_are_fixed_and_separate() {
+        let preview = parse_invocation(
+            "preview_life_write",
+            json!({
+                "operation":"delete_action",
+                "resourceId":"action-1",
+                "expectedVersion":7
+            }),
+        )
+        .expect("preview");
+        assert_eq!(preview.capability, "write_command:preview");
+        assert_eq!(preview.route, "/api/workbench/write-commands/preview");
+        let resource = preview.resource.expect("preview resource");
+        assert_eq!(resource.resource_type, "action");
+        assert_eq!(resource.id, "action-1");
+        assert_eq!(resource.expected_version, Some(7));
+        assert_eq!(preview.api_input, json!({"operation":"delete_action"}));
+
+        let confirmed = parse_invocation("execute_confirmed_life_write", json!({}))
+            .expect("confirmed execution");
+        assert_eq!(confirmed.capability, "write_command:execute");
+        assert_eq!(confirmed.route, "/api/workbench/write-commands/execute");
+        assert!(confirmed.resource.is_none());
+        assert_eq!(confirmed.api_input, json!({}));
+
+        assert!(parse_invocation(
+            "preview_life_write",
+            json!({
+                "operation":"arbitrary_batch",
+                "resourceId":"action-1",
+                "expectedVersion":7
+            })
+        )
+        .is_err());
     }
 }
