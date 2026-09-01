@@ -406,6 +406,7 @@ fn migrations_do_not_reference_business_domain() {
         include_str!("../migrations/0004_life_embed_and_commands.sql"),
         include_str!("../migrations/0005_life_identity_runtime.sql"),
         include_str!("../migrations/0006_life_delegation_runtime.sql"),
+        include_str!("../migrations/0007_life_embed_binding_runtime.sql"),
     )
     .to_ascii_lowercase();
     assert!(!migrations.contains("business"));

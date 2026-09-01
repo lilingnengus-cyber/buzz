@@ -22,6 +22,8 @@ pub mod call_grant;
 pub mod catalog;
 /// Strong environment configuration.
 pub mod config;
+/// One-time Life Dock bootstrap codes and Embed Sessions.
+pub mod embed;
 /// Fixed HTTP surface for Life identity and health operations.
 pub mod http;
 /// Transactional authorization over current Life identities and authority.
@@ -36,6 +38,8 @@ pub mod model;
 pub mod security;
 /// Transactional persistence over the isolated Life security schema.
 pub mod store;
+/// Exact signed confirmation grants for immutable LifeOS WriteCommands.
+pub mod write_confirmation;
 
 pub use config::Config;
 pub use http::AppState;

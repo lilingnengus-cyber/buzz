@@ -88,6 +88,12 @@ pub enum CallGrantError {
     Encoding,
 }
 
+impl From<CallGrantError> for crate::agent::AgentError {
+    fn from(_: CallGrantError) -> Self {
+        Self::Signing
+    }
+}
+
 impl CallGrantSigner {
     /// Builds a signer with a fixed issuer/audience and a TTL from 1 through 60 seconds.
     pub fn new(

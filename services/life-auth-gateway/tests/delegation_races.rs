@@ -160,7 +160,8 @@ async fn call_budget_and_revoke_are_serialized_and_expiry_is_terminal() {
         return;
     };
     let (store, keys) = setup(&database).await;
-    let policy = DelegationPolicy::new("life-workbench-mcp", Duration::from_secs(300)).unwrap();
+    let policy =
+        DelegationPolicy::new("life-workbench-mcp", "life-test", Duration::from_secs(300)).unwrap();
     let signer = CallGrantSigner::new(
         "issuer",
         "lifeos-workbench-api",

@@ -122,7 +122,8 @@ async fn seed_authority(pool: &PgPool, keys: &Keys) -> Store {
 }
 
 fn policy() -> DelegationPolicy {
-    DelegationPolicy::new("life-workbench-mcp", Duration::from_secs(300)).expect("policy")
+    DelegationPolicy::new("life-workbench-mcp", "life-test", Duration::from_secs(300))
+        .expect("policy")
 }
 
 fn current_identity() -> ResolvedLifeIdentity {
@@ -180,9 +181,15 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
     };
     let keys = Keys::generate();
     let store = seed_authority(&database.pool, &keys).await;
-    assert!(DelegationPolicy::new("wrong-audience", Duration::from_secs(300)).is_err());
-    assert!(DelegationPolicy::new("life-workbench-mcp", Duration::from_secs(29)).is_err());
-    assert!(DelegationPolicy::new("life-workbench-mcp", Duration::from_secs(901)).is_err());
+    assert!(
+        DelegationPolicy::new("wrong-audience", "life-test", Duration::from_secs(300)).is_err()
+    );
+    assert!(
+        DelegationPolicy::new("life-workbench-mcp", "life-test", Duration::from_secs(29)).is_err()
+    );
+    assert!(
+        DelegationPolicy::new("life-workbench-mcp", "life-test", Duration::from_secs(901)).is_err()
+    );
     let channel = Uuid::new_v4();
     let source = source(&keys, channel);
     let issued = store

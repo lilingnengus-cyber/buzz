@@ -3,10 +3,12 @@ use crate::{
     auth::{bearer, OidcVerifier},
     call_grant::CallGrantSigner,
     config::Config,
+    embed::{ConsumeEmbedRequest, EmbedError, EmbedPolicy, IssueEmbedRequest},
     identity::{IdentityError, LifeOsIdentityClient},
     membership::{MembershipError, MembershipEvent},
-    model::{AgentDelegationId, IdentityBindingChallengeId, IdentityBindingId},
+    model::{AgentDelegationId, EmbedSessionId, IdentityBindingChallengeId, IdentityBindingId},
     security::{ServiceToken, SigningKeyMaterial},
+    write_confirmation::{ValidateWriteConfirmationRequest, WriteConfirmationError},
     Store,
 };
 use axum::{
@@ -30,6 +32,8 @@ struct IdentityRuntime {
     pacioli_service_token: ServiceToken,
     delegation_policy: DelegationPolicy,
     call_grant_signer: CallGrantSigner,
+    embed_policy: EmbedPolicy,
+    lifeos_base_url: url::Url,
 }
 
 /// Runtime state shared by health and fixed Life identity endpoints.
@@ -70,6 +74,7 @@ impl AppState {
                 pacioli_service_token: config.pacioli_service_token().clone(),
                 delegation_policy: DelegationPolicy::new(
                     config.delegation_audience(),
+                    config.deployment_id(),
                     config.delegation_ttl(),
                 )
                 .map_err(|_| IdentityError::Unavailable)?,
@@ -80,6 +85,8 @@ impl AppState {
                     config.signing_key().clone(),
                 )
                 .map_err(|_| IdentityError::Unavailable)?,
+                embed_policy: EmbedPolicy::standard(),
+                lifeos_base_url: config.lifeos_base_url().clone(),
             }),
         })
     }
@@ -90,6 +97,8 @@ enum ApiError {
     Identity(IdentityError),
     Membership(MembershipError),
     Agent(AgentError),
+    Embed(EmbedError),
+    WriteConfirmation(WriteConfirmationError),
 }
 
 impl From<IdentityError> for ApiError {
@@ -110,9 +119,39 @@ impl From<AgentError> for ApiError {
     }
 }
 
+impl From<EmbedError> for ApiError {
+    fn from(value: EmbedError) -> Self {
+        Self::Embed(value)
+    }
+}
+
+impl From<WriteConfirmationError> for ApiError {
+    fn from(value: WriteConfirmationError) -> Self {
+        Self::WriteConfirmation(value)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code) = match self {
+            Self::Embed(EmbedError::Invalid) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            Self::Embed(EmbedError::Unauthorized) => (StatusCode::UNAUTHORIZED, "embed_rejected"),
+            Self::Embed(EmbedError::NotFound) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::Embed(EmbedError::Database) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
+            }
+            Self::WriteConfirmation(WriteConfirmationError::Invalid) => {
+                (StatusCode::BAD_REQUEST, "confirmation_invalid")
+            }
+            Self::WriteConfirmation(WriteConfirmationError::Unauthorized) => {
+                (StatusCode::UNAUTHORIZED, "confirmation_rejected")
+            }
+            Self::WriteConfirmation(WriteConfirmationError::Conflict) => {
+                (StatusCode::CONFLICT, "confirmation_conflict")
+            }
+            Self::WriteConfirmation(WriteConfirmationError::Database) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
+            }
             Self::Agent(AgentError::Invalid) => (StatusCode::BAD_REQUEST, "validation_failed"),
             Self::Agent(AgentError::Unauthorized) => {
                 (StatusCode::UNAUTHORIZED, "delegation_rejected")
@@ -151,6 +190,16 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/ready", get(ready))
         .route("/v1/workbench/sessions", post(create_session))
         .route("/v1/workbench/membership-events", post(membership_event))
+        .route("/v1/embed-sessions", post(issue_embed_session))
+        .route("/v1/embed-sessions/consume", post(consume_embed_session))
+        .route(
+            "/v1/embed-sessions/{embed_session_id}/revoke",
+            post(revoke_embed_session),
+        )
+        .route(
+            "/v1/write-confirmations/validate",
+            post(validate_write_confirmation),
+        )
         .route("/v1/life-agent/delegations", post(issue_delegation))
         .route(
             "/v1/life-agent/delegations/consume",
@@ -165,6 +214,95 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/identity-bindings/{binding_id}", delete(revoke_binding))
         .route("/v1/me", get(me))
         .with_state(Arc::new(state))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IssueEmbedResponse {
+    embed_session_id: EmbedSessionId,
+    embed_url: String,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    trace_id: Uuid,
+}
+
+async fn issue_embed_session(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<IssueEmbedRequest>,
+) -> Result<Json<IssueEmbedResponse>, ApiError> {
+    let runtime = runtime(&state)?;
+    let principal = session(&state, &headers, runtime).await?;
+    let issued = state
+        .store
+        .issue_embed_code(
+            &principal,
+            request,
+            &runtime.embed_policy,
+            trace_id(&headers),
+        )
+        .await?;
+    let mut embed_url = runtime
+        .lifeos_base_url
+        .join("embed/bootstrap")
+        .map_err(|_| IdentityError::Unavailable)?;
+    embed_url
+        .query_pairs_mut()
+        .append_pair("code", &issued.code);
+    Ok(Json(IssueEmbedResponse {
+        embed_session_id: issued.embed_session_id,
+        embed_url: embed_url.into(),
+        expires_at: issued.expires_at,
+        trace_id: issued.trace_id,
+    }))
+}
+
+async fn consume_embed_session(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<ConsumeEmbedRequest>,
+) -> Result<Json<crate::embed::ConsumedEmbedSession>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.lifeos_service_token)?;
+    Ok(Json(
+        state
+            .store
+            .consume_embed_code(
+                &request.code,
+                &runtime.deployment_id,
+                &runtime.embed_policy,
+                trace_id(&headers),
+            )
+            .await?,
+    ))
+}
+
+async fn revoke_embed_session(
+    State(state): State<Arc<AppState>>,
+    Path(embed_session_id): Path<EmbedSessionId>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let runtime = runtime(&state)?;
+    let principal = session(&state, &headers, runtime).await?;
+    state
+        .store
+        .revoke_embed_session(&principal, embed_session_id, trace_id(&headers))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn validate_write_confirmation(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<ValidateWriteConfirmationRequest>,
+) -> Result<Json<crate::write_confirmation::ValidatedWriteConfirmation>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    Ok(Json(
+        state
+            .store
+            .validate_write_confirmation(request, &runtime.deployment_id, Duration::from_secs(600))
+            .await?,
+    ))
 }
 
 async fn issue_delegation(

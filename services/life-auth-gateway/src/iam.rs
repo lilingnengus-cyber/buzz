@@ -84,6 +84,16 @@ pub enum AuthorizationError {
     Database,
 }
 
+impl From<AuthorizationError> for crate::agent::AgentError {
+    fn from(value: AuthorizationError) -> Self {
+        match value {
+            AuthorizationError::Invalid => Self::Invalid,
+            AuthorizationError::StaleAuthority => Self::Denied,
+            AuthorizationError::Database => Self::Database,
+        }
+    }
+}
+
 impl Store {
     /// Resolves current authority, evaluates least privilege, and appends one decision atomically.
     pub async fn authorize(

@@ -1,14 +1,12 @@
 //! Signed-source Life Agent turn delegation issuance and atomic consumption.
 
 use crate::{
-    call_grant::{CallGrantError, CallGrantInput, CallGrantSigner, SignedLifeCallGrant},
+    call_grant::{CallGrantInput, CallGrantSigner, SignedLifeCallGrant},
     catalog,
-    iam::{
-        authorize_in_transaction, AuthorizationError, AuthorizationRequest, ObligationSatisfaction,
-    },
+    iam::{authorize_in_transaction, AuthorizationRequest, ObligationSatisfaction},
     identity::{ResolvedLifeIdentity, SessionPrincipal},
-    membership::MembershipError,
     model::{AgentDelegationId, IdentityBindingId, LifeWorkbenchUserId, WorkbenchSessionId},
+    write_confirmation::consume_write_confirmation_in_transaction,
     Store,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -36,17 +34,30 @@ const SOURCE_FUTURE_SKEW_SECONDS: u64 = 30;
 #[derive(Clone, Debug)]
 pub struct DelegationPolicy {
     audience: String,
+    deployment_id: String,
     ttl: Duration,
 }
 
 impl DelegationPolicy {
-    /// Validates the fixed audience and a TTL between 30 and 900 seconds.
-    pub fn new(audience: impl Into<String>, ttl: Duration) -> Result<Self, AgentError> {
+    /// Validates the fixed audience/deployment and a TTL between 30 and 900 seconds.
+    pub fn new(
+        audience: impl Into<String>,
+        deployment_id: impl Into<String>,
+        ttl: Duration,
+    ) -> Result<Self, AgentError> {
         let audience = audience.into();
-        if audience != DELEGATION_AUDIENCE || !(30..=900).contains(&ttl.as_secs()) {
+        let deployment_id = deployment_id.into();
+        if audience != DELEGATION_AUDIENCE
+            || !safe_id(&deployment_id, 256)
+            || !(30..=900).contains(&ttl.as_secs())
+        {
             return Err(AgentError::Invalid);
         }
-        Ok(Self { audience, ttl })
+        Ok(Self {
+            audience,
+            deployment_id,
+            ttl,
+        })
     }
 }
 
@@ -213,32 +224,6 @@ pub enum AgentError {
     Signing,
 }
 
-impl From<CallGrantError> for AgentError {
-    fn from(_: CallGrantError) -> Self {
-        Self::Signing
-    }
-}
-
-impl From<AuthorizationError> for AgentError {
-    fn from(value: AuthorizationError) -> Self {
-        match value {
-            AuthorizationError::Invalid => Self::Invalid,
-            AuthorizationError::StaleAuthority => Self::Denied,
-            AuthorizationError::Database => Self::Database,
-        }
-    }
-}
-
-impl From<MembershipError> for AgentError {
-    fn from(value: MembershipError) -> Self {
-        match value {
-            MembershipError::Invalid => Self::Invalid,
-            MembershipError::NotFound => Self::Unauthorized,
-            MembershipError::Database => Self::Database,
-        }
-    }
-}
-
 impl Store {
     pub(crate) async fn delegation_identity(
         &self,
@@ -320,10 +305,12 @@ impl Store {
         let user_id: Uuid = binding.get("workbench_user_id");
         let session = sqlx::query(
             "SELECT id,deployment_id FROM life_workbench_sessions
-             WHERE workbench_user_id=$1 AND status='active' AND expires_at>now()
-             ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+             WHERE workbench_user_id=$1 AND deployment_id=$2
+               AND status='active' AND expires_at>now()
+             ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
         )
         .bind(user_id)
+        .bind(&policy.deployment_id)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(database)?
@@ -337,6 +324,22 @@ impl Store {
             life_os_user_id: binding.get("life_os_user_id"),
             deployment_id: session.get("deployment_id"),
         };
+        if let Some(command_id) = request.write_command_id {
+            let expected_version = request
+                .resource_context
+                .as_ref()
+                .and_then(|resource| resource.expected_version)
+                .ok_or(AgentError::Invalid)?;
+            consume_write_confirmation_in_transaction(
+                &mut transaction,
+                command_id,
+                user_id,
+                principal.session_id.as_uuid(),
+                &request.source_event.id.to_hex(),
+                expected_version,
+            )
+            .await?;
+        }
         let authorization = authorize_in_transaction(
             &mut transaction,
             AuthorizationRequest {
@@ -348,7 +351,10 @@ impl Store {
                 requested,
                 runtime_ceiling,
                 conversation: context,
-                satisfaction: ObligationSatisfaction::default(),
+                satisfaction: ObligationSatisfaction {
+                    human_confirmation: request.write_command_id.is_some(),
+                    ..ObligationSatisfaction::default()
+                },
                 batch_size: 1,
                 disclosure_allowed: false,
                 trace_id: request.trace_id,
@@ -719,6 +725,9 @@ fn requested_capabilities(
     for name in &request.requested_capabilities {
         let capability = Capability::parse(name.clone()).map_err(|_| AgentError::Invalid)?;
         let entry = catalog::capability(name).ok_or(AgentError::Denied)?;
+        if request.write_command_id.is_some() && entry.risk_class != catalog::RiskClass::High {
+            return Err(AgentError::Invalid);
+        }
         if entry.requires_expected_version
             && request
                 .resource_context

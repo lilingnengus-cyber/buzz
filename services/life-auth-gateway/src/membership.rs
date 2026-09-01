@@ -46,6 +46,16 @@ pub enum MembershipError {
     Database,
 }
 
+impl From<MembershipError> for crate::agent::AgentError {
+    fn from(value: MembershipError) -> Self {
+        match value {
+            MembershipError::Invalid => Self::Invalid,
+            MembershipError::NotFound => Self::Unauthorized,
+            MembershipError::Database => Self::Database,
+        }
+    }
+}
+
 impl Store {
     pub(crate) async fn refresh_membership_snapshot(
         &self,
