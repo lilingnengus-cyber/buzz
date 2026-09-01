@@ -857,7 +857,7 @@ fn validate_resource_binding(
             .any(|capability| capability.as_str() == "write_command:execute");
         if !safe_id(&resource.resource_type, 128)
             || !safe_text(&resource.id, 512)
-            || resource.expected_version.is_some_and(|version| version < 0)
+            || resource.expected_version.is_some_and(|version| version < 1)
             || !resource_allowed(scope, &resource.id)
             || capabilities
                 .iter()
@@ -929,9 +929,7 @@ fn normalized_hash(value: &str) -> Result<Vec<u8>, AgentError> {
 fn expected_version_allowed(capability: &str, resource: &ResourceContext) -> bool {
     catalog::capability(capability).is_some_and(|entry| {
         !entry.requires_expected_version
-            || resource
-                .expected_version
-                .is_some_and(|version| version >= 0)
+            || resource.expected_version.is_some_and(|version| version > 0)
     })
 }
 

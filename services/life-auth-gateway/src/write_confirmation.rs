@@ -118,7 +118,7 @@ pub fn parse_exact_confirmation(
         .parse::<i64>()
         .map_err(|_| WriteConfirmationError::Invalid)?;
     if command_id.to_string() != raw_id
-        || expected_version < 0
+        || expected_version < 1
         || expected_version.to_string() != version
         || !valid_hash(preview_hash)
     {

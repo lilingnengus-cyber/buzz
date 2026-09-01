@@ -118,6 +118,7 @@ fn parser_accepts_only_the_canonical_confirmation_command() {
         format!(" /confirm life-write {id} v7 {}", "a".repeat(64)),
         format!("/confirm  life-write {id} v7 {}", "a".repeat(64)),
         format!("/confirm life-write {id} v07 {}", "a".repeat(64)),
+        format!("/confirm life-write {id} v0 {}", "a".repeat(64)),
         format!("/confirm life-write {id} v7 {} extra", "a".repeat(64)),
         format!("/confirm life-write {} v7 {}", id.simple(), "a".repeat(64)),
         format!("/confirm life-write {id} v7 {}", "A".repeat(64)),
