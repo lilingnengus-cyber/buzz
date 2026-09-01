@@ -1887,9 +1887,16 @@ pub async fn run_prompt_task(
         .and_then(|batch| batch.events.last())
         .map(|event| &event.event);
     let source_channel_id = batch.as_ref().map(|batch| batch.channel_id);
-    let source_channel_info = match source_channel_id {
-        Some(channel_id) => ctx.channel_info.resolve(channel_id).await,
-        None => None,
+    // Preserve the ordinary runtime path when no product extension is
+    // configured. Extension classification may need trusted channel metadata,
+    // while the standard path resolves it only when creating a new session.
+    let source_channel_info = if ctx.turn_extensions.is_empty() {
+        None
+    } else {
+        match source_channel_id {
+            Some(channel_id) => ctx.channel_info.resolve(channel_id).await,
+            None => None,
+        }
     };
     let conversation = match source_channel_id {
         Some(channel_id) => VerifiedConversation::Channel {
