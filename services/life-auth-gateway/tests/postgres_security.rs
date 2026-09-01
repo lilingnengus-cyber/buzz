@@ -136,26 +136,40 @@ async fn postgres_security_contract_is_enforced() {
 
     let user_a = insert_user(pool, "life-user-a").await;
     let user_b = insert_user(pool, "life-user-b").await;
+    let workbench_session = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO life_workbench_sessions
+         (id,workbench_user_id,deployment_id,token_hash,status,expires_at)
+         VALUES($1,$2,'life-prod-cn',$3,'active',now()+interval '1 hour')",
+    )
+    .bind(workbench_session)
+    .bind(user_a)
+    .bind(vec![8_u8; 32])
+    .execute(pool)
+    .await
+    .expect("insert bound Workbench session");
     let pubkey = "a".repeat(64);
     sqlx::query(
         "INSERT INTO life_identity_bindings
-         (id,workbench_user_id,buzz_pubkey,status)
-         VALUES($1,$2,$3,'active')",
+         (id,workbench_user_id,buzz_pubkey,source_event_id,status)
+         VALUES($1,$2,$3,$4,'active')",
     )
     .bind(Uuid::new_v4())
     .bind(user_a)
     .bind(&pubkey)
+    .bind("f".repeat(64))
     .execute(pool)
     .await
     .expect("first active binding");
     assert!(sqlx::query(
         "INSERT INTO life_identity_bindings
-         (id,workbench_user_id,buzz_pubkey,status)
-         VALUES($1,$2,$3,'active')",
+         (id,workbench_user_id,buzz_pubkey,source_event_id,status)
+         VALUES($1,$2,$3,$4,'active')",
     )
     .bind(Uuid::new_v4())
     .bind(user_b)
     .bind(&pubkey)
+    .bind("e".repeat(64))
     .execute(pool)
     .await
     .is_err());
@@ -168,12 +182,13 @@ async fn postgres_security_contract_is_enforced() {
     .expect("revoke first binding");
     sqlx::query(
         "INSERT INTO life_identity_bindings
-         (id,workbench_user_id,buzz_pubkey,status)
-         VALUES($1,$2,$3,'active')",
+         (id,workbench_user_id,buzz_pubkey,source_event_id,status)
+         VALUES($1,$2,$3,$4,'active')",
     )
     .bind(Uuid::new_v4())
     .bind(user_b)
     .bind(&pubkey)
+    .bind("d".repeat(64))
     .execute(pool)
     .await
     .expect("partial binding index releases revoked pubkey");
@@ -181,11 +196,13 @@ async fn postgres_security_contract_is_enforced() {
     let challenge_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO life_identity_binding_challenges
-         (id,workbench_user_id,buzz_pubkey,nonce_hash,status,expires_at)
-         VALUES($1,$2,$3,$4,'active',now()+interval '5 minutes')",
+         (id,workbench_user_id,workbench_session_id,deployment_id,buzz_pubkey,
+          nonce_hash,status,expires_at)
+         VALUES($1,$2,$3,'life-prod-cn',$4,$5,'active',now()+interval '5 minutes')",
     )
     .bind(challenge_id)
     .bind(user_a)
+    .bind(workbench_session)
     .bind("b".repeat(64))
     .bind(vec![7_u8; 32])
     .execute(pool)
@@ -206,18 +223,6 @@ async fn postgres_security_contract_is_enforced() {
         .await
         .expect("replay challenge"));
 
-    let workbench_session = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO life_workbench_sessions
-         (id,workbench_user_id,deployment_id,token_hash,status,expires_at)
-         VALUES($1,$2,'life-prod-cn',$3,'active',now()+interval '1 hour')",
-    )
-    .bind(workbench_session)
-    .bind(user_a)
-    .bind(vec![8_u8; 32])
-    .execute(pool)
-    .await
-    .expect("insert bound Workbench session");
     assert!(sqlx::query(
         "INSERT INTO life_workbench_sessions
          (id,workbench_user_id,deployment_id,token_hash,status,expires_at)

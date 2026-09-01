@@ -12,7 +12,7 @@ pub enum StoreError {
 /// Transactional persistence boundary for Life identity and delegation state.
 #[derive(Clone)]
 pub struct Store {
-    pool: PgPool,
+    pub(crate) pool: PgPool,
 }
 
 impl Store {
@@ -86,7 +86,7 @@ impl Store {
         Ok(revoked)
     }
 
-    async fn transaction(&self) -> Result<Transaction<'_, Postgres>, StoreError> {
+    pub(crate) async fn transaction(&self) -> Result<Transaction<'_, Postgres>, StoreError> {
         self.pool.begin().await.map_err(|_| StoreError::Database)
     }
 }

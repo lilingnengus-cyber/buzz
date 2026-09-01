@@ -2,6 +2,7 @@ use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
 use std::fmt;
 use subtle::ConstantTimeEq as _;
+use zeroize::Zeroizing;
 
 /// A service credential retained only as a fixed-length SHA-256 digest.
 #[derive(Clone)]
@@ -31,6 +32,38 @@ impl ServiceToken {
 
     pub(crate) fn same_as(&self, other: &Self) -> bool {
         bool::from(self.digest.ct_eq(&other.digest))
+    }
+}
+
+/// A redacted service credential retained only where an outbound call requires it.
+#[derive(Clone)]
+pub struct OutboundServiceCredential {
+    secret: std::sync::Arc<Zeroizing<String>>,
+}
+
+impl OutboundServiceCredential {
+    /// Validates an outbound credential using the same boundary as service tokens.
+    pub fn parse(name: &str, value: String) -> Result<Self, String> {
+        ServiceToken::parse(name, value.clone())?;
+        Ok(Self {
+            secret: std::sync::Arc::new(Zeroizing::new(value)),
+        })
+    }
+
+    pub(crate) fn expose(&self) -> &str {
+        self.secret.as_str()
+    }
+}
+
+impl fmt::Debug for OutboundServiceCredential {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("OutboundServiceCredential(<redacted>)")
+    }
+}
+
+impl fmt::Display for OutboundServiceCredential {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
     }
 }
 

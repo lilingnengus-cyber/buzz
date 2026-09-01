@@ -1,4 +1,4 @@
-use crate::security::{ServiceToken, SigningKeyMaterial};
+use crate::security::{OutboundServiceCredential, ServiceToken, SigningKeyMaterial};
 use std::{fmt, net::SocketAddr, time::Duration};
 use url::Url;
 
@@ -32,12 +32,15 @@ pub struct Config {
     pacioli_service_token: ServiceToken,
     mcp_service_token: ServiceToken,
     lifeos_service_token: ServiceToken,
+    lifeos_outbound_credential: OutboundServiceCredential,
+    lifeos_base_url: Url,
     call_grant_issuer: String,
     call_grant_audience: String,
     delegation_audience: String,
     signing_key: SigningKeyMaterial,
     workbench_oidc_issuer: String,
     workbench_oidc_audience: String,
+    identity_challenge_ttl: Duration,
     delegation_ttl: Duration,
     call_grant_ttl: Duration,
     environment: Environment,
@@ -69,9 +72,14 @@ impl Config {
             "LIFE_AUTH_MCP_SERVICE_TOKEN",
             required(&read, "LIFE_AUTH_MCP_SERVICE_TOKEN")?,
         )?;
+        let lifeos_service_value = required(&read, "LIFE_AUTH_LIFEOS_SERVICE_TOKEN")?;
         let lifeos_service_token = ServiceToken::parse(
             "LIFE_AUTH_LIFEOS_SERVICE_TOKEN",
-            required(&read, "LIFE_AUTH_LIFEOS_SERVICE_TOKEN")?,
+            lifeos_service_value.clone(),
+        )?;
+        let lifeos_outbound_credential = OutboundServiceCredential::parse(
+            "LIFE_AUTH_LIFEOS_SERVICE_TOKEN",
+            lifeos_service_value,
         )?;
         if pacioli_service_token.same_as(&mcp_service_token)
             || pacioli_service_token.same_as(&lifeos_service_token)
@@ -90,6 +98,11 @@ impl Config {
             fixed_value(&read, "LIFE_AUTH_DELEGATION_AUDIENCE", DELEGATION_AUDIENCE)?;
         let signing_key =
             SigningKeyMaterial::parse(&required(&read, "LIFE_AUTH_ED25519_PRIVATE_KEY")?)?;
+        let lifeos_base_url = validate_service_base_url(
+            "LIFE_AUTH_LIFEOS_BASE_URL",
+            &required(&read, "LIFE_AUTH_LIFEOS_BASE_URL")?,
+            environment,
+        )?;
         let workbench_oidc_issuer = required(&read, "LIFE_AUTH_WORKBENCH_OIDC_ISSUER")?;
         validate_oidc_issuer(&workbench_oidc_issuer, environment)?;
         let workbench_oidc_audience = safe_identifier(
@@ -111,12 +124,21 @@ impl Config {
             pacioli_service_token,
             mcp_service_token,
             lifeos_service_token,
+            lifeos_outbound_credential,
+            lifeos_base_url,
             call_grant_issuer,
             call_grant_audience,
             delegation_audience,
             signing_key,
             workbench_oidc_issuer,
             workbench_oidc_audience,
+            identity_challenge_ttl: seconds(
+                &read,
+                "LIFE_AUTH_IDENTITY_CHALLENGE_TTL_SECONDS",
+                90,
+                30,
+                300,
+            )?,
             delegation_ttl: seconds(&read, "LIFE_AUTH_DELEGATION_TTL_SECONDS", 300, 30, 900)?,
             call_grant_ttl: seconds(&read, "LIFE_AUTH_CALL_GRANT_TTL_SECONDS", 30, 1, 60)?,
             environment,
@@ -139,6 +161,30 @@ impl Config {
     pub(crate) fn signing_key(&self) -> &SigningKeyMaterial {
         &self.signing_key
     }
+
+    pub(crate) fn deployment_id(&self) -> &str {
+        &self.deployment_id
+    }
+
+    pub(crate) fn lifeos_base_url(&self) -> &Url {
+        &self.lifeos_base_url
+    }
+
+    pub(crate) fn lifeos_outbound_credential(&self) -> &OutboundServiceCredential {
+        &self.lifeos_outbound_credential
+    }
+
+    pub(crate) fn workbench_oidc_issuer(&self) -> &str {
+        &self.workbench_oidc_issuer
+    }
+
+    pub(crate) fn workbench_oidc_audience(&self) -> &str {
+        &self.workbench_oidc_audience
+    }
+
+    pub(crate) fn identity_challenge_ttl(&self) -> Duration {
+        self.identity_challenge_ttl
+    }
 }
 
 impl fmt::Debug for Config {
@@ -151,12 +197,18 @@ impl fmt::Debug for Config {
             .field("pacioli_service_token", &self.pacioli_service_token)
             .field("mcp_service_token", &self.mcp_service_token)
             .field("lifeos_service_token", &self.lifeos_service_token)
+            .field(
+                "lifeos_outbound_credential",
+                &self.lifeos_outbound_credential,
+            )
+            .field("lifeos_base_url", &self.lifeos_base_url)
             .field("call_grant_issuer", &self.call_grant_issuer)
             .field("call_grant_audience", &self.call_grant_audience)
             .field("delegation_audience", &self.delegation_audience)
             .field("signing_key", &self.signing_key)
             .field("workbench_oidc_issuer", &self.workbench_oidc_issuer)
             .field("workbench_oidc_audience", &self.workbench_oidc_audience)
+            .field("identity_challenge_ttl", &self.identity_challenge_ttl)
             .field("delegation_ttl", &self.delegation_ttl)
             .field("call_grant_ttl", &self.call_grant_ttl)
             .field("environment", &self.environment)
@@ -253,6 +305,29 @@ fn validate_oidc_issuer(value: &str, environment: Environment) -> Result<(), Str
     Ok(())
 }
 
+fn validate_service_base_url(
+    name: &str,
+    value: &str,
+    environment: Environment,
+) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|_| format!("{name} must be a URL"))?;
+    let development_http = environment != Environment::Production
+        && url.scheme() == "http"
+        && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    if (url.scheme() != "https" && !development_http)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err(format!(
+            "{name} must be an HTTPS origin (loopback HTTP is allowed outside production)"
+        ));
+    }
+    Ok(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +358,10 @@ mod tests {
             ),
             ("LIFE_AUTH_ED25519_PRIVATE_KEY".into(), "11".repeat(32)),
             (
+                "LIFE_AUTH_LIFEOS_BASE_URL".into(),
+                "https://life.example/".into(),
+            ),
+            (
                 "LIFE_AUTH_WORKBENCH_OIDC_ISSUER".into(),
                 "https://identity.example/application/o/life/".into(),
             ),
@@ -307,6 +386,7 @@ mod tests {
             "LIFE_AUTH_CALL_GRANT_AUDIENCE",
             "LIFE_AUTH_DELEGATION_AUDIENCE",
             "LIFE_AUTH_ED25519_PRIVATE_KEY",
+            "LIFE_AUTH_LIFEOS_BASE_URL",
             "LIFE_AUTH_WORKBENCH_OIDC_ISSUER",
             "LIFE_AUTH_WORKBENCH_OIDC_AUDIENCE",
         ] {

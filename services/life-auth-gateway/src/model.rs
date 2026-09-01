@@ -33,6 +33,10 @@ uuid_id!(
     "Opaque identifier for a one-time Nostr identity-binding challenge."
 );
 uuid_id!(
+    IdentityBindingId,
+    "Opaque identifier for an active or historical Nostr identity binding."
+);
+uuid_id!(
     WorkbenchSessionId,
     "Opaque identifier for a Workbench OIDC session."
 );

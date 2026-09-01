@@ -3,18 +3,23 @@
 #![deny(missing_docs)]
 
 use axum::{
-    extract::{Request, State},
-    http::{header, HeaderValue, StatusCode},
+    extract::Request,
+    http::{header, HeaderValue},
     middleware::{self, Next},
     response::Response,
-    routing::get,
     Router,
 };
-use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{sync::Arc, time::Duration};
+use sqlx::postgres::PgPoolOptions;
+use std::time::Duration;
 
+/// OIDC validation for Workbench access tokens.
+pub mod auth;
 /// Strong environment configuration.
 pub mod config;
+/// Fixed HTTP surface for Life identity and health operations.
+pub mod http;
+/// Explicit LifeOS identity resolution and Nostr binding workflows.
+pub mod identity;
 /// Wire models introduced as the Gateway gains fixed endpoints.
 pub mod model;
 /// Secret comparison and Ed25519 key material.
@@ -23,47 +28,14 @@ pub mod security;
 pub mod store;
 
 pub use config::Config;
+pub use http::AppState;
 pub use store::Store;
 
-/// Minimal application state required by liveness and readiness probes.
-#[derive(Clone)]
-pub struct AppState {
-    store: Store,
-    signing_key: security::SigningKeyMaterial,
-}
-
-impl AppState {
-    /// Creates health state from an isolated database pool and signing key.
-    pub fn new(pool: PgPool, signing_key: security::SigningKeyMaterial) -> Self {
-        Self {
-            store: Store::new(pool),
-            signing_key,
-        }
-    }
-}
-
-/// Builds the phase-two skeleton router with no proxy or product endpoints.
+/// Builds the fixed Life authentication router with no generic proxy surface.
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/health/live", get(live))
-        .route("/health/ready", get(ready))
-        .with_state(Arc::new(state))
+    http::router(state)
         .layer(middleware::from_fn(security_headers))
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024))
-}
-
-async fn live() -> StatusCode {
-    StatusCode::NO_CONTENT
-}
-
-async fn ready(State(state): State<Arc<AppState>>) -> StatusCode {
-    if !state.signing_key.ready() {
-        return StatusCode::SERVICE_UNAVAILABLE;
-    }
-    match state.store.ready().await {
-        Ok(()) => StatusCode::NO_CONTENT,
-        Err(_) => StatusCode::SERVICE_UNAVAILABLE,
-    }
 }
 
 async fn security_headers(request: Request, next: Next) -> Response {
@@ -88,7 +60,7 @@ pub async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send 
         .max_connections(20)
         .acquire_timeout(Duration::from_secs(2))
         .connect_lazy(config.database_url())?;
-    let state = AppState::new(pool, config.signing_key().clone());
+    let state = AppState::configured(pool, &config)?;
     let listener = tokio::net::TcpListener::bind(config.bind_addr()).await?;
     tracing::info!(address = %config.bind_addr(), "life auth gateway listening");
     axum::serve(listener, router(state))
