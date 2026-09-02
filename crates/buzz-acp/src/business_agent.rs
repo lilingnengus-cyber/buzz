@@ -1,8 +1,8 @@
 use super::business_response::BusinessResponseObservation;
 use crate::acp::{EnvVar, McpServer};
 use crate::turn_observer::{
-    TurnExtension, TurnExtensionAccess, TurnExtensionFinishContext, TurnExtensionFuture,
-    TurnExtensionRequest, TurnExtensionStartupPolicy,
+    TurnApplicability, TurnExtension, TurnExtensionAccess, TurnExtensionFinishContext,
+    TurnExtensionFuture, TurnMcpMode, TurnPolicy, VerifiedTurnContext,
 };
 use nostr::Event;
 use serde::Deserialize;
@@ -86,30 +86,82 @@ struct IssueResponse {
 
 pub(crate) struct BusinessTurnAccess {
     mcp_server: McpServer,
+    policy: TurnPolicy,
     _revocation: RevocationGuard,
 }
 
-impl TurnExtension for BusinessAgentHostConfig {
-    fn startup_policy(&self) -> TurnExtensionStartupPolicy {
-        TurnExtensionStartupPolicy {
-            replace_standard_mcp_servers: true,
+struct BusinessPolicyOnlyAccess {
+    policy: TurnPolicy,
+}
+
+impl BusinessAgentHostConfig {
+    fn turn_policy(&self) -> TurnPolicy {
+        TurnPolicy {
+            mcp_mode: TurnMcpMode::ReplaceStandard,
             max_turn_duration: Some(Duration::from_secs(self.turn_timeout_seconds)),
             base_prompt: Some(include_str!("business_agent_prompt.md")),
             disable_memory: true,
+            requires_fresh_session: true,
         }
+    }
+
+    fn heartbeat_policy(&self) -> TurnPolicy {
+        TurnPolicy {
+            requires_fresh_session: false,
+            ..self.turn_policy()
+        }
+    }
+}
+
+impl TurnExtension for BusinessAgentHostConfig {
+    fn id(&self) -> &'static str {
+        "business"
+    }
+
+    fn classify_turn(
+        &self,
+        context: &VerifiedTurnContext<'_>,
+    ) -> Result<TurnApplicability, String> {
+        Ok(
+            match (
+                context.source_event.is_some(),
+                context.channel_id().is_some(),
+            ) {
+                (true, true) => TurnApplicability::Applicable {
+                    priority: 10,
+                    reason: "configured Business Agent channel turn",
+                },
+                (false, false) => TurnApplicability::Applicable {
+                    priority: 10,
+                    reason: "configured Business Agent heartbeat policy",
+                },
+                _ => TurnApplicability::Ambiguous {
+                    reason: "Business Agent event and channel facts disagree",
+                },
+            },
+        )
     }
 
     fn begin_turn<'a>(
         &'a self,
-        request: TurnExtensionRequest<'a>,
+        context: VerifiedTurnContext<'a>,
     ) -> TurnExtensionFuture<'a, Result<Option<Box<dyn TurnExtensionAccess>>, String>> {
         Box::pin(async move {
-            let (Some(source_event), Some(channel_id)) = (request.source_event, request.channel_id)
+            let (Some(source_event), Some(channel_id)) =
+                (context.source_event, context.channel_id())
             else {
-                return Ok(None);
+                return Ok(Some(Box::new(BusinessPolicyOnlyAccess {
+                    policy: self.heartbeat_policy(),
+                }) as Box<dyn TurnExtensionAccess>));
             };
             let access = self
-                .authorize_turn(source_event, channel_id, request.agent_id, request.turn_id)
+                .authorize_turn(
+                    source_event,
+                    channel_id,
+                    context.agent_id,
+                    context.agent_turn_id,
+                    context.trace_id,
+                )
                 .await?;
             Ok(Some(Box::new(access) as Box<dyn TurnExtensionAccess>))
         })
@@ -117,12 +169,12 @@ impl TurnExtension for BusinessAgentHostConfig {
 }
 
 impl TurnExtensionAccess for BusinessTurnAccess {
-    fn mcp_server(&self) -> Option<&McpServer> {
-        Some(&self.mcp_server)
+    fn policy(&self) -> &TurnPolicy {
+        &self.policy
     }
 
-    fn requires_fresh_session(&self) -> bool {
-        true
+    fn mcp_server(&self) -> Option<&McpServer> {
+        Some(&self.mcp_server)
     }
 
     fn start_observation(&mut self, acp: &mut crate::acp::AcpClient) {
@@ -158,6 +210,25 @@ impl TurnExtensionAccess for BusinessTurnAccess {
             self.audit_response(observation).await;
             self._revocation.revoke().await;
         })
+    }
+}
+
+impl TurnExtensionAccess for BusinessPolicyOnlyAccess {
+    fn policy(&self) -> &TurnPolicy {
+        &self.policy
+    }
+
+    fn mcp_server(&self) -> Option<&McpServer> {
+        None
+    }
+
+    fn start_observation(&mut self, _acp: &mut crate::acp::AcpClient) {}
+
+    fn finish<'a>(
+        &'a mut self,
+        _context: TurnExtensionFinishContext<'a>,
+    ) -> TurnExtensionFuture<'a, ()> {
+        Box::pin(async {})
     }
 }
 
@@ -329,6 +400,26 @@ impl Drop for RevocationGuard {
 }
 
 impl BusinessAgentHostConfig {
+    #[cfg(test)]
+    pub(super) fn test_mock() -> Self {
+        Self {
+            gateway_base_url: Url::parse("http://127.0.0.1:1/").expect("test URL"),
+            business_api_base_url: None,
+            business_action_api_base_url: None,
+            service_credential: "test-service-credential-at-least-32-bytes".into(),
+            mcp_command: "business-read-mcp".into(),
+            adapter: "mock".into(),
+            tool_timeout_seconds: 10,
+            turn_timeout_seconds: 120,
+            max_payload_bytes: 128 * 1024,
+            default_limit: 20,
+            max_limit: 100,
+            draft_write_enabled: false,
+            chat_approval_enabled: false,
+            client: reqwest::Client::new(),
+        }
+    }
+
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
         let enabled = std::env::var("BUSINESS_AGENT_READ_ENABLED")
             .ok()
@@ -452,8 +543,10 @@ impl BusinessAgentHostConfig {
         source_channel_id: Uuid,
         agent_id: &str,
         agent_turn_id: &str,
+        turn_trace_id: &str,
     ) -> Result<BusinessTurnAccess, String> {
-        let trace_id = Uuid::new_v4();
+        let trace_id = Uuid::parse_str(turn_trace_id)
+            .map_err(|_| "Business Agent turn trace ID is invalid")?;
         let url = self
             .gateway_base_url
             .join("internal/agent-delegations")
@@ -577,6 +670,7 @@ impl BusinessAgentHostConfig {
                 args: Vec::new(),
                 env: mcp_env,
             },
+            policy: self.turn_policy(),
             _revocation: RevocationGuard {
                 config: Arc::new(self.clone()),
                 delegation_id: issued.id,
@@ -632,6 +726,35 @@ mod tests {
             max_limit: 100,
             client: reqwest::Client::new(),
         })
+    }
+
+    #[tokio::test]
+    async fn heartbeat_keeps_business_policy_without_forcing_session_rotation() {
+        let config = BusinessAgentHostConfig::test_mock();
+        let context = VerifiedTurnContext {
+            source_event: None,
+            source_event_id: None,
+            source_pubkey: None,
+            community_id: "community",
+            conversation: crate::turn_observer::VerifiedConversation::Heartbeat,
+            agent_id: "agent",
+            agent_turn_id: "turn",
+            trace_id: "trace",
+        };
+        let access = config
+            .begin_turn(context)
+            .await
+            .expect("heartbeat policy")
+            .expect("policy-only access");
+
+        assert_eq!(access.policy().mcp_mode, TurnMcpMode::ReplaceStandard);
+        assert_eq!(
+            access.policy().base_prompt,
+            Some(include_str!("business_agent_prompt.md"))
+        );
+        assert!(access.policy().disable_memory);
+        assert!(!access.policy().requires_fresh_session);
+        assert!(access.mcp_server().is_none());
     }
 
     async fn expect_revocation_request(

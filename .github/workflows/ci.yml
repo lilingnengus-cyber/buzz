@@ -125,7 +125,17 @@ jobs:
       - uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
+          cache-directories: target/sherpa-onnx-prebuilt
           save-if: ${{ github.event_name != 'pull_request' }}
+      - name: Repair incomplete Sherpa native cache
+        shell: bash
+        run: |
+          sherpa_cache="target/sherpa-onnx-prebuilt"
+          sherpa_library=$(find "$sherpa_cache" -name 'libsherpa-onnx-c-api.a' -print -quit 2>/dev/null || true)
+          if [[ -d "$sherpa_cache" && -z "$sherpa_library" ]]; then
+            echo "Quarantining incomplete Sherpa native cache"
+            mv "$sherpa_cache" "$RUNNER_TEMP/sherpa-onnx-prebuilt-incomplete"
+          fi
       - name: Install cargo-nextest
         uses: taiki-e/install-action@0fd46367812ee04360509b4169d9f659d6892bb2 # v2.79.15
         with:

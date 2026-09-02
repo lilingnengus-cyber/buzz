@@ -31,12 +31,16 @@ members = [
     "crates/business-anomaly-contracts",
     "crates/business-action-contracts",
     "crates/business-iam",
+    "crates/life-iam",
+    "crates/life-workbench-contracts",
     "services/business-analytics",
     "services/business-action-service",
     "services/business-read-api",
     "services/business-read-mcp",
+    "services/life-workbench-mcp",
     "crates/buzz-voice",
     "services/business-auth-gateway",
+    "services/life-auth-gateway",
     "services/business-iam-admin-api",
     "services/business-core",
     "crates/buzz-backend-kubernetes",
@@ -121,6 +125,7 @@ hex       = "0.4"
 hmac      = "0.13"
 base64    = "0.22"
 jsonwebtoken = "9.3"
+ed25519-dalek = "=3.0.0-rc.0"
 
 # Randomness
 rand = "0.10"

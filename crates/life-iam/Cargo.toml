@@ -1,0 +1,11 @@
+[package]
+name = "life-iam"
+description = "Pacioli-independent LifeOS authorization policy model and evaluator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }

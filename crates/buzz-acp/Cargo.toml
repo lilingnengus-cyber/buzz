@@ -20,6 +20,7 @@ path = "src/main.rs"
 buzz-core = { workspace = true }
 buzz-sdk = { workspace = true }
 buzz-persona = { path = "../buzz-persona" }
+life-workbench-contracts = { path = "../life-workbench-contracts" }
 
 # Nostr
 nostr = { workspace = true }
@@ -77,5 +78,6 @@ evalexpr = { workspace = true }
 nix = { version = "0.31", default-features = false, features = ["signal"] }
 
 [dev-dependencies]
+axum = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 httparse = "1"

@@ -27,7 +27,7 @@ const MAX_LINE_SIZE: usize = 10_000_000; // 10 MB
 ///
 /// Corresponds to the `McpServerStdio` variant in the ACP schema.
 /// All four fields are **required** by the schema (`args` and `env` may be empty arrays).
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct McpServer {
     pub name: String,
     pub command: String,
@@ -36,10 +36,42 @@ pub struct McpServer {
 }
 
 /// A single environment variable for an MCP server.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct EnvVar {
     pub name: String,
     pub value: String,
+}
+
+impl std::fmt::Debug for EnvVar {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sensitive = ["TOKEN", "SECRET", "CREDENTIAL", "PRIVATE_KEY"]
+            .iter()
+            .any(|marker| self.name.to_ascii_uppercase().contains(marker));
+        formatter
+            .debug_struct("EnvVar")
+            .field("name", &self.name)
+            .field(
+                "value",
+                if sensitive {
+                    &"[REDACTED]"
+                } else {
+                    &self.value
+                },
+            )
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for McpServer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpServer")
+            .field("name", &self.name)
+            .field("command", &self.command)
+            .field("args", &self.args)
+            .field("env", &self.env)
+            .finish()
+    }
 }
 
 /// Stop reason returned by `session/prompt` when the agent finishes a turn.

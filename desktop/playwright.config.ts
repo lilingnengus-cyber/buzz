@@ -86,6 +86,7 @@ export default defineConfig({
         "**/home-collapsed-top-chrome.spec.ts",
         "**/top-chrome-zoom-clearance.spec.ts",
         "**/business-dock.spec.ts",
+        "**/lifeDock.spec.ts",
         "**/business-iam-admin.spec.ts",
         "**/thread-unread.spec.ts",
         "**/workspace-rail.spec.ts",
