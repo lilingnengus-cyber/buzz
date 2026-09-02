@@ -73,6 +73,7 @@ async fn fixed_tools_consume_complete_grant_and_call_only_the_fixed_route() {
     assert_eq!(api.len(), 1);
     assert_eq!(api[0]["input"], json!({"limit":25}));
     assert_eq!(api[0]["resource"]["id"], "workspace-1");
+    assert!(api[0]["resource"].get("type").is_none());
     assert_eq!(api[0]["idempotencyKey"], consume["idempotencyKey"]);
     drop(api);
     drop(consumes);
@@ -181,7 +182,7 @@ async fn confirmed_write_uses_only_the_gateway_bound_command_resource() {
     let api = state.api_requests.lock().expect("API lock");
     assert_eq!(api.len(), 1);
     assert_eq!(api[0]["input"], json!({}));
-    assert_eq!(api[0]["resource"]["type"], "write_command");
+    assert!(api[0]["resource"].get("type").is_none());
     assert_eq!(
         api[0]["resource"]["id"],
         "018f4d22-8df1-7a67-8ec1-432ad80c615a"

@@ -72,10 +72,15 @@ impl LifeClient {
             .await
             .map_err(|_| ClientError::GatewayUnavailable)?;
         let granted_resource = grant.validate(&consume)?;
+        let api_resource = WorkbenchApiResource {
+            id: &granted_resource.id,
+            expected_version: granted_resource.expected_version,
+            preview_hash: granted_resource.preview_hash.as_deref(),
+        };
 
         let envelope = WorkbenchEnvelope {
             input: &invocation.api_input,
-            resource: &granted_resource,
+            resource: api_resource,
             idempotency_key,
             trace_id: self.config.trace_id,
         };
@@ -176,9 +181,18 @@ struct ConsumeRequest<'a> {
 #[serde(rename_all = "camelCase")]
 struct WorkbenchEnvelope<'a> {
     input: &'a Value,
-    resource: &'a ResourceContext,
+    resource: WorkbenchApiResource<'a>,
     idempotency_key: Uuid,
     trace_id: Uuid,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkbenchApiResource<'a> {
+    id: &'a str,
+    expected_version: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview_hash: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
