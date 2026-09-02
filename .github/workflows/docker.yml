@@ -1,6 +1,7 @@
 name: Docker image
 
-# Builds and publishes the public Buzz relay images as ghcr.io/block/buzz.
+# Builds and publishes the public Buzz relay images under the repository owner's
+# GHCR namespace by default (for example, ghcr.io/block/buzz upstream).
 # Normal tags contain stripped binaries; matching debug-* tags contain the same
 # optimized binaries with line-table debug information for native profilers.
 #
@@ -73,10 +74,9 @@ concurrency:
 permissions: {}
 
 env:
-  # Single source of truth for the image name. Set GHCR_IMAGE as a repo
-  # variable to override (e.g., for forks that want to push to their own
-  # namespace without forking this file).
-  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || 'ghcr.io/block/buzz' }}
+  # Single source of truth for image names. Repository variables may override
+  # them; otherwise forks publish and cache under their own GHCR namespace.
+  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || format('ghcr.io/{0}/buzz', github.repository_owner) }}
   PUSH_GATEWAY_IMAGE: ${{ vars.GHCR_PUSH_GATEWAY_IMAGE != '' && vars.GHCR_PUSH_GATEWAY_IMAGE || format('ghcr.io/{0}/buzz-push-gateway', github.repository_owner) }}
 
 jobs:
