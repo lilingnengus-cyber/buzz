@@ -51,6 +51,23 @@ pub struct IssueEmbedRequest {
     pub target_path: String,
 }
 
+/// Hash-only network facts retained for security correlation without raw IP or User-Agent data.
+#[derive(Clone, Debug, Default)]
+pub struct EmbedRiskFacts {
+    ip_hash: Option<Vec<u8>>,
+    user_agent_hash: Option<Vec<u8>>,
+}
+
+impl EmbedRiskFacts {
+    /// Hashes bounded request facts before they reach persistence.
+    pub fn from_request(ip: Option<&str>, user_agent: Option<&str>) -> Self {
+        Self {
+            ip_hash: bounded_fact(ip, 256).map(hash),
+            user_agent_hash: bounded_fact(user_agent, 1024).map(hash),
+        }
+    }
+}
+
 /// One-time plaintext bootstrap code returned only to the authenticated Workbench.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,7 +99,9 @@ pub struct ConsumedEmbedSession {
     /// Random 32-byte session bearer; LifeOS must place it in an HttpOnly cookie.
     pub session_token: String,
     /// Bound Life Workbench user.
-    pub user_id: LifeWorkbenchUserId,
+    pub workbench_user_id: LifeWorkbenchUserId,
+    /// Canonical LifeOS user resolved when the Workbench Session was created.
+    pub life_os_user_id: String,
     /// Bound Workbench Session.
     pub workbench_session_id: WorkbenchSessionId,
     /// Bound Pacioli deployment.
@@ -119,6 +138,7 @@ impl Store {
         principal: &SessionPrincipal,
         request: IssueEmbedRequest,
         policy: &EmbedPolicy,
+        risk_facts: &EmbedRiskFacts,
         trace_id: Uuid,
     ) -> Result<IssuedEmbedCode, EmbedError> {
         if !allowlisted_target(&request.target_path) {
@@ -149,8 +169,8 @@ impl Store {
         sqlx::query(
             "INSERT INTO life_embed_codes
              (id,code_hash,workbench_user_id,workbench_session_id,deployment_id,
-              target_path,status,expires_at,trace_id)
-             VALUES($1,$2,$3,$4,$5,$6,'active',$7,$8)",
+              target_path,status,expires_at,trace_id,issue_ip_hash,issue_user_agent_hash)
+             VALUES($1,$2,$3,$4,$5,$6,'active',$7,$8,$9,$10)",
         )
         .bind(id)
         .bind(hash(&code))
@@ -160,6 +180,8 @@ impl Store {
         .bind(&request.target_path)
         .bind(expires_at)
         .bind(trace_id)
+        .bind(&risk_facts.ip_hash)
+        .bind(&risk_facts.user_agent_hash)
         .execute(&mut *transaction)
         .await
         .map_err(database)?;
@@ -187,6 +209,7 @@ impl Store {
         code: &str,
         deployment_id: &str,
         policy: &EmbedPolicy,
+        risk_facts: &EmbedRiskFacts,
         request_trace_id: Uuid,
     ) -> Result<ConsumedEmbedSession, EmbedError> {
         validate_token(code)?;
@@ -214,7 +237,8 @@ impl Store {
                AND s.workbench_user_id=c.workbench_user_id
                AND s.deployment_id=c.deployment_id
              RETURNING c.id,c.workbench_user_id,c.workbench_session_id,c.deployment_id,
-                       c.target_path,c.trace_id,s.expires_at AS workbench_expires_at",
+                       c.target_path,c.trace_id,s.expires_at AS workbench_expires_at,
+                       u.life_os_user_id",
         )
         .bind(&code_hash)
         .bind(deployment_id)
@@ -237,8 +261,8 @@ impl Store {
         sqlx::query(
             "INSERT INTO life_embed_sessions
              (id,session_token_hash,workbench_user_id,workbench_session_id,deployment_id,
-              status,expires_at,trace_id)
-             VALUES($1,$2,$3,$4,$5,'active',$6,$7)",
+              status,expires_at,trace_id,consume_ip_hash,consume_user_agent_hash)
+             VALUES($1,$2,$3,$4,$5,'active',$6,$7,$8,$9)",
         )
         .bind(id)
         .bind(hash(&session_token))
@@ -247,6 +271,8 @@ impl Store {
         .bind(deployment_id)
         .bind(expires_at)
         .bind(trace_id)
+        .bind(&risk_facts.ip_hash)
+        .bind(&risk_facts.user_agent_hash)
         .execute(&mut *transaction)
         .await
         .map_err(database)?;
@@ -264,7 +290,8 @@ impl Store {
         Ok(ConsumedEmbedSession {
             embed_session_id: EmbedSessionId::new(id),
             session_token,
-            user_id: LifeWorkbenchUserId::new(user_id),
+            workbench_user_id: LifeWorkbenchUserId::new(user_id),
+            life_os_user_id: row.get("life_os_user_id"),
             workbench_session_id: WorkbenchSessionId::new(workbench_session_id),
             deployment_id: row.get("deployment_id"),
             target_path: row.get("target_path"),
@@ -384,6 +411,14 @@ fn random_token() -> String {
 
 fn hash(value: &str) -> Vec<u8> {
     Sha256::digest(value.as_bytes()).to_vec()
+}
+
+fn bounded_fact(value: Option<&str>, max: usize) -> Option<&str> {
+    value.filter(|value| {
+        !value.is_empty()
+            && value.len() <= max
+            && !value.chars().any(|character| character.is_control())
+    })
 }
 
 async fn audit(

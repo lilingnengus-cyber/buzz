@@ -3,7 +3,7 @@ use crate::{
     auth::{bearer, OidcVerifier},
     call_grant::CallGrantSigner,
     config::Config,
-    embed::{ConsumeEmbedRequest, EmbedError, EmbedPolicy, IssueEmbedRequest},
+    embed::{ConsumeEmbedRequest, EmbedError, EmbedPolicy, EmbedRiskFacts, IssueEmbedRequest},
     identity::{IdentityError, LifeOsIdentityClient},
     membership::{MembershipError, MembershipEvent},
     model::{AgentDelegationId, EmbedSessionId, IdentityBindingChallengeId, IdentityBindingId},
@@ -238,6 +238,7 @@ async fn issue_embed_session(
             &principal,
             request,
             &runtime.embed_policy,
+            &embed_risk_facts(&headers),
             trace_id(&headers),
         )
         .await?;
@@ -270,10 +271,23 @@ async fn consume_embed_session(
                 &request.code,
                 &runtime.deployment_id,
                 &runtime.embed_policy,
+                &embed_risk_facts(&headers),
                 trace_id(&headers),
             )
             .await?,
     ))
+}
+
+fn embed_risk_facts(headers: &HeaderMap) -> EmbedRiskFacts {
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim);
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok());
+    EmbedRiskFacts::from_request(ip, user_agent)
 }
 
 async fn revoke_embed_session(

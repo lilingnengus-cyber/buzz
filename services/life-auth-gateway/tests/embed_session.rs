@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use life_auth_gateway::{
-    embed::{EmbedPolicy, IssueEmbedRequest},
+    embed::{EmbedPolicy, EmbedRiskFacts, IssueEmbedRequest},
     identity::SessionPrincipal,
     model::{LifeWorkbenchUserId, WorkbenchSessionId},
     Store,
@@ -101,6 +101,10 @@ fn policy() -> EmbedPolicy {
     EmbedPolicy::new(Duration::from_secs(30), Duration::from_secs(3600)).expect("valid policy")
 }
 
+fn risk_facts() -> EmbedRiskFacts {
+    EmbedRiskFacts::from_request(Some("192.0.2.10"), Some("Pacioli-Test/1"))
+}
+
 #[tokio::test]
 async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
     let Some(database) = Database::create().await else {
@@ -116,6 +120,7 @@ async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
                 target_path: "/embed/actions/action-1".into(),
             },
             &policy(),
+            &risk_facts(),
             Uuid::new_v4(),
         )
         .await
@@ -156,7 +161,13 @@ async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
         "/embed/actions/action-1"
     );
     assert!(store
-        .consume_embed_code(&issued.code, "other-deployment", &policy(), Uuid::new_v4(),)
+        .consume_embed_code(
+            &issued.code,
+            "other-deployment",
+            &policy(),
+            &risk_facts(),
+            Uuid::new_v4(),
+        )
         .await
         .is_err());
 
@@ -169,7 +180,7 @@ async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
         tasks.push(tokio::spawn(async move {
             barrier.wait().await;
             store
-                .consume_embed_code(&code, "life-test", &policy(), Uuid::new_v4())
+                .consume_embed_code(&code, "life-test", &policy(), &risk_facts(), Uuid::new_v4())
                 .await
         }));
     }
@@ -184,7 +195,8 @@ async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
     let consumed = consumed.pop().expect("one consumer");
     assert_eq!(consumed.embed_session_id, issued.embed_session_id);
     assert_eq!(consumed.target_path, "/embed/actions/action-1");
-    assert_eq!(consumed.user_id, principal.user_id);
+    assert_eq!(consumed.workbench_user_id, principal.user_id);
+    assert_eq!(consumed.life_os_user_id, "life-embed-user");
     assert_eq!(consumed.workbench_session_id, principal.session_id);
     assert_eq!(consumed.deployment_id, "life-test");
     let session_hash: Vec<u8> =
@@ -199,7 +211,13 @@ async fn embed_code_is_hash_only_bound_and_has_one_concurrent_consumer() {
     );
     assert_ne!(session_hash, consumed.session_token.as_bytes());
     assert!(store
-        .consume_embed_code(&issued.code, "life-test", &policy(), Uuid::new_v4())
+        .consume_embed_code(
+            &issued.code,
+            "life-test",
+            &policy(),
+            &risk_facts(),
+            Uuid::new_v4(),
+        )
         .await
         .is_err());
     store
@@ -243,6 +261,7 @@ async fn embed_target_expiry_ownership_and_revocation_fail_closed() {
                         target_path: path.into()
                     },
                     &policy(),
+                    &risk_facts(),
                     Uuid::new_v4(),
                 )
                 .await
@@ -257,6 +276,7 @@ async fn embed_target_expiry_ownership_and_revocation_fail_closed() {
                 target_path: "/embed/dashboard".into(),
             },
             &policy(),
+            &risk_facts(),
             Uuid::new_v4(),
         )
         .await
@@ -270,7 +290,13 @@ async fn embed_target_expiry_ownership_and_revocation_fail_closed() {
         .await
         .expect("owner revoke");
     assert!(store
-        .consume_embed_code(&revoked.code, "life-test", &policy(), Uuid::new_v4())
+        .consume_embed_code(
+            &revoked.code,
+            "life-test",
+            &policy(),
+            &risk_facts(),
+            Uuid::new_v4(),
+        )
         .await
         .is_err());
 
@@ -281,6 +307,7 @@ async fn embed_target_expiry_ownership_and_revocation_fail_closed() {
                 target_path: "/embed/calendar?date=2026-09-01".into(),
             },
             &policy(),
+            &risk_facts(),
             Uuid::new_v4(),
         )
         .await
@@ -295,7 +322,13 @@ async fn embed_target_expiry_ownership_and_revocation_fail_closed() {
     .await
     .expect("expire code");
     assert!(store
-        .consume_embed_code(&expired.code, "life-test", &policy(), Uuid::new_v4())
+        .consume_embed_code(
+            &expired.code,
+            "life-test",
+            &policy(),
+            &risk_facts(),
+            Uuid::new_v4(),
+        )
         .await
         .is_err());
     assert_eq!(
