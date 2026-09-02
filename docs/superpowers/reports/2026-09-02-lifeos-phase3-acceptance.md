@@ -85,9 +85,7 @@ Pacioli passed:
   round-trip regression
 
 LifeOS passed Prisma generation, all eight Workbench/Hermes-isolation scripts,
-and the production Next.js build. The repository-wide `npm run test:static`
-reached and passed every Workbench test, then stopped at the pre-existing
-knowledge-history assertion that expects one space in
-`knowledgeMergeRecords KnowledgeMergeRecord[]`; the schema line has two spaces
-and predates this phase's Workbench commits. That unrelated baseline mismatch
-was left unchanged.
+the production Next.js build, and the complete repository-wide
+`npm run test:static` gate. Two pre-existing Prisma static assertions were made
+insensitive to formatter alignment whitespace in LifeOS commit `1334a18`; no
+schema or runtime behavior changed.
