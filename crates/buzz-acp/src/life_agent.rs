@@ -249,8 +249,8 @@ impl LifeAgentHostConfig {
         });
         let conversation = serde_json::json!({
             "type":"channel",
-            "participantPubkeys":[source_pubkey, agent_id],
-            "directMessage":true
+            "participant_pubkeys":[source_pubkey, agent_id],
+            "direct_message":true
         });
         let response = self
             .client
@@ -1234,7 +1234,11 @@ mod tests {
         assert_eq!(validations[0]["previewHash"], preview_hash);
         let issues = state.issues.lock().expect("issues");
         assert_eq!(issues[0]["conversation"]["type"], "channel");
-        assert_eq!(issues[0]["conversation"]["directMessage"], true);
+        assert_eq!(issues[0]["conversation"]["direct_message"], true);
+        assert_eq!(
+            issues[0]["conversation"]["participant_pubkeys"],
+            json!([source.pubkey.to_hex(), agent_id])
+        );
         assert_eq!(
             issues[0]["requestedCapabilities"],
             json!([EXECUTE_WRITE_CAPABILITY])
