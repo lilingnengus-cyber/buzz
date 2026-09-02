@@ -763,15 +763,6 @@ fn requested_capabilities(
         if request.write_command_id.is_some() && entry.risk_class != catalog::RiskClass::High {
             return Err(AgentError::Invalid);
         }
-        if entry.requires_expected_version
-            && request
-                .resource_context
-                .as_ref()
-                .and_then(|resource| resource.expected_version)
-                .is_none()
-        {
-            return Err(AgentError::Invalid);
-        }
         if requested
             .insert(
                 capability,
@@ -873,11 +864,6 @@ fn validate_resource_binding(
         {
             return Err(AgentError::Invalid);
         }
-    } else if capabilities.iter().any(|capability| {
-        catalog::capability(capability.as_str())
-            .is_some_and(|entry| entry.requires_expected_version)
-    }) {
-        return Err(AgentError::Invalid);
     }
     Ok(())
 }

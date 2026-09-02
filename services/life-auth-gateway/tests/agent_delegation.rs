@@ -373,6 +373,68 @@ async fn signed_source_issues_hash_only_scoped_consumable_grant() {
 }
 
 #[tokio::test]
+async fn versioned_write_can_bind_its_resource_when_the_call_is_consumed() {
+    let Some(database) = TestDatabase::create().await else {
+        eprintln!("LIFE_AUTH_TEST_DATABASE_URL absent; delegation test skipped");
+        return;
+    };
+    let keys = Keys::generate();
+    let store = seed_authority(&database.pool, &keys).await;
+    let channel = Uuid::new_v4();
+    let mut request = issue_request(source(&keys, channel), channel, "dynamic-resource-turn");
+    request.requested_data_scope.resource.clear();
+    request.resource_context = None;
+
+    let issued = store
+        .issue_agent_delegation(request, &policy(), &current_identity())
+        .await
+        .expect("issue a turn delegation before the agent selects a resource");
+    assert_eq!(issued.max_calls, 1);
+    assert!(sqlx::query_scalar::<_, Option<serde_json::Value>>(
+        "SELECT resource_context FROM life_agent_delegations WHERE id=$1",
+    )
+    .bind(issued.delegation_id.as_uuid())
+    .fetch_one(&database.pool)
+    .await
+    .expect("stored delegation")
+    .is_none());
+
+    let signer = CallGrantSigner::new(
+        "life-auth-test",
+        "lifeos-workbench-api",
+        Duration::from_secs(30),
+        SigningKeyMaterial::parse(&"11".repeat(32)).unwrap(),
+    )
+    .unwrap();
+    let grant = store
+        .consume_agent_delegation(
+            &issued.token,
+            ConsumeDelegationRequest {
+                agent_id: "life-agent".into(),
+                agent_turn_id: "dynamic-resource-turn".into(),
+                tool: "update_action_status".into(),
+                capability: "action:status_update".into(),
+                resource: Some(ResourceContext {
+                    resource_type: "action".into(),
+                    id: "action-1".into(),
+                    expected_version: Some(7),
+                    preview_hash: None,
+                }),
+                normalized_input_hash: format!("sha256:{}", "c".repeat(64)),
+                idempotency_key: Uuid::new_v4().to_string(),
+                trace_id: issued.trace_id,
+            },
+            &signer,
+        )
+        .await
+        .expect("bind the exact resource and version into the call grant");
+    assert_eq!(grant.claims.resource_id, "action-1");
+    assert_eq!(grant.claims.expected_version, Some(7));
+
+    database.cleanup().await;
+}
+
+#[tokio::test]
 async fn buzz_dm_exact_confirmation_satisfies_step_up_and_binds_one_execute_call() {
     let Some(database) = TestDatabase::create().await else {
         return;
