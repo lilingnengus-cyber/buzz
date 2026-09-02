@@ -94,6 +94,15 @@ struct CoreClient {
     credential: String,
 }
 
+struct RouterRuntime {
+    rule_config: RuleConfig,
+    max_findings: usize,
+    max_payload_bytes: usize,
+    core: Option<CoreClient>,
+    draft_write_enabled: bool,
+    chat_approval_enabled: bool,
+}
+
 #[derive(Clone)]
 enum DelegationVerifier {
     Gateway {
@@ -191,28 +200,25 @@ fn router_with_verifier(
     router_with_runtime(
         credential,
         verifier,
-        RuleConfig::bundled().map_err(|e| e.to_string())?,
-        100,
-        128 * 1024,
-        None,
-        false,
-        false,
+        RouterRuntime {
+            rule_config: RuleConfig::bundled().map_err(|e| e.to_string())?,
+            max_findings: 100,
+            max_payload_bytes: 128 * 1024,
+            core: None,
+            draft_write_enabled: false,
+            chat_approval_enabled: false,
+        },
     )
 }
 
 fn router_with_runtime(
     credential: String,
     verifier: DelegationVerifier,
-    rule_config: RuleConfig,
-    max_findings: usize,
-    max_payload_bytes: usize,
-    core: Option<CoreClient>,
-    draft_write_enabled: bool,
-    chat_approval_enabled: bool,
+    runtime: RouterRuntime,
 ) -> Result<Router, String> {
     let analytics = BusinessAnalyticsService::new(
         BusinessDataset::desensitized_acceptance().map_err(|e| e.to_string())?,
-        rule_config,
+        runtime.rule_config,
     )
     .map_err(|e| e.to_string())?;
     let state = ApiState {
@@ -220,11 +226,11 @@ fn router_with_runtime(
         service_audience: "business-read-api".into(),
         analytics,
         verifier,
-        max_findings,
-        max_payload_bytes,
-        core,
-        draft_write_enabled,
-        chat_approval_enabled,
+        max_findings: runtime.max_findings,
+        max_payload_bytes: runtime.max_payload_bytes,
+        core: runtime.core,
+        draft_write_enabled: runtime.draft_write_enabled,
+        chat_approval_enabled: runtime.chat_approval_enabled,
     };
     Ok(Router::new()
         .route("/health", get(|| async { "ok" }))
@@ -1796,19 +1802,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             url: config.gateway_base_url,
             credential: config.service_credential,
         },
-        config.rule_config,
-        config.max_findings,
-        config.max_payload_bytes,
-        Some(CoreClient {
-            client: reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(2))
-                .timeout(Duration::from_secs(5))
-                .build()?,
-            base_url: config.core_base_url,
-            credential: config.core_credential,
-        }),
-        config.draft_write_enabled,
-        config.chat_approval_enabled,
+        RouterRuntime {
+            rule_config: config.rule_config,
+            max_findings: config.max_findings,
+            max_payload_bytes: config.max_payload_bytes,
+            core: Some(CoreClient {
+                client: reqwest::Client::builder()
+                    .connect_timeout(Duration::from_secs(2))
+                    .timeout(Duration::from_secs(5))
+                    .build()?,
+                base_url: config.core_base_url,
+                credential: config.core_credential,
+            }),
+            draft_write_enabled: config.draft_write_enabled,
+            chat_approval_enabled: config.chat_approval_enabled,
+        },
     )?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
