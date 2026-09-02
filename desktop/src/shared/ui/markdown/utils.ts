@@ -4,6 +4,7 @@ import { defaultUrlTransform } from "react-markdown";
 import { isChannelLink } from "@/features/messages/lib/channelLink";
 import { isMessageLink } from "@/features/messages/lib/messageLink";
 import { isBusinessDeepLinkCandidate } from "@/features/business-dock/businessResourceResolver";
+import { resolveLifeResource } from "@/features/life-dock/lifeResourceResolver";
 import { parseEntityLink } from "@/shared/lib/entityLink";
 
 export function useStableArray<T>(arr: T[]): T[] {
@@ -180,6 +181,8 @@ export function isInsideHiddenSpoiler(element: Element): boolean {
  *   message-link pill renderer).
  * - `buzz://pr|issue|repo` hrefs — preserved only when `parseEntityLink`
  *   succeeds, keeping the sanitizer active against arbitrary `buzz://` URIs.
+ * - Strictly validated Business and Life workspace resource hrefs are
+ *   preserved for their in-app dock handlers.
  * - Everything else delegates to `defaultUrlTransform`.
  */
 export function buzzDeepLinkUrlTransform(value: string, key: string): string {
@@ -187,7 +190,8 @@ export function buzzDeepLinkUrlTransform(value: string, key: string): string {
   if (
     isMessageLink(value) ||
     isChannelLink(value) ||
-    isBusinessDeepLinkCandidate(value)
+    isBusinessDeepLinkCandidate(value) ||
+    resolveLifeResource(value) !== null
   )
     return value;
   if (parseEntityLink(value).ok) return value;

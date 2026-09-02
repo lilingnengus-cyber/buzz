@@ -29,25 +29,46 @@ export function LifeTrustedTurnFollower() {
   const knownAgentPubkeys = useKnownAgentPubkeys();
   const { openLifeResourceAutomatically } = useLifeDock();
   const seenRef = React.useRef(new Set<string>());
+  const pendingRef = React.useRef(new Map<string, Candidate>());
 
   React.useEffect(() => {
-    const onResult = (event: Event) => {
-      if (!(event instanceof CustomEvent) || !isCandidate(event.detail)) return;
-      const { eventId, signerPubkey, tags } = event.detail;
-      if (seenRef.current.has(eventId)) return;
+    const markSeen = (eventId: string) => {
       seenRef.current.add(eventId);
       if (seenRef.current.size > 256) {
         const oldest = seenRef.current.values().next().value;
         if (oldest) seenRef.current.delete(oldest);
       }
-      if (!knownAgentPubkeys.has(normalizePubkey(signerPubkey))) return;
-      const result = parseTrustedLifeExtensionResult(tags);
+    };
+    const attempt = (candidate: Candidate) => {
+      if (!knownAgentPubkeys.has(normalizePubkey(candidate.signerPubkey)))
+        return false;
+      pendingRef.current.delete(candidate.eventId);
+      markSeen(candidate.eventId);
+      const result = parseTrustedLifeExtensionResult(candidate.tags);
       const resource = result?.resourceRefs[0];
-      if (!resource) return;
+      if (!resource) return true;
       if (!openLifeResourceAutomatically(resource)) {
         toast.info(
           "A verified LifeOS result is available. Open it from the message link.",
         );
+      }
+      return true;
+    };
+    for (const candidate of pendingRef.current.values()) attempt(candidate);
+
+    const onResult = (event: Event) => {
+      if (!(event instanceof CustomEvent) || !isCandidate(event.detail)) return;
+      const candidate = event.detail;
+      const { eventId, tags } = candidate;
+      if (seenRef.current.has(eventId)) return;
+      const result = parseTrustedLifeExtensionResult(tags);
+      if (!result?.resourceRefs[0]) return;
+      if (!attempt(candidate)) {
+        pendingRef.current.set(eventId, candidate);
+        if (pendingRef.current.size > 256) {
+          const oldest = pendingRef.current.keys().next().value;
+          if (oldest) pendingRef.current.delete(oldest);
+        }
       }
     };
     window.addEventListener(TRUSTED_LIFE_RESULT_CANDIDATE_EVENT, onResult);

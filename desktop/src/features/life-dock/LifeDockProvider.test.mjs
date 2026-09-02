@@ -60,12 +60,41 @@ test("automatic recovery is limited to one attempt", () => {
   assert.equal(canAttemptLifeRecovery(2), false);
 });
 
-test("Life iframe remains in the mounted Dock tree while visibility changes", () => {
+test("background resource synchronization never opens the Life Dock", () => {
+  const resource = {
+    version: 1,
+    extensionId: "life",
+    type: "action",
+    id: "synced",
+    path: "/embed/actions/synced",
+  };
+  const state = lifeDockReducer(
+    createInitialLifeDockState(config, DEFAULT_LIFE_DOCK_PREFERENCES),
+    {
+      type: "sync-resource",
+      url: "https://life.example.com/embed/actions/synced",
+      resource,
+    },
+  );
+  assert.equal(state.open, false);
+  assert.equal(state.loading, false);
+  assert.deepEqual(state.currentResource, resource);
+});
+
+test("Life iframe mounts on first open and remains mounted after close", () => {
+  let state = createInitialLifeDockState(config, DEFAULT_LIFE_DOCK_PREFERENCES);
+  assert.equal(state.browserMounted, false);
+  assert.equal(state.frameUrl, "about:blank");
+  state = lifeDockReducer(state, { type: "open" });
+  assert.equal(state.browserMounted, true);
+  state = lifeDockReducer(state, { type: "close" });
+  assert.equal(state.browserMounted, true);
+
   const source = readFileSync(
     new URL("./LifeDock.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /<LifeDockBrowser\s*\/>/u);
+  assert.match(source, /state\.browserMounted \? <LifeDockBrowser \/>/u);
   assert.doesNotMatch(source, /state\.open\s*\?\s*<LifeDockBrowser/u);
   assert.match(
     source,

@@ -18,7 +18,7 @@ test("extension providers preserve auth and IAM order around the generic dock ho
   assert.ok(iam < dockHost);
   assert.match(
     source,
-    /APP_WORKSPACE_DOCK_EXTENSIONS = \[businessDockExtension\]/,
+    /APP_WORKSPACE_DOCK_EXTENSIONS = \[\s*businessDockExtension,\s*\.\.\.\(lifeDockExtension \? \[lifeDockExtension\] : \[\]\),\s*\]/u,
   );
   assert.match(source, /extensions=\{APP_WORKSPACE_DOCK_EXTENSIONS\}/);
 });

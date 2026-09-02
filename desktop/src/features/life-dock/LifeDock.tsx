@@ -72,7 +72,7 @@ export function LifeDock() {
           </button>
         ) : null}
         <LifeDockToolbar />
-        <LifeDockBrowser />
+        {state.browserMounted ? <LifeDockBrowser /> : null}
       </aside>
     </>
   );

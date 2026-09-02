@@ -149,6 +149,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const recoveryAttemptsRef = React.useRef(0);
   const sessionStartingRef = React.useRef(false);
   const manuallyDisconnectedRef = React.useRef(false);
+  const bridgeHandshakeTimerRef = React.useRef<number | null>(null);
   const workbenchAuth = useWorkbenchAuth();
   const host = useOptionalWorkspaceDockHost();
   const reportDockState = host?.reportDockState;
@@ -205,6 +206,24 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     },
     [config],
   );
+  const stopBridgeHandshake = React.useCallback(() => {
+    if (bridgeHandshakeTimerRef.current === null) return;
+    window.clearInterval(bridgeHandshakeTimerRef.current);
+    bridgeHandshakeTimerRef.current = null;
+  }, []);
+  const startBridgeHandshake = React.useCallback(() => {
+    stopBridgeHandshake();
+    post("HOST_INIT", { hostVersion: 2 });
+    let attempts = 1;
+    bridgeHandshakeTimerRef.current = window.setInterval(() => {
+      attempts += 1;
+      if (attempts > 40) {
+        stopBridgeHandshake();
+        return;
+      }
+      post("HOST_INIT", { hostVersion: 2 });
+    }, 250);
+  }, [post, stopBridgeHandshake]);
 
   const requestLeave = React.useCallback((action: () => void) => {
     if (!stateRef.current.dirty) {
@@ -221,7 +240,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       if (bridgeReady && post("NAVIGATE", { path: resource.path })) return;
       pendingNavigationRef.current = resource;
       const url = buildLifeUrl(resource, config);
-      if (url && iframeRef.current) iframeRef.current.src = url;
+      if (url) dispatch({ type: "load-frame", url });
     },
     [bridgeReady, config, post],
   );
@@ -268,7 +287,11 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const startLifeSession = React.useCallback(
     (automatic = false) => {
       if (!config || !gateway || sessionStartingRef.current) return;
-      if (workbenchAuth.phase !== "authenticated") {
+      const e2eToken =
+        import.meta.env.MODE === "e2e"
+          ? window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__
+          : undefined;
+      if (workbenchAuth.phase !== "authenticated" && !e2eToken) {
         setAuth({
           phase: "failed",
           reason: "Workbench authentication is required.",
@@ -295,11 +318,9 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           target,
         );
         const embedUrl = validateLifeEmbedUrl(config, issued.embedUrl);
-        if (!embedUrl || !iframeRef.current)
-          throw new Error("LifeOS bootstrap URL was rejected.");
+        if (!embedUrl) throw new Error("LifeOS bootstrap URL was rejected.");
         embedSessionIdRef.current = issued.embedSessionId;
-        dispatch({ type: "loading", loading: true });
-        iframeRef.current.src = embedUrl;
+        dispatch({ type: "load-frame", url: embedUrl });
       })()
         .catch((cause) => {
           workbenchSessionTokenRef.current = null;
@@ -369,6 +390,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       );
       if (!message) return;
       if (message.type === "LIFE_READY") {
+        stopBridgeHandshake();
         setBridgeReady(true);
         post("SET_THEME", { theme: isDark ? "dark" : "light" });
         post("CHECK_AUTH");
@@ -396,8 +418,11 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       } else if (message.type === "RESOURCE_CHANGED") {
         const url = buildLifeUrl(message.payload.resource, config);
         if (!url) return;
-        dispatch({ type: "navigate", url, resource: message.payload.resource });
-        dispatch({ type: "loading", loading: false });
+        dispatch({
+          type: "sync-resource",
+          url,
+          resource: message.payload.resource,
+        });
         setNavigation((current) =>
           updateCurrentLifeNavigation(current, message.payload.resource),
         );
@@ -405,8 +430,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         const resource = parseLifeUrl(message.payload.url, config);
         const url = resource ? buildLifeUrl(resource, config) : null;
         if (!resource || !url) return;
-        dispatch({ type: "navigate", url, resource });
-        dispatch({ type: "loading", loading: false });
+        dispatch({ type: "sync-resource", url, resource });
         setNavigation((current) =>
           updateCurrentLifeNavigation(current, resource),
         );
@@ -432,7 +456,8 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [config, isDark, post]);
+  }, [config, isDark, post, stopBridgeHandshake]);
+  React.useEffect(() => () => stopBridgeHandshake(), [stopBridgeHandshake]);
   React.useEffect(() => {
     if (bridgeReady) post("SET_THEME", { theme: isDark ? "dark" : "light" });
   }, [bridgeReady, isDark, post]);
@@ -492,7 +517,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       onBrowserLoad: () => {
         dispatch({ type: "loading", loading: false });
         setBridgeReady(false);
-        post("HOST_INIT", { hostVersion: 2 });
+        startBridgeHandshake();
       },
       onResetWidth: width.onResetWidth,
       onResizeStart: width.onResizeStart,
@@ -577,6 +602,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       post,
       requestDockActivation,
       requestLeave,
+      startBridgeHandshake,
       startLifeSession,
       state,
       width,

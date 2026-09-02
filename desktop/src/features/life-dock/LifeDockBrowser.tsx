@@ -41,7 +41,7 @@ export function LifeDockBrowser() {
         onLoad={onBrowserLoad}
         referrerPolicy="no-referrer"
         sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-        src={config.homeUrl}
+        src={state.frameUrl}
         tabIndex={state.open && active ? 0 : -1}
         title={state.title ?? "LifeOS personal workspace"}
       />

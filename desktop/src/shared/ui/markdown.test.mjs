@@ -537,6 +537,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 
 import { isChannelLink } from "../../features/messages/lib/channelLink.ts";
 import { isMessageLink } from "../../features/messages/lib/messageLink.ts";
+import { resolveLifeResource } from "../../features/life-dock/lifeResourceResolver.ts";
 import { parseEntityLink } from "../lib/entityLink.ts";
 import remarkSpoilers from "../lib/remarkSpoilers.ts";
 
@@ -547,7 +548,12 @@ const EVENT_HEX =
 
 function buzzDeepLinkUrlTransform(value, key) {
   if (key !== "href") return defaultUrlTransform(value);
-  if (isMessageLink(value) || isChannelLink(value)) return value;
+  if (
+    isMessageLink(value) ||
+    isChannelLink(value) ||
+    resolveLifeResource(value) !== null
+  )
+    return value;
   if (parseEntityLink(value).ok) return value;
   return defaultUrlTransform(value);
 }
@@ -609,6 +615,16 @@ test("messageLinkUrlTransform: still strips javascript: scheme", () => {
 test("messageLinkUrlTransform: passes http(s) through unchanged", () => {
   const html = renderMarkdown("[ext](https://example.com/path)");
   assert.match(html, /href="https:\/\/example\.com\/path"/);
+});
+
+test("buzzDeepLinkUrlTransform: preserves validated life resource links", () => {
+  const html = renderMarkdown("[Next action](life://action/next-action)");
+  assert.match(html, /href="life:\/\/action\/next-action"/);
+});
+
+test("buzzDeepLinkUrlTransform: strips malformed life resource links", () => {
+  const html = renderMarkdown("[escape](life://action/%252e%252e)");
+  assert.match(html, /href=""/);
 });
 
 test("messageLinkUrlTransform: preserves legacy buzz://message href", () => {

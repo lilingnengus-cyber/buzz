@@ -22,9 +22,12 @@ function safeTitle(value: string): boolean {
   return (
     value.length <= 256 &&
     value.trim() === value &&
-    !Array.from(value).some((character) =>
-      /[\u0000-\u001f\u007f]/u.test(character),
-    )
+    !Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0);
+      return (
+        codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
+      );
+    })
   );
 }
 
