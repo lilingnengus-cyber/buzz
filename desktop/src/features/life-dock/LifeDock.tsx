@@ -1,6 +1,7 @@
 import { LifeDockBrowser } from "./LifeDockBrowser";
 import { useLifeDock } from "./LifeDockProvider";
 import { LifeDockToolbar } from "./LifeDockToolbar";
+import { LifeTrustedTurnFollower } from "./LifeTrustedTurnFollower";
 import { cn } from "../../shared/lib/cn";
 
 export function LifeDock() {
@@ -18,6 +19,7 @@ export function LifeDock() {
 
   return (
     <>
+      <LifeTrustedTurnFollower />
       {state.open &&
       active &&
       isOverlay &&

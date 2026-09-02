@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { dispatchTrustedLifeResultCandidate } from "@/features/life-dock/lifeLinkHandler";
 
 import {
   channelMessagesKey,
@@ -396,6 +397,7 @@ export function useChannelSubscription(channel: Channel | null) {
     relayClient
       .subscribeToChannelLive(channelId, (event) => {
         if (!isDisposed) {
+          dispatchTrustedLifeResultCandidate(event);
           appendMessage(event);
         }
       })

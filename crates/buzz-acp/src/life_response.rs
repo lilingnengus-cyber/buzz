@@ -1,11 +1,13 @@
 use crate::{acp::AcpClient, relay::RestClient, turn_observer::TurnObserver};
 use life_workbench_contracts::result::{ErrorCode, LifeResourceRef, WorkbenchResult};
-use nostr::Event;
+use nostr::{Event, Tag};
 use std::{any::Any, collections::HashMap, time::Duration};
 use uuid::Uuid;
 
 const MAX_RESPONSE_BYTES: usize = 128 * 1_024;
 const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
+const EXTENSION_RESULT_TAG: &str = "pacioli-extension-result";
+const RESOURCE_REF_TAG: &str = "pacioli-resource-ref";
 
 #[derive(Debug)]
 struct ObservedLifeResult {
@@ -271,12 +273,57 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
     content
 }
 
+fn trusted_result_tags(captured: &CapturedLifeResponse) -> Result<Vec<Tag>, String> {
+    let Some(last) = captured
+        .results
+        .last()
+        .filter(|result| result.succeeded && result.audit_id.is_some())
+    else {
+        return Ok(Vec::new());
+    };
+    let audit_id = last.audit_id.ok_or("missing Life audit id")?;
+    let trace_id = last.trace_id.to_string();
+    let mut tags = vec![Tag::parse(vec![
+        EXTENSION_RESULT_TAG.to_owned(),
+        "1".to_owned(),
+        "life".to_owned(),
+        last.tool.clone(),
+        "succeeded".to_owned(),
+        trace_id.clone(),
+        audit_id.to_string(),
+    ])
+    .map_err(|error| error.to_string())?];
+    for reference in &last.resource_refs {
+        tags.push(
+            Tag::parse(vec![
+                RESOURCE_REF_TAG.to_owned(),
+                "1".to_owned(),
+                trace_id.clone(),
+                reference.life_uri(),
+                reference
+                    .version()
+                    .map_or_else(String::new, |value| value.to_string()),
+                reference.title().unwrap_or_default().to_owned(),
+            ])
+            .map_err(|error| error.to_string())?,
+        );
+    }
+    Ok(tags)
+}
+
 pub(crate) async fn publish(
     rest: &RestClient,
     channel_id: Uuid,
     source_event: &Event,
     captured: CapturedLifeResponse,
 ) {
+    let trusted_tags = match trusted_result_tags(&captured) {
+        Ok(tags) => tags,
+        Err(error) => {
+            tracing::warn!(channel = %channel_id, "Life Agent result tags rejected: {error}");
+            return;
+        }
+    };
     let content = trusted_content(captured);
     let parsed = crate::queue::parse_thread_tags(source_event);
     let root_id = parsed
@@ -288,7 +335,7 @@ pub(crate) async fn publish(
         root_event_id: root_id,
         parent_event_id: source_event.id,
     };
-    let builder =
+    let mut builder =
         match buzz_sdk::build_message(channel_id, &content, Some(&thread), &[], false, &[]) {
             Ok(builder) => builder,
             Err(error) => {
@@ -296,6 +343,9 @@ pub(crate) async fn publish(
                 return;
             }
         };
+    for tag in trusted_tags {
+        builder = builder.tag(tag);
+    }
     let event = match builder.sign_with_keys(&rest.keys) {
         Ok(event) => event,
         Err(error) => {
@@ -391,6 +441,41 @@ mod tests {
         assert!(content.contains("life://action/action-1 v8"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
+    }
+
+    #[test]
+    fn trusted_success_emits_structured_signed_result_tags() {
+        let trace = Uuid::new_v4();
+        let audit = Uuid::new_v4();
+        let mut capture = LifeResponseCapture::default();
+        observe_result(
+            &mut capture,
+            &json!({
+                "ok":true,
+                "data":{"action":{"status":"DOING"}},
+                "resourceRefs":[{"scheme":"life","type":"action","id":"action-1","version":8,"title":"接口设计"}],
+                "auditId":audit,
+                "traceId":trace
+            })
+            .to_string(),
+        );
+        let captured = capture.finish();
+        let tags = trusted_result_tags(&captured).expect("trusted tags");
+        let raw = tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .collect::<Vec<_>>();
+        assert_eq!(raw[0][0], EXTENSION_RESULT_TAG);
+        assert_eq!(raw[0][2], "life");
+        assert_eq!(raw[0][4], "succeeded");
+        assert_eq!(raw[0][5], trace.to_string());
+        assert_eq!(raw[0][6], audit.to_string());
+        assert_eq!(raw[1][0], RESOURCE_REF_TAG);
+        assert_eq!(raw[1][1], "1");
+        assert_eq!(raw[1][2], trace.to_string());
+        assert_eq!(raw[1][3], "life://action/action-1");
+        assert_eq!(raw[1][4], "8");
+        assert_eq!(raw[1][5], "接口设计");
     }
 
     #[test]

@@ -4,6 +4,9 @@ import { toast } from "sonner";
 
 import { useOptionalBusinessDock } from "@/features/business-dock/BusinessDockProvider";
 import { buildBusinessUrl } from "@/features/business-dock/businessResourceResolver";
+import { useOptionalLifeDock } from "@/features/life-dock";
+import { lifeLinkAction } from "@/features/life-dock/lifeLinkHandler";
+import { buildLifeUrl } from "@/features/life-dock/lifeResourceResolver";
 import { cn } from "@/shared/lib/cn";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 
@@ -37,6 +40,7 @@ export function ExternalLinkAnchor({
   label: string;
 }) {
   const businessDock = useOptionalBusinessDock();
+  const lifeDock = useOptionalLifeDock();
   const businessResource =
     href && businessDock
       ? businessDock.resolveBusinessResourceLink(href)
@@ -52,6 +56,22 @@ export function ExternalLinkAnchor({
             businessDock.openBusinessResource(businessResource),
         }
       : null;
+  const lifeAction = lifeLinkAction(href, false);
+  const lifeLink =
+    lifeAction &&
+    lifeDock?.config &&
+    buildLifeUrl(lifeAction.resource, lifeDock.config)
+      ? {
+          onOpenInBrowser: () =>
+            lifeDock.openLifeResourceInBrowser(lifeAction.resource),
+          onOpenInDock: () => lifeDock.openLifeResource(lifeAction.resource),
+        }
+      : null;
+  const workspaceLink = businessLink
+    ? { ...businessLink, dockLabel: "Open in Business Dock" }
+    : lifeLink
+      ? { ...lifeLink, dockLabel: "Open in Life Dock" }
+      : null;
   const [menu, setMenu] = React.useState<MediaContextMenuPosition | null>(null);
   const closeMenu = React.useCallback(() => setMenu(null), []);
   useDismissMediaContextMenu(Boolean(menu), closeMenu);
@@ -65,16 +85,16 @@ export function ExternalLinkAnchor({
       )}
       href={href}
       onClick={(event) => {
-        if (!businessLink) {
+        if (!workspaceLink) {
           anchorProps.onClick?.(event);
           return;
         }
         event.preventDefault();
         if (event.metaKey || event.ctrlKey) {
-          businessLink.onOpenInBrowser();
+          workspaceLink.onOpenInBrowser();
           return;
         }
-        businessLink.onOpenInDock();
+        workspaceLink.onOpenInDock();
       }}
       onContextMenuCapture={(event) => {
         if (!href) return;
@@ -97,23 +117,23 @@ export function ExternalLinkAnchor({
         <MediaContextMenu
           dataAttributes={["data-link-context-menu"]}
           items={[
-            ...(businessLink
+            ...(workspaceLink
               ? [
                   {
-                    label: "Open in Business Dock",
+                    label: workspaceLink.dockLabel,
                     onSelect: () => {
                       closeMenu();
-                      businessLink.onOpenInDock();
+                      workspaceLink.onOpenInDock();
                     },
                   },
                 ]
               : []),
             {
-              label: businessLink ? "Open in Browser" : "Open link",
+              label: workspaceLink ? "Open in Browser" : "Open link",
               onSelect: () => {
                 closeMenu();
-                if (businessLink) {
-                  businessLink.onOpenInBrowser();
+                if (workspaceLink) {
+                  workspaceLink.onOpenInBrowser();
                   return;
                 }
                 void openUrl(href).catch(() => {
