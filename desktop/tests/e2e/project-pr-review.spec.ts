@@ -2005,13 +2005,11 @@ test("project overview chrome toggles a detached resizable agent chat", async ({
     (resizeHandleBox?.x ?? 0) + (resizeHandleBox?.width ?? 0) / 2;
   const resizeStartY =
     (resizeHandleBox?.y ?? 0) + (resizeHandleBox?.height ?? 0) / 2;
-  await resizeHandle.dispatchEvent("pointerdown", {
+  await resizeHandle.dispatchEvent("mousedown", {
     button: 0,
     buttons: 1,
     clientX: resizeStartX,
     clientY: resizeStartY,
-    pointerId: 1,
-    pointerType: "mouse",
   });
   await expect(chatRail).toHaveAttribute("data-resizing", "true");
   await page.mouse.move(resizeStartX - 32, resizeStartY);
@@ -2631,12 +2629,11 @@ test("project detail chat resize tracks the pointer without easing", async ({
   const startX = (handleBox?.x ?? 0) + (handleBox?.width ?? 0) / 2;
   const startY = (handleBox?.y ?? 0) + (handleBox?.height ?? 0) / 2;
 
-  await resizeHandle.dispatchEvent("pointerdown", {
+  await resizeHandle.dispatchEvent("mousedown", {
     button: 0,
+    buttons: 1,
     clientX: startX,
     clientY: startY,
-    pointerId: 1,
-    pointerType: "mouse",
   });
   await expect(contextRail).toHaveAttribute("data-resizing", "true");
   await expect(contextRail).toHaveCSS("transition-duration", "0s");

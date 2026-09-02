@@ -52,7 +52,8 @@
   }
 }
 
-.buzz-logo--pulse .buzz-logo__mark {
+.buzz-logo--pulse .buzz-logo__mark,
+.buzz-logo__mark.buzz-logo--pulse {
   animation: buzz-logo-pulse 1.8s ease-in-out infinite;
 }
 
@@ -66,7 +67,8 @@
   }
 }
 
-.buzz-logo--scale-pulse .buzz-logo__mark {
+.buzz-logo--scale-pulse .buzz-logo__mark,
+.buzz-logo__mark.buzz-logo--scale-pulse {
   animation: buzz-logo-scale-pulse 1.8s ease-in-out infinite;
   transform-origin: center;
 }
@@ -76,12 +78,14 @@
     display: none;
   }
 
-  .buzz-logo--pulse .buzz-logo__mark {
+  .buzz-logo--pulse .buzz-logo__mark,
+  .buzz-logo__mark.buzz-logo--pulse {
     animation: none;
     opacity: 0.8;
   }
 
-  .buzz-logo--scale-pulse .buzz-logo__mark {
+  .buzz-logo--scale-pulse .buzz-logo__mark,
+  .buzz-logo__mark.buzz-logo--scale-pulse {
     animation: none;
     transform: none;
   }
