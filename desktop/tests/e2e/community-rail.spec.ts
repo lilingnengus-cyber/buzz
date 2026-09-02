@@ -50,6 +50,10 @@ async function seedCommunities(
 ) {
   await page.addInitScript(
     ({ list, active }) => {
+      // Init scripts also run in the same-origin Business Dock iframe. Seed
+      // community state only in the app window so a late iframe load cannot
+      // reset an in-flight community switch back to the fixture default.
+      if (window.top !== window) return;
       window.localStorage.setItem("buzz-communities", JSON.stringify(list));
       window.localStorage.setItem("buzz-active-community-id", active);
     },
@@ -67,6 +71,7 @@ test.describe("community rail", () => {
     });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
     await page.addInitScript((overridesKey) => {
+      if (window.top !== window) return;
       window.localStorage.setItem(
         overridesKey,
         JSON.stringify({ workspaceRail: false }),
@@ -763,6 +768,7 @@ test.describe("community rail", () => {
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
     await page.addInitScript((communityId) => {
+      if (window.top !== window) return;
       window.localStorage.setItem(
         "buzz-community-destinations",
         JSON.stringify({
@@ -817,6 +823,7 @@ test.describe("community rail", () => {
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
     await page.addInitScript((communityId) => {
+      if (window.top !== window) return;
       window.localStorage.setItem(
         "buzz-community-destinations",
         JSON.stringify({
@@ -1051,6 +1058,7 @@ test.describe("community rail", () => {
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
     await page.addInitScript((communityId) => {
+      if (window.top !== window) return;
       window.localStorage.setItem(
         "buzz-community-destinations",
         JSON.stringify({
@@ -1259,6 +1267,7 @@ test.describe("community rail", () => {
 
   test("hides the rail with a single community", async ({ page }) => {
     await page.addInitScript((themeStorageKey) => {
+      if (window.top !== window) return;
       window.localStorage.setItem(themeStorageKey, "buzz-dark");
     }, THEME_STORAGE_KEY);
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
@@ -1329,6 +1338,7 @@ test.describe("community rail", () => {
   test("clears the macOS traffic lights", async ({ page }) => {
     // Spoof macOS so the rail applies its traffic-light top inset.
     await page.addInitScript(() => {
+      if (window.top !== window) return;
       Object.defineProperty(navigator, "platform", { get: () => "MacIntel" });
     });
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
@@ -1400,6 +1410,7 @@ test.describe("community rail", () => {
     // Seed only if not already set so the persisted order survives page.reload().
     await page.addInitScript(
       ({ list, active }) => {
+        if (window.top !== window) return;
         if (!window.localStorage.getItem("buzz-communities")) {
           window.localStorage.setItem("buzz-communities", JSON.stringify(list));
         }

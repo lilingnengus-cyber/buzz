@@ -13,6 +13,7 @@ export function BuzzLoadingState({
 }) {
   return (
     <div
+      aria-label={label}
       className={cn(
         "flex w-full items-center justify-center text-muted-foreground/45",
         fill ? "min-h-0 flex-1" : "min-h-[calc(100dvh-7rem)]",

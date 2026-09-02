@@ -714,7 +714,7 @@ test("fresh existing-identity path leads with private-key recovery", async ({
     page.getByRole("heading", { name: "Enter your private key" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Paste your private key to sign in to Buzz."),
+    page.getByText("Paste your private key to sign in to Pacioli."),
   ).toBeVisible();
   await expect(page.getByTestId("nostr-import-card")).toBeVisible();
   await expect(page.getByTestId("nostr-import-file-button")).toHaveText(
@@ -787,7 +787,7 @@ test("fresh existing-identity path leads with private-key recovery", async ({
   const phoneDialog = page.getByTestId("phone-recovery-dialog");
   await expect(phoneDialog).toBeVisible();
   await expect(
-    phoneDialog.getByRole("heading", { name: "Use your Buzz identity" }),
+    phoneDialog.getByRole("heading", { name: "Use your Pacioli identity" }),
   ).toBeVisible();
   await expect(phoneDialog.getByTestId("identity-recovery-qr")).toBeVisible();
   await expect(page.getByTestId("nostr-import-card")).toBeVisible();

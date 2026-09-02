@@ -230,7 +230,7 @@ test("restricted repositories keep event work visible and offer access help", as
   await expect(chatPanel.getByTestId("message-composer")).toBeVisible();
 });
 
-test("repository pages show a centered Buzz loader while fetching", async ({
+test("repository pages show a centered Pacioli loader while fetching", async ({
   page,
 }) => {
   await installMockBridge(page, { projectRepoSnapshotDelayMs: 750 });
@@ -238,9 +238,7 @@ test("repository pages show a centered Buzz loader while fetching", async ({
 
   const loader = page.getByTestId("buzz-loading-state");
   await expect(loader).toBeVisible();
-  await expect(
-    loader.getByRole("img", { name: "Loading repository" }),
-  ).toBeVisible();
+  await expect(loader).toHaveAccessibleName("Loading repository");
   const animatedMark = loader.locator(".buzz-logo__mark");
   await expect(animatedMark).toHaveCSS(
     "animation-name",
@@ -546,12 +544,11 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     (resizeHandleBounds?.x ?? 0) + (resizeHandleBounds?.width ?? 0) / 2;
   const resizeStartY =
     (resizeHandleBounds?.y ?? 0) + (resizeHandleBounds?.height ?? 0) / 2;
-  await resizeHandle.dispatchEvent("pointerdown", {
+  await resizeHandle.dispatchEvent("mousedown", {
     button: 0,
+    buttons: 1,
     clientX: resizeStartX,
     clientY: resizeStartY,
-    pointerId: 1,
-    pointerType: "mouse",
   });
   await expect(contextRail).toHaveAttribute("data-resizing", "true");
   await expect(contextRail).toHaveCSS("transition-duration", "0s");
@@ -766,13 +763,15 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
   expect(viewportSize).not.toBeNull();
+  // The detached workspace retains the content surface's one-pixel inset in
+  // addition to the eight-pixel outer gutter.
   expect(
     Math.abs(
       (collapsedMainPaneBounds?.x ?? 0) +
         (collapsedMainPaneBounds?.width ?? 0) -
         (viewportSize?.width ?? 0),
     ),
-  ).toBeLessThanOrEqual(8);
+  ).toBe(9);
   await repositoryPanelTab.click();
   await expect(contextRail).toHaveCSS("width", "288px");
   await expect(repositoryContextIcon).toHaveCSS("opacity", "1");
