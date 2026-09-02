@@ -1,5 +1,5 @@
 use crate::security::{OutboundServiceCredential, ServiceToken, SigningKeyMaterial};
-use std::{fmt, net::SocketAddr, time::Duration};
+use std::{collections::BTreeSet, fmt, net::SocketAddr, time::Duration};
 use url::Url;
 
 const CALL_GRANT_AUDIENCE: &str = "lifeos-workbench-api";
@@ -40,6 +40,7 @@ pub struct Config {
     signing_key: SigningKeyMaterial,
     workbench_oidc_issuer: String,
     workbench_oidc_audience: String,
+    allowed_workbench_origins: BTreeSet<String>,
     identity_challenge_ttl: Duration,
     delegation_ttl: Duration,
     call_grant_ttl: Duration,
@@ -114,6 +115,14 @@ impl Config {
                 "LIFE_AUTH_WORKBENCH_OIDC_AUDIENCE must not use a Business audience".into(),
             );
         }
+        let allowed_workbench_origins = required(&read, "LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS")?
+            .split(',')
+            .map(str::trim)
+            .map(validate_workbench_origin)
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if allowed_workbench_origins.is_empty() {
+            return Err("LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS is required".into());
+        }
 
         Ok(Self {
             database_url,
@@ -132,6 +141,7 @@ impl Config {
             signing_key,
             workbench_oidc_issuer,
             workbench_oidc_audience,
+            allowed_workbench_origins,
             identity_challenge_ttl: seconds(
                 &read,
                 "LIFE_AUTH_IDENTITY_CHALLENGE_TTL_SECONDS",
@@ -212,6 +222,10 @@ impl Config {
 
     pub(crate) fn identity_challenge_ttl(&self) -> Duration {
         self.identity_challenge_ttl
+    }
+
+    pub(crate) fn allowed_workbench_origins(&self) -> &BTreeSet<String> {
+        &self.allowed_workbench_origins
     }
 }
 
@@ -356,6 +370,39 @@ fn validate_service_base_url(
     Ok(url)
 }
 
+fn validate_workbench_origin(value: &str) -> Result<String, String> {
+    let url = Url::parse(value).map_err(|_| {
+        "LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS must contain exact origins".to_string()
+    })?;
+    if url.scheme() == "tauri"
+        && url.host_str() == Some("localhost")
+        && url.path().is_empty()
+        && url.query().is_none()
+        && url.fragment().is_none()
+    {
+        return Ok("tauri://localhost".into());
+    }
+    if url.scheme() == "http"
+        && url.host_str() == Some("tauri.localhost")
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none()
+    {
+        return Ok("http://tauri.localhost".into());
+    }
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.origin().ascii_serialization() != value
+    {
+        return Err("LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS must contain exact origins".into());
+    }
+    Ok(url.origin().ascii_serialization())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,6 +444,10 @@ mod tests {
                 "LIFE_AUTH_WORKBENCH_OIDC_AUDIENCE".into(),
                 "life-workbench".into(),
             ),
+            (
+                "LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS".into(),
+                "tauri://localhost,http://tauri.localhost,https://workbench.example".into(),
+            ),
             ("LIFE_AUTH_ENVIRONMENT".into(), "production".into()),
         ])
     }
@@ -417,6 +468,7 @@ mod tests {
             "LIFE_AUTH_LIFEOS_BASE_URL",
             "LIFE_AUTH_WORKBENCH_OIDC_ISSUER",
             "LIFE_AUTH_WORKBENCH_OIDC_AUDIENCE",
+            "LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS",
         ] {
             let mut values = valid_values();
             values.remove(name);
@@ -496,6 +548,29 @@ mod tests {
         assert!(Config::from_values(&values)
             .expect_err("production HTTP")
             .contains("HTTPS"));
+    }
+
+    #[test]
+    fn workbench_cors_origins_are_exact_and_never_wildcarded() {
+        let config = Config::from_values(&valid_values()).expect("valid config");
+        assert!(config
+            .allowed_workbench_origins()
+            .contains("tauri://localhost"));
+        assert!(config
+            .allowed_workbench_origins()
+            .contains("http://tauri.localhost"));
+        for invalid in [
+            "*",
+            "https://workbench.example/path",
+            "https://user@workbench.example",
+            "https://workbench.example?x=1",
+        ] {
+            let mut values = valid_values();
+            values.insert("LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS".into(), invalid.into());
+            assert!(Config::from_values(&values)
+                .expect_err("invalid CORS origin")
+                .contains("LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS"));
+        }
     }
 
     #[test]

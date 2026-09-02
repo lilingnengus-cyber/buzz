@@ -37,6 +37,7 @@ LIFE_AUTH_DELEGATION_AUDIENCE=life-workbench-mcp
 LIFE_AUTH_ED25519_PRIVATE_KEY
 LIFE_AUTH_WORKBENCH_OIDC_ISSUER
 LIFE_AUTH_WORKBENCH_OIDC_AUDIENCE
+LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS=tauri://localhost,http://tauri.localhost
 ```
 
 `LIFE_AUTH_BIND_ADDR` is required and must be a concrete socket address.
@@ -44,6 +45,10 @@ Delegation TTL defaults to 300 seconds and is restricted to 30–900 seconds.
 Call-grant TTL defaults to 30 seconds and is restricted to 1–60 seconds.
 Production OIDC issuers must use HTTPS; development/test HTTP is accepted only
 for loopback hosts.
+
+`LIFE_AUTH_ALLOWED_WORKBENCH_ORIGINS` is a comma-separated exact-origin
+allowlist used for browser/webview CORS. Wildcards, paths, credentials, query
+strings, and fragments are rejected.
 
 `LIFE_AUTH_LIFEOS_BASE_URL` is a fixed HTTPS origin for the one internal
 identity-resolution route; non-production loopback HTTP is accepted. Identity

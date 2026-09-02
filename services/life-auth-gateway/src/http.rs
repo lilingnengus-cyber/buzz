@@ -13,13 +13,14 @@ use crate::{
 };
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -34,6 +35,7 @@ struct IdentityRuntime {
     call_grant_signer: CallGrantSigner,
     embed_policy: EmbedPolicy,
     lifeos_base_url: url::Url,
+    allowed_workbench_origins: Vec<HeaderValue>,
 }
 
 /// Runtime state shared by health and fixed Life identity endpoints.
@@ -87,6 +89,11 @@ impl AppState {
                 .map_err(|_| IdentityError::Unavailable)?,
                 embed_policy: EmbedPolicy::standard(),
                 lifeos_base_url: config.lifeos_base_url().clone(),
+                allowed_workbench_origins: config
+                    .allowed_workbench_origins()
+                    .iter()
+                    .filter_map(|value| HeaderValue::from_str(value).ok())
+                    .collect(),
             }),
         })
     }
@@ -185,6 +192,12 @@ impl IntoResponse for ApiError {
 }
 
 pub(crate) fn router(state: AppState) -> Router {
+    let allowed_origins = state
+        .identity
+        .as_ref()
+        .map(|runtime| runtime.allowed_workbench_origins.clone())
+        .unwrap_or_default();
+    let cors = cors_layer(allowed_origins);
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
@@ -214,6 +227,18 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/identity-bindings/{binding_id}", delete(revoke_binding))
         .route("/v1/me", get(me))
         .with_state(Arc::new(state))
+        .layer(cors)
+}
+
+fn cors_layer(allowed_origins: Vec<HeaderValue>) -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(allowed_origins))
+        .allow_methods([Method::POST, Method::DELETE])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-trace-id"),
+        ])
 }
 
 #[derive(Serialize)]
@@ -575,7 +600,8 @@ fn trace_id(headers: &HeaderMap) -> Uuid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderValue;
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
 
     #[test]
     fn pacioli_service_authorization_is_exact() {
@@ -595,5 +621,53 @@ mod tests {
             );
             assert!(require_service(&headers, &expected).is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn cors_preflight_allows_only_an_exact_configured_origin() {
+        let app = Router::new()
+            .route(
+                "/v1/embed-sessions",
+                post(|| async { StatusCode::NO_CONTENT }),
+            )
+            .layer(cors_layer(vec![HeaderValue::from_static(
+                "tauri://localhost",
+            )]));
+        let preflight = |origin: &'static str| {
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/v1/embed-sessions")
+                .header(header::ORIGIN, origin)
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(
+                    header::ACCESS_CONTROL_REQUEST_HEADERS,
+                    "authorization,content-type,x-trace-id",
+                )
+                .body(Body::empty())
+                .expect("preflight request")
+        };
+
+        let allowed = app
+            .clone()
+            .oneshot(preflight("tauri://localhost"))
+            .await
+            .expect("allowed response");
+        assert_eq!(
+            allowed.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            Some(&HeaderValue::from_static("tauri://localhost"))
+        );
+        assert_eq!(
+            allowed.headers().get(header::ACCESS_CONTROL_ALLOW_METHODS),
+            Some(&HeaderValue::from_static("POST,DELETE"))
+        );
+
+        let rejected = app
+            .oneshot(preflight("https://attacker.example"))
+            .await
+            .expect("rejected response");
+        assert!(rejected
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none());
     }
 }
