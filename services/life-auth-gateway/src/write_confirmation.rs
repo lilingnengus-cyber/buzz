@@ -5,7 +5,7 @@ use crate::{
     Store,
 };
 use chrono::{TimeZone as _, Utc};
-use nostr::{Event, Kind};
+use nostr::Event;
 use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, Row, Transaction};
 use std::time::Duration;
@@ -149,10 +149,7 @@ impl Store {
         let now =
             u64::try_from(Utc::now().timestamp()).map_err(|_| WriteConfirmationError::Invalid)?;
         let created = event.created_at.as_secs();
-        let valid_kind = matches!(
-            event.kind,
-            Kind::TextNote | Kind::Custom(9 | 40002 | 45001 | 45003)
-        );
+        let valid_kind = matches!(event.kind.as_u16(), 1 | 9 | 40002 | 45001 | 45003);
         if parsed.command_id != request.command_id
             || parsed.expected_version != request.expected_version
             || parsed.preview_hash != request.preview_hash

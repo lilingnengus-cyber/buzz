@@ -196,6 +196,44 @@ async fn signed_fresh_confirmation_binds_fields_and_consumes_once() {
 }
 
 #[tokio::test]
+async fn signed_channel_confirmation_is_accepted() {
+    let Some(database) = Database::create().await else {
+        eprintln!("LIFE_AUTH_TEST_DATABASE_URL absent; confirmation test skipped");
+        return;
+    };
+    let keys = Keys::generate();
+    seed(&database.pool, &keys).await;
+    let store = Store::new(database.pool.clone());
+    let command_id = Uuid::new_v4();
+    let preview_hash = "d".repeat(64);
+    let event = EventBuilder::new(Kind::Custom(9), command(command_id, 2, &preview_hash))
+        .sign_with_keys(&keys)
+        .expect("signed channel confirmation");
+    let event = serde_json::from_value(
+        serde_json::to_value(event).expect("serialize signed channel confirmation"),
+    )
+    .expect("deserialize signed channel confirmation through the HTTP wire shape");
+
+    let validated = store
+        .validate_write_confirmation(
+            ValidateWriteConfirmationRequest {
+                signed_event: event,
+                command_id,
+                expected_version: 2,
+                preview_hash,
+                trace_id: Uuid::new_v4(),
+            },
+            "life-test",
+            Duration::from_secs(600),
+        )
+        .await
+        .expect("validate channel confirmation");
+
+    assert_eq!(validated.command_id, command_id);
+    database.cleanup().await;
+}
+
+#[tokio::test]
 async fn signature_freshness_author_and_command_fields_fail_closed() {
     let Some(database) = Database::create().await else {
         return;
