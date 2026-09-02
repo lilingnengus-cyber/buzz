@@ -10,6 +10,8 @@ export type LifeDockConfigResult =
 
 export type LifeDockEnv = {
   LIFE_DOCK_ENABLED?: string;
+  VITE_LIFE_DOCK_ENABLED?: string;
+  VITE_LIFE_AUTH_GATEWAY_URL?: string;
   VITE_LIFE_APP_ORIGIN?: string;
   VITE_LIFE_APP_URL?: string;
 };
@@ -27,6 +29,7 @@ function parseExactHttpOrigin(value: string): URL | null {
       !["http:", "https:"].includes(url.protocol) ||
       url.username ||
       url.password ||
+      url.hostname.includes("*") ||
       url.pathname !== "/" ||
       url.search ||
       url.hash ||
@@ -41,7 +44,9 @@ function parseExactHttpOrigin(value: string): URL | null {
 }
 
 export function readLifeDockConfig(env: LifeDockEnv): LifeDockConfigResult {
-  const enabled = parseSwitch(env.LIFE_DOCK_ENABLED);
+  const enabled = parseSwitch(
+    env.VITE_LIFE_DOCK_ENABLED ?? env.LIFE_DOCK_ENABLED,
+  );
   if (enabled === null) {
     return {
       enabled: true,
@@ -97,4 +102,18 @@ export function readLifeDockConfig(env: LifeDockEnv): LifeDockConfigResult {
     config: { homeUrl: homeUrl.href, origin: origin.origin },
     error: null,
   };
+}
+
+/** Reads the build-time Life Dock configuration exposed to the renderer. */
+export function getLifeDockConfig(): LifeDockConfigResult {
+  const env = (import.meta as ImportMeta & { env?: LifeDockEnv }).env ?? {};
+  return readLifeDockConfig(env);
+}
+
+/** Returns the exact configured Life Gateway origin, or null when unsafe. */
+export function getLifeAuthGatewayUrl(): string | null {
+  const env = (import.meta as ImportMeta & { env?: LifeDockEnv }).env ?? {};
+  const value = env.VITE_LIFE_AUTH_GATEWAY_URL?.trim();
+  if (!value) return null;
+  return parseExactHttpOrigin(value)?.origin ?? null;
 }

@@ -68,7 +68,11 @@ function withBusinessDockConfig(args) {
   const mode = args[0] === "build" ? "production" : "development";
   const viteEnv = loadEnv(mode, process.cwd(), "");
   const lifeEnabled =
-    process.env.LIFE_DOCK_ENABLED ?? viteEnv.LIFE_DOCK_ENABLED ?? "false";
+    process.env.VITE_LIFE_DOCK_ENABLED ??
+    viteEnv.VITE_LIFE_DOCK_ENABLED ??
+    process.env.LIFE_DOCK_ENABLED ??
+    viteEnv.LIFE_DOCK_ENABLED ??
+    "false";
   const lifeOrigin =
     process.env.VITE_LIFE_APP_ORIGIN ?? viteEnv.VITE_LIFE_APP_ORIGIN;
   if (lifeEnabled !== "true" && lifeEnabled !== "false") {

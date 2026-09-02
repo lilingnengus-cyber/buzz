@@ -2,13 +2,17 @@ import type * as React from "react";
 
 import { BusinessIamAdminProvider } from "@/features/business-iam-admin";
 import { businessDockExtension } from "@/features/business-dock";
+import { lifeDockExtension } from "@/features/life-dock";
 import { WorkspaceDockHostProvider } from "@/features/workspace-dock";
 import {
   WorkbenchAuthGate,
   WorkbenchAuthProvider,
 } from "@/features/workbench-auth";
 
-const APP_WORKSPACE_DOCK_EXTENSIONS = [businessDockExtension];
+const APP_WORKSPACE_DOCK_EXTENSIONS = [
+  businessDockExtension,
+  ...(lifeDockExtension ? [lifeDockExtension] : []),
+];
 
 /** Product-specific providers kept behind one stable Buzz integration point. */
 export function AppExtensionProviders({

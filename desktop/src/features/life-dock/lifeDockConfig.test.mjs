@@ -43,6 +43,17 @@ test("life dock accepts an HTTP(S) home URL on its exact origin", () => {
   });
 });
 
+test("renderer-safe Vite feature switch takes precedence", () => {
+  assert.equal(
+    readLifeDockConfig({
+      ...validEnv,
+      LIFE_DOCK_ENABLED: "false",
+      VITE_LIFE_DOCK_ENABLED: "true",
+    }).enabled,
+    true,
+  );
+});
+
 test("life dock rejects origins with paths, userinfo, query, or fragments", () => {
   for (const origin of [
     "file:///tmp/life",
