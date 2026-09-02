@@ -5,33 +5,55 @@ import { loadEnv } from "vite";
 
 const require = createRequire(import.meta.url);
 
-export function normalizeBusinessOrigin(value) {
+function normalizeDockOrigin(name, value) {
   if (!value?.trim()) return null;
   const url = new URL(value.trim());
   if (
     !["http:", "https:"].includes(url.protocol) ||
     url.username ||
     url.password ||
+    url.hostname.includes("*") ||
     url.pathname !== "/" ||
     url.search ||
     url.hash
   ) {
     throw new Error(
-      "VITE_BUSINESS_APP_ORIGIN must be an HTTP(S) origin without credentials, path, query, or fragment",
+      `${name} must be an HTTP(S) origin without credentials, path, query, or fragment`,
     );
   }
   return url.origin;
 }
 
-export function buildBusinessDockCsp(baseCsp, configuredOrigin) {
-  const origin = normalizeBusinessOrigin(configuredOrigin);
+export function normalizeBusinessOrigin(value) {
+  return normalizeDockOrigin("VITE_BUSINESS_APP_ORIGIN", value);
+}
+
+export function normalizeLifeOrigin(value) {
+  return normalizeDockOrigin("VITE_LIFE_APP_ORIGIN", value);
+}
+
+export function buildWorkspaceDockCsp(
+  baseCsp,
+  configuredBusinessOrigin,
+  configuredLifeOrigin,
+) {
+  const origins = [
+    normalizeBusinessOrigin(configuredBusinessOrigin),
+    normalizeLifeOrigin(configuredLifeOrigin),
+  ].filter(Boolean);
   const directives = baseCsp
     .split(";")
     .map((directive) => directive.trim())
     .filter(Boolean)
     .filter((directive) => !directive.startsWith("frame-src "));
-  directives.push(`frame-src 'self'${origin ? ` ${origin}` : ""}`);
+  directives.push(
+    `frame-src 'self'${origins.map((origin) => ` ${origin}`).join("")}`,
+  );
   return directives.join("; ");
+}
+
+export function buildBusinessDockCsp(baseCsp, configuredOrigin) {
+  return buildWorkspaceDockCsp(baseCsp, configuredOrigin);
 }
 
 function withBusinessDockConfig(args) {
@@ -44,10 +66,23 @@ function withBusinessDockConfig(args) {
   );
   const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));
   const mode = args[0] === "build" ? "production" : "development";
-  const viteEnv = loadEnv(mode, process.cwd(), "VITE_");
-  const csp = buildBusinessDockCsp(
+  const viteEnv = loadEnv(mode, process.cwd(), "");
+  const lifeEnabled =
+    process.env.LIFE_DOCK_ENABLED ?? viteEnv.LIFE_DOCK_ENABLED ?? "false";
+  const lifeOrigin =
+    process.env.VITE_LIFE_APP_ORIGIN ?? viteEnv.VITE_LIFE_APP_ORIGIN;
+  if (lifeEnabled !== "true" && lifeEnabled !== "false") {
+    throw new Error("LIFE_DOCK_ENABLED must be true or false");
+  }
+  if (lifeEnabled === "true" && !lifeOrigin) {
+    throw new Error(
+      "VITE_LIFE_APP_ORIGIN is required when LIFE_DOCK_ENABLED=true",
+    );
+  }
+  const csp = buildWorkspaceDockCsp(
     tauriConfig.app.security.csp,
     process.env.VITE_BUSINESS_APP_ORIGIN ?? viteEnv.VITE_BUSINESS_APP_ORIGIN,
+    lifeEnabled === "true" ? lifeOrigin : undefined,
   );
   const override = JSON.stringify({ app: { security: { csp } } });
   const nextArgs = [...args];
