@@ -100,4 +100,8 @@ test("Life iframe mounts on first open and remains mounted after close", () => {
     source,
     /state\.open && active \? "visible" : "invisible pointer-events-none"/u,
   );
+  assert.match(
+    source,
+    /state\.open && active && !floating && "border-l border-border\/70"/u,
+  );
 });

@@ -39,7 +39,8 @@ export function LifeDock() {
           state.open && active ? "visible" : "invisible pointer-events-none",
           floating
             ? "absolute inset-y-0 right-0 shadow-2xl"
-            : "relative shrink-0 border-l border-border/70",
+            : "relative shrink-0",
+          state.open && active && !floating && "border-l border-border/70",
           state.fullscreen && "left-0 w-full! shadow-none",
         )}
         data-life-dock-active={active}
