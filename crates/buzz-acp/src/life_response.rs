@@ -79,7 +79,17 @@ impl LifeResponseCapture {
         let Some(tool_id) = update.get("toolCallId").and_then(|value| value.as_str()) else {
             return;
         };
-        let name = title.rsplit("__").next().unwrap_or(title);
+        let raw_server = update
+            .pointer("/rawInput/server")
+            .and_then(|value| value.as_str());
+        let raw_tool = update
+            .pointer("/rawInput/tool")
+            .and_then(|value| value.as_str());
+        let name = match (raw_server, raw_tool) {
+            (Some("life-workbench-mcp"), Some(tool)) => tool,
+            (Some(_), _) | (None, Some(_)) => return,
+            (None, None) => title.rsplit("__").next().unwrap_or(title),
+        };
         if is_life_tool(name) {
             self.tools.insert(tool_id.to_owned(), name.to_owned());
         }
@@ -103,10 +113,12 @@ impl LifeResponseCapture {
             });
             return;
         }
-        let Some(text) = update
-            .pointer("/content/0/content/text")
-            .and_then(|value| value.as_str())
-        else {
+        let Some(text) = [
+            "/rawOutput/result/content/0/text",
+            "/content/0/content/text",
+        ]
+        .into_iter()
+        .find_map(|pointer| update.pointer(pointer).and_then(|value| value.as_str())) else {
             self.invalid_tool_result = true;
             return;
         };
@@ -329,6 +341,30 @@ mod tests {
         observe_named_result(capture, "get_action_detail", text);
     }
 
+    fn observe_codex_result(capture: &mut LifeResponseCapture, tool: &str, text: &str) {
+        capture.on_session_update(&json!({
+            "sessionUpdate":"tool_call",
+            "toolCallId":"codex-tool-1",
+            "title":format!("mcp.life-workbench-mcp.{tool}"),
+            "rawInput":{
+                "server":"life-workbench-mcp",
+                "tool":tool,
+                "arguments":{}
+            }
+        }));
+        capture.on_session_update(&json!({
+            "sessionUpdate":"tool_call_update",
+            "toolCallId":"codex-tool-1",
+            "status":"completed",
+            "rawOutput":{
+                "error":null,
+                "result":{
+                    "content":[{"type":"text","text":text}]
+                }
+            }
+        }));
+    }
+
     #[test]
     fn trusted_success_appends_only_server_refs_trace_and_audit() {
         let trace = Uuid::new_v4();
@@ -355,6 +391,43 @@ mod tests {
         assert!(content.contains("life://action/action-1 v8"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
+    }
+
+    #[test]
+    fn codex_mcp_wire_shape_is_captured_only_for_the_life_server() {
+        let trace = Uuid::new_v4();
+        let audit = Uuid::new_v4();
+        let result = json!({
+            "ok":true,
+            "data":{"action":{"status":"PENDING"}},
+            "resourceRefs":[{
+                "scheme":"life","type":"action","id":"action-1","version":1
+            }],
+            "auditId":audit,
+            "traceId":trace
+        })
+        .to_string();
+        let mut capture = LifeResponseCapture::default();
+        observe_codex_result(&mut capture, "get_action_detail", &result);
+        let content = trusted_content(capture.finish());
+        assert!(content.contains("life://action/action-1 v1"));
+        assert!(content.contains(&trace.to_string()));
+        assert!(content.contains(&audit.to_string()));
+
+        let mut foreign = LifeResponseCapture::default();
+        foreign.on_session_update(&json!({
+            "sessionUpdate":"tool_call",
+            "toolCallId":"foreign-tool",
+            "title":"mcp.foreign.get_action_detail",
+            "rawInput":{"server":"foreign","tool":"get_action_detail"}
+        }));
+        foreign.on_session_update(&json!({
+            "sessionUpdate":"tool_call_update",
+            "toolCallId":"foreign-tool",
+            "status":"completed",
+            "rawOutput":{"result":{"content":[{"text":result}]}}
+        }));
+        assert!(foreign.finish().results.is_empty());
     }
 
     #[test]
