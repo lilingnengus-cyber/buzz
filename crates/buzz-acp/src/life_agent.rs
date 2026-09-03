@@ -464,6 +464,9 @@ impl TurnExtension for LifeAgentHostConfig {
         let Some(event) = context.source_event else {
             return Ok(TurnApplicability::NotApplicable);
         };
+        if !is_supported_life_source_event(event) {
+            return Ok(TurnApplicability::NotApplicable);
+        }
         if is_life_notifier_event(event) {
             return Ok(TurnApplicability::NotApplicable);
         }
@@ -547,6 +550,9 @@ impl TurnExtension for LifeAgentHostConfig {
             else {
                 return Ok(None);
             };
+            if !is_supported_life_source_event(source_event) {
+                return Ok(None);
+            }
             let (participant_pubkeys, direct_message) = match &context.conversation {
                 crate::turn_observer::VerifiedConversation::Channel {
                     channel_type,
@@ -886,6 +892,10 @@ fn explicit_life_domain(content: &str) -> bool {
         || content.contains("个人系统")
 }
 
+fn is_supported_life_source_event(event: &Event) -> bool {
+    matches!(event.kind.as_u16(), 1 | 9 | 40002 | 45001 | 45003)
+}
+
 fn disclosure_category(content: &str) -> &'static str {
     let lower = content.to_ascii_lowercase();
     if lower.contains("project") || content.contains("项目") || content.contains("工程") {
@@ -941,7 +951,11 @@ mod tests {
     }
 
     fn event(content: &str, channel_id: Uuid) -> Event {
-        EventBuilder::new(Kind::Custom(40002), content)
+        event_with_kind(Kind::Custom(40002), content, channel_id)
+    }
+
+    fn event_with_kind(kind: Kind, content: &str, channel_id: Uuid) -> Event {
+        EventBuilder::new(kind, content)
             .tags([Tag::parse(["h", &channel_id.to_string()]).expect("tag")])
             .sign_with_keys(&Keys::generate())
             .expect("event")
@@ -1011,6 +1025,37 @@ mod tests {
             config.classify_turn(&context).expect("classification"),
             TurnApplicability::Ambiguous { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn typing_events_never_start_life_agent_turns() {
+        let config = LifeAgentHostConfig::test_mock();
+        let channel_id = Uuid::new_v4();
+        let typing = event_with_kind(Kind::Custom(20002), "查看我的 LifeOS 今日行动", channel_id);
+        let context = VerifiedTurnContext {
+            source_event: Some(&typing),
+            source_event_id: Some(typing.id),
+            source_pubkey: Some(typing.pubkey),
+            community_id: "community",
+            conversation: VerifiedConversation::Channel {
+                channel_id,
+                channel_type: Some("dm".into()),
+                participant_pubkeys: Vec::new(),
+            },
+            agent_id: "a",
+            agent_turn_id: "turn",
+            trace_id: "trace",
+        };
+
+        assert!(matches!(
+            config.classify_turn(&context).expect("classification"),
+            TurnApplicability::NotApplicable
+        ));
+        assert!(config
+            .begin_turn(context)
+            .await
+            .expect("typing event ignored")
+            .is_none());
     }
 
     #[test]
