@@ -56,6 +56,8 @@ pub(crate) enum VerifiedConversation {
     Channel {
         channel_id: Uuid,
         channel_type: Option<String>,
+        /// Exact current member pubkeys from the relay's kind-39002 event.
+        participant_pubkeys: Vec<String>,
     },
 }
 
@@ -179,6 +181,7 @@ mod tests {
             conversation: VerifiedConversation::Channel {
                 channel_id,
                 channel_type: Some("stream".into()),
+                participant_pubkeys: vec![event.pubkey.to_hex()],
             },
             agent_id: "agent",
             agent_turn_id: "turn",

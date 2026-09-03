@@ -149,12 +149,13 @@ fn source(keys: &Keys, channel: Uuid) -> nostr::Event {
 }
 
 fn issue_request(event: nostr::Event, channel: Uuid, turn: &str) -> IssueDelegationRequest {
+    let author = event.pubkey.to_hex();
     IssueDelegationRequest {
         source_event: event,
         source_channel_id: Some(channel.to_string()),
         conversation: ConversationAudience::Channel {
-            participant_pubkeys: vec![],
-            direct_message: false,
+            participant_pubkeys: vec![author, "b".repeat(64)],
+            direct_message: true,
         },
         agent_id: "life-agent".into(),
         agent_turn_id: turn.into(),

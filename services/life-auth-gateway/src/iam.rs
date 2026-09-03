@@ -133,7 +133,8 @@ pub(crate) async fn authorize_in_transaction(
             request.requested.clone(),
             request.runtime_ceiling.clone(),
             request.conversation,
-        );
+        )
+        .with_channel_disclosure(request.disclosure_allowed);
         (principal_id, evaluate(input))
     } else {
         let authority = human_authority(
@@ -147,7 +148,8 @@ pub(crate) async fn authorize_in_transaction(
             request.requested.clone(),
             request.runtime_ceiling.clone(),
             request.conversation,
-        );
+        )
+        .with_channel_disclosure(request.disclosure_allowed);
         (human_principal_id, evaluate(input))
     };
     enforce_satisfaction(&mut decision, &request.satisfaction, request.batch_size);

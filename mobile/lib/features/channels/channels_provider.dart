@@ -13,6 +13,7 @@ import 'channel_management_provider.dart'
     show ChannelMember, channelDetailsProvider;
 import 'channel_mutes/channel_mutes_provider.dart';
 import 'huddle_channel_filter.dart';
+import 'life_notification_dedup.dart';
 import '../../shared/read_state/read_state_provider.dart';
 import 'thread_follows/thread_follows_provider.dart';
 import 'unread_badge/is_high_priority_event.dart';
@@ -23,6 +24,7 @@ const _channelTypeOrder = {'stream': 0, 'forum': 1, 'dm': 2};
 const _unreadCatchUpLimit = 1000;
 const _participatedRootIdsPrefix = 'buzz-thread-participation.v1';
 const _authoredRootIdsPrefix = 'buzz-thread-authored.v1';
+const _seenLifeNotificationLimit = 5000;
 
 /// Loads the user's channel list from the relay over WebSocket.
 ///
@@ -54,6 +56,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
   String? _memberSnapshotRelayBaseUrl;
   String? _memberSnapshotPubkey;
   Map<String, List<ChannelMember>> _memberSnapshotsByChannelId = const {};
+  final Set<String> _seenLifeNotificationKeys = {};
 
   /// The member snapshot already returned while loading the channel list.
   ///
@@ -78,6 +81,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     final pubkey = ref.watch(myPubkeyProvider)?.toLowerCase();
     if (_memberSnapshotRelayBaseUrl != relayBaseUrl ||
         _memberSnapshotPubkey != pubkey) {
+      _seenLifeNotificationKeys.clear();
       _memberSnapshotRelayBaseUrl = relayBaseUrl;
       _memberSnapshotPubkey = pubkey;
       _memberSnapshotsByChannelId = const {};
@@ -741,6 +745,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         if (channel == null) continue;
         final readAt = readAtByChannel[channelId];
         if (event.pubkey.toLowerCase() == myPk.toLowerCase()) continue;
+        if (!_acceptLifeNotification(event)) continue;
         if (readAt != null && event.createdAt <= readAt) continue;
         if (!shouldNotifyForEvent(
           event,
@@ -765,6 +770,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
   void _handleLiveEvent(NostrEvent event) {
     final channelId = event.channelId;
     if (channelId == null) return;
+    if (!_acceptLifeNotification(event)) return;
 
     final myPk = ref.read(myPubkeyProvider);
     final mutedChannelIds = _mutedChannelIds();
@@ -811,6 +817,16 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     for (final entry in ref.read(channelMutesProvider).store.channels.entries)
       if (entry.value.muted) entry.key,
   };
+
+  bool _acceptLifeNotification(NostrEvent event) {
+    final key = lifeNotificationDedupKey(event);
+    if (key == null) return true;
+    if (!_seenLifeNotificationKeys.add(key)) return false;
+    if (_seenLifeNotificationKeys.length > _seenLifeNotificationLimit) {
+      _seenLifeNotificationKeys.remove(_seenLifeNotificationKeys.first);
+    }
+    return true;
+  }
 
   Set<String> _followedRootIds() =>
       ref.read(threadFollowsProvider).followedRootIds;

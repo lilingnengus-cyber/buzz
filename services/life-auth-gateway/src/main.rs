@@ -12,5 +12,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Ok(());
     }
     let config = Config::from_env().map_err(|error| format!("configuration error: {error}"))?;
+    life_auth_gateway::metrics::install(config.metrics_bind_addr())?;
     life_auth_gateway::run(config).await
 }

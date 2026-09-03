@@ -4,6 +4,7 @@ use url::Url;
 
 const CALL_GRANT_AUDIENCE: &str = "lifeos-workbench-api";
 const DELEGATION_AUDIENCE: &str = "life-workbench-mcp";
+const INTEGRATION_CONTRACT_VERSION: &str = "1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Environment {
@@ -28,6 +29,7 @@ impl Environment {
 pub struct Config {
     database_url: String,
     bind_addr: SocketAddr,
+    metrics_bind_addr: SocketAddr,
     deployment_id: String,
     pacioli_service_token: ServiceToken,
     mcp_service_token: ServiceToken,
@@ -45,6 +47,7 @@ pub struct Config {
     delegation_ttl: Duration,
     call_grant_ttl: Duration,
     environment: Environment,
+    integration_contract_version: String,
 }
 
 impl Config {
@@ -59,8 +62,19 @@ impl Config {
                 .as_deref()
                 .unwrap_or("production"),
         )?;
+        let integration_contract_version = read("LIFE_INTEGRATION_CONTRACT_VERSION")
+            .unwrap_or_else(|| INTEGRATION_CONTRACT_VERSION.to_owned());
+        if integration_contract_version != INTEGRATION_CONTRACT_VERSION {
+            return Err(format!(
+                "LIFE_INTEGRATION_CONTRACT_VERSION must be {INTEGRATION_CONTRACT_VERSION}"
+            ));
+        }
         let database_url = required(&read, "LIFE_AUTH_DATABASE_URL")?;
         validate_database_url(&database_url)?;
+        let metrics_bind_addr = read("LIFE_AUTH_METRICS_BIND_ADDR")
+            .unwrap_or_else(|| "127.0.0.1:9103".to_owned())
+            .parse()
+            .map_err(|_| "LIFE_AUTH_METRICS_BIND_ADDR is invalid")?;
         let deployment_id = safe_identifier(
             "LIFE_AUTH_DEPLOYMENT_ID",
             required(&read, "LIFE_AUTH_DEPLOYMENT_ID")?,
@@ -129,6 +143,7 @@ impl Config {
             bind_addr: required(&read, "LIFE_AUTH_BIND_ADDR")?
                 .parse()
                 .map_err(|_| "LIFE_AUTH_BIND_ADDR is invalid")?,
+            metrics_bind_addr,
             deployment_id,
             pacioli_service_token,
             mcp_service_token,
@@ -152,6 +167,7 @@ impl Config {
             delegation_ttl: seconds(&read, "LIFE_AUTH_DELEGATION_TTL_SECONDS", 300, 30, 900)?,
             call_grant_ttl: seconds(&read, "LIFE_AUTH_CALL_GRANT_TTL_SECONDS", 30, 1, 60)?,
             environment,
+            integration_contract_version,
         })
     }
 
@@ -166,6 +182,11 @@ impl Config {
 
     pub(crate) fn bind_addr(&self) -> SocketAddr {
         self.bind_addr
+    }
+
+    /// Address for the private Prometheus exporter.
+    pub fn metrics_bind_addr(&self) -> SocketAddr {
+        self.metrics_bind_addr
     }
 
     pub(crate) fn signing_key(&self) -> &SigningKeyMaterial {
@@ -254,6 +275,10 @@ impl fmt::Debug for Config {
             .field("delegation_ttl", &self.delegation_ttl)
             .field("call_grant_ttl", &self.call_grant_ttl)
             .field("environment", &self.environment)
+            .field(
+                "integration_contract_version",
+                &self.integration_contract_version,
+            )
             .finish()
     }
 }
@@ -450,6 +475,15 @@ mod tests {
             ),
             ("LIFE_AUTH_ENVIRONMENT".into(), "production".into()),
         ])
+    }
+
+    #[test]
+    fn integration_contract_version_mismatch_is_rejected() {
+        let mut values = valid_values();
+        values.insert("LIFE_INTEGRATION_CONTRACT_VERSION".into(), "2".into());
+        assert!(Config::from_values(&values)
+            .expect_err("version mismatch")
+            .contains("LIFE_INTEGRATION_CONTRACT_VERSION"));
     }
 
     #[test]

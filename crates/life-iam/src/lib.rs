@@ -200,6 +200,9 @@ pub struct EvaluationInput {
     pub runtime_ceiling: BTreeMap<Capability, CapabilityGrant>,
     /// Verified DM or multi-party channel classification.
     pub conversation: ConversationContext,
+    /// A current, external LifeOS policy explicitly allows a minimized channel read.
+    #[serde(default)]
+    pub channel_disclosure_allowed: bool,
 }
 
 impl EvaluationInput {
@@ -215,6 +218,7 @@ impl EvaluationInput {
             requested,
             runtime_ceiling,
             conversation,
+            channel_disclosure_allowed: false,
         }
     }
 
@@ -230,7 +234,14 @@ impl EvaluationInput {
             requested,
             runtime_ceiling,
             conversation,
+            channel_disclosure_allowed: false,
         }
+    }
+
+    /// Applies trusted evidence that a current channel-disclosure policy exists.
+    pub fn with_channel_disclosure(mut self, allowed: bool) -> Self {
+        self.channel_disclosure_allowed = allowed;
+        self
     }
 }
 
@@ -321,6 +332,7 @@ pub fn evaluate(input: EvaluationInput) -> Decision {
         };
         if obligations.contains(&Obligation::DmOnly)
             && input.conversation != ConversationContext::DirectMessage
+            && !input.channel_disclosure_allowed
         {
             denied_capabilities.insert(capability);
             continue;

@@ -30,8 +30,46 @@ export function dedupeMessagesById(messages: RelayEvent[]) {
   return deduped.reverse();
 }
 
+const LIFE_NOTIFICATION_IDEMPOTENCY = /^sha256:[0-9a-f]{64}$/u;
+
+export function getLifeNotificationDedupKey(message: RelayEvent) {
+  const isLifeNotification = message.tags.some(
+    (tag) =>
+      tag.length === 2 && tag[0] === "source" && tag[1] === "life-notifier",
+  );
+  if (!isLifeNotification) return null;
+  const idempotencyTags = message.tags.filter(
+    (tag) => tag.length === 2 && tag[0] === "idempotency",
+  );
+  if (
+    idempotencyTags.length !== 1 ||
+    !LIFE_NOTIFICATION_IDEMPOTENCY.test(idempotencyTags[0][1] ?? "")
+  ) {
+    return null;
+  }
+  return `${message.pubkey.toLowerCase()}:${idempotencyTags[0][1]}`;
+}
+
+/**
+ * Keeps the first accepted delivery of a Life notification. NIP-17 wraps are
+ * intentionally randomized, so a retry can have a different outer event ID;
+ * the signed inner business idempotency tag is the stable display identity.
+ * Including the signer prevents an unrelated author from suppressing a real
+ * notification by copying its public tags.
+ */
+export function dedupeLifeNotifications(messages: RelayEvent[]) {
+  const seen = new Set<string>();
+  return messages.filter((message) => {
+    const key = getLifeNotificationDedupKey(message);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function sortMessages(messages: RelayEvent[]) {
-  return dedupeMessagesById(messages).sort((left, right) => {
+  const sorted = dedupeMessagesById(messages).sort((left, right) => {
     if (left.created_at !== right.created_at) {
       return left.created_at - right.created_at;
     }
@@ -41,6 +79,7 @@ export function sortMessages(messages: RelayEvent[]) {
     // first — reading as a "missing"/shuffled message at a fixed scroll offset.
     return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
   });
+  return dedupeLifeNotifications(sorted);
 }
 
 export function normalizeTimelineMessages(messages: RelayEvent[]) {

@@ -2,6 +2,7 @@
 
 use crate::{
     agent::{RequestedDataScope, ResourceContext},
+    disclosure::DisclosureCategory,
     security::SigningKeyMaterial,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -49,6 +50,21 @@ pub struct LifeCallGrantClaims {
     pub idempotency_key: String,
     /// Distributed trace identifier.
     pub trace_id: Uuid,
+    /// Current minimized channel-disclosure context, absent for direct messages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disclosure: Option<CallGrantDisclosure>,
+}
+
+/// Server-verified disclosure constraint propagated to LifeOS.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CallGrantDisclosure {
+    /// Current LifeOS policy identifier.
+    pub policy_id: Uuid,
+    /// Fixed low-sensitivity result category.
+    pub category: DisclosureCategory,
+    /// Mandatory minimization obligations.
+    pub obligations: Vec<String>,
 }
 
 /// Compact JWS and the exact claims used to create it.
@@ -81,6 +97,7 @@ pub(crate) struct CallGrantInput<'a> {
     pub normalized_input_hash: &'a str,
     pub idempotency_key: &'a str,
     pub trace_id: Uuid,
+    pub disclosure: Option<CallGrantDisclosure>,
 }
 
 /// Stable call-grant construction failure.
@@ -152,6 +169,7 @@ impl CallGrantSigner {
             normalized_input_hash: input.normalized_input_hash.to_owned(),
             idempotency_key: input.idempotency_key.to_owned(),
             trace_id: input.trace_id,
+            disclosure: input.disclosure,
         };
         let header = serde_json::json!({"alg":"EdDSA","typ":"JWT","kid":self.key_id});
         let header = URL_SAFE_NO_PAD

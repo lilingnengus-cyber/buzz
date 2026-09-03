@@ -11,6 +11,8 @@ mod business_agent;
 mod business_response;
 #[path = "life_agent.rs"]
 mod life_agent;
+#[path = "life_notification_guard.rs"]
+mod life_notification_guard;
 #[path = "life_response.rs"]
 mod life_response;
 
@@ -78,6 +80,7 @@ mod tests {
                 conversation: VerifiedConversation::Channel {
                     channel_id,
                     channel_type: Some(channel_type.into()),
+                    participant_pubkeys: Vec::new(),
                 },
                 agent_id: "agent",
                 agent_turn_id: "turn",
@@ -140,9 +143,10 @@ mod tests {
             ),
             Err(RegistryError::Ambiguous { .. })
         ));
-        assert!(matches!(
-            select_in_channel(&registry, "打开 life://action/action-1", "stream"),
-            Err(RegistryError::Ambiguous { .. })
-        ));
+        assert_eq!(
+            select_in_channel(&registry, "打开 life://action/action-1", "stream")
+                .expect("Life disclosure selection"),
+            Some("life")
+        );
     }
 }

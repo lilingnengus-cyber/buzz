@@ -1,8 +1,9 @@
 //! Signed-source Life Agent turn delegation issuance and atomic consumption.
 
 use crate::{
-    call_grant::{CallGrantInput, CallGrantSigner, SignedLifeCallGrant},
+    call_grant::{CallGrantDisclosure, CallGrantInput, CallGrantSigner, SignedLifeCallGrant},
     catalog,
+    disclosure::{DisclosureCategory, DisclosureClient, DisclosureGrant, DisclosureSensitivity},
     iam::{authorize_in_transaction, AuthorizationRequest, ObligationSatisfaction},
     identity::{ResolvedLifeIdentity, SessionPrincipal},
     model::{AgentDelegationId, IdentityBindingId, LifeWorkbenchUserId, WorkbenchSessionId},
@@ -185,6 +186,16 @@ pub struct IssueDelegationResponse {
     pub trace_id: Uuid,
 }
 
+/// Current LifeOS policy evidence for one minimized multi-party channel read.
+#[derive(Clone, Debug)]
+pub(crate) struct ChannelDisclosureContext {
+    pub(crate) community_id: String,
+    pub(crate) channel_id: String,
+    pub(crate) category: DisclosureCategory,
+    pub(crate) sensitivity: DisclosureSensitivity,
+    pub(crate) grant: DisclosureGrant,
+}
+
 /// MCP request to atomically consume one call from a delegation.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -262,6 +273,17 @@ impl Store {
         policy: &DelegationPolicy,
         current_identity: &ResolvedLifeIdentity,
     ) -> Result<IssueDelegationResponse, AgentError> {
+        self.issue_agent_delegation_with_disclosure(request, policy, current_identity, None)
+            .await
+    }
+
+    pub(crate) async fn issue_agent_delegation_with_disclosure(
+        &self,
+        request: IssueDelegationRequest,
+        policy: &DelegationPolicy,
+        current_identity: &ResolvedLifeIdentity,
+        disclosure: Option<ChannelDisclosureContext>,
+    ) -> Result<IssueDelegationResponse, AgentError> {
         let context = validate_issue(&request)?;
         let (user_id, _, _, life_os_user_id) = self
             .delegation_identity(&request.source_event.pubkey.to_hex())
@@ -282,16 +304,44 @@ impl Store {
             return Err(AgentError::Unauthorized);
         }
         let requested_scope = data_scope(&request.requested_data_scope)?;
-        let requested = requested_capabilities(&request, &requested_scope)?;
+        let mut requested = requested_capabilities(&request, &requested_scope)?;
+        if let Some(current) = &disclosure {
+            let source_channel = request
+                .source_channel_id
+                .as_deref()
+                .ok_or(AgentError::Invalid)?;
+            if context != ConversationContext::MultiPartyChannel
+                || current.channel_id != source_channel
+                || !safe_text(&current.community_id, 512)
+                || !current.grant.validate()
+            {
+                return Err(AgentError::Denied);
+            }
+            requested.retain(|capability, _| {
+                current
+                    .category
+                    .capabilities()
+                    .contains(&capability.as_str())
+            });
+            if requested.is_empty() {
+                return Err(AgentError::Denied);
+            }
+        } else if context == ConversationContext::MultiPartyChannel {
+            return Err(AgentError::Denied);
+        }
         let runtime_ceiling = requested
             .keys()
             .cloned()
             .map(|capability| {
+                let mut obligations = BTreeSet::new();
+                if disclosure.is_some() {
+                    obligations.insert(Obligation::RedactSensitive);
+                }
                 (
                     capability,
                     CapabilityGrant {
                         data_scope: requested_scope.clone(),
-                        obligations: BTreeSet::new(),
+                        obligations,
                     },
                 )
             })
@@ -371,10 +421,11 @@ impl Store {
                 satisfaction: ObligationSatisfaction {
                     human_confirmation: request.write_command_id.is_some(),
                     step_up_authentication: request.write_command_id.is_some(),
+                    redact_sensitive: disclosure.is_some(),
                     ..ObligationSatisfaction::default()
                 },
                 batch_size: 1,
-                disclosure_allowed: false,
+                disclosure_allowed: disclosure.is_some(),
                 trace_id: request.trace_id,
             },
         )
@@ -431,9 +482,11 @@ impl Store {
               principal_id,iam_decision_id,agent_id,agent_turn_id,source_event_id,
               source_pubkey,source_channel_id,conversation_context,audience,capabilities,
               data_scope,obligations,resource_context,write_command_id,catalog_version,
+              disclosure_community_id,disclosure_policy_id,disclosure_category,
+              disclosure_sensitivity,disclosure_expires_at,
               status,expires_at,max_calls,remaining_calls,trace_id)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                    $18,$19,$20,'active',$21,$22,$22,$23)",
+                    $18,$19,$20,$21,$22,$23,$24,$25,'active',$26,$27,$27,$28)",
         )
         .bind(delegation_id)
         .bind(hash_token(&token))
@@ -455,6 +508,11 @@ impl Store {
         .bind(request.resource_context.as_ref().map(json).transpose()?)
         .bind(request.write_command_id)
         .bind(authorization.catalog_version)
+        .bind(disclosure.as_ref().map(|value| value.community_id.as_str()))
+        .bind(disclosure.as_ref().and_then(|value| value.grant.policy_id))
+        .bind(disclosure.as_ref().map(|value| value.category.as_str()))
+        .bind(disclosure.as_ref().map(|value| value.sensitivity.as_str()))
+        .bind(disclosure.as_ref().and_then(|value| value.grant.expires_at))
         .bind(expires_at)
         .bind(max_calls)
         .bind(request.trace_id)
@@ -474,6 +532,20 @@ impl Store {
             audit(
                 &mut transaction,
                 event_type,
+                "success",
+                None,
+                Some(user_id),
+                Some(delegation_id),
+                Some(&request.agent_id),
+                Some(&request.source_event.id.to_hex()),
+                request.trace_id,
+            )
+            .await?;
+        }
+        if disclosure.is_some() {
+            audit(
+                &mut transaction,
+                "DISCLOSURE_ALLOWED",
                 "success",
                 None,
                 Some(user_id),
@@ -506,6 +578,17 @@ impl Store {
         request: ConsumeDelegationRequest,
         signer: &CallGrantSigner,
     ) -> Result<SignedLifeCallGrant, AgentError> {
+        self.consume_agent_delegation_with_disclosure(token, request, signer, None)
+            .await
+    }
+
+    pub(crate) async fn consume_agent_delegation_with_disclosure(
+        &self,
+        token: &str,
+        request: ConsumeDelegationRequest,
+        signer: &CallGrantSigner,
+        disclosure_client: Option<&DisclosureClient>,
+    ) -> Result<SignedLifeCallGrant, AgentError> {
         validate_consume(token, &request)?;
         let input_hash = normalized_hash(&request.normalized_input_hash)?;
         let mut transaction = self.pool.begin().await.map_err(database)?;
@@ -517,7 +600,9 @@ impl Store {
                     u.life_os_user_id,u.status AS user_status,u.authority_sync_status,
                     b.status AS binding_status,s.status AS session_status,
                     (s.expires_at>now()) AS session_current,
-                    p.status AS principal_status
+                    p.status AS principal_status,d.source_channel_id,d.disclosure_community_id,
+                    d.disclosure_policy_id,d.disclosure_category,d.disclosure_sensitivity,
+                    d.disclosure_expires_at
              FROM life_agent_delegations d
              JOIN life_workbench_users u ON u.id=d.workbench_user_id
              JOIN life_identity_bindings b ON b.id=d.identity_binding_id
@@ -559,6 +644,62 @@ impl Store {
         let conversation: ConversationAudience =
             serde_json::from_value(row.get("conversation_context"))
                 .map_err(|_| AgentError::Database)?;
+        let disclosure_current = match row.get::<Option<Uuid>, _>("disclosure_policy_id") {
+            None => false,
+            Some(policy_id) => {
+                let client = disclosure_client.ok_or(AgentError::Unauthorized)?;
+                let community_id = row
+                    .get::<Option<String>, _>("disclosure_community_id")
+                    .ok_or(AgentError::Unauthorized)?;
+                let channel_id = row
+                    .get::<Option<String>, _>("source_channel_id")
+                    .ok_or(AgentError::Unauthorized)?;
+                let category = row
+                    .get::<Option<String>, _>("disclosure_category")
+                    .as_deref()
+                    .and_then(DisclosureCategory::parse)
+                    .ok_or(AgentError::Unauthorized)?;
+                let sensitivity = row
+                    .get::<Option<String>, _>("disclosure_sensitivity")
+                    .as_deref()
+                    .and_then(DisclosureSensitivity::parse)
+                    .ok_or(AgentError::Unauthorized)?;
+                if row
+                    .get::<Option<chrono::DateTime<Utc>>, _>("disclosure_expires_at")
+                    .is_none_or(|expiry| expiry <= Utc::now())
+                {
+                    return Err(AgentError::Unauthorized);
+                }
+                let current = client
+                    .evaluate(
+                        &row.get::<String, _>("life_os_user_id"),
+                        &community_id,
+                        &channel_id,
+                        category,
+                        sensitivity,
+                    )
+                    .await
+                    .map_err(|_| AgentError::Unauthorized)?;
+                current.policy_id == Some(policy_id) && current.validate()
+            }
+        };
+        let call_disclosure = if disclosure_current {
+            Some(CallGrantDisclosure {
+                policy_id: row.get("disclosure_policy_id"),
+                category: row
+                    .get::<Option<String>, _>("disclosure_category")
+                    .as_deref()
+                    .and_then(DisclosureCategory::parse)
+                    .ok_or(AgentError::Unauthorized)?,
+                obligations: vec![
+                    "read_only".into(),
+                    "redact_sensitive".into(),
+                    "summary_only".into(),
+                ],
+            })
+        } else {
+            None
+        };
         let stored_resource: Option<ResourceContext> = row
             .get::<Option<serde_json::Value>, _>("resource_context")
             .map(|value| serde_json::from_value(value).map_err(|_| AgentError::Database))
@@ -595,7 +736,7 @@ impl Store {
             }
             && resource_allowed(&data_scope, &resource.id)
             && expected_version_allowed(&request.capability, resource)
-            && obligations_satisfied(&obligations, &conversation);
+            && obligations_satisfied(&obligations, &conversation, disclosure_current);
         if !valid {
             return Err(AgentError::Unauthorized);
         }
@@ -673,6 +814,7 @@ impl Store {
             normalized_input_hash: &request.normalized_input_hash,
             idempotency_key: &request.idempotency_key,
             trace_id: request.trace_id,
+            disclosure: call_disclosure,
         })?;
         transaction.commit().await.map_err(database)?;
         Ok(grant)
@@ -929,6 +1071,7 @@ fn resource_allowed(scope: &DataScope, resource_id: &str) -> bool {
 fn obligations_satisfied(
     obligations: &BTreeSet<Obligation>,
     conversation: &ConversationAudience,
+    disclosure_current: bool,
 ) -> bool {
     obligations.iter().all(|obligation| match obligation {
         Obligation::MaxBatch(limit) => *limit >= 1,
@@ -941,6 +1084,7 @@ fn obligations_satisfied(
                         ..
                     }
                 )
+                || disclosure_current
         }
         Obligation::HumanConfirmation
         | Obligation::StepUpAuthentication

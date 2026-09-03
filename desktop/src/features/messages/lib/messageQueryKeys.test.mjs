@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  dedupeLifeNotifications,
   mergeTimelineHistoryMessages,
   normalizeTimelineMessages,
 } from "./messageQueryKeys.ts";
@@ -147,4 +148,56 @@ test("sortMessages tiebreaks same-second events on id, order-independent", () =>
 
   assert.deepEqual(forward, reverse);
   assert.deepEqual(forward, [a.id, b.id, c.id]);
+});
+
+test("Life notifier retries display once by signer and business idempotency", () => {
+  const idempotency = `sha256:${"d".repeat(64)}`;
+  const retry = (eventId, createdAt) =>
+    event({
+      id: eventId,
+      createdAt,
+      tags: [
+        ["h", CHANNEL_ID],
+        ["source", "life-notifier"],
+        ["idempotency", idempotency],
+      ],
+      content: "一个项目已创建",
+    });
+
+  const first = retry(id("first", 1), 1_000);
+  const second = retry(id("retry", 1), 1_001);
+  const normalized = normalizeTimelineMessages([second, first]);
+
+  assert.deepEqual(
+    normalized.map((message) => message.id),
+    [first.id],
+  );
+});
+
+test("Life notification dedup cannot cross signers or malformed tag shapes", () => {
+  const idempotency = `sha256:${"e".repeat(64)}`;
+  const legitimate = event({
+    id: id("life", 1),
+    createdAt: 1_000,
+    tags: [
+      ["source", "life-notifier"],
+      ["idempotency", idempotency],
+    ],
+  });
+  const otherSigner = {
+    ...legitimate,
+    id: id("other", 1),
+    pubkey: "b".repeat(64),
+  };
+  const duplicateIdempotencyTags = {
+    ...legitimate,
+    id: id("malformed", 1),
+    tags: [...legitimate.tags, ["idempotency", idempotency]],
+  };
+
+  assert.equal(
+    dedupeLifeNotifications([legitimate, otherSigner, duplicateIdempotencyTags])
+      .length,
+    3,
+  );
 });

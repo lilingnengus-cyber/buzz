@@ -1,5 +1,6 @@
 //! Per-turn LifeOS delegation and MCP injection.
 
+use super::life_notification_guard::is_life_notifier_event;
 use crate::{
     acp::{EnvVar, McpServer},
     config::parse_optional_feature_switch,
@@ -29,6 +30,7 @@ const FEATURE_SWITCHES: [&str; 6] = [
     "LIFE_DOCK_ENABLED",
     "LIFE_NOTIFIER_ENABLED",
 ];
+const LIFE_INTEGRATION_CONTRACT_VERSION: &str = "1";
 
 const READ_CAPABILITIES: [&str; 8] = [
     "workspace:read",
@@ -101,10 +103,31 @@ struct IssueResponse {
     trace_id: Uuid,
 }
 
+struct LifeAuthorizationRequest<'a> {
+    source_event: &'a Event,
+    source_channel_id: Uuid,
+    community_id: &'a str,
+    participant_pubkeys: &'a [String],
+    direct_message: bool,
+    agent_id: &'a str,
+    agent_turn_id: &'a str,
+    trace_id: &'a str,
+}
+
+struct IssuedAccessContext<'a> {
+    agent_id: &'a str,
+    agent_turn_id: &'a str,
+    trace_id: Uuid,
+    requested_capabilities: &'a [&'a str],
+    exact_confirmation: bool,
+    channel_disclosure: bool,
+}
+
 pub(crate) struct LifeTurnAccess {
     mcp_server: McpServer,
     policy: TurnPolicy,
     revocation: LifeRevocationGuard,
+    channel_disclosure: bool,
 }
 
 impl LifeAgentHostConfig {
@@ -128,6 +151,14 @@ impl LifeAgentHostConfig {
             notifier: enabled("LIFE_NOTIFIER_ENABLED")?,
         };
         validate_switch_hierarchy(switches)?;
+        if switches.extension
+            && read("LIFE_INTEGRATION_CONTRACT_VERSION").as_deref()
+                != Some(LIFE_INTEGRATION_CONTRACT_VERSION)
+        {
+            return Err(format!(
+                "LIFE_INTEGRATION_CONTRACT_VERSION must be {LIFE_INTEGRATION_CONTRACT_VERSION}"
+            ));
+        }
         if !switches.agent_read {
             return Ok(None);
         }
@@ -179,12 +210,18 @@ impl LifeAgentHostConfig {
 
     async fn authorize_turn(
         &self,
-        source_event: &Event,
-        source_channel_id: Uuid,
-        agent_id: &str,
-        agent_turn_id: &str,
-        trace_id: &str,
+        turn: LifeAuthorizationRequest<'_>,
     ) -> Result<LifeTurnAccess, String> {
+        let LifeAuthorizationRequest {
+            source_event,
+            source_channel_id,
+            community_id,
+            participant_pubkeys,
+            direct_message,
+            agent_id,
+            agent_turn_id,
+            trace_id,
+        } = turn;
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
         let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
         if exact_confirmation.is_some() && !self.high_risk_write_enabled {
@@ -225,8 +262,27 @@ impl LifeAgentHostConfig {
             .join("v1/life-agent/delegations")
             .map_err(|_| "Life Agent gateway URL is invalid")?;
         let source_pubkey = source_event.pubkey.to_hex();
-        let mut requested_capabilities = READ_CAPABILITIES.to_vec();
-        if self.write_enabled {
+        if !participant_pubkeys
+            .iter()
+            .any(|participant| participant == &source_pubkey)
+            || !participant_pubkeys
+                .iter()
+                .any(|participant| participant == agent_id)
+            || (direct_message && participant_pubkeys.len() != 2)
+        {
+            return Err("Life Agent conversation membership could not be verified".into());
+        }
+        let disclosure_category =
+            (!direct_message).then(|| disclosure_category(&source_event.content));
+        let mut requested_capabilities = if let Some(category) = disclosure_category {
+            match category {
+                "project_status" => vec!["workspace:read", "project:read", "action:read"],
+                _ => vec!["workspace:read", "action:read", "focus:read"],
+            }
+        } else {
+            READ_CAPABILITIES.to_vec()
+        };
+        if direct_message && self.write_enabled {
             requested_capabilities.extend(WRITE_CAPABILITIES);
         }
         let exact_capabilities = [EXECUTE_WRITE_CAPABILITY];
@@ -249,8 +305,8 @@ impl LifeAgentHostConfig {
         });
         let conversation = serde_json::json!({
             "type":"channel",
-            "participant_pubkeys":[source_pubkey, agent_id],
-            "direct_message":true
+            "participant_pubkeys":participant_pubkeys,
+            "direct_message":direct_message
         });
         let response = self
             .client
@@ -273,6 +329,9 @@ impl LifeAgentHostConfig {
                 },
                 "resourceContext": resource_context,
                 "writeCommandId": command_id,
+                "communityId": (!direct_message).then_some(community_id),
+                "disclosureCategory": disclosure_category,
+                "disclosureSensitivity": (!direct_message).then_some("NORMAL"),
                 "traceId": trace_id
             }))
             .send()
@@ -302,23 +361,30 @@ impl LifeAgentHostConfig {
             .map_err(|_| "Life Agent authorization response was invalid")?;
         self.access_from_issue(
             issued,
-            agent_id,
-            agent_turn_id,
-            trace_id,
-            requested_capabilities,
-            exact_confirmation.is_some(),
+            IssuedAccessContext {
+                agent_id,
+                agent_turn_id,
+                trace_id,
+                requested_capabilities,
+                exact_confirmation: exact_confirmation.is_some(),
+                channel_disclosure: !direct_message,
+            },
         )
     }
 
     fn access_from_issue(
         &self,
         issued: IssueResponse,
-        agent_id: &str,
-        agent_turn_id: &str,
-        trace_id: Uuid,
-        requested_capabilities: &[&str],
-        exact_confirmation: bool,
+        context: IssuedAccessContext<'_>,
     ) -> Result<LifeTurnAccess, String> {
+        let IssuedAccessContext {
+            agent_id,
+            agent_turn_id,
+            trace_id,
+            requested_capabilities,
+            exact_confirmation,
+            channel_disclosure,
+        } = context;
         let effective = issued
             .effective_capabilities
             .iter()
@@ -367,6 +433,7 @@ impl LifeAgentHostConfig {
                 trace_id,
                 revoked: AtomicBool::new(false),
             },
+            channel_disclosure,
         })
     }
 
@@ -397,6 +464,9 @@ impl TurnExtension for LifeAgentHostConfig {
         let Some(event) = context.source_event else {
             return Ok(TurnApplicability::NotApplicable);
         };
+        if is_life_notifier_event(event) {
+            return Ok(TurnApplicability::NotApplicable);
+        }
         let content = &event.content;
         let exact_confirmation = match parse_exact_write_confirmation(content) {
             Ok(value) => value,
@@ -425,9 +495,14 @@ impl TurnExtension for LifeAgentHostConfig {
             } if channel_type == "dm"
         );
         if !is_dm {
-            return Ok(if has_life || exact_confirmation.is_some() {
+            return Ok(if exact_confirmation.is_some() {
                 TurnApplicability::Ambiguous {
-                    reason: "LifeOS disclosure policy is required outside a direct message",
+                    reason: "LifeOS writes are never allowed in a multi-party channel",
+                }
+            } else if has_life {
+                TurnApplicability::Applicable {
+                    priority: if life_uri { 300 } else { 200 },
+                    reason: "LifeOS channel read requiring disclosure policy",
                 }
             } else {
                 TurnApplicability::NotApplicable
@@ -472,14 +547,28 @@ impl TurnExtension for LifeAgentHostConfig {
             else {
                 return Ok(None);
             };
+            let (participant_pubkeys, direct_message) = match &context.conversation {
+                crate::turn_observer::VerifiedConversation::Channel {
+                    channel_type,
+                    participant_pubkeys,
+                    ..
+                } => (
+                    participant_pubkeys.as_slice(),
+                    channel_type.as_deref() == Some("dm"),
+                ),
+                crate::turn_observer::VerifiedConversation::Heartbeat => return Ok(None),
+            };
             let access = self
-                .authorize_turn(
+                .authorize_turn(LifeAuthorizationRequest {
                     source_event,
-                    channel_id,
-                    context.agent_id,
-                    context.agent_turn_id,
-                    context.trace_id,
-                )
+                    source_channel_id: channel_id,
+                    community_id: context.community_id,
+                    participant_pubkeys,
+                    direct_message,
+                    agent_id: context.agent_id,
+                    agent_turn_id: context.agent_turn_id,
+                    trace_id: context.trace_id,
+                })
                 .await?;
             Ok(Some(Box::new(access) as Box<dyn TurnExtensionAccess>))
         })
@@ -496,7 +585,7 @@ impl TurnExtensionAccess for LifeTurnAccess {
     }
 
     fn start_observation(&mut self, acp: &mut crate::acp::AcpClient) {
-        super::life_response::start_capture(acp);
+        super::life_response::start_capture(acp, self.channel_disclosure);
     }
 
     fn finish<'a>(
@@ -797,6 +886,15 @@ fn explicit_life_domain(content: &str) -> bool {
         || content.contains("个人系统")
 }
 
+fn disclosure_category(content: &str) -> &'static str {
+    let lower = content.to_ascii_lowercase();
+    if lower.contains("project") || content.contains("项目") || content.contains("工程") {
+        "project_status"
+    } else {
+        "action_summary"
+    }
+}
+
 fn explicit_business_domain(content: &str) -> bool {
     let lower = content.to_ascii_lowercase();
     lower.contains("business workspace")
@@ -823,6 +921,7 @@ mod tests {
         HashMap::from([
             ("LIFE_EXTENSION_ENABLED", "true"),
             ("LIFE_AGENT_READ_ENABLED", "true"),
+            ("LIFE_INTEGRATION_CONTRACT_VERSION", "1"),
             ("LIFE_AUTH_GATEWAY_URL", "https://life-auth.example.com"),
             ("LIFE_API_URL", "https://life.example.com"),
             (
@@ -879,6 +978,7 @@ mod tests {
                 conversation: VerifiedConversation::Channel {
                     channel_id,
                     channel_type: Some("dm".into()),
+                    participant_pubkeys: Vec::new(),
                 },
                 agent_id: "a",
                 agent_turn_id: "turn",
@@ -901,6 +1001,7 @@ mod tests {
             conversation: VerifiedConversation::Channel {
                 channel_id,
                 channel_type: Some("dm".into()),
+                participant_pubkeys: Vec::new(),
             },
             agent_id: "a",
             agent_turn_id: "turn",
@@ -950,6 +1051,7 @@ mod tests {
             conversation: VerifiedConversation::Channel {
                 channel_id,
                 channel_type: Some("dm".into()),
+                participant_pubkeys: Vec::new(),
             },
             agent_id: "a",
             agent_turn_id: "turn",
@@ -962,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_party_channels_never_receive_life_data_tools_without_disclosure_policy() {
+    fn multi_party_life_requests_are_routed_for_gateway_disclosure_authorization() {
         let config = LifeAgentHostConfig::test_mock();
         let channel_id = Uuid::new_v4();
         let event = event("打开 life://action/action-1", channel_id);
@@ -974,6 +1076,7 @@ mod tests {
             conversation: VerifiedConversation::Channel {
                 channel_id,
                 channel_type: Some("stream".into()),
+                participant_pubkeys: Vec::new(),
             },
             agent_id: "a",
             agent_turn_id: "turn",
@@ -981,7 +1084,7 @@ mod tests {
         };
         assert!(matches!(
             config.classify_turn(&context).expect("classification"),
-            TurnApplicability::Ambiguous { .. }
+            TurnApplicability::Applicable { .. }
         ));
     }
 
@@ -999,11 +1102,14 @@ mod tests {
                     max_calls: 10,
                     trace_id,
                 },
-                &"a".repeat(64),
-                "turn-1",
-                trace_id,
-                &READ_CAPABILITIES,
-                false,
+                IssuedAccessContext {
+                    agent_id: &"a".repeat(64),
+                    agent_turn_id: "turn-1",
+                    trace_id,
+                    requested_capabilities: &READ_CAPABILITIES,
+                    exact_confirmation: false,
+                    channel_disclosure: false,
+                },
             )
             .expect("access");
         let names = access
@@ -1093,14 +1199,18 @@ mod tests {
             .sign_with_keys(&source_keys)
             .expect("source");
         let agent_id = Keys::generate().public_key().to_hex();
+        let participants = vec![source.pubkey.to_hex(), agent_id.clone()];
         let access = config
-            .authorize_turn(
-                &source,
-                channel_id,
-                &agent_id,
-                "turn-1",
-                &trace_id.to_string(),
-            )
+            .authorize_turn(LifeAuthorizationRequest {
+                source_event: &source,
+                source_channel_id: channel_id,
+                community_id: "community",
+                participant_pubkeys: &participants,
+                direct_message: true,
+                agent_id: &agent_id,
+                agent_turn_id: "turn-1",
+                trace_id: &trace_id.to_string(),
+            })
             .await
             .expect("authorized access");
         {
@@ -1215,14 +1325,18 @@ mod tests {
             channel_id,
         );
         let agent_id = Keys::generate().public_key().to_hex();
+        let participants = vec![source.pubkey.to_hex(), agent_id.clone()];
         let access = config
-            .authorize_turn(
-                &source,
-                channel_id,
-                &agent_id,
-                "turn-confirm",
-                &trace_id.to_string(),
-            )
+            .authorize_turn(LifeAuthorizationRequest {
+                source_event: &source,
+                source_channel_id: channel_id,
+                community_id: "community",
+                participant_pubkeys: &participants,
+                direct_message: true,
+                agent_id: &agent_id,
+                agent_turn_id: "turn-confirm",
+                trace_id: &trace_id.to_string(),
+            })
             .await
             .expect("confirmed access");
 

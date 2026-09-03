@@ -1904,6 +1904,14 @@ pub async fn run_prompt_task(
             channel_type: source_channel_info
                 .as_ref()
                 .map(|info| info.channel_type.clone()),
+            participant_pubkeys: if ctx.turn_extensions.is_empty() {
+                Vec::new()
+            } else {
+                ctx.rest_client
+                    .channel_member_pubkeys(channel_id)
+                    .await
+                    .unwrap_or_default()
+            },
         },
         None => VerifiedConversation::Heartbeat,
     };
