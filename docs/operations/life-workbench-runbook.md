@@ -10,6 +10,28 @@ Scrape Gateway and Notifier only on their private listeners (`127.0.0.1:9103` an
 
 Secrets must be distinct between Pacioli→Gateway, Gateway→LifeOS, MCP→Gateway, and Notifier→LifeOS. The notifier uses a dedicated Nostr identity. Rotate one boundary at a time, restart only its two peers, and verify a denied request with the retired credential. Never place values in tickets, logs, screenshots, or this runbook.
 
+## Automated live default-value acceptance
+
+Before enabling Agent writes, run the opt-in real-process acceptance from the
+Pacioli checkout:
+
+```bash
+just life-workbench-live-defaults-e2e
+```
+
+The test builds the current relay, CLI, ACP, Gateway, test client, and Life MCP binaries;
+creates three uniquely named PostgreSQL databases; starts isolated loopback
+services; submits a typing event and a signed formal DM; and verifies that the
+formal message creates exactly one IAM decision, delegation, and MCP call. It
+also proves that an omitted project `color` materializes as `#197b70`, and that
+the structured Pacioli reply carries the matching `life://` reference, Audit
+ID, and Trace ID. Typing must not create a Life IAM decision or delegation.
+
+The test refuses a non-empty Redis database and cleans all isolated state on
+exit. It is intentionally not part of ordinary CI because it invokes a real
+configured ACP model. Use `LIFE_E2E_KEEP=1` only while diagnosing a failed run;
+the command then preserves its disposable databases and log directory.
+
 ## Safe rollout order
 
 Enable in this order, with `LIFE_INTEGRATION_CONTRACT_VERSION=1` on both systems:
