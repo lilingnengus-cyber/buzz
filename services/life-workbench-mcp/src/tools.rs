@@ -4,6 +4,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+const DEFAULT_LIST_LIMIT: u32 = 50;
+const DEFAULT_SNIPPET_LENGTH: u32 = 500;
+const DEFAULT_GOAL_HORIZON: &str = "QUARTER";
+const DEFAULT_PROJECT_COLOR: &str = "#197b70";
+const DEFAULT_ACTION_PRIORITY: &str = "MEDIUM";
+const DEFAULT_FOCUS_MODE: &str = "append";
+const DEFAULT_KNOWLEDGE_TYPE: &str = "NOTE";
+const DEFAULT_KNOWLEDGE_STATUS: &str = "APPROVED";
+const DEFAULT_AI_RISK_LEVEL: &str = "LOW";
+
 pub(crate) const READ_TOOL_NAMES: [&str; 12] = [
     "get_today_context",
     "get_system_overview",
@@ -520,7 +530,10 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 "/api/workbench/projects".into(),
                 "workspace",
                 input.workspace_id,
-                without_nulls(json!({"archived": input.archived, "limit": input.limit})),
+                json!({
+                    "archived": input.archived.unwrap_or(false),
+                    "limit": input.limit.unwrap_or(DEFAULT_LIST_LIMIT)
+                }),
             )
         }
         "get_project_context" => {
@@ -549,7 +562,7 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                     "statuses": input.statuses,
                     "from": input.from,
                     "to": input.to,
-                    "limit": input.limit
+                    "limit": input.limit.unwrap_or(DEFAULT_LIST_LIMIT)
                 })),
             )
         }
@@ -579,8 +592,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                     "query": input.query,
                     "from": input.from,
                     "to": input.to,
-                    "limit": input.limit,
-                    "snippetLength": input.snippet_length
+                    "limit": input.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+                    "snippetLength": input.snippet_length.unwrap_or(DEFAULT_SNIPPET_LENGTH)
                 })),
             )
         }
@@ -601,8 +614,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                     "domainId": input.domain_id,
                     "from": input.from,
                     "to": input.to,
-                    "limit": input.limit,
-                    "snippetLength": input.snippet_length
+                    "limit": input.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+                    "snippetLength": input.snippet_length.unwrap_or(DEFAULT_SNIPPET_LENGTH)
                 })),
             )
         }
@@ -632,8 +645,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                     "query": input.query,
                     "projectId": input.project_id,
                     "status": input.status,
-                    "limit": input.limit,
-                    "snippetLength": input.snippet_length
+                    "limit": input.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+                    "snippetLength": input.snippet_length.unwrap_or(DEFAULT_SNIPPET_LENGTH)
                 })),
             )
         }
@@ -669,7 +682,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 None,
                 without_nulls_deep(json!({
                     "title":input.title,"description":input.description,"domainId":input.domain_id,
-                    "parentId":input.parent_id,"horizon":input.horizon,"startsAt":input.starts_at,"endsAt":input.ends_at
+                    "parentId":input.parent_id,"horizon":input.horizon.unwrap_or_else(|| DEFAULT_GOAL_HORIZON.into()),
+                    "startsAt":input.starts_at,"endsAt":input.ends_at
                 })),
             )
         }
@@ -682,7 +696,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 input.workspace_id,
                 None,
                 without_nulls_deep(
-                    json!({"name":input.name,"purpose":input.purpose,"domainId":input.domain_id,"goalId":input.goal_id,"color":input.color}),
+                    json!({"name":input.name,"purpose":input.purpose,"domainId":input.domain_id,
+                    "goalId":input.goal_id,"color":input.color.unwrap_or_else(|| DEFAULT_PROJECT_COLOR.into())}),
                 ),
             )
         }
@@ -698,7 +713,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 None,
                 without_nulls_deep(json!({"operation":"create","value":{
                     "projectId":input.project_id,"parentId":input.parent_id,"title":input.title,"note":input.note,
-                    "priority":input.priority,"dueDate":input.due_date,"focusDate":input.focus_date,"estimateMin":input.estimate_min
+                    "priority":input.priority.unwrap_or_else(|| DEFAULT_ACTION_PRIORITY.into()),
+                    "dueDate":input.due_date,"focusDate":input.focus_date,"estimateMin":input.estimate_min
                 }})),
             )
         }
@@ -759,7 +775,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 input.workspace_id,
                 Some(input.membership_version),
                 without_nulls_deep(
-                    json!({"date":input.date,"mode":input.mode,"actions":input.actions,"current":input.current}),
+                    json!({"date":input.date,"mode":input.mode.unwrap_or_else(|| DEFAULT_FOCUS_MODE.into()),
+                    "actions":input.actions,"current":input.current.unwrap_or_default()}),
                 ),
             )
         }
@@ -824,10 +841,11 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 "workspace",
                 input.workspace_id,
                 None,
-                without_nulls_deep(
-                    json!({"projectId":input.project_id,"title":input.title,"type":input.r#type,"status":input.status,
-                    "summary":input.summary,"content":input.content,"tags":input.tags,"source":input.source}),
-                ),
+                without_nulls_deep(json!({"projectId":input.project_id,"title":input.title,
+                    "type":input.r#type.unwrap_or_else(|| DEFAULT_KNOWLEDGE_TYPE.into()),
+                    "status":input.status.unwrap_or_else(|| DEFAULT_KNOWLEDGE_STATUS.into()),
+                    "summary":input.summary,"content":input.content,"tags":input.tags.unwrap_or_default(),
+                    "source":input.source})),
             )
         }
         "start_ai_execution" => {
@@ -839,10 +857,9 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 "action",
                 action_id.clone(),
                 None,
-                without_nulls_deep(
-                    json!({"operation":"start","actionId":action_id,"riskLevel":input.risk_level,
-                    "actionType":input.action_type,"reason":input.reason,"plan":input.plan}),
-                ),
+                without_nulls_deep(json!({"operation":"start","actionId":action_id,
+                    "riskLevel":input.risk_level.unwrap_or_else(|| DEFAULT_AI_RISK_LEVEL.into()),
+                    "actionType":input.action_type,"reason":input.reason,"plan":input.plan})),
             )
         }
         "append_ai_execution_output" => {
@@ -855,7 +872,7 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 Some(input.expected_version),
                 without_nulls_deep(
                     json!({"operation":"append_output","type":input.r#type,"title":input.title,"content":input.content,
-                    "data":input.data,"sourceUrls":input.source_urls}),
+                    "data":input.data,"sourceUrls":input.source_urls.unwrap_or_default()}),
                 ),
             )
         }
@@ -884,6 +901,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
             }
             let resource_type = input.operation.resource_type();
             let resource_id = input.resource_id;
+            let include_history =
+                matches!(input.operation, HighRiskOperation::ExportKnowledge).then_some(false);
             Invocation::write(
                 "preview_life_write",
                 "/api/workbench/write-commands/preview",
@@ -892,7 +911,7 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 Some(input.expected_version),
                 without_nulls_deep(json!({
                     "operation": input.operation,
-                    "includeHistory": input.include_history
+                    "includeHistory": include_history
                 })),
             )
         }
@@ -1058,11 +1077,97 @@ mod tests {
         let resource = invocation.resource.as_ref().expect("bound resource");
         assert_eq!(resource.resource_type, "workspace");
         assert_eq!(resource.id, "workspace-1");
-        assert_eq!(invocation.api_input, json!({"limit":25}));
+        assert_eq!(invocation.api_input, json!({"archived":false,"limit":25}));
         assert_eq!(
             invocation.normalized_input_hash,
-            normalized_input_hash(&json!({"limit":25})).expect("hash")
+            normalized_input_hash(&json!({"archived":false,"limit":25})).expect("hash")
         );
+    }
+
+    #[test]
+    fn api_defaults_are_materialized_before_hashing() {
+        let cases = [
+            (
+                "list_projects",
+                json!({"workspaceId":"workspace-1"}),
+                json!({"archived":false,"limit":50}),
+            ),
+            (
+                "list_actions",
+                json!({"workspaceId":"workspace-1"}),
+                json!({"limit":50}),
+            ),
+            (
+                "search_journal",
+                json!({"workspaceId":"workspace-1"}),
+                json!({"limit":50,"snippetLength":500}),
+            ),
+            (
+                "get_review_context",
+                json!({"workspaceId":"workspace-1"}),
+                json!({"limit":50,"snippetLength":500}),
+            ),
+            (
+                "search_knowledge",
+                json!({"workspaceId":"workspace-1"}),
+                json!({"limit":50,"snippetLength":500}),
+            ),
+            (
+                "create_goal",
+                json!({"workspaceId":"workspace-1","title":"Goal"}),
+                json!({"title":"Goal","horizon":"QUARTER"}),
+            ),
+            (
+                "create_project",
+                json!({"workspaceId":"workspace-1","name":"Project"}),
+                json!({"name":"Project","color":"#197b70"}),
+            ),
+            (
+                "create_action",
+                json!({"workspaceId":"workspace-1","projectId":"project-1","title":"Action"}),
+                json!({"operation":"create","value":{"projectId":"project-1","title":"Action","priority":"MEDIUM"}}),
+            ),
+            (
+                "set_today_focus",
+                json!({"workspaceId":"workspace-1","membershipVersion":1,"date":"2026-09-03","actions":[{"id":"action-1","expectedVersion":1}]}),
+                json!({"date":"2026-09-03","mode":"append","actions":[{"id":"action-1","expectedVersion":1}],"current":[]}),
+            ),
+            (
+                "create_journal_entry",
+                json!({"workspaceId":"workspace-1","title":"Journal","content":"Entry"}),
+                json!({"title":"Journal","content":"Entry","sensitivity":"normal"}),
+            ),
+            (
+                "create_knowledge_item",
+                json!({"workspaceId":"workspace-1","title":"Note","content":"Body"}),
+                json!({"title":"Note","type":"NOTE","status":"APPROVED","content":"Body","tags":[]}),
+            ),
+            (
+                "start_ai_execution",
+                json!({"actionId":"action-1","actionType":"SUMMARY"}),
+                json!({"operation":"start","actionId":"action-1","riskLevel":"LOW","actionType":"SUMMARY"}),
+            ),
+            (
+                "append_ai_execution_output",
+                json!({"aiExecutionId":"execution-1","expectedVersion":1,"type":"KNOWLEDGE","title":"Output"}),
+                json!({"operation":"append_output","type":"KNOWLEDGE","title":"Output","sourceUrls":[]}),
+            ),
+            (
+                "preview_life_write",
+                json!({"operation":"export_knowledge","resourceId":"knowledge-1","expectedVersion":1}),
+                json!({"operation":"export_knowledge","includeHistory":false}),
+            ),
+        ];
+
+        for (tool, arguments, expected) in cases {
+            let invocation = parse_invocation(tool, arguments).expect("valid invocation");
+            assert_eq!(invocation.api_input, expected, "{tool} API input");
+            assert_eq!(
+                invocation.normalized_input_hash,
+                normalized_input_hash(&expected).expect("hash"),
+                "{tool} normalized hash"
+            );
+        }
     }
 
     #[test]

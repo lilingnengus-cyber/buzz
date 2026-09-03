@@ -4907,6 +4907,8 @@ dependencies = [
  "hex",
  "jsonwebtoken",
  "life-iam",
+ "metrics",
+ "metrics-exporter-prometheus",
  "nostr 0.44.7",
  "rand 0.10.1",
  "reqwest 0.13.4",
@@ -4931,6 +4933,26 @@ name = "life-iam"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "life-notifier"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "buzz-ws-client",
+ "chrono",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "nostr 0.44.7",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]

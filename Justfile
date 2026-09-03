@@ -285,6 +285,12 @@ desktop-e2e-smoke:
 desktop-e2e-integration: _ensure-migrations
     cd {{desktop_dir}} && pnpm test:e2e:integration
 
+# Opt-in real-process LifeOS default-value acceptance. Builds current binaries,
+# uses disposable PostgreSQL databases plus an empty dedicated Redis DB, and
+# requires a configured ACP agent such as codex-acp.
+life-workbench-live-defaults-e2e:
+    ./scripts/test-life-workbench-live-defaults-e2e.sh
+
 # Run the deterministic desktop correctness smoke against an isolated local relay
 desktop-release-smoke:
     ./scripts/run-desktop-release-smoke.sh

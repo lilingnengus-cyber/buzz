@@ -2221,10 +2221,9 @@ async fn ingest_event_inner(
     }
     let event = std::sync::Arc::try_unwrap(event).unwrap_or_else(|arc| (*arc).clone());
 
-    const MAX_TIMESTAMP_DRIFT_SECS: i64 = 900; // ±15 minutes
     let now = chrono::Utc::now().timestamp();
     let event_ts = event.created_at.as_secs() as i64;
-    if (event_ts - now).abs() > MAX_TIMESTAMP_DRIFT_SECS {
+    if !event_timestamp_is_acceptable(kind_u32, event_ts, now) {
         return Err(IngestError::Rejected(
             "invalid: event timestamp too far from server time".into(),
         ));
@@ -3274,6 +3273,22 @@ async fn ingest_event_inner(
     })
 }
 
+const MAX_TIMESTAMP_DRIFT_SECS: i64 = 900; // ±15 minutes
+const NIP59_GIFT_WRAP_MAX_PAST_DRIFT_SECS: i64 = 172_800; // 2 days
+
+fn event_timestamp_is_acceptable(kind: u32, event_ts: i64, now: i64) -> bool {
+    // NIP-59 deliberately randomizes gift-wrap timestamps into the recent past
+    // to prevent message-time correlation. The signed rumor inside the wrap is
+    // responsible for semantic time; applying the ordinary ingress window to
+    // the privacy-preserving outer envelope rejects conforming private messages.
+    let drift = event_ts - now;
+    if kind == KIND_GIFT_WRAP {
+        (-NIP59_GIFT_WRAP_MAX_PAST_DRIFT_SECS..=MAX_TIMESTAMP_DRIFT_SECS).contains(&drift)
+    } else {
+        drift.abs() <= MAX_TIMESTAMP_DRIFT_SECS
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -3286,6 +3301,36 @@ mod tests {
         KIND_STREAM_MESSAGE_DIFF, KIND_TEAM, KIND_USER_STATUS,
     };
     use nostr::{EventBuilder, Kind};
+
+    #[test]
+    fn gift_wrap_accepts_nip59_randomized_timestamp() {
+        let now = 2_000_000;
+        assert!(event_timestamp_is_acceptable(
+            KIND_GIFT_WRAP,
+            now - NIP59_GIFT_WRAP_MAX_PAST_DRIFT_SECS,
+            now
+        ));
+    }
+
+    #[test]
+    fn gift_wrap_rejects_timestamp_older_than_nip59_window() {
+        let now = 2_000_000;
+        assert!(!event_timestamp_is_acceptable(
+            KIND_GIFT_WRAP,
+            now - NIP59_GIFT_WRAP_MAX_PAST_DRIFT_SECS - 1,
+            now
+        ));
+    }
+
+    #[test]
+    fn ordinary_event_still_rejects_timestamp_outside_ingress_window() {
+        let now = 2_000_000;
+        assert!(!event_timestamp_is_acceptable(
+            KIND_TEXT_NOTE,
+            now - MAX_TIMESTAMP_DRIFT_SECS - 1,
+            now
+        ));
+    }
 
     #[test]
     fn missing_huddle_backing_channel_is_a_client_rejection() {

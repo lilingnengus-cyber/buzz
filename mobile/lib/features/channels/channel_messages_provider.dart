@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../shared/relay/relay.dart';
 import 'pending_local_messages_provider.dart';
 import 'channel_window.dart';
+import 'life_notification_dedup.dart';
 import 'thread_replies_provider.dart';
 
 const _channelLiveEventKinds = [
@@ -377,7 +378,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       final createdAt = a.createdAt.compareTo(b.createdAt);
       return createdAt != 0 ? createdAt : a.id.compareTo(b.id);
     });
-    return updated;
+    return dedupeLifeNotifications(updated);
   }
 
   bool _isCurrentInit(int initVersion) => initVersion == _initVersion;
@@ -439,10 +440,11 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
 
   List<NostrEvent> _withDeepLinkEvents(List<NostrEvent> events) {
     final ids = events.map((event) => event.id).toSet();
-    return [
+    final merged = [
       ...events,
       ..._deepLinkEvents.values.where((event) => ids.add(event.id)),
     ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return dedupeLifeNotifications(merged);
   }
 
   Future<bool> fetchOlder() async {
@@ -492,8 +494,9 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     state = state.whenData((events) {
       final merged = [...deduped, ...events];
       merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      _lastKnownMessages = merged;
-      return merged;
+      final normalized = dedupeLifeNotifications(merged);
+      _lastKnownMessages = normalized;
+      return normalized;
     });
     return true;
   }

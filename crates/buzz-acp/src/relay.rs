@@ -423,6 +423,58 @@ impl RestClient {
             .map_err(|e| RelayError::Http(e.to_string()))
     }
 
+    /// Resolves the relay-authoritative member set for one NIP-29 channel.
+    pub async fn channel_member_pubkeys(
+        &self,
+        channel_id: Uuid,
+    ) -> Result<Vec<String>, RelayError> {
+        use nostr::{Alphabet, SingleLetterTag};
+
+        let d_tag = SingleLetterTag::lowercase(Alphabet::D);
+        let filter = nostr::Filter::new()
+            .kind(Kind::Custom(
+                buzz_core::kind::KIND_NIP29_GROUP_MEMBERS as u16,
+            ))
+            .custom_tags(d_tag, [channel_id.to_string()]);
+        let value = self.query(&[filter]).await?;
+        let events = value.as_array().ok_or_else(|| {
+            RelayError::Http("expected JSON array from /query (channel members)".into())
+        })?;
+        let current = events
+            .iter()
+            .max_by_key(|event| {
+                event
+                    .get("created_at")
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default()
+            })
+            .ok_or_else(|| RelayError::Http("channel membership event not found".into()))?;
+        let mut members = current
+            .get("tags")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|tag| tag.as_array())
+            .filter(|tag| tag.first().and_then(Value::as_str) == Some("p"))
+            .filter_map(|tag| tag.get(1).and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        members.sort();
+        members.dedup();
+        if members.is_empty()
+            || members.len() > 10_000
+            || members.iter().any(|member| {
+                member.len() != 64
+                    || !member
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            })
+        {
+            return Err(RelayError::Http("invalid channel membership event".into()));
+        }
+        Ok(members)
+    }
+
     /// Count events via the HTTP bridge: `POST /count` with NIP-98 auth.
     ///
     /// Accepts a slice of `nostr::Filter` (serialized as JSON array).

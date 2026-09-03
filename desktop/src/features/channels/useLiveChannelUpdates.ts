@@ -4,7 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { channelsQueryKey } from "@/features/channels/hooks";
 import { updateChannelLastMessageAt } from "@/features/channels/lib/channelRecency";
 import { mergeTimelineCacheMessages } from "@/features/messages/hooks";
-import { channelMessagesKey } from "@/features/messages/lib/messageQueryKeys";
+import {
+  channelMessagesKey,
+  getLifeNotificationDedupKey,
+} from "@/features/messages/lib/messageQueryKeys";
 import {
   getChannelIdFromTags,
   isThreadReply,
@@ -277,7 +280,7 @@ export function useLiveChannelUpdates(
       !isExternalTriggerEvent ||
       trackSeenEvent(
         seenNotificationEventIdsRef.current,
-        event.id,
+        getLifeNotificationDedupKey(event) ?? event.id,
         SEEN_NOTIFICATION_EVENT_LIMIT,
       );
     const isThreadedReply = isThreadReply(event.tags);
@@ -343,7 +346,12 @@ export function useLiveChannelUpdates(
       return;
     }
 
-    if (!trackSeenEvent(seenMentionEventIdsRef.current, event.id)) {
+    if (
+      !trackSeenEvent(
+        seenMentionEventIdsRef.current,
+        getLifeNotificationDedupKey(event) ?? event.id,
+      )
+    ) {
       return;
     }
 

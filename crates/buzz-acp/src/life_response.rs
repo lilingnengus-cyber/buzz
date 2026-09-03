@@ -1,5 +1,5 @@
 use crate::{acp::AcpClient, relay::RestClient, turn_observer::TurnObserver};
-use life_workbench_contracts::result::{ErrorCode, LifeResourceRef, WorkbenchResult};
+use life_workbench_contracts::result::{ErrorCode, LifeResourceRef, ResourceType, WorkbenchResult};
 use nostr::{Event, Tag};
 use std::{any::Any, collections::HashMap, time::Duration};
 use uuid::Uuid;
@@ -18,12 +18,14 @@ struct ObservedLifeResult {
     resource_refs: Vec<LifeResourceRef>,
     trace_id: Uuid,
     audit_id: Option<Uuid>,
+    sanitized_summary: Option<String>,
 }
 
 pub(crate) struct CapturedLifeResponse {
     text: Option<String>,
     results: Vec<ObservedLifeResult>,
     invalid_tool_result: bool,
+    channel_disclosure: bool,
 }
 
 #[derive(Default)]
@@ -34,10 +36,14 @@ struct LifeResponseCapture {
     text: String,
     too_large: bool,
     invalid_tool_result: bool,
+    channel_disclosure: bool,
 }
 
-pub(crate) fn start_capture(acp: &mut AcpClient) {
-    acp.set_turn_observer(Some(Box::new(LifeResponseCapture::default())));
+pub(crate) fn start_capture(acp: &mut AcpClient, channel_disclosure: bool) {
+    acp.set_turn_observer(Some(Box::new(LifeResponseCapture {
+        channel_disclosure,
+        ..LifeResponseCapture::default()
+    })));
 }
 
 pub(crate) fn finish_capture(acp: &mut AcpClient) -> Option<CapturedLifeResponse> {
@@ -54,6 +60,7 @@ impl LifeResponseCapture {
             text,
             results: self.results,
             invalid_tool_result: self.invalid_tool_result,
+            channel_disclosure: self.channel_disclosure,
         }
     }
 
@@ -112,6 +119,7 @@ impl LifeResponseCapture {
                 resource_refs: Vec::new(),
                 trace_id: Uuid::nil(),
                 audit_id: None,
+                sanitized_summary: None,
             });
             return;
         }
@@ -130,6 +138,32 @@ impl LifeResponseCapture {
         };
         match result {
             WorkbenchResult::Success(success) => {
+                if self.channel_disclosure
+                    && success.sanitized_summary.as_deref().is_none_or(|summary| {
+                        summary.is_empty()
+                            || summary.chars().count() > 2_000
+                            || summary.trim() != summary
+                            || summary.chars().any(char::is_control)
+                    })
+                {
+                    self.invalid_tool_result = true;
+                    return;
+                }
+                if self.channel_disclosure
+                    && success.resource_refs.iter().any(|reference| {
+                        reference.title().is_some()
+                            || !matches!(
+                                reference.resource_type(),
+                                ResourceType::Action
+                                    | ResourceType::Project
+                                    | ResourceType::Dashboard
+                                    | ResourceType::Calendar
+                            )
+                    })
+                {
+                    self.invalid_tool_result = true;
+                    return;
+                }
                 let message = if is_write {
                     match trusted_write_message(&tool, &success.data) {
                         Some(message) => message,
@@ -149,6 +183,7 @@ impl LifeResponseCapture {
                     resource_refs: success.resource_refs,
                     trace_id: success.trace_id,
                     audit_id: Some(success.audit_id),
+                    sanitized_summary: success.sanitized_summary,
                 });
             }
             WorkbenchResult::Failure(failure) => self.results.push(ObservedLifeResult {
@@ -159,6 +194,7 @@ impl LifeResponseCapture {
                 resource_refs: Vec::new(),
                 trace_id: failure.trace_id,
                 audit_id: None,
+                sanitized_summary: None,
             }),
         }
     }
@@ -246,6 +282,10 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
     }
     let mut content = if last.is_write {
         last.message.clone()
+    } else if captured.channel_disclosure {
+        last.sanitized_summary
+            .clone()
+            .unwrap_or_else(|| "LifeOS 未返回可验证的最小摘要。".into())
     } else {
         captured
             .text
@@ -595,5 +635,54 @@ mod tests {
         let content = trusted_content(executed.finish());
         assert!(!content.contains("grant-secret"));
         assert!(content.contains("已执行已确认的高风险写入"));
+    }
+
+    #[test]
+    fn channel_disclosure_uses_only_server_summary_and_rejects_sensitive_refs() {
+        let trace = Uuid::new_v4();
+        let audit = Uuid::new_v4();
+        let mut capture = LifeResponseCapture {
+            channel_disclosure: true,
+            ..LifeResponseCapture::default()
+        };
+        capture.on_session_update(&json!({
+            "sessionUpdate":"agent_message_chunk",
+            "messageId":"message-1",
+            "content":{"text":"fabricated journal body"}
+        }));
+        observe_result(
+            &mut capture,
+            &json!({
+                "ok":true,
+                "data":{"private":"must not render"},
+                "resourceRefs":[{"scheme":"life","type":"action","id":"action-1","version":2}],
+                "auditId":audit,
+                "traceId":trace,
+                "sanitizedSummary":"LifeOS 已返回 1 条允许披露的行动摘要"
+            })
+            .to_string(),
+        );
+        let content = trusted_content(capture.finish());
+        assert!(content.contains("允许披露的行动摘要"));
+        assert!(!content.contains("fabricated"));
+        assert!(!content.contains("must not render"));
+
+        let mut sensitive = LifeResponseCapture {
+            channel_disclosure: true,
+            ..LifeResponseCapture::default()
+        };
+        observe_result(
+            &mut sensitive,
+            &json!({
+                "ok":true,
+                "data":{},
+                "resourceRefs":[{"scheme":"life","type":"journal","id":"journal-1"}],
+                "auditId":audit,
+                "traceId":trace,
+                "sanitizedSummary":"摘要"
+            })
+            .to_string(),
+        );
+        assert!(sensitive.finish().invalid_tool_result);
     }
 }

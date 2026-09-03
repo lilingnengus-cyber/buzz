@@ -1,13 +1,20 @@
 use crate::{
-    agent::{AgentError, ConsumeDelegationRequest, DelegationPolicy, IssueDelegationRequest},
+    agent::{
+        AgentError, ChannelDisclosureContext, ConsumeDelegationRequest, ConversationAudience,
+        DelegationPolicy, IssueDelegationRequest, RequestedDataScope, ResourceContext,
+    },
     auth::{bearer, OidcVerifier},
     call_grant::CallGrantSigner,
     config::Config,
+    disclosure::{DisclosureCategory, DisclosureClient, DisclosureError, DisclosureSensitivity},
     embed::{ConsumeEmbedRequest, EmbedError, EmbedPolicy, EmbedRiskFacts, IssueEmbedRequest},
     identity::{IdentityError, LifeOsIdentityClient},
     membership::{MembershipError, MembershipEvent},
     model::{AgentDelegationId, EmbedSessionId, IdentityBindingChallengeId, IdentityBindingId},
     security::{ServiceToken, SigningKeyMaterial},
+    target_selection::{
+        ConsumeTargetSelectionRequest, IssueTargetSelectionRequest, TargetSelectionError,
+    },
     write_confirmation::{ValidateWriteConfirmationRequest, WriteConfirmationError},
     Store,
 };
@@ -33,6 +40,7 @@ struct IdentityRuntime {
     pacioli_service_token: ServiceToken,
     delegation_policy: DelegationPolicy,
     call_grant_signer: CallGrantSigner,
+    disclosure_client: DisclosureClient,
     embed_policy: EmbedPolicy,
     lifeos_base_url: url::Url,
     allowed_workbench_origins: Vec<HeaderValue>,
@@ -87,6 +95,11 @@ impl AppState {
                     config.signing_key().clone(),
                 )
                 .map_err(|_| IdentityError::Unavailable)?,
+                disclosure_client: DisclosureClient::new(
+                    config.lifeos_base_url(),
+                    config.lifeos_outbound_credential(),
+                )
+                .map_err(|_| IdentityError::Unavailable)?,
                 embed_policy: EmbedPolicy::standard(),
                 lifeos_base_url: config.lifeos_base_url().clone(),
                 allowed_workbench_origins: config
@@ -106,6 +119,8 @@ enum ApiError {
     Agent(AgentError),
     Embed(EmbedError),
     WriteConfirmation(WriteConfirmationError),
+    Disclosure(DisclosureError),
+    TargetSelection(TargetSelectionError),
 }
 
 impl From<IdentityError> for ApiError {
@@ -138,9 +153,36 @@ impl From<WriteConfirmationError> for ApiError {
     }
 }
 
+impl From<DisclosureError> for ApiError {
+    fn from(value: DisclosureError) -> Self {
+        Self::Disclosure(value)
+    }
+}
+
+impl From<TargetSelectionError> for ApiError {
+    fn from(value: TargetSelectionError) -> Self {
+        Self::TargetSelection(value)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code) = match self {
+            Self::TargetSelection(TargetSelectionError::Invalid) => {
+                (StatusCode::BAD_REQUEST, "invalid_request")
+            }
+            Self::TargetSelection(TargetSelectionError::Rejected) => {
+                (StatusCode::FORBIDDEN, "target_selection_rejected")
+            }
+            Self::TargetSelection(TargetSelectionError::Database) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
+            }
+            Self::Disclosure(DisclosureError::Denied | DisclosureError::Invalid) => {
+                (StatusCode::FORBIDDEN, "disclosure_denied")
+            }
+            Self::Disclosure(DisclosureError::Unavailable) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "disclosure_unavailable")
+            }
             Self::Embed(EmbedError::Invalid) => (StatusCode::BAD_REQUEST, "invalid_request"),
             Self::Embed(EmbedError::Unauthorized) => (StatusCode::UNAUTHORIZED, "embed_rejected"),
             Self::Embed(EmbedError::NotFound) => (StatusCode::NOT_FOUND, "not_found"),
@@ -215,6 +257,14 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/v1/life-agent/delegations", post(issue_delegation))
         .route(
+            "/v1/pacioli/target-selections",
+            post(issue_target_selection),
+        )
+        .route(
+            "/v1/pacioli/target-selections/{selection_id}",
+            post(consume_target_selection),
+        )
+        .route(
             "/v1/life-agent/delegations/consume",
             post(consume_delegation),
         )
@@ -228,6 +278,45 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/me", get(me))
         .with_state(Arc::new(state))
         .layer(cors)
+}
+
+async fn issue_target_selection(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<IssueTargetSelectionRequest>,
+) -> Result<Json<crate::target_selection::TargetSelection>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    let selection = state
+        .store
+        .issue_target_selection(request, trace_id(&headers))
+        .await;
+    if let Err(error) = &selection {
+        crate::metrics::decision("target_selection", target_selection_result(error));
+    }
+    let selection = selection?;
+    crate::metrics::decision("target_selection", "success");
+    Ok(Json(selection))
+}
+
+async fn consume_target_selection(
+    State(state): State<Arc<AppState>>,
+    Path(selection_id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<ConsumeTargetSelectionRequest>,
+) -> Result<Json<crate::target_selection::TargetSelection>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.lifeos_service_token)?;
+    let selection = state
+        .store
+        .consume_target_selection(selection_id, request)
+        .await;
+    if let Err(error) = &selection {
+        crate::metrics::decision("target_selection", target_selection_result(error));
+    }
+    let selection = selection?;
+    crate::metrics::decision("target_selection", "success");
+    Ok(Json(selection))
 }
 
 fn cors_layer(allowed_origins: Vec<HeaderValue>) -> CorsLayer {
@@ -347,10 +436,11 @@ async fn validate_write_confirmation(
 async fn issue_delegation(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Json(request): Json<IssueDelegationRequest>,
+    Json(wire): Json<IssueDelegationWire>,
 ) -> Result<Json<crate::agent::IssueDelegationResponse>, ApiError> {
     let runtime = runtime(&state)?;
     require_service(&headers, &runtime.pacioli_service_token)?;
+    let (request, community_id, disclosure_category, disclosure_sensitivity) = wire.into_parts();
     let (user_id, issuer, subject, _) = state
         .store
         .delegation_identity(&request.source_event.pubkey.to_hex())
@@ -365,12 +455,132 @@ async fn issue_delegation(
             return Err(error.into());
         }
     };
-    Ok(Json(
-        state
-            .store
-            .issue_agent_delegation(request, &runtime.delegation_policy, &resolved)
-            .await?,
-    ))
+    let disclosure = match (
+        &request.conversation,
+        community_id,
+        disclosure_category,
+        disclosure_sensitivity,
+    ) {
+        (
+            crate::agent::ConversationAudience::Channel {
+                direct_message: false,
+                ..
+            },
+            Some(community_id),
+            Some(category),
+            Some(sensitivity),
+        ) => {
+            let channel_id = request
+                .source_channel_id
+                .clone()
+                .ok_or(AgentError::Invalid)?;
+            let grant = runtime
+                .disclosure_client
+                .evaluate(
+                    &resolved.life_os_user_id,
+                    &community_id,
+                    &channel_id,
+                    category,
+                    sensitivity,
+                )
+                .await;
+            match &grant {
+                Ok(_) => crate::metrics::decision("disclosure", "success"),
+                Err(DisclosureError::Denied | DisclosureError::Invalid) => {
+                    crate::metrics::decision("disclosure", "denied")
+                }
+                Err(DisclosureError::Unavailable) => {
+                    crate::metrics::decision("disclosure", "failure")
+                }
+            }
+            let grant = grant?;
+            Some(ChannelDisclosureContext {
+                community_id,
+                channel_id,
+                category,
+                sensitivity,
+                grant,
+            })
+        }
+        (
+            crate::agent::ConversationAudience::Channel {
+                direct_message: false,
+                ..
+            },
+            _,
+            _,
+            _,
+        ) => {
+            crate::metrics::decision("disclosure", "denied");
+            return Err(DisclosureError::Denied.into());
+        }
+        (_, None, None, None) => None,
+        _ => return Err(AgentError::Invalid.into()),
+    };
+    let result = state
+        .store
+        .issue_agent_delegation_with_disclosure(
+            request,
+            &runtime.delegation_policy,
+            &resolved,
+            disclosure,
+        )
+        .await;
+    crate::metrics::decision(
+        "delegate_issue",
+        result.as_ref().map_or_else(agent_result, |_| "success"),
+    );
+    Ok(Json(result?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct IssueDelegationWire {
+    source_event: nostr::Event,
+    source_channel_id: Option<String>,
+    conversation: ConversationAudience,
+    agent_id: String,
+    agent_turn_id: String,
+    requested_capabilities: Vec<String>,
+    requested_data_scope: RequestedDataScope,
+    resource_context: Option<ResourceContext>,
+    write_command_id: Option<Uuid>,
+    trace_id: Uuid,
+    #[serde(default)]
+    community_id: Option<String>,
+    #[serde(default)]
+    disclosure_category: Option<DisclosureCategory>,
+    #[serde(default)]
+    disclosure_sensitivity: Option<DisclosureSensitivity>,
+}
+
+impl IssueDelegationWire {
+    fn into_parts(
+        self,
+    ) -> (
+        IssueDelegationRequest,
+        Option<String>,
+        Option<DisclosureCategory>,
+        Option<DisclosureSensitivity>,
+    ) {
+        (
+            IssueDelegationRequest {
+                source_event: self.source_event,
+                source_channel_id: self.source_channel_id,
+                conversation: self.conversation,
+                agent_id: self.agent_id,
+                agent_turn_id: self.agent_turn_id,
+                requested_capabilities: self.requested_capabilities,
+                requested_data_scope: self.requested_data_scope,
+                resource_context: self.resource_context,
+                write_command_id: self.write_command_id,
+                trace_id: self.trace_id,
+            },
+            self.community_id,
+            self.disclosure_category,
+            self.disclosure_sensitivity,
+        )
+    }
 }
 
 async fn consume_delegation(
@@ -380,12 +590,35 @@ async fn consume_delegation(
 ) -> Result<Json<crate::call_grant::SignedLifeCallGrant>, ApiError> {
     let runtime = runtime(&state)?;
     let token = bearer(&headers).ok_or(AgentError::Unauthorized)?;
-    Ok(Json(
-        state
-            .store
-            .consume_agent_delegation(token, request, &runtime.call_grant_signer)
-            .await?,
-    ))
+    let result = state
+        .store
+        .consume_agent_delegation_with_disclosure(
+            token,
+            request,
+            &runtime.call_grant_signer,
+            Some(&runtime.disclosure_client),
+        )
+        .await;
+    crate::metrics::decision(
+        "delegate_consume",
+        result.as_ref().map_or_else(agent_result, |_| "success"),
+    );
+    Ok(Json(result?))
+}
+
+fn agent_result(error: &AgentError) -> &'static str {
+    match error {
+        AgentError::Conflict => "conflict",
+        AgentError::Denied | AgentError::Unauthorized | AgentError::Invalid => "denied",
+        AgentError::Database | AgentError::Signing => "failure",
+    }
+}
+
+fn target_selection_result(error: &TargetSelectionError) -> &'static str {
+    match error {
+        TargetSelectionError::Invalid | TargetSelectionError::Rejected => "denied",
+        TargetSelectionError::Database => "failure",
+    }
 }
 
 async fn revoke_delegation(

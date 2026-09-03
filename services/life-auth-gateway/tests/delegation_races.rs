@@ -105,8 +105,8 @@ fn request(keys: &Keys, turn: &str) -> IssueDelegationRequest {
         source_event: event,
         source_channel_id: Some(channel.to_string()),
         conversation: ConversationAudience::Channel {
-            participant_pubkeys: vec![],
-            direct_message: false,
+            participant_pubkeys: vec![keys.public_key().to_hex(), "b".repeat(64)],
+            direct_message: true,
         },
         agent_id: "race-agent".into(),
         agent_turn_id: turn.into(),

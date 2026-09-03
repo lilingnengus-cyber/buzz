@@ -64,14 +64,14 @@ async fn fixed_tools_consume_complete_grant_and_call_only_the_fixed_route() {
     );
     assert_eq!(
         consume["normalizedInputHash"],
-        normalized_input_hash(&json!({"limit":25})).expect("hash")
+        normalized_input_hash(&json!({"archived":false,"limit":25})).expect("hash")
     );
     assert!(Uuid::parse_str(consume["idempotencyKey"].as_str().expect("key")).is_ok());
     assert_eq!(consume["traceId"], trace_id.to_string());
 
     let api = state.api_requests.lock().expect("API lock");
     assert_eq!(api.len(), 1);
-    assert_eq!(api[0]["input"], json!({"limit":25}));
+    assert_eq!(api[0]["input"], json!({"archived":false,"limit":25}));
     assert_eq!(api[0]["resource"]["id"], "workspace-1");
     assert!(api[0]["resource"].get("type").is_none());
     assert_eq!(api[0]["idempotencyKey"], consume["idempotencyKey"]);

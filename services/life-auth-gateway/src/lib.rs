@@ -14,6 +14,8 @@ use std::time::Duration;
 
 /// Signed-source Agent turn delegations and atomic call consumption.
 pub mod agent;
+/// Low-sensitivity security-audit vocabulary.
+pub mod audit;
 /// OIDC validation for Workbench access tokens.
 pub mod auth;
 /// Ed25519 LifeCallGrant construction.
@@ -22,6 +24,8 @@ pub mod call_grant;
 pub mod catalog;
 /// Strong environment configuration.
 pub mod config;
+/// Fail-closed LifeOS channel-disclosure policy lookups.
+pub mod disclosure;
 /// One-time Life Dock bootstrap codes and Embed Sessions.
 pub mod embed;
 /// Fixed HTTP surface for Life identity and health operations.
@@ -32,12 +36,16 @@ pub mod iam;
 pub mod identity;
 /// Monotonic LifeOS membership snapshot ingestion.
 pub mod membership;
+/// Low-cardinality authorization metrics.
+pub mod metrics;
 /// Wire models introduced as the Gateway gains fixed endpoints.
 pub mod model;
 /// Secret comparison and Ed25519 key material.
 pub mod security;
 /// Transactional persistence over the isolated Life security schema.
 pub mod store;
+/// Short-lived, single-use Pacioli target-selection tickets.
+pub mod target_selection;
 /// Exact signed confirmation grants for immutable LifeOS WriteCommands.
 pub mod write_confirmation;
 

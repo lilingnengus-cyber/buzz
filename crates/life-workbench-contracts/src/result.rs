@@ -315,6 +315,9 @@ pub struct WorkbenchSuccess<T> {
     pub audit_id: Uuid,
     /// Distributed trace identifier.
     pub trace_id: Uuid,
+    /// Server-minimized summary required for a channel-disclosure result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sanitized_summary: Option<String>,
 }
 
 /// Failed Workbench API envelope.
