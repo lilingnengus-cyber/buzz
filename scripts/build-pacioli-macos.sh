@@ -43,6 +43,7 @@ cargo_args=(
   -p buzz-agent
   -p buzz-backend-kubernetes
   -p buzz-dev-mcp
+  -p life-workbench-mcp
   -p buzz-cli
   -p git-credential-nostr
 )
@@ -52,6 +53,7 @@ if (( plan_only == 1 )); then
   printf 'profile=%s\n' "$profile"
   printf 'cargo'
   printf ' %q' "${cargo_args[@]}"
+  printf '\nbundle-sidecars.sh'
   printf '\n(cd desktop && pnpm tauri'
   printf ' %q' "${tauri_args[@]}"
   printf ')\n'
@@ -69,6 +71,7 @@ fi
 export PATH="$repo_root/bin:$PATH"
 cd "$repo_root"
 cargo "${cargo_args[@]}"
+"$repo_root/scripts/bundle-sidecars.sh"
 
 cd "$repo_root/desktop"
 pnpm tauri "${tauri_args[@]}"
