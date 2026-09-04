@@ -7,6 +7,7 @@ import {
   createLifeWorkbenchSession,
   getLifeWorkbenchAccount,
   issueLifeEmbedSession,
+  readOidcNonce,
   revokeLifeEmbedSession,
   verifyLifeIdentityBinding,
 } from "./lifeAuthGateway";
@@ -311,7 +312,19 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         if (!oidcToken) throw new Error("Life OIDC session expired.");
         let sessionToken = workbenchSessionTokenRef.current;
         if (!sessionToken) {
-          const session = await createLifeWorkbenchSession(gateway, oidcToken);
+          const idToken = await lifeAuth.getIdToken();
+          if (!readOidcNonce(idToken ?? oidcToken)) {
+            if (!automatic) {
+              await lifeAuth.signIn();
+              return;
+            }
+            throw new Error("Workbench OIDC nonce is unavailable.");
+          }
+          const session = await createLifeWorkbenchSession(
+            gateway,
+            oidcToken,
+            idToken,
+          );
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
         }

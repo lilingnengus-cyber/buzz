@@ -45,7 +45,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function tokenNonce(token: string): string | null {
+export function readOidcNonce(token: string): string | null {
   if (!token || token.length > 16 * 1024) return null;
   const payload = token.split(".")[1];
   if (!payload) return null;
@@ -143,8 +143,9 @@ function readLifeIdentityBinding(value: unknown): LifeIdentityBinding | null {
 export async function createLifeWorkbenchSession(
   gateway: string,
   oidcToken: string,
+  idToken?: string | null,
 ): Promise<LifeWorkbenchSession> {
-  const nonce = tokenNonce(oidcToken);
+  const nonce = readOidcNonce(idToken ?? oidcToken);
   if (!nonce) throw new Error("Workbench OIDC nonce is unavailable.");
   const value = await postJson(
     gateway,

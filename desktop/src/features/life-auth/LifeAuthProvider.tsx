@@ -28,6 +28,7 @@ type LifeAuthContextValue = {
   identity: LifeAuthIdentity | null;
   phase: LifeAuthPhase;
   getAccessToken: () => Promise<string | null>;
+  getIdToken: () => Promise<string | null>;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -155,6 +156,13 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
     return user?.access_token ?? null;
   }, [applyUser, manager]);
 
+  const getIdToken = React.useCallback(async () => {
+    if (!manager) return null;
+    const user = await getValidWorkbenchUser(manager);
+    applyUser(user);
+    return user?.id_token ?? null;
+  }, [applyUser, manager]);
+
   const value = React.useMemo<LifeAuthContextValue>(
     () => ({
       config: result.config,
@@ -162,12 +170,13 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
       identity,
       phase,
       getAccessToken,
+      getIdToken,
       signIn: async () => {
         if (!manager) return;
         setPhase("signing-in");
         setError(null);
         try {
-          await manager.signinRedirect();
+          await manager.signinRedirect({ nonce: crypto.randomUUID() });
         } catch (cause) {
           setPhase("failed");
           setError(
@@ -188,7 +197,15 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
         }
       },
     }),
-    [error, getAccessToken, identity, manager, phase, result.config],
+    [
+      error,
+      getAccessToken,
+      getIdToken,
+      identity,
+      manager,
+      phase,
+      result.config,
+    ],
   );
 
   return (

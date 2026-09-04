@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { BUSINESS_DOCK_PREFERENCES_KEY } from "../business-dock/businessDockPreferences.ts";
+import { readOidcNonce } from "./lifeAuthGateway.ts";
 import { canAttemptLifeRecovery } from "./lifeEmbedSession.ts";
 import {
   DEFAULT_LIFE_DOCK_PREFERENCES,
@@ -19,6 +20,15 @@ const config = {
   origin: "https://life.example.com",
   homeUrl: "https://life.example.com/embed/",
 };
+
+test("Life gateway reads the session nonce from an OIDC ID token", () => {
+  const payload = Buffer.from(
+    JSON.stringify({ nonce: "login-nonce" }),
+  ).toString("base64url");
+  assert.equal(readOidcNonce(`header.${payload}.signature`), "login-nonce");
+  assert.equal(readOidcNonce("header.e30.signature"), null);
+  assert.equal(readOidcNonce("not-a-token"), null);
+});
 
 test("Life Dock state supports open, pin, follow, fullscreen, and dirty independently", () => {
   let state = createInitialLifeDockState(config, DEFAULT_LIFE_DOCK_PREFERENCES);
