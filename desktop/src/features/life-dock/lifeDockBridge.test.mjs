@@ -224,4 +224,19 @@ test("creates host messages with the required protocol version", () => {
     createLifeBridgeMessage("CHECK_AUTH", nonce, undefined, "req-auth").version,
     3,
   );
+  assert.deepEqual(
+    createLifeBridgeMessage(
+      "RENEW_SESSION",
+      nonce,
+      { code: "c".repeat(43) },
+      "req-renew",
+    ),
+    {
+      version: 3,
+      type: "RENEW_SESSION",
+      requestId: "req-renew",
+      sessionNonce: nonce,
+      payload: { code: "c".repeat(43) },
+    },
+  );
 });

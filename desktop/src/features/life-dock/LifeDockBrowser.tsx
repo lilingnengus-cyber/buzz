@@ -10,10 +10,10 @@ export function LifeDockBrowser() {
     config,
     configError,
     iframeRef,
+    lifeAuthPhase,
     onBrowserLoad,
     startSession,
     state,
-    workbenchAuthPhase,
   } = useLifeDock();
 
   if (!config) {
@@ -70,17 +70,17 @@ export function LifeDockBrowser() {
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {auth.reason ??
-              "Create an isolated Life Dock session from your Workbench identity."}
+              "Create an isolated Life Dock session from your Life identity."}
           </p>
           <Button className="mt-3" onClick={startSession} size="sm">
-            {workbenchAuthPhase === "authenticated" ? (
+            {lifeAuthPhase === "authenticated" ? (
               <RotateCw />
             ) : (
               <ExternalLink />
             )}
-            {workbenchAuthPhase === "authenticated"
+            {lifeAuthPhase === "authenticated"
               ? "Connect again"
-              : "Sign in to Workbench"}
+              : "Sign in to LifeOS"}
           </Button>
         </div>
       ) : null}

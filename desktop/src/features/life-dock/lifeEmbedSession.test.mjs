@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   buildLifeEmbedBootstrapUrl,
   canAttemptLifeRecovery,
+  lifeSessionRenewalDelay,
   parseLifeEmbedCallback,
+  readLifeEmbedCode,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession.ts";
 
@@ -30,6 +32,34 @@ test("accepts only the exact Life callback and one 256-bit code", () => {
   ]) {
     assert.equal(parseLifeEmbedCallback(value), null, value);
   }
+});
+
+test("reads a renewal code only from a validated Life bootstrap URL", () => {
+  const code = "c".repeat(43);
+  assert.equal(
+    readLifeEmbedCode(
+      config,
+      `https://life.example.com/embed/bootstrap?code=${code}`,
+    ),
+    code,
+  );
+  assert.equal(
+    readLifeEmbedCode(
+      config,
+      `https://evil.example/embed/bootstrap?code=${code}`,
+    ),
+    null,
+  );
+});
+
+test("renews ninety seconds before the Workbench session expires", () => {
+  const now = Date.parse("2026-09-05T00:00:00.000Z");
+  assert.equal(
+    lifeSessionRenewalDelay("2026-09-05T01:00:00.000Z", now),
+    3_510_000,
+  );
+  assert.equal(lifeSessionRenewalDelay("2026-09-05T00:01:00.000Z", now), 0);
+  assert.equal(lifeSessionRenewalDelay("invalid", now), null);
 });
 
 test("builds and validates bootstrap URLs only on the configured origin", () => {

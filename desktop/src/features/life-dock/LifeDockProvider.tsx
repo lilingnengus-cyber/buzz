@@ -3,9 +3,13 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import {
+  createLifeIdentityBindingChallenge,
   createLifeWorkbenchSession,
+  getLifeWorkbenchAccount,
   issueLifeEmbedSession,
+  readOidcNonce,
   revokeLifeEmbedSession,
+  verifyLifeIdentityBinding,
 } from "./lifeAuthGateway";
 import {
   createLifeBridgeMessage,
@@ -41,12 +45,16 @@ import {
 import { useLifeDockWidth } from "./useLifeDockWidth";
 import {
   canAttemptLifeRecovery,
+  lifeSessionRenewalDelay,
+  readLifeEmbedCode,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession";
-import { useWorkbenchAuth } from "../workbench-auth";
+import { useLifeAuth } from "../life-auth";
 import { useOptionalWorkspaceDockHost } from "../workspace-dock";
 import type { WorkspaceResource } from "../workspace-dock/workspaceDockTypes";
 import { useTheme } from "../../shared/theme/ThemeProvider";
+import { signRelayEvent } from "../../shared/api/tauri";
+import { getIdentity } from "../../shared/api/tauriIdentity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,7 +106,7 @@ type LifeDockContextValue = {
   toggleFollowConversation(): void;
   toggleFullscreen(): void;
   togglePinned(): void;
-  workbenchAuthPhase: ReturnType<typeof useWorkbenchAuth>["phase"];
+  lifeAuthPhase: ReturnType<typeof useLifeAuth>["phase"];
 };
 
 const LifeDockContext = React.createContext<LifeDockContextValue | null>(null);
@@ -135,6 +143,9 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const [auth, setAuth] = React.useState<LifeAuthState>({
     phase: "unconnected",
   });
+  const [sessionExpiresAt, setSessionExpiresAt] = React.useState<string | null>(
+    null,
+  );
   const [bridgeReady, setBridgeReady] = React.useState(false);
   const [leaveConfirmationOpen, setLeaveConfirmationOpen] =
     React.useState(false);
@@ -150,7 +161,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const sessionStartingRef = React.useRef(false);
   const manuallyDisconnectedRef = React.useRef(false);
   const bridgeHandshakeTimerRef = React.useRef<number | null>(null);
-  const workbenchAuth = useWorkbenchAuth();
+  const lifeAuth = useLifeAuth();
   const host = useOptionalWorkspaceDockHost();
   const reportDockState = host?.reportDockState;
   const requestDockActivation = host?.requestActivation;
@@ -285,30 +296,64 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   );
 
   const startLifeSession = React.useCallback(
-    (automatic = false) => {
+    (automatic = false, renewExisting = false) => {
       if (!config || !gateway || sessionStartingRef.current) return;
-      const e2eToken =
-        import.meta.env.MODE === "e2e"
-          ? window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__
-          : undefined;
-      if (workbenchAuth.phase !== "authenticated" && !e2eToken) {
-        setAuth({
-          phase: "failed",
-          reason: "Workbench authentication is required.",
-        });
-        if (!automatic) void workbenchAuth.signIn();
-        return;
-      }
       sessionStartingRef.current = true;
-      setAuth({ phase: "checking" });
+      if (!renewExisting) setAuth({ phase: "checking" });
       void (async () => {
-        const oidcToken = await workbenchAuth.getAccessToken();
-        if (!oidcToken) throw new Error("Workbench session expired.");
+        const oidcToken = await lifeAuth.getAccessToken();
+        if (!oidcToken) {
+          if (!automatic) {
+            await lifeAuth.signIn();
+            return;
+          }
+          throw new Error("Life OIDC session expired.");
+        }
         let sessionToken = workbenchSessionTokenRef.current;
         if (!sessionToken) {
-          const session = await createLifeWorkbenchSession(gateway, oidcToken);
+          const idToken = await lifeAuth.getIdToken();
+          if (!readOidcNonce(idToken ?? oidcToken)) {
+            if (!automatic) {
+              await lifeAuth.signIn();
+              return;
+            }
+            throw new Error("Workbench OIDC nonce is unavailable.");
+          }
+          const session = await createLifeWorkbenchSession(
+            gateway,
+            oidcToken,
+            idToken,
+          );
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
+          setSessionExpiresAt(session.expiresAt);
+        }
+        const identity = await getIdentity();
+        const account = await getLifeWorkbenchAccount(gateway, sessionToken);
+        const alreadyBound = account.bindings.some(
+          (binding) =>
+            binding.pubkey === identity.pubkey && binding.status === "active",
+        );
+        if (!alreadyBound) {
+          const challenge = await createLifeIdentityBindingChallenge(
+            gateway,
+            sessionToken,
+            identity.pubkey,
+          );
+          const signedEvent = await signRelayEvent({
+            kind: 24243,
+            content: challenge.canonicalPayload,
+            createdAt: challenge.createdAt,
+            tags: [],
+          });
+          const binding = await verifyLifeIdentityBinding(
+            gateway,
+            sessionToken,
+            challenge.challengeId,
+            signedEvent,
+          );
+          if (binding.pubkey !== identity.pubkey || binding.status !== "active")
+            throw new Error("Life identity binding was not activated.");
         }
         const target = stateRef.current.currentResource ?? homeResource;
         if (!target) throw new Error("LifeOS home resource is unavailable.");
@@ -320,12 +365,17 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         const embedUrl = validateLifeEmbedUrl(config, issued.embedUrl);
         if (!embedUrl) throw new Error("LifeOS bootstrap URL was rejected.");
         embedSessionIdRef.current = issued.embedSessionId;
+        if (renewExisting && bridgeReady) {
+          const code = readLifeEmbedCode(config, embedUrl);
+          if (code && post("RENEW_SESSION", { code })) return;
+        }
         dispatch({ type: "load-frame", url: embedUrl });
       })()
         .catch((cause) => {
           workbenchSessionTokenRef.current = null;
+          setSessionExpiresAt(null);
           setAuth({
-            phase: "failed",
+            phase: automatic ? "expired" : "failed",
             reason:
               cause instanceof Error ? cause.message : "LifeOS sign-in failed.",
           });
@@ -334,7 +384,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           sessionStartingRef.current = false;
         });
     },
-    [config, gateway, homeResource, workbenchAuth],
+    [bridgeReady, config, gateway, homeResource, lifeAuth, post],
   );
 
   React.useEffect(() => {
@@ -355,14 +405,24 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       startLifeSession(true);
   }, [active, auth.phase, startLifeSession, state.open]);
   React.useEffect(() => {
-    if (workbenchAuth.phase === "authenticated") return;
+    if (
+      lifeAuth.phase === "authenticated" ||
+      lifeAuth.phase === "checking" ||
+      lifeAuth.phase === "signing-in"
+    )
+      return;
     workbenchSessionTokenRef.current = null;
+    setSessionExpiresAt(null);
     embedSessionIdRef.current = null;
     recoveryAttemptsRef.current = 0;
+    if (lifeAuth.phase === "expired") {
+      setAuth({ phase: "expired", reason: "Life OIDC session expired." });
+      return;
+    }
     manuallyDisconnectedRef.current = false;
     setAuth({ phase: "unconnected" });
     post("LOGOUT");
-  }, [post, workbenchAuth.phase]);
+  }, [lifeAuth.phase, post]);
   React.useEffect(() => {
     if (
       auth.phase !== "expired" ||
@@ -373,6 +433,31 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     workbenchSessionTokenRef.current = null;
     startLifeSession(true);
   }, [auth.phase, startLifeSession]);
+  React.useEffect(() => {
+    if (
+      !state.open ||
+      !active ||
+      !bridgeReady ||
+      auth.phase !== "authenticated" ||
+      !sessionExpiresAt
+    )
+      return;
+    const delay = lifeSessionRenewalDelay(sessionExpiresAt);
+    if (delay === null) return;
+    const timer = window.setTimeout(() => {
+      workbenchSessionTokenRef.current = null;
+      setSessionExpiresAt(null);
+      startLifeSession(true, true);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    active,
+    auth.phase,
+    bridgeReady,
+    sessionExpiresAt,
+    startLifeSession,
+    state.open,
+  ]);
   React.useEffect(() => {
     if (!state.open || auth.phase !== "authenticated") return;
     const timer = window.setInterval(() => post("CHECK_AUTH"), 60_000);
@@ -491,6 +576,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     const id = embedSessionIdRef.current;
     if (gateway && token && id) void revokeLifeEmbedSession(gateway, token, id);
     workbenchSessionTokenRef.current = null;
+    setSessionExpiresAt(null);
     embedSessionIdRef.current = null;
     setAuth({ phase: "unconnected" });
   }, [gateway, post]);
@@ -563,6 +649,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         manuallyDisconnectedRef.current = false;
         recoveryAttemptsRef.current = 0;
         workbenchSessionTokenRef.current = null;
+        setSessionExpiresAt(null);
         startLifeSession(false);
       },
       state,
@@ -583,7 +670,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           ? requestLeave(() => dispatch({ type: "exit-fullscreen" }))
           : dispatch({ type: "toggle-fullscreen" }),
       togglePinned: () => dispatch({ type: "toggle-pinned" }),
-      workbenchAuthPhase: workbenchAuth.phase,
+      lifeAuthPhase: lifeAuth.phase,
     }),
     [
       active,
@@ -606,7 +693,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       startLifeSession,
       state,
       width,
-      workbenchAuth.phase,
+      lifeAuth.phase,
     ],
   );
 

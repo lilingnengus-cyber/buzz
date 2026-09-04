@@ -13,12 +13,16 @@ for plan in "$dev_plan" "$production_plan"; do
       exit 1
     fi
   done
-  for required in "cargo build --release" "pnpm tauri" "sign-macos-local-bundle.sh"; do
+  for required in "cargo build --release" "bundle-sidecars.sh" "pnpm tauri" "sign-macos-local-bundle.sh"; do
     if ! grep -Fq "$required" <<<"$plan"; then
       echo "Pacioli build plan is missing: $required"
       exit 1
     fi
   done
+done
+
+for plan in "$dev_plan" "$production_plan"; do
+  grep -Fq -- '-p life-workbench-mcp' <<<"$plan"
 done
 
 grep -Fq 'src-tauri/tauri.dev.conf.json' <<<"$dev_plan"

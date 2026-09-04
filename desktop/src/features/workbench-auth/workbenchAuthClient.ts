@@ -48,6 +48,7 @@ class SystemBrowserNavigator implements INavigator {
 export function createWorkbenchUserManager(
   config: WorkbenchAuthConfig,
   sessionStore: Storage,
+  storageNamespace?: string,
 ): UserManager {
   const desktopMetadata = isTauri()
     ? createAuthentikDesktopMetadata(config)
@@ -68,11 +69,15 @@ export function createWorkbenchUserManager(
     revokeTokensOnSignout: true,
     ...(desktopMetadata ? { metadata: desktopMetadata } : {}),
     stateStore: new WebStorageStateStore({
-      prefix: "buzz.oidc.state.",
+      prefix: storageNamespace
+        ? `buzz.${storageNamespace}.oidc.state.`
+        : "buzz.oidc.state.",
       store: sessionStore,
     }),
     userStore: new WebStorageStateStore({
-      prefix: "buzz.oidc.user.",
+      prefix: storageNamespace
+        ? `buzz.${storageNamespace}.oidc.user.`
+        : "buzz.oidc.user.",
       store: createWorkbenchUserStore(sessionStore),
     }),
   };

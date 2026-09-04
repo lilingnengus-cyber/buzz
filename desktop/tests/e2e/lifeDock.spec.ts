@@ -36,7 +36,7 @@ test.describe("Life Dock", () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((token) => {
-      window.__BUZZ_E2E_WORKBENCH_ACCESS_TOKEN__ = token;
+      window.__BUZZ_E2E_LIFE_ACCESS_TOKEN__ = token;
     }, oidcFixtureToken());
     const issueCount = { value: 0 };
     lifeSessionCounts.set(page, issueCount);
@@ -59,6 +59,54 @@ test.describe("Life Dock", () => {
           embedUrl: `http://127.0.0.1:4173/embed/bootstrap?code=${"C".repeat(43)}`,
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           traceId: TRACE,
+        }),
+      });
+    });
+    await page.route("**/v1/me", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          userId: "123e4567-e89b-42d3-a456-426614174020",
+          lifeOsUserId: "default-user",
+          status: "active",
+          sessionId: "123e4567-e89b-42d3-a456-426614174010",
+          deploymentId: "life-production",
+          memberships: [],
+          bindings: [],
+        }),
+      }),
+    );
+    await page.route("**/v1/identity-bindings/challenges", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          challengeId: "123e4567-e89b-42d3-a456-426614174021",
+          audience: "life-workbench-identity-binding",
+          canonicalPayload: "life-workbench-identity-binding-v1\nfixture",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          traceId: TRACE,
+        }),
+      }),
+    );
+    await page.route("**/v1/identity-bindings", async (route) => {
+      const body = route.request().postDataJSON() as {
+        challengeId?: string;
+        signedEvent?: { kind?: number; content?: string; pubkey?: string };
+      };
+      expect(body.challengeId).toBe("123e4567-e89b-42d3-a456-426614174021");
+      expect(body.signedEvent).toMatchObject({
+        kind: 24243,
+        content: "life-workbench-identity-binding-v1\nfixture",
+        pubkey: "deadbeef".repeat(8),
+      });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          bindingId: "123e4567-e89b-42d3-a456-426614174022",
+          pubkey: "deadbeef".repeat(8),
+          status: "active",
+          createdAt: new Date().toISOString(),
+          version: 1,
         }),
       });
     });

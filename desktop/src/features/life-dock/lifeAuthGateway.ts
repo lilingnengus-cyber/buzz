@@ -6,6 +6,32 @@ type LifeWorkbenchSession = {
   expiresAt: string;
 };
 
+export type LifeIdentityBinding = {
+  bindingId: string;
+  pubkey: string;
+  status: string;
+  createdAt: string;
+  version: number;
+};
+
+export type LifeWorkbenchAccount = {
+  userId: string;
+  lifeOsUserId: string;
+  status: string;
+  sessionId: string;
+  deploymentId: string;
+  bindings: LifeIdentityBinding[];
+};
+
+export type LifeIdentityBindingChallenge = {
+  challengeId: string;
+  audience: string;
+  canonicalPayload: string;
+  createdAt: number;
+  expiresAt: string;
+  traceId: string;
+};
+
 export type IssuedLifeEmbedSession = {
   embedSessionId: string;
   embedUrl: string;
@@ -20,7 +46,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function tokenNonce(token: string): string | null {
+export function readOidcNonce(token: string): string | null {
   if (!token || token.length > 16 * 1024) return null;
   const payload = token.split(".")[1];
   if (!payload) return null;
@@ -37,6 +63,16 @@ function tokenNonce(token: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function readBindingIssuedAt(payload: string): number | null {
+  const values = payload
+    .split("\n")
+    .filter((line) => line.startsWith("issued_at="))
+    .map((line) => line.slice("issued_at=".length));
+  if (values.length !== 1 || !/^\d{1,16}$/u.test(values[0] ?? "")) return null;
+  const timestamp = Number(values[0]);
+  return Number.isSafeInteger(timestamp) && timestamp > 0 ? timestamp : null;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -71,12 +107,56 @@ async function postJson(
   return response.status === 204 ? null : response.json();
 }
 
+async function getJson(
+  gateway: string,
+  path: string,
+  authorization: string,
+): Promise<unknown> {
+  const target = new URL(path, gateway);
+  if (target.origin !== gateway)
+    throw new Error("Life Gateway origin mismatch.");
+  const response = await fetch(target, {
+    method: "GET",
+    cache: "no-store",
+    credentials: "omit",
+    redirect: "error",
+    headers: {
+      Authorization: authorization,
+      "X-Trace-Id": crypto.randomUUID(),
+    },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+function readLifeIdentityBinding(value: unknown): LifeIdentityBinding | null {
+  if (
+    !isRecord(value) ||
+    typeof value.bindingId !== "string" ||
+    !SAFE_ID_PATTERN.test(value.bindingId) ||
+    typeof value.pubkey !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(value.pubkey) ||
+    typeof value.status !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.version !== "number"
+  )
+    return null;
+  return {
+    bindingId: value.bindingId,
+    pubkey: value.pubkey,
+    status: value.status,
+    createdAt: value.createdAt,
+    version: value.version,
+  };
+}
+
 /** Exchanges a verified Workbench OIDC token for an isolated Life session. */
 export async function createLifeWorkbenchSession(
   gateway: string,
   oidcToken: string,
+  idToken?: string | null,
 ): Promise<LifeWorkbenchSession> {
-  const nonce = tokenNonce(oidcToken);
+  const nonce = readOidcNonce(idToken ?? oidcToken);
   if (!nonce) throw new Error("Workbench OIDC nonce is unavailable.");
   const value = await postJson(
     gateway,
@@ -99,6 +179,107 @@ export async function createLifeWorkbenchSession(
     sessionToken: value.sessionToken,
     expiresAt: value.expiresAt,
   };
+}
+
+/** Reads the mapped Life account and its current public-key bindings. */
+export async function getLifeWorkbenchAccount(
+  gateway: string,
+  sessionToken: string,
+): Promise<LifeWorkbenchAccount> {
+  if (!TOKEN_PATTERN.test(sessionToken))
+    throw new Error("Life Workbench session is invalid.");
+  const value = await getJson(gateway, "/v1/me", `Bearer ${sessionToken}`);
+  const bindings =
+    isRecord(value) && Array.isArray(value.bindings)
+      ? value.bindings.map(readLifeIdentityBinding)
+      : [];
+  if (
+    !isRecord(value) ||
+    typeof value.userId !== "string" ||
+    !SAFE_ID_PATTERN.test(value.userId) ||
+    typeof value.lifeOsUserId !== "string" ||
+    value.lifeOsUserId.length === 0 ||
+    typeof value.status !== "string" ||
+    typeof value.sessionId !== "string" ||
+    !SAFE_ID_PATTERN.test(value.sessionId) ||
+    typeof value.deploymentId !== "string" ||
+    value.deploymentId.length === 0 ||
+    bindings.some((binding) => binding === null)
+  ) {
+    throw new Error("Life Gateway returned an invalid account.");
+  }
+  return {
+    userId: value.userId,
+    lifeOsUserId: value.lifeOsUserId,
+    status: value.status,
+    sessionId: value.sessionId,
+    deploymentId: value.deploymentId,
+    bindings: bindings as LifeIdentityBinding[],
+  };
+}
+
+/** Creates a one-time challenge bound to this Life session and Nostr pubkey. */
+export async function createLifeIdentityBindingChallenge(
+  gateway: string,
+  sessionToken: string,
+  pubkey: string,
+): Promise<LifeIdentityBindingChallenge> {
+  if (!TOKEN_PATTERN.test(sessionToken) || !/^[0-9a-f]{64}$/u.test(pubkey))
+    throw new Error("Life identity-binding request is invalid.");
+  const value = await postJson(
+    gateway,
+    "/v1/identity-bindings/challenges",
+    `Bearer ${sessionToken}`,
+    { pubkey },
+  );
+  const createdAt =
+    isRecord(value) && typeof value.canonicalPayload === "string"
+      ? readBindingIssuedAt(value.canonicalPayload)
+      : null;
+  if (
+    !isRecord(value) ||
+    typeof value.challengeId !== "string" ||
+    !SAFE_ID_PATTERN.test(value.challengeId) ||
+    value.audience !== "life-workbench-identity-binding" ||
+    typeof value.canonicalPayload !== "string" ||
+    value.canonicalPayload.length === 0 ||
+    value.canonicalPayload.length > 16 * 1024 ||
+    typeof value.expiresAt !== "string" ||
+    typeof value.traceId !== "string" ||
+    !SAFE_ID_PATTERN.test(value.traceId) ||
+    createdAt === null
+  ) {
+    throw new Error("Life Gateway returned an invalid binding challenge.");
+  }
+  return {
+    challengeId: value.challengeId,
+    audience: value.audience,
+    canonicalPayload: value.canonicalPayload,
+    createdAt,
+    expiresAt: value.expiresAt,
+    traceId: value.traceId,
+  };
+}
+
+/** Submits the complete signed Nostr event and consumes its challenge once. */
+export async function verifyLifeIdentityBinding(
+  gateway: string,
+  sessionToken: string,
+  challengeId: string,
+  signedEvent: object,
+): Promise<LifeIdentityBinding> {
+  if (!TOKEN_PATTERN.test(sessionToken) || !SAFE_ID_PATTERN.test(challengeId))
+    throw new Error("Life identity-binding verification is invalid.");
+  const value = await postJson(
+    gateway,
+    "/v1/identity-bindings",
+    `Bearer ${sessionToken}`,
+    { challengeId, signedEvent },
+  );
+  const binding = readLifeIdentityBinding(value);
+  if (!binding)
+    throw new Error("Life Gateway returned an invalid identity binding.");
+  return binding;
 }
 
 /** Issues one LifeOS bootstrap URL bound to the canonical resource path. */
