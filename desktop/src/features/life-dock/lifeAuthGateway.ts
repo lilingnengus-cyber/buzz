@@ -27,6 +27,7 @@ export type LifeIdentityBindingChallenge = {
   challengeId: string;
   audience: string;
   canonicalPayload: string;
+  createdAt: number;
   expiresAt: string;
   traceId: string;
 };
@@ -62,6 +63,16 @@ export function readOidcNonce(token: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function readBindingIssuedAt(payload: string): number | null {
+  const values = payload
+    .split("\n")
+    .filter((line) => line.startsWith("issued_at="))
+    .map((line) => line.slice("issued_at=".length));
+  if (values.length !== 1 || !/^\d{1,16}$/u.test(values[0] ?? "")) return null;
+  const timestamp = Number(values[0]);
+  return Number.isSafeInteger(timestamp) && timestamp > 0 ? timestamp : null;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -221,6 +232,10 @@ export async function createLifeIdentityBindingChallenge(
     `Bearer ${sessionToken}`,
     { pubkey },
   );
+  const createdAt =
+    isRecord(value) && typeof value.canonicalPayload === "string"
+      ? readBindingIssuedAt(value.canonicalPayload)
+      : null;
   if (
     !isRecord(value) ||
     typeof value.challengeId !== "string" ||
@@ -231,7 +246,8 @@ export async function createLifeIdentityBindingChallenge(
     value.canonicalPayload.length > 16 * 1024 ||
     typeof value.expiresAt !== "string" ||
     typeof value.traceId !== "string" ||
-    !SAFE_ID_PATTERN.test(value.traceId)
+    !SAFE_ID_PATTERN.test(value.traceId) ||
+    createdAt === null
   ) {
     throw new Error("Life Gateway returned an invalid binding challenge.");
   }
@@ -239,6 +255,7 @@ export async function createLifeIdentityBindingChallenge(
     challengeId: value.challengeId,
     audience: value.audience,
     canonicalPayload: value.canonicalPayload,
+    createdAt,
     expiresAt: value.expiresAt,
     traceId: value.traceId,
   };

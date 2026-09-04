@@ -343,6 +343,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           const signedEvent = await signRelayEvent({
             kind: 24243,
             content: challenge.canonicalPayload,
+            createdAt: challenge.createdAt,
             tags: [],
           });
           const binding = await verifyLifeIdentityBinding(
