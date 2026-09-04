@@ -45,6 +45,8 @@ import {
 import { useLifeDockWidth } from "./useLifeDockWidth";
 import {
   canAttemptLifeRecovery,
+  lifeSessionRenewalDelay,
+  readLifeEmbedCode,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession";
 import { useLifeAuth } from "../life-auth";
@@ -141,6 +143,9 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const [auth, setAuth] = React.useState<LifeAuthState>({
     phase: "unconnected",
   });
+  const [sessionExpiresAt, setSessionExpiresAt] = React.useState<string | null>(
+    null,
+  );
   const [bridgeReady, setBridgeReady] = React.useState(false);
   const [leaveConfirmationOpen, setLeaveConfirmationOpen] =
     React.useState(false);
@@ -291,25 +296,19 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   );
 
   const startLifeSession = React.useCallback(
-    (automatic = false) => {
+    (automatic = false, renewExisting = false) => {
       if (!config || !gateway || sessionStartingRef.current) return;
-      const e2eToken =
-        import.meta.env.MODE === "e2e"
-          ? window.__BUZZ_E2E_LIFE_ACCESS_TOKEN__
-          : undefined;
-      if (lifeAuth.phase !== "authenticated" && !e2eToken) {
-        setAuth({
-          phase: "failed",
-          reason: "Life authentication is required.",
-        });
-        if (!automatic) void lifeAuth.signIn();
-        return;
-      }
       sessionStartingRef.current = true;
-      setAuth({ phase: "checking" });
+      if (!renewExisting) setAuth({ phase: "checking" });
       void (async () => {
         const oidcToken = await lifeAuth.getAccessToken();
-        if (!oidcToken) throw new Error("Life OIDC session expired.");
+        if (!oidcToken) {
+          if (!automatic) {
+            await lifeAuth.signIn();
+            return;
+          }
+          throw new Error("Life OIDC session expired.");
+        }
         let sessionToken = workbenchSessionTokenRef.current;
         if (!sessionToken) {
           const idToken = await lifeAuth.getIdToken();
@@ -327,6 +326,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           );
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
+          setSessionExpiresAt(session.expiresAt);
         }
         const identity = await getIdentity();
         const account = await getLifeWorkbenchAccount(gateway, sessionToken);
@@ -365,12 +365,17 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         const embedUrl = validateLifeEmbedUrl(config, issued.embedUrl);
         if (!embedUrl) throw new Error("LifeOS bootstrap URL was rejected.");
         embedSessionIdRef.current = issued.embedSessionId;
+        if (renewExisting && bridgeReady) {
+          const code = readLifeEmbedCode(config, embedUrl);
+          if (code && post("RENEW_SESSION", { code })) return;
+        }
         dispatch({ type: "load-frame", url: embedUrl });
       })()
         .catch((cause) => {
           workbenchSessionTokenRef.current = null;
+          setSessionExpiresAt(null);
           setAuth({
-            phase: "failed",
+            phase: automatic ? "expired" : "failed",
             reason:
               cause instanceof Error ? cause.message : "LifeOS sign-in failed.",
           });
@@ -379,7 +384,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           sessionStartingRef.current = false;
         });
     },
-    [config, gateway, homeResource, lifeAuth],
+    [bridgeReady, config, gateway, homeResource, lifeAuth, post],
   );
 
   React.useEffect(() => {
@@ -400,10 +405,20 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       startLifeSession(true);
   }, [active, auth.phase, startLifeSession, state.open]);
   React.useEffect(() => {
-    if (lifeAuth.phase === "authenticated") return;
+    if (
+      lifeAuth.phase === "authenticated" ||
+      lifeAuth.phase === "checking" ||
+      lifeAuth.phase === "signing-in"
+    )
+      return;
     workbenchSessionTokenRef.current = null;
+    setSessionExpiresAt(null);
     embedSessionIdRef.current = null;
     recoveryAttemptsRef.current = 0;
+    if (lifeAuth.phase === "expired") {
+      setAuth({ phase: "expired", reason: "Life OIDC session expired." });
+      return;
+    }
     manuallyDisconnectedRef.current = false;
     setAuth({ phase: "unconnected" });
     post("LOGOUT");
@@ -418,6 +433,31 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     workbenchSessionTokenRef.current = null;
     startLifeSession(true);
   }, [auth.phase, startLifeSession]);
+  React.useEffect(() => {
+    if (
+      !state.open ||
+      !active ||
+      !bridgeReady ||
+      auth.phase !== "authenticated" ||
+      !sessionExpiresAt
+    )
+      return;
+    const delay = lifeSessionRenewalDelay(sessionExpiresAt);
+    if (delay === null) return;
+    const timer = window.setTimeout(() => {
+      workbenchSessionTokenRef.current = null;
+      setSessionExpiresAt(null);
+      startLifeSession(true, true);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    active,
+    auth.phase,
+    bridgeReady,
+    sessionExpiresAt,
+    startLifeSession,
+    state.open,
+  ]);
   React.useEffect(() => {
     if (!state.open || auth.phase !== "authenticated") return;
     const timer = window.setInterval(() => post("CHECK_AUTH"), 60_000);
@@ -536,6 +576,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     const id = embedSessionIdRef.current;
     if (gateway && token && id) void revokeLifeEmbedSession(gateway, token, id);
     workbenchSessionTokenRef.current = null;
+    setSessionExpiresAt(null);
     embedSessionIdRef.current = null;
     setAuth({ phase: "unconnected" });
   }, [gateway, post]);
@@ -608,6 +649,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         manuallyDisconnectedRef.current = false;
         recoveryAttemptsRef.current = 0;
         workbenchSessionTokenRef.current = null;
+        setSessionExpiresAt(null);
         startLifeSession(false);
       },
       state,

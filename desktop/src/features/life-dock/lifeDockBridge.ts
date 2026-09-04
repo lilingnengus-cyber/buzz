@@ -17,6 +17,7 @@ export type LifeHostBridgeType =
   | "NAVIGATE"
   | "REQUEST_CURRENT_RESOURCE"
   | "CHECK_AUTH"
+  | "RENEW_SESSION"
   | "LOGOUT";
 
 export type LifeAuthStatusPayload =
@@ -362,7 +363,10 @@ export function createLifeBridgeMessage<T>(
   requestId = createLifeRequestId(),
 ): LifeBridgeEnvelope<T, 2 | 3> {
   return {
-    version: type === "CHECK_AUTH" || type === "LOGOUT" ? 3 : 2,
+    version:
+      type === "CHECK_AUTH" || type === "RENEW_SESSION" || type === "LOGOUT"
+        ? 3
+        : 2,
     type,
     requestId,
     sessionNonce,

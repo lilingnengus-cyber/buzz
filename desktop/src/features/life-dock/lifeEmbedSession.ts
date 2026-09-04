@@ -5,6 +5,7 @@ import type { LifeDockConfig } from "./lifeDockConfig";
 
 const LIFE_EMBED_CALLBACK = "pacioli://auth/life-bootstrap";
 const EMBED_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const LIFE_SESSION_RENEWAL_LEAD_MS = 90_000;
 
 export type LifeEmbedSessionPhase =
   | "idle"
@@ -69,6 +70,23 @@ export function validateLifeEmbedUrl(
   } catch {
     return null;
   }
+}
+
+export function readLifeEmbedCode(
+  config: LifeDockConfig,
+  value: string,
+): string | null {
+  const validated = validateLifeEmbedUrl(config, value);
+  return validated ? new URL(validated).searchParams.get("code") : null;
+}
+
+export function lifeSessionRenewalDelay(
+  expiresAt: string,
+  now = Date.now(),
+): number | null {
+  const expiry = Date.parse(expiresAt);
+  if (!Number.isFinite(expiry) || !Number.isFinite(now)) return null;
+  return Math.max(0, expiry - now - LIFE_SESSION_RENEWAL_LEAD_MS);
 }
 
 export async function subscribeToLifeEmbedCallbacks(
