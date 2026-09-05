@@ -1430,6 +1430,8 @@ fn format_conversation_context(
 /// Arguments for [`format_prompt`] beyond the required [`FlushBatch`].
 #[derive(Default)]
 pub struct FormatPromptArgs<'a> {
+    /// The harness publishes the final response; omit agent delivery commands.
+    pub harness_publishes_response: bool,
     pub agent_core: Option<&'a str>,
     /// Owner-signed instructions for an active huddle channel.
     pub huddle_instructions: Option<&'a str>,
@@ -1608,7 +1610,15 @@ pub fn format_prompt(batch: &FlushBatch, args: &FormatPromptArgs<'_>) -> Vec<Str
             args.profile_lookup,
         )
     };
-    sections.push(format_context_hints(
+    sections.push(if args.harness_publishes_response {
+        format!(
+            "[Context]\nChannel: {}\nThe harness publishes your final answer in the correct conversation. \
+             Return the answer as final response text. Do not send messages through tools, CLI, or HTTP. \
+             Do not report that you have sent a reply. Use only the delegated tools for this turn.",
+            batch.channel_id
+        )
+    } else {
+        format_context_hints(
         batch.channel_id,
         args.channel_info,
         &thread_tags,
@@ -1616,7 +1626,8 @@ pub fn format_prompt(batch: &FlushBatch, args: &FormatPromptArgs<'_>) -> Vec<Str
         args.conversation_context.is_some(),
         args.conversation_context_had_delivered_events,
         reply_anchor.as_deref(),
-    ));
+        )
+    });
 
     // 3. Conversation context (thread or DM).
     if let Some(ctx) = args.conversation_context {
@@ -1844,6 +1855,26 @@ mod tests {
         // Queue should be empty now.
         assert_eq!(pending_count(&q), 0);
         assert_eq!(q.queues.len(), 0);
+    }
+
+    #[test]
+    fn harness_delivery_omits_cli_instructions_and_keeps_user_request() {
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        queue.push(make_queued(Uuid::new_v4(), "show today's focus"));
+        let batch = queue.flush_next().expect("batch");
+        let prompt = format_prompt(
+            &batch,
+            &FormatPromptArgs {
+                harness_publishes_response: true,
+                ..Default::default()
+            },
+        )
+        .join("\n");
+        assert!(prompt.contains("The harness publishes your final answer"));
+        assert!(prompt.contains("show today's focus"));
+        assert!(!prompt.contains("buzz messages"));
+        let ordinary = format_prompt(&batch, &FormatPromptArgs::default()).join("\n");
+        assert!(ordinary.contains("buzz messages"));
     }
 
     #[test]

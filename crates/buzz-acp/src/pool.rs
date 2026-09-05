@@ -652,6 +652,7 @@ struct TurnRuntimePolicy {
     max_turn_duration: Duration,
     memory_enabled: bool,
     requires_fresh_session: bool,
+    harness_publishes_response: bool,
 }
 
 impl TurnRuntimePolicy {
@@ -668,6 +669,7 @@ impl TurnRuntimePolicy {
                 .unwrap_or(context.max_turn_duration),
             memory_enabled: context.memory_enabled && !extension.disable_memory,
             requires_fresh_session: extension.requires_fresh_session,
+            harness_publishes_response: extension.harness_publishes_response,
         }
     }
 }
@@ -2529,6 +2531,7 @@ pub async fn run_prompt_task(
                 team_instructions: standing.team_instructions,
                 agent_canvas: standing.agent_canvas,
                 standing_context_sent,
+                harness_publishes_response: runtime_policy.harness_publishes_response,
             },
         )
     } else {
@@ -8142,6 +8145,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         assert_eq!(standard.max_turn_duration, Duration::from_secs(120));
         assert!(standard.memory_enabled);
         assert!(!standard.requires_fresh_session);
+        assert!(!standard.harness_publishes_response);
 
         let extension = TurnPolicy {
             mcp_mode: TurnMcpMode::ReplaceStandard,
@@ -8149,6 +8153,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             base_prompt: Some("extension prompt"),
             disable_memory: true,
             requires_fresh_session: true,
+            harness_publishes_response: true,
         };
         let overridden = TurnRuntimePolicy::resolve(&context, Some(&extension));
         assert!(overridden.mcp_servers.is_empty());
@@ -8156,6 +8161,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         assert_eq!(overridden.max_turn_duration, Duration::from_secs(30));
         assert!(!overridden.memory_enabled);
         assert!(overridden.requires_fresh_session);
+        assert!(overridden.harness_publishes_response);
     }
 
     // ── huddle instructions ─────────────────────────────────────────────────

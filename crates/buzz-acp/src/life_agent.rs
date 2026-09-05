@@ -209,6 +209,7 @@ impl LifeAgentHostConfig {
             base_prompt: Some(include_str!("life_agent_prompt.md")),
             disable_memory: true,
             requires_fresh_session: true,
+            harness_publishes_response: true,
         }
     }
 

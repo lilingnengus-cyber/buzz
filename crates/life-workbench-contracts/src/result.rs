@@ -318,6 +318,9 @@ pub struct WorkbenchSuccess<T> {
     /// Server-minimized summary required for a channel-disclosure result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sanitized_summary: Option<String>,
+    /// Whether a successful write reused an existing result. Absent on older servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_replayed: Option<bool>,
 }
 
 /// Failed Workbench API envelope.

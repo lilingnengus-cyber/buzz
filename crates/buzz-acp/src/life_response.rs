@@ -164,7 +164,11 @@ impl LifeResponseCapture {
                     self.invalid_tool_result = true;
                     return;
                 }
-                let message = if is_write {
+                if !is_write && success.idempotency_replayed.is_some() {
+                    self.invalid_tool_result = true;
+                    return;
+                }
+                let mut message = if is_write {
                     match trusted_write_message(&tool, &success.data) {
                         Some(message) => message,
                         None => {
@@ -175,6 +179,11 @@ impl LifeResponseCapture {
                 } else {
                     "LifeOS 已确认读取成功".into()
                 };
+                if success.idempotency_replayed == Some(true) {
+                    message.push_str(" 幂等命中，已复用成功结果，未重复执行。");
+                } else if success.idempotency_replayed == Some(false) {
+                    message.push_str(" 幂等状态：首次执行。");
+                }
                 self.results.push(ObservedLifeResult {
                     tool,
                     is_write,
@@ -423,6 +432,28 @@ mod tests {
     use super::*;
     use crate::turn_observer::TurnObserver;
     use serde_json::json;
+
+    #[test]
+    fn replay_feedback_requires_explicit_success_metadata() {
+        for (tool, replay, expected) in [
+            ("create_action", Some(json!(true)), "幂等命中"),
+            ("create_action", Some(json!(false)), "首次执行"),
+            ("create_action", None, "LifeOS 已确认创建行动成功"),
+        ] {
+            let mut capture = LifeResponseCapture::default();
+            let mut result = json!({"ok":true, "data":{}, "resourceRefs":[],
+                "auditId":Uuid::new_v4(), "traceId":Uuid::new_v4()});
+            if let Some(replay) = replay {
+                result["idempotencyReplayed"] = replay;
+            }
+            observe_named_result(&mut capture, tool, &result.to_string());
+            let content = trusted_content(capture.finish());
+            assert!(content.contains(expected), "{content}");
+            if result["idempotencyReplayed"] != true {
+                assert!(!content.contains("幂等命中"));
+            }
+        }
+    }
 
     #[test]
     fn created_action_reply_uses_only_service_status_and_identifiers() {

@@ -55,7 +55,7 @@ impl LifeClient {
         let mut write = self.write.lock().await;
         if let Some(previous) = write.as_ref() {
             return if previous.fingerprint == fingerprint && previous.key == key {
-                previous.result.clone()
+                previous.result.clone().and_then(mark_replayed)
             } else {
                 Err(ClientError::RateLimited)
             };
@@ -190,6 +190,15 @@ impl LifeClient {
         }
         Err(last_error)
     }
+}
+
+fn mark_replayed(text: String) -> Result<String, ClientError> {
+    let mut result: WorkbenchResult<Value> =
+        serde_json::from_str(&text).map_err(|_| ClientError::InvalidResponse)?;
+    if let WorkbenchResult::Success(success) = &mut result {
+        success.idempotency_replayed = Some(true);
+    }
+    serde_json::to_string(&result).map_err(|_| ClientError::Internal)
 }
 
 fn deterministic_idempotency_key(

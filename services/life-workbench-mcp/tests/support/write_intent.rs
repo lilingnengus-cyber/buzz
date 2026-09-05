@@ -18,7 +18,14 @@ async fn create_and_focus_forwards_user_key_and_concurrent_duplicates_use_one_ca
         client.invoke("create_action", input.clone()),
         client.invoke("create_action", input.clone())
     );
-    assert_eq!(first.expect("created"), second.expect("cached"));
+    let first: Value = serde_json::from_str(&first.expect("created")).expect("json");
+    let mut second: Value = serde_json::from_str(&second.expect("cached")).expect("json");
+    assert_eq!(second["idempotencyReplayed"], true);
+    second
+        .as_object_mut()
+        .expect("object")
+        .remove("idempotencyReplayed");
+    assert_eq!(first, second);
     input["title"] = json!("different action");
     assert!(client.invoke("create_action", input).await.is_err());
     let consumes = state.consume_requests.lock().expect("lock");

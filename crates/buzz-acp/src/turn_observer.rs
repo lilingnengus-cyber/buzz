@@ -36,6 +36,7 @@ pub(crate) struct TurnPolicy {
     pub(crate) base_prompt: Option<&'static str>,
     pub(crate) disable_memory: bool,
     pub(crate) requires_fresh_session: bool,
+    pub(crate) harness_publishes_response: bool,
 }
 
 impl Default for TurnPolicy {
@@ -46,6 +47,7 @@ impl Default for TurnPolicy {
             base_prompt: None,
             disable_memory: false,
             requires_fresh_session: false,
+            harness_publishes_response: false,
         }
     }
 }
@@ -205,6 +207,7 @@ mod tests {
                 base_prompt: None,
                 disable_memory: false,
                 requires_fresh_session: false,
+                harness_publishes_response: false,
             }
         );
     }
