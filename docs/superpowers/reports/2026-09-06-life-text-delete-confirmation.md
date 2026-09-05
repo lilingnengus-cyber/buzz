@@ -33,3 +33,13 @@ Validation:
 
 Failure behavior: if relay publishing or preview registration fails, no short
 confirmation authority is available. The user must request a fresh preview.
+
+## Rollout
+
+- Production gateway updated from `e2f982a5e` to image `a66eaa0db`; the previous
+  compose file is preserved at `/opt/life-auth/compose.before-short-delete-a66eaa0db.yml`.
+- The local release build of `buzz-acp` was installed at the configured Life Proxy
+  binary path, with a timestamped backup of the prior binary.
+- Activating the local binary still requires restarting Life Proxy. Computer Use
+  reported that the Mac was locked and could not be unlocked automatically; the
+  user was asked to unlock it. No agent restart or live deletion was claimed.
