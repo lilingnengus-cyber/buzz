@@ -58,3 +58,31 @@ follow-up presentation issues, not evidence of an additional LifeOS mutation.
   the failure, restoring approximately 7 GiB of free space. Release binaries
   and source changes were retained. Full CI should run in an environment with
   sufficient disk capacity before merge.
+
+## Full CI completed before merge
+
+The complete `just ci` gate subsequently passed on
+`6d007e41a4e33fed9581749586f0e44de0e0a395`, after integrating the personal
+repository's main branch. That integration changed no source files.
+
+Command (after activating Hermit):
+
+```sh
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 just ci
+```
+
+Debug symbols and incremental artifacts were disabled to reduce disk use;
+no check or test lane was removed. Completed workspace debug artifacts were
+cleaned after the Rust test phase, while the separate desktop test target
+remained intact. The command exited with status 0.
+
+- Rust workspace and desktop native tests: 4,309 passed in total.
+- Desktop JavaScript tests: 5,533 passed, zero failed.
+- Mobile Flutter tests: 1,663 passed.
+- Formatting, Clippy, desktop/web/mobile checks, and file-size policy passed.
+- Desktop and web production frontend builds passed.
+- Tests marked ignored by the repository retained their standard behavior;
+  this does not claim execution of infrastructure-dependent integration suites.
+
+This successful run supersedes the earlier disk-space failure. The only
+subsequent change before merge is this acceptance-record update.
