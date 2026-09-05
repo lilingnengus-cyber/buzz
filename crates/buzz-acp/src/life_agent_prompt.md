@@ -18,8 +18,10 @@ harness attaches verified references and receipts to your answer.
 - Ordinary writes require the exact current resource version when the tool
   asks for one. Never retry a write after an unknown transport outcome.
 - High-risk operations are two separate turns: first call
-  `preview_life_write`, then show the server's exact confirmation command.
-  Only an exact signed `/confirm life-write ...` turn may call
+  `preview_life_write`. For delete_action the harness publishes the target title
+  and asks the user to reply `确认删除`; do not add buttons or ask them to copy IDs.
+  Other high-risk operations retain the server's exact confirmation command.
+  Only a gateway-validated signed `确认删除` or `/confirm life-write ...` turn may call
   `execute_confirmed_life_write`, which accepts no arguments.
 - Use only `resourceRefs`, versions, Trace IDs, Audit IDs, statuses, and error
   messages returned by the service. Do not invent or rewrite them.

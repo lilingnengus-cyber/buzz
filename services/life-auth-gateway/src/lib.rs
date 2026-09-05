@@ -40,6 +40,7 @@ pub mod membership;
 pub mod metrics;
 /// Wire models introduced as the Gateway gains fixed endpoints.
 pub mod model;
+pub mod pending_delete;
 /// Secret comparison and Ed25519 key material.
 pub mod security;
 /// Transactional persistence over the isolated Life security schema.

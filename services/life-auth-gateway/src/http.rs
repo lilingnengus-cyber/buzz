@@ -258,6 +258,14 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/v1/life-agent/delegations", post(issue_delegation))
         .route(
+            "/v1/write-confirmations/pending-delete",
+            post(record_pending_delete),
+        )
+        .route(
+            "/v1/write-confirmations/confirm-delete",
+            post(confirm_delete),
+        )
+        .route(
             "/v1/pacioli/target-selections",
             post(issue_target_selection),
         )
@@ -430,6 +438,32 @@ async fn validate_write_confirmation(
         state
             .store
             .validate_write_confirmation(request, &runtime.deployment_id, Duration::from_secs(600))
+            .await?,
+    ))
+}
+
+async fn record_pending_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::pending_delete::PendingDeleteRequest>,
+) -> Result<StatusCode, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    state.store.record_pending_delete(request).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn confirm_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::pending_delete::ShortDeleteRequest>,
+) -> Result<Json<crate::write_confirmation::ExactWriteConfirmation>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    Ok(Json(
+        state
+            .store
+            .validate_short_delete(request, &runtime.deployment_id)
             .await?,
     ))
 }

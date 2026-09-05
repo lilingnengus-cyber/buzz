@@ -1,0 +1,35 @@
+# Life action deletion: text confirmation
+
+The user requested a message before deletion and execution after a confirmation
+message, without adding buttons. An action preview now names the action, explains
+permanent deletion (including permitted cascading child records), and asks for
+`确认删除`. The existing long confirmation remains compatible for other operations.
+
+The harness records preview command/version/hash/expiry only after the signed
+reply is accepted by the relay. The gateway links that reply to the preview
+delegation, author, agent, community, channel and topic. The original signed short
+message is preserved throughout validation and delegation issuance. Only the
+single `write_command:execute` capability is issued, with the existing bound
+command context; the MCP execution tool continues to take no arguments.
+
+A new preview supersedes older previews in its topic. A confirmation signed
+before or in the same second as the replacement cannot authorize it. Cross-topic
+replies are rejected; a top-level confirmation requires exactly one active
+preview in the DM. Multiple topics, expired previews, invalid signatures, and
+already-used confirmations fail closed. Gateway persistence survives agent
+restarts. LifeOS continues to enforce resource version, hash, expiration and
+one-time execution at the actual mutation boundary.
+
+Validation:
+
+- 907 tests passed across buzz-acp and life-auth-gateway, with PostgreSQL enabled.
+- The final replacement-preview changes passed all five confirmation integration
+  tests, including concurrent duplicate confirmations, expiry, wrong routing,
+  early consent and replacement invalidation.
+- Clippy with warnings denied, Rust formatting and the repository file-size gate
+  passed.
+- No real action was deleted during implementation. Production rollout and a
+  fresh user-confirmed workflow are recorded separately when completed.
+
+Failure behavior: if relay publishing or preview registration fails, no short
+confirmation authority is available. The user must request a fresh preview.

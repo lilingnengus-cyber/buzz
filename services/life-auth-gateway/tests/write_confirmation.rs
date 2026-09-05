@@ -12,6 +12,8 @@ use sqlx::{
 use std::{str::FromStr, time::Duration};
 use uuid::Uuid;
 
+include!("support/short_delete.rs");
+
 struct Database {
     admin: PgPool,
     pool: PgPool,

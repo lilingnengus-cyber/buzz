@@ -19,6 +19,7 @@ struct ObservedLifeResult {
     trace_id: Uuid,
     audit_id: Option<Uuid>,
     sanitized_summary: Option<String>,
+    pending_delete: Option<serde_json::Value>,
 }
 
 pub(crate) struct CapturedLifeResponse {
@@ -26,6 +27,12 @@ pub(crate) struct CapturedLifeResponse {
     results: Vec<ObservedLifeResult>,
     invalid_tool_result: bool,
     channel_disclosure: bool,
+}
+
+impl CapturedLifeResponse {
+    pub(crate) fn pending_delete(&self) -> Option<serde_json::Value> {
+        self.results.last()?.pending_delete.clone()
+    }
 }
 
 #[derive(Default)]
@@ -120,6 +127,7 @@ impl LifeResponseCapture {
                 trace_id: Uuid::nil(),
                 audit_id: None,
                 sanitized_summary: None,
+                pending_delete: None,
             });
             return;
         }
@@ -185,6 +193,7 @@ impl LifeResponseCapture {
                     message.push_str(" 幂等状态：首次执行。");
                 }
                 self.results.push(ObservedLifeResult {
+                    pending_delete: delete_preview(&tool, &success.data),
                     tool,
                     is_write,
                     succeeded: true,
@@ -204,6 +213,7 @@ impl LifeResponseCapture {
                 trace_id: failure.trace_id,
                 audit_id: None,
                 sanitized_summary: None,
+                pending_delete: None,
             }),
         }
     }
@@ -217,6 +227,13 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
                 .and_then(|value| value.as_str())?;
             if !super::life_agent::is_exact_write_confirmation(command) {
                 return None;
+            }
+            if data.pointer("/command/tool").and_then(|v| v.as_str()) == Some("delete_action") {
+                delete_preview(tool, data)?;
+                let title = data.pointer("/target/title")?.as_str()?;
+                // JSON quoting keeps resource titles visibly delimited as data.
+                let title = serde_json::to_string(title).ok()?;
+                return Some(format!("确认删除行动 {title} 吗？该行动及允许级联删除的子记录将永久删除，无法恢复。\n尚未删除。请在预览有效期内（最长 10 分钟）回复：确认删除"));
             }
             Some(format!(
                 "LifeOS 已创建高风险写入预览，尚未执行。请在 10 分钟内原样发送：\n`{command}`"
@@ -236,6 +253,30 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
         }
         _ => Some("LifeOS 已确认写入成功。".into()),
     }
+}
+
+fn delete_preview(tool: &str, data: &serde_json::Value) -> Option<serde_json::Value> {
+    if tool != "preview_life_write" || data.pointer("/command/tool")?.as_str()? != "delete_action" {
+        return None;
+    }
+    let command = data.get("command")?;
+    let id = Uuid::parse_str(command.get("commandId")?.as_str()?).ok()?;
+    let version = command.get("expectedVersion")?.as_i64()?;
+    let hash = command.get("previewHash")?.as_str()?;
+    let exact = format!("/confirm life-write {id} v{version} {hash}");
+    if command.get("exactConfirmation")?.as_str()? != exact
+        || !super::life_agent::is_exact_write_confirmation(&exact)
+        || command.get("resourceType")?.as_str()? != "action"
+        || command.get("resourceId")? != data.pointer("/target/id")?
+        || command.get("expectedVersion")? != data.pointer("/target/version")?
+        || data.pointer("/target/title")?.as_str()?.is_empty()
+    {
+        return None;
+    }
+    Some(
+        serde_json::json!({"commandId": id, "expectedVersion": version,
+        "previewHash": hash, "expiresAt": command.get("expiresAt")?.as_str()?}),
+    )
 }
 
 impl TurnObserver for LifeResponseCapture {
@@ -376,12 +417,12 @@ pub(crate) async fn publish(
     channel_id: Uuid,
     source_event: &Event,
     captured: CapturedLifeResponse,
-) {
+) -> Option<Event> {
     let trusted_tags = match trusted_result_tags(&captured) {
         Ok(tags) => tags,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Life Agent result tags rejected: {error}");
-            return;
+            return None;
         }
     };
     let content = trusted_content(captured);
@@ -400,7 +441,7 @@ pub(crate) async fn publish(
             Ok(builder) => builder,
             Err(error) => {
                 tracing::warn!(channel = %channel_id, "Life Agent response build failed: {error}");
-                return;
+                return None;
             }
         };
     for tag in trusted_tags {
@@ -410,7 +451,7 @@ pub(crate) async fn publish(
         Ok(event) => event,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Life Agent response signing failed: {error}");
-            return;
+            return None;
         }
     };
     let expected_id = event.id.to_hex();
@@ -418,13 +459,17 @@ pub(crate) async fn publish(
         Ok(Ok(value))
             if value.get("accepted").and_then(|item| item.as_bool()) == Some(true)
                 && value.get("event_id").and_then(|item| item.as_str())
-                    == Some(expected_id.as_str()) => {}
+                    == Some(expected_id.as_str()) =>
+        {
+            return Some(event)
+        }
         Ok(Ok(_)) => tracing::warn!(channel = %channel_id, "Life Agent response was not accepted"),
         Ok(Err(error)) => {
             tracing::warn!(channel = %channel_id, "Life Agent response publish failed: {error}")
         }
         Err(_) => tracing::warn!(channel = %channel_id, "Life Agent response publish timed out"),
     }
+    None
 }
 
 #[cfg(test)]
@@ -432,6 +477,26 @@ mod tests {
     use super::*;
     use crate::turn_observer::TurnObserver;
     use serde_json::json;
+
+    #[test]
+    fn delete_prompt_names_target_and_keeps_command_out_of_user_text() {
+        let id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let mut data = json!({"command":{"commandId":id,"tool":"delete_action","resourceType":"action",
+            "resourceId":"action-1","expectedVersion":7,"previewHash":hash,"expiresAt":"2026-09-06T01:00:00Z",
+            "exactConfirmation":format!("/confirm life-write {id} v7 {hash}")},
+            "target":{"id":"action-1","title":"验收行动","version":7}});
+        let text = trusted_write_message("preview_life_write", &data).expect("preview");
+        assert!(text.contains("验收行动"));
+        assert!(text.contains("回复：确认删除"));
+        assert!(text.contains("子记录"));
+        assert!(!text.contains("/confirm"));
+        assert!(!text.contains(&hash));
+        assert!(delete_preview("preview_life_write", &data).is_some());
+        data["target"]["id"] = json!("another-action");
+        assert!(trusted_write_message("preview_life_write", &data).is_none());
+        assert!(delete_preview("preview_life_write", &data).is_none());
+    }
 
     #[test]
     fn replay_feedback_requires_explicit_success_metadata() {

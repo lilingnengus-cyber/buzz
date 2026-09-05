@@ -87,12 +87,17 @@ pub(crate) struct LifeAgentHostConfig {
     client: reqwest::Client,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ExactWriteConfirmation {
     command_id: Uuid,
     expected_version: i64,
     preview_hash: String,
 }
+
+#[cfg(test)]
+#[path = "life_agent_short_tests.rs"]
+mod short_tests;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +131,7 @@ struct IssuedAccessContext<'a> {
 }
 
 pub(crate) struct LifeTurnAccess {
+    community_id: String,
     mcp_server: McpServer,
     policy: TurnPolicy,
     revocation: LifeRevocationGuard,
@@ -231,13 +237,48 @@ impl LifeAgentHostConfig {
             return Err("This Agent is not allowed to access LifeOS; route the request through the dedicated Life Proxy".into());
         }
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
-        let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
-        if exact_confirmation.is_some() && !self.high_risk_write_enabled {
+        let mut exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
+        let short_delete = source_event.content == "确认删除";
+        if (exact_confirmation.is_some() || short_delete)
+            && (!self.high_risk_write_enabled || !direct_message)
+        {
             return Err(
                 "LifeOS 高风险聊天写入未启用；删除尚未执行，请先启用该功能再重新生成预览。".into(),
             );
         }
-        if let Some(confirmation) = &exact_confirmation {
+        if short_delete {
+            let url = self
+                .gateway_base_url
+                .join("v1/write-confirmations/confirm-delete")
+                .map_err(|_| "Life Agent gateway URL is invalid")?;
+            let response = self
+                .client
+                .post(url)
+                .header(
+                    "authorization",
+                    format!("Service {}", self.pacioli_service_token),
+                )
+                .header("x-trace-id", trace_id.to_string())
+                .json(
+                    &serde_json::json!({"signedEvent": source_event, "communityId": community_id,
+                    "agentId": agent_id, "traceId": trace_id}),
+                )
+                .send()
+                .await
+                .map_err(|_| "删除确认服务暂时不可用，尚未执行删除。")?;
+            if !response.status().is_success() {
+                return Err(
+                    "没有唯一有效的待删除预览，或确认已使用；尚未执行删除。请重新发起删除请求。"
+                        .into(),
+                );
+            }
+            exact_confirmation = Some(
+                response
+                    .json::<ExactWriteConfirmation>()
+                    .await
+                    .map_err(|_| "删除确认结果无效，尚未执行删除。")?,
+            );
+        } else if let Some(confirmation) = &exact_confirmation {
             let validation_url = self
                 .gateway_base_url
                 .join("v1/write-confirmations/validate")
@@ -369,7 +410,7 @@ impl LifeAgentHostConfig {
         }
         let issued: IssueResponse = serde_json::from_slice(&bytes)
             .map_err(|_| "Life Agent authorization response was invalid")?;
-        self.access_from_issue(
+        let mut access = self.access_from_issue(
             issued,
             IssuedAccessContext {
                 agent_id,
@@ -379,7 +420,9 @@ impl LifeAgentHostConfig {
                 exact_confirmation: exact_confirmation.is_some(),
                 channel_disclosure: !direct_message,
             },
-        )
+        )?;
+        access.community_id = community_id.to_owned();
+        Ok(access)
     }
 
     fn agent_is_allowed(&self, agent_id: &str) -> bool {
@@ -447,6 +490,7 @@ impl LifeAgentHostConfig {
             ],
         };
         Ok(LifeTurnAccess {
+            community_id: String::new(),
             mcp_server,
             policy: self.policy(),
             revocation: LifeRevocationGuard {
@@ -524,7 +568,7 @@ impl TurnExtension for LifeAgentHostConfig {
             } if channel_type == "dm"
         );
         if !is_dm {
-            return Ok(if exact_confirmation.is_some() {
+            return Ok(if exact_confirmation.is_some() || content == "确认删除" {
                 TurnApplicability::Ambiguous {
                     reason: "LifeOS writes are never allowed in a multi-party channel",
                 }
@@ -537,7 +581,7 @@ impl TurnExtension for LifeAgentHostConfig {
                 TurnApplicability::NotApplicable
             });
         }
-        Ok(if exact_confirmation.is_some() {
+        Ok(if exact_confirmation.is_some() || content == "确认删除" {
             if self.high_risk_write_enabled {
                 TurnApplicability::Applicable {
                     priority: 400,
@@ -630,13 +674,38 @@ impl TurnExtensionAccess for LifeTurnAccess {
                 if let (Some(captured), Some(source_event), Some(channel_id)) =
                     (captured, context.source_event, context.channel_id)
                 {
-                    super::life_response::publish(
+                    let preview = captured.pending_delete();
+                    let published = super::life_response::publish(
                         context.rest_client,
                         channel_id,
                         source_event,
                         captured,
                     )
                     .await;
+                    if let (Some(mut preview), Some(event)) = (preview, published) {
+                        preview["previewEvent"] = serde_json::json!(event);
+                        preview["communityId"] = serde_json::json!(self.community_id);
+                        preview["delegationId"] = serde_json::json!(self.revocation.delegation_id);
+                        let config = &self.revocation.config;
+                        if let Ok(url) = config
+                            .gateway_base_url
+                            .join("v1/write-confirmations/pending-delete")
+                        {
+                            let result = config
+                                .client
+                                .post(url)
+                                .header(
+                                    "authorization",
+                                    format!("Service {}", config.pacioli_service_token),
+                                )
+                                .json(&preview)
+                                .send()
+                                .await;
+                            if !matches!(result, Ok(response) if response.status().is_success()) {
+                                tracing::warn!("Life delete preview registration failed; short confirmation will be rejected");
+                            }
+                        }
+                    }
                 }
             }
             self.revocation.revoke().await;
