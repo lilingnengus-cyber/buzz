@@ -3,11 +3,13 @@ const bridge = document.querySelector("#bridge");
 const theme = document.querySelector("#theme");
 const currentResource = document.querySelector("#current-resource");
 const refreshCount = document.querySelector("#refresh-count");
+const renewalCount = document.querySelector("#renewal-count");
 const bootstrap = document.querySelector("#bootstrap");
 const instance = document.querySelector("#instance");
 let nonce = null;
 let requestSequence = 0;
 let refreshes = 0;
+let renewals = 0;
 let resource = {
   version: 1,
   extensionId: "life",
@@ -104,6 +106,16 @@ window.addEventListener("message", (event) => {
         user: { displayName: "Life Fixture User" },
       });
     else send(3, "AUTH_REQUIRED", { reason: "Bootstrap required" });
+  } else if (message.type === "RENEW_SESSION" && message.version === 3) {
+    if (/^[A-Za-z0-9_-]{43}$/.test(message.payload?.code ?? "")) {
+      renewals += 1;
+      renewalCount.textContent = String(renewals);
+      bootstrap.textContent = "renewed";
+      send(3, "AUTH_STATUS", {
+        authenticated: true,
+        user: { displayName: "Life Fixture User" },
+      });
+    }
   } else if (message.type === "LOGOUT" && message.version === 3) {
     send(3, "AUTH_REQUIRED", { reason: "Signed out" });
   }
