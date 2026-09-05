@@ -28,8 +28,11 @@ HTTP 200. Both local release binaries were installed with backups. The existing
 Life Proxy persona, now named 助理Agent_LifeOS, restarted successfully: its log
 records channel subscription and online presence at 2026-09-05T17:42:35Z.
 
-A second read-only production check still found zero matching actions. The
-client accessibility call stalled before the retry could be sent. Therefore
-this report does not claim a successful live creation. The remaining acceptance
-step is to send the original request once and verify one action with priority
-HIGH, estimateMin 30, and dueDate 2026-09-06T02:00:00Z (10:00 Asia/Shanghai).
+A second read-only production check found zero matching actions. After the
+client became available, the original request was sent once at 01:52 local time.
+The harness rejected the turn before tool execution at
+2026-09-05T17:52:35.892747Z with `Life Agent turn was not authorized for this
+identity`. A subsequent read-only database check still found zero matching rows.
+No successful live creation is claimed. Restore the LifeOS session connection
+before retrying; then verify one action with priority HIGH, estimateMin 30, and
+dueDate 2026-09-06T02:00:00Z (10:00 Asia/Shanghai).
