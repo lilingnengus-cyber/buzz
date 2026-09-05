@@ -371,8 +371,9 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
     content.push_str(&last.tool);
     content.push_str(" succeeded");
     for reference in &last.resource_refs {
-        content.push_str("\n- ");
+        content.push_str("\n- <");
         content.push_str(&reference.life_uri());
+        content.push('>');
         if let Some(version) = reference.version() {
             content.push_str(&format!(" v{version}"));
         }
@@ -653,7 +654,7 @@ mod tests {
         );
         let content = trusted_content(capture.finish());
         assert!(content.contains("你的行动仍在进行中"));
-        assert!(content.contains("life://action/action-1 v8"));
+        assert!(content.contains("<life://action/action-1> v8"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
     }
@@ -710,7 +711,7 @@ mod tests {
         let mut capture = LifeResponseCapture::default();
         observe_codex_result(&mut capture, "get_action_detail", &result);
         let content = trusted_content(capture.finish());
-        assert!(content.contains("life://action/action-1 v1"));
+        assert!(content.contains("<life://action/action-1> v1"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
 
