@@ -191,6 +191,9 @@ pub(crate) struct ProjectInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ActionListInput {
     pub(crate) workspace_id: String,
+    /// Exact action title filter, applied before the result limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) project_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -538,6 +541,13 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
         }
         "list_actions" => {
             let input: ActionListInput = strict(arguments)?;
+            if input
+                .title
+                .as_ref()
+                .is_some_and(|title| title.is_empty() || title.chars().count() > 512)
+            {
+                return Err(ToolInputError);
+            }
             validate_window(input.from.as_deref(), input.to.as_deref())?;
             bounded_limit(input.limit)?;
             optional_safe_id(input.project_id.as_deref())?;
@@ -547,6 +557,7 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
                 "workspace",
                 input.workspace_id,
                 without_nulls(json!({
+                    "title": input.title,
                     "projectId": input.project_id,
                     "statuses": input.statuses,
                     "from": input.from,
@@ -1041,6 +1052,25 @@ pub(crate) struct ToolInputError;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn action_title_filter_is_literal_and_reaches_the_api() {
+        let title = "验证 Pacioli 会话直写 LifeOS";
+        let invocation = parse_invocation(
+            "list_actions",
+            json!({"workspaceId":"workspace-1","title":title,"limit":2}),
+        )
+        .expect("input");
+        assert_eq!(invocation.api_input["title"], title);
+        assert_eq!(invocation.api_input["limit"], 2);
+        for title in [String::new(), "a".repeat(513)] {
+            assert!(parse_invocation(
+                "list_actions",
+                json!({"workspaceId":"workspace-1","title":title})
+            )
+            .is_err());
+        }
+    }
 
     #[test]
     fn selectors_are_removed_before_hashing_and_routes_are_fixed() {

@@ -58,10 +58,11 @@ call `preview_life_write`. Never execute deletion in the preview turn. If a
 title matches multiple actions, ask which one before creating a preview.
 When the user gives only an action title, use the unique workspace identified
 in the MCP server's trusted instructions, if available. Call `list_actions`
-with limit 100 and match the exact title as data; for a unique match, read its
+with the exact `title` and limit 2; this searches before applying the result
+limit instead of scanning the first page of unrelated actions. For one match, read its
 detail/current version and generate the delete preview. Do not ask the user
 for workspace/resource IDs that this authorized lookup can resolve. If the
-bounded list has no match, ask for the project or an action reference instead
+filtered list has no match, ask for the project or an action reference instead
 of claiming that no such action exists. Never choose between duplicate titles.
 An exact confirmation delegation still allows only ONE execution call, with
 no preliminary reads. Do not perform additional reads after a write or preview.

@@ -94,7 +94,7 @@ impl LifeWorkbenchMcp {
 
     #[tool(
         name = "list_actions",
-        description = "List at most 100 LifeOS actions in a date window no longer than 93 days."
+        description = "List at most 100 LifeOS actions. For a named action, pass its exact title to filter before limiting results; use limit 2 to detect duplicate titles. Optional date windows cannot exceed 93 days."
     )]
     async fn list_actions(
         &self,
