@@ -239,7 +239,21 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
                 "LifeOS 已创建高风险写入预览，尚未执行。请在 10 分钟内原样发送：\n`{command}`"
             ))
         }
-        "execute_confirmed_life_write" => Some("LifeOS 已执行已确认的高风险写入。".into()),
+        "execute_confirmed_life_write" => {
+            if data.get("deleted").and_then(|value| value.as_bool()) == Some(true)
+                && data.get("resourceType").and_then(|value| value.as_str()) == Some("action")
+            {
+                if let Some(title) = data
+                    .get("title")
+                    .and_then(|value| value.as_str())
+                    .filter(|title| !title.trim().is_empty())
+                {
+                    let title = serde_json::to_string(title).ok()?;
+                    return Some(format!("已删除行动 {title}。"));
+                }
+            }
+            Some("LifeOS 已执行已确认的高风险写入。".into())
+        }
         "create_action" => {
             let status = data
                 .pointer("/action/status")
@@ -477,6 +491,27 @@ mod tests {
     use super::*;
     use crate::turn_observer::TurnObserver;
     use serde_json::json;
+
+    #[test]
+    fn deletion_receipt_names_only_a_confirmed_action() {
+        let tool = "execute_confirmed_life_write";
+        let data = json!({"deleted":true,"resourceType":"action","title":"验收行动"});
+        assert_eq!(
+            trusted_write_message(tool, &data).as_deref(),
+            Some("已删除行动 \"验收行动\"。")
+        );
+        for invalid in [
+            json!({"deleted":false,"resourceType":"action","title":"未删除"}),
+            json!({"deleted":true,"resourceType":"journal","title":"日志"}),
+            json!({"deleted":true}),
+            json!({"deleted":true,"resourceType":"action","title":" "}),
+        ] {
+            assert_eq!(
+                trusted_write_message(tool, &invalid).as_deref(),
+                Some("LifeOS 已执行已确认的高风险写入。")
+            );
+        }
+    }
 
     #[test]
     fn delete_prompt_names_target_and_keeps_command_out_of_user_text() {
