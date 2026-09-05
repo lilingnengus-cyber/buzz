@@ -201,6 +201,7 @@ impl IntoResponse for ApiError {
             Self::WriteConfirmation(WriteConfirmationError::Database) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
             }
+            Self::Agent(AgentError::RateLimited) => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             Self::Agent(AgentError::Invalid) => (StatusCode::BAD_REQUEST, "validation_failed"),
             Self::Agent(AgentError::Unauthorized) => {
                 (StatusCode::UNAUTHORIZED, "delegation_rejected")
@@ -608,6 +609,7 @@ async fn consume_delegation(
 
 fn agent_result(error: &AgentError) -> &'static str {
     match error {
+        AgentError::RateLimited => "rate_limited",
         AgentError::Conflict => "conflict",
         AgentError::Denied | AgentError::Unauthorized | AgentError::Invalid => "denied",
         AgentError::Database | AgentError::Signing => "failure",

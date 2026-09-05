@@ -394,8 +394,12 @@ impl ClientError {
     pub fn safe_result(self, trace_id: Uuid) -> String {
         let (code, message, retryable) = match self {
             Self::Validation => ("validation_failed", "Life tool input is invalid", false),
-            Self::ScopeDenied => ("scope_denied", "Life access was denied", false),
-            Self::RateLimited => ("rate_limited", "Life call budget is exhausted", false),
+            Self::ScopeDenied => ("scope_denied", "LifeOS 调用权限校验未通过。", false),
+            Self::RateLimited => (
+                "rate_limited",
+                "本回合调用额度已用完，请在新回合继续；本次调用未执行。",
+                false,
+            ),
             Self::GatewayUnavailable => (
                 "gateway_unavailable",
                 "Life authorization is temporarily unavailable",

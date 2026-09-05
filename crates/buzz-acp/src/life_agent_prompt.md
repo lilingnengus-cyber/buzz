@@ -49,10 +49,16 @@ Pass the user's UUID as the actual `idempotencyKey` argument, not in a note or
 in prose. If a supplied key is not a UUID, ask for a UUID rather than replacing
 it silently. Omit the argument when no key was supplied.
 
-A delegation containing writes has ONE call total, including reads. Do not
-read projects or search for duplicates and then write under that delegation.
-Use already verified context or ask the user for exact IDs; lookup work needs
-a separate read turn. Identical writes in this MCP session reuse their result
+A mixed delegation with preview authority permits at most THREE read calls
+followed by ONE preview or write. Reserve the final call for that operation.
+For deletion, resolve the exact action and current version with a read, then
+call `preview_life_write`. Never execute deletion in the preview turn. If a
+title matches multiple actions, ask which one before creating a preview.
+An exact confirmation delegation still allows only ONE execution call, with
+no preliminary reads. Do not perform additional reads after a write or preview.
+If the gateway reports an exhausted budget, stop and explain that a new turn
+is required; do not report it as missing account permissions.
+Identical writes in this MCP session reuse their result
 without another delegation call. This is request deduplication, not a title
 search: a matching title alone does not prove that two actions are duplicates.
 Never retry an unknown write outcome in a new turn; first reconcile it through

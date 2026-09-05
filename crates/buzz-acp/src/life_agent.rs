@@ -233,7 +233,9 @@ impl LifeAgentHostConfig {
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
         let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
         if exact_confirmation.is_some() && !self.high_risk_write_enabled {
-            return Err("LifeOS high-risk chat writes are disabled".into());
+            return Err(
+                "LifeOS 高风险聊天写入未启用；删除尚未执行，请先启用该功能再重新生成预览。".into(),
+            );
         }
         if let Some(confirmation) = &exact_confirmation {
             let validation_url = self
@@ -410,7 +412,11 @@ impl LifeAgentHostConfig {
             || issued.max_calls > 100
             || (effective.iter().any(|capability| {
                 WRITE_CAPABILITIES.contains(capability) || *capability == EXECUTE_WRITE_CAPABILITY
-            }) && issued.max_calls != 1)
+            }) && issued.max_calls != 1
+                && !(issued.max_calls == 4
+                    && effective.contains("write_command:preview")
+                    && effective.iter().any(|c| c.ends_with(":read"))
+                    && !exact_confirmation))
             || issued.token.len() != 43
             || !issued
                 .token
@@ -1280,6 +1286,35 @@ mod tests {
         assert!(!debug.contains(&"d".repeat(43)));
         assert!(!debug.contains(&config.mcp_service_token));
         std::mem::forget(access);
+    }
+
+    #[test]
+    fn preview_delegation_accepts_bounded_lookup_budget_only() {
+        let config = LifeAgentHostConfig::test_mock();
+        for max_calls in [1, 4, 5] {
+            let trace_id = Uuid::new_v4();
+            let capabilities = ["action:read", "write_command:preview"];
+            let result = config.access_from_issue(
+                IssueResponse {
+                    delegation_id: Uuid::new_v4(),
+                    token: "d".repeat(43),
+                    audience: "life-workbench-mcp".into(),
+                    effective_capabilities: capabilities.map(str::to_owned).to_vec(),
+                    max_calls,
+                    trace_id,
+                },
+                IssuedAccessContext {
+                    agent_id: &"a".repeat(64),
+                    agent_turn_id: "turn-1",
+                    trace_id,
+                    requested_capabilities: &capabilities,
+                    exact_confirmation: false,
+                    channel_disclosure: false,
+                },
+            );
+            assert_eq!(result.is_ok(), max_calls != 5);
+            std::mem::forget(result);
+        }
     }
 
     #[test]
