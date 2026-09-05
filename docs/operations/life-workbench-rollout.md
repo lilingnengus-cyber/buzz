@@ -12,6 +12,10 @@ LIFE_EXTENSION_ENABLED
 ```
 
 Both systems must declare contract version `1`; mismatches are rejected. Production values belong in the deployment secret/config system, not source control.
+When Agent reads are enabled, `LIFE_AGENT_ALLOWED_AGENT_IDS` is mandatory and
+must contain only the dedicated Life Proxy Nostr pubkey. An unlisted Agent does
+not receive the Life MCP server, even if global configuration reaches its
+process.
 
 | Stage | Scope | Proceed when | Immediate rollback |
 |---|---|---|---|

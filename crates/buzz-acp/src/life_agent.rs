@@ -30,6 +30,7 @@ const FEATURE_SWITCHES: [&str; 6] = [
     "LIFE_DOCK_ENABLED",
     "LIFE_NOTIFIER_ENABLED",
 ];
+const LIFE_AGENT_ALLOWED_AGENT_IDS: &str = "LIFE_AGENT_ALLOWED_AGENT_IDS";
 const LIFE_INTEGRATION_CONTRACT_VERSION: &str = "1";
 
 const READ_CAPABILITIES: [&str; 8] = [
@@ -80,6 +81,7 @@ pub(crate) struct LifeAgentHostConfig {
     pacioli_service_token: String,
     mcp_service_token: String,
     mcp_command: String,
+    allowed_agent_ids: Option<HashSet<String>>,
     write_enabled: bool,
     high_risk_write_enabled: bool,
     client: reqwest::Client,
@@ -178,6 +180,7 @@ impl LifeAgentHostConfig {
             "LIFE_WORKBENCH_MCP_COMMAND",
             read("LIFE_WORKBENCH_MCP_COMMAND"),
         )?;
+        let allowed_agent_ids = parse_agent_allowlist(read(LIFE_AGENT_ALLOWED_AGENT_IDS))?;
         if mcp_command.len() > 1_024 || mcp_command.chars().any(char::is_control) {
             return Err("LIFE_WORKBENCH_MCP_COMMAND is invalid".into());
         }
@@ -192,6 +195,7 @@ impl LifeAgentHostConfig {
             pacioli_service_token,
             mcp_service_token,
             mcp_command,
+            allowed_agent_ids,
             write_enabled: switches.agent_write,
             high_risk_write_enabled: switches.chat_high_risk_write,
             client,
@@ -222,6 +226,9 @@ impl LifeAgentHostConfig {
             agent_turn_id,
             trace_id,
         } = turn;
+        if !self.agent_is_allowed(agent_id) {
+            return Err("This Agent is not allowed to access LifeOS; route the request through the dedicated Life Proxy".into());
+        }
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
         let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
         if exact_confirmation.is_some() && !self.high_risk_write_enabled {
@@ -372,6 +379,12 @@ impl LifeAgentHostConfig {
         )
     }
 
+    fn agent_is_allowed(&self, agent_id: &str) -> bool {
+        self.allowed_agent_ids
+            .as_ref()
+            .is_none_or(|allowed| allowed.contains(agent_id))
+    }
+
     fn access_from_issue(
         &self,
         issued: IssueResponse,
@@ -445,6 +458,7 @@ impl LifeAgentHostConfig {
             pacioli_service_token: "p".repeat(32),
             mcp_service_token: "m".repeat(32),
             mcp_command: "life-workbench-mcp".into(),
+            allowed_agent_ids: None,
             write_enabled: true,
             high_risk_write_enabled: true,
             client: reqwest::Client::new(),
@@ -461,6 +475,9 @@ impl TurnExtension for LifeAgentHostConfig {
         &self,
         context: &VerifiedTurnContext<'_>,
     ) -> Result<TurnApplicability, String> {
+        if !self.agent_is_allowed(context.agent_id) {
+            return Ok(TurnApplicability::NotApplicable);
+        }
         let Some(event) = context.source_event else {
             return Ok(TurnApplicability::NotApplicable);
         };
@@ -754,6 +771,32 @@ fn require_non_empty(name: &str, value: Option<String>) -> Result<String, String
         .ok_or_else(|| format!("{name} is required when LIFE_AGENT_READ_ENABLED=true"))
 }
 
+fn parse_agent_allowlist(value: Option<String>) -> Result<Option<HashSet<String>>, String> {
+    let value = require_non_empty(LIFE_AGENT_ALLOWED_AGENT_IDS, value)?;
+    let entries = value
+        .split(',')
+        .map(str::trim)
+        .map(|agent_id| {
+            if agent_id.len() != 64
+                || !agent_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(format!(
+                    "{LIFE_AGENT_ALLOWED_AGENT_IDS} must contain comma-separated lowercase 64-character Agent pubkeys"
+                ));
+            }
+            Ok(agent_id.to_owned())
+        })
+        .collect::<Result<HashSet<_>, _>>()?;
+    if entries.is_empty() || entries.len() > 256 {
+        return Err(format!(
+            "{LIFE_AGENT_ALLOWED_AGENT_IDS} must contain between 1 and 256 Agent pubkeys"
+        ));
+    }
+    Ok(Some(entries))
+}
+
 fn require_secret(name: &str, value: Option<String>) -> Result<String, String> {
     let value = require_non_empty(name, value)?;
     if !(32..=512).contains(&value.len()) || value.chars().any(char::is_whitespace) {
@@ -931,6 +974,10 @@ mod tests {
         HashMap::from([
             ("LIFE_EXTENSION_ENABLED", "true"),
             ("LIFE_AGENT_READ_ENABLED", "true"),
+            (
+                "LIFE_AGENT_ALLOWED_AGENT_IDS",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
             ("LIFE_INTEGRATION_CONTRACT_VERSION", "1"),
             ("LIFE_AUTH_GATEWAY_URL", "https://life-auth.example.com"),
             ("LIFE_API_URL", "https://life.example.com"),
@@ -971,7 +1018,63 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("LIFE_WORKBENCH_MCP_SERVICE_TOKEN"));
+        let mut missing_allowlist = values();
+        missing_allowlist.remove(LIFE_AGENT_ALLOWED_AGENT_IDS);
+        let error = match config(&missing_allowlist) {
+            Ok(_) => panic!("Agent allowlist must be required"),
+            Err(error) => error,
+        };
+        assert!(error.contains(LIFE_AGENT_ALLOWED_AGENT_IDS));
         assert!(config(&values()).expect("enabled").is_some());
+    }
+
+    #[test]
+    fn agent_allowlist_accepts_only_canonical_pubkeys() {
+        let allowed = "a".repeat(64);
+        let parsed = parse_agent_allowlist(Some(allowed.clone()))
+            .expect("valid allowlist")
+            .expect("configured allowlist");
+        assert_eq!(parsed, HashSet::from([allowed]));
+        assert!(parse_agent_allowlist(None).is_err());
+        for invalid in [
+            "",
+            "agent",
+            &"A".repeat(64),
+            &format!("{},", "a".repeat(64)),
+        ] {
+            assert!(parse_agent_allowlist(Some(invalid.to_owned())).is_err());
+        }
+    }
+
+    #[test]
+    fn unlisted_agent_cannot_select_the_life_extension() {
+        let allowed_agent = "a".repeat(64);
+        let mut config = LifeAgentHostConfig::test_mock();
+        config.allowed_agent_ids = Some(HashSet::from([allowed_agent.clone()]));
+        let channel_id = Uuid::new_v4();
+        let event = event("打开 life://action/action-1", channel_id);
+        let context = |agent_id| VerifiedTurnContext {
+            source_event: Some(&event),
+            source_event_id: Some(event.id),
+            source_pubkey: Some(event.pubkey),
+            community_id: "community",
+            conversation: VerifiedConversation::Channel {
+                channel_id,
+                channel_type: Some("dm".into()),
+                participant_pubkeys: Vec::new(),
+            },
+            agent_id,
+            agent_turn_id: "turn",
+            trace_id: "trace",
+        };
+        assert!(matches!(
+            config.classify_turn(&context(&allowed_agent)),
+            Ok(TurnApplicability::Applicable { .. })
+        ));
+        assert_eq!(
+            config.classify_turn(&context(&"b".repeat(64))),
+            Ok(TurnApplicability::NotApplicable)
+        );
     }
 
     #[test]
@@ -1233,6 +1336,7 @@ mod tests {
             pacioli_service_token: "p".repeat(32),
             mcp_service_token: "m".repeat(32),
             mcp_command: "life-workbench-mcp".into(),
+            allowed_agent_ids: None,
             write_enabled: false,
             high_risk_write_enabled: false,
             client: reqwest::Client::new(),
@@ -1358,6 +1462,7 @@ mod tests {
             pacioli_service_token: "p".repeat(32),
             mcp_service_token: "m".repeat(32),
             mcp_command: "life-workbench-mcp".into(),
+            allowed_agent_ids: None,
             write_enabled: true,
             high_risk_write_enabled: true,
             client: reqwest::Client::new(),

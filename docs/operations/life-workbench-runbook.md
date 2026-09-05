@@ -37,7 +37,9 @@ the command then preserves its disposable databases and log directory.
 Enable in this order, with `LIFE_INTEGRATION_CONTRACT_VERSION=1` on both systems:
 
 1. `LIFE_EXTENSION_ENABLED`
-2. `LIFE_AGENT_READ_ENABLED` for isolated internal users and 1:1 DM
+2. `LIFE_AGENT_ALLOWED_AGENT_IDS` with only the dedicated Life Proxy pubkey, then
+   `LIFE_AGENT_READ_ENABLED` for its 1:1 DM. Other managed Agents must not be
+   listed, even when they inherit the global Life service configuration.
 3. `LIFE_AGENT_WRITE_ENABLED` for low/medium-risk previewed writes
 4. `LIFE_CHAT_HIGH_RISK_WRITE_ENABLED` for exact signed confirmation only
 5. `LIFE_DOCK_ENABLED`
@@ -53,6 +55,9 @@ Observe for at least one normal user cycle at each step. Stop on any cross-works
 - A channel-policy expiry or revocation must deny both new delegation issuance and later delegation consumption.
 - Gateway, LifeOS, Dock, and Notifier outages fail closed independently. An unavailable Notifier leaves committed outbox rows pending and does not roll back LifeOS domain transactions.
 - Messages carrying `source=life-notifier` are context only and do not recursively start a Life Agent turn.
+- The Agent allowlist is enforced before Life tool injection and again before
+  delegation issuance. Removing a pubkey takes effect when that Agent runtime
+  restarts; revoke any already-issued delegation during urgent removal.
 
 ## Dead letters
 
