@@ -59,3 +59,14 @@ idle, the thread contained one verified preview reply, with no deletion.
 Actual deletion remains pending a separately signed exact confirmation and
 enabled high-risk execution. No high-risk feature flag was changed by this
 rollout. The preview expires after ten minutes; regenerate it if needed.
+
+## Confirmed-execution activation
+
+At the user's subsequent instruction, enabled `LIFE_CHAT_HIGH_RISK_WRITE_ENABLED`
+in LifeOS production and as a Life Proxy persona override (global agent defaults
+remain unchanged). Backed up the server configuration outside its repository,
+restarted LifeOS with the updated environment, and restarted only Life Proxy.
+LifeOS health returned HTTP 200. At 23:48 Asia/Shanghai, preview
+`332b0344-e6b5-480d-8234-a13a80efa4cd` was still PENDING and expires at
+23:52:37 on 2026-09-05. Returned the UI to its preview thread. The user must
+send the exact confirmation there; this activation did not delete the action.
