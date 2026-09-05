@@ -7,7 +7,14 @@ const AGENT =
   "a110000000000000000000000000000000000000000000000000000000000042";
 const TRACE = "123e4567-e89b-42d3-a456-426614174000";
 const AUDIT = "123e4567-e89b-42d3-a456-426614174001";
-const lifeSessionCounts = new WeakMap<Page, { value: number }>();
+const lifeSessionStates = new WeakMap<
+  Page,
+  {
+    embedCount: number;
+    nextWorkbenchTtlMs: number;
+    workbenchCount: number;
+  }
+>();
 
 function oidcFixtureToken() {
   const encode = (value: object) =>
@@ -38,24 +45,32 @@ test.describe("Life Dock", () => {
     await page.addInitScript((token) => {
       window.__BUZZ_E2E_LIFE_ACCESS_TOKEN__ = token;
     }, oidcFixtureToken());
-    const issueCount = { value: 0 };
-    lifeSessionCounts.set(page, issueCount);
-    await page.route("**/v1/workbench/sessions", (route) =>
-      route.fulfill({
+    const sessionState = {
+      embedCount: 0,
+      nextWorkbenchTtlMs: 10 * 60_000,
+      workbenchCount: 0,
+    };
+    const bindingPayload = `life-workbench-identity-binding-v1\nfixture\nissued_at=${Math.floor(Date.now() / 1000)}`;
+    lifeSessionStates.set(page, sessionState);
+    await page.route("**/v1/workbench/sessions", (route) => {
+      sessionState.workbenchCount += 1;
+      const ttlMs = sessionState.nextWorkbenchTtlMs;
+      sessionState.nextWorkbenchTtlMs = 10 * 60_000;
+      return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
           sessionId: "123e4567-e89b-42d3-a456-426614174010",
           sessionToken: "S".repeat(43),
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          expiresAt: new Date(Date.now() + ttlMs).toISOString(),
         }),
-      }),
-    );
+      });
+    });
     await page.route("**/v1/embed-sessions", (route) => {
-      issueCount.value += 1;
+      sessionState.embedCount += 1;
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          embedSessionId: `123e4567-e89b-42d3-a456-42661417401${issueCount.value}`,
+          embedSessionId: `123e4567-e89b-42d3-a456-42661417401${sessionState.embedCount}`,
           embedUrl: `http://127.0.0.1:4173/embed/bootstrap?code=${"C".repeat(43)}`,
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           traceId: TRACE,
@@ -82,7 +97,7 @@ test.describe("Life Dock", () => {
         body: JSON.stringify({
           challengeId: "123e4567-e89b-42d3-a456-426614174021",
           audience: "life-workbench-identity-binding",
-          canonicalPayload: "life-workbench-identity-binding-v1\nfixture",
+          canonicalPayload: bindingPayload,
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           traceId: TRACE,
         }),
@@ -96,7 +111,7 @@ test.describe("Life Dock", () => {
       expect(body.challengeId).toBe("123e4567-e89b-42d3-a456-426614174021");
       expect(body.signedEvent).toMatchObject({
         kind: 24243,
-        content: "life-workbench-identity-binding-v1\nfixture",
+        content: bindingPayload,
         pubkey: "deadbeef".repeat(8),
       });
       return route.fulfill({
@@ -137,10 +152,10 @@ test.describe("Life Dock", () => {
     const dock = page.getByTestId("life-dock");
     const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
     await expect(dock).toBeVisible();
-    const sessionCount = lifeSessionCounts.get(page);
-    if (!sessionCount)
+    const sessionState = lifeSessionStates.get(page);
+    if (!sessionState)
       throw new Error("Life session counter was not installed");
-    await expect.poll(() => sessionCount.value).toBe(1);
+    await expect.poll(() => sessionState.embedCount).toBe(1);
     await expect(
       frame.getByRole("heading", { name: "LifeOS Dock Mock" }),
     ).toBeVisible();
@@ -278,6 +293,35 @@ test.describe("Life Dock", () => {
     });
   });
 
+  test("renews a near-expiry session without reloading the iframe or losing dirty state", async ({
+    page,
+  }) => {
+    const sessionState = lifeSessionStates.get(page);
+    if (!sessionState)
+      throw new Error("Life session counter was not installed");
+    sessionState.nextWorkbenchTtlMs = 94_000;
+
+    await page.getByTestId("life-dock-toggle").click();
+    const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
+    await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
+    await frame.getByRole("button", { name: "Open action fixture" }).click();
+    await frame.getByRole("button", { name: "Mark Life Dirty" }).click();
+    const instance = await frame.locator("#instance").textContent();
+
+    await expect
+      .poll(() => sessionState.embedCount, { timeout: 10_000 })
+      .toBe(2);
+    expect(sessionState.workbenchCount).toBe(2);
+    await expect(frame.locator("#renewal-count")).toHaveText("1");
+    await expect(frame.locator("#instance")).toHaveText(instance ?? "");
+    await expect(frame.locator("#current-resource")).toHaveText(
+      "action · fixture-action",
+    );
+
+    await page.getByLabel("LifeOS home").click();
+    await expect(page.getByTestId("life-dock-dirty-dialog")).toBeVisible();
+  });
+
   test("ignores wrong-source messages and performs one recovery attempt per expiry", async ({
     page,
   }) => {
@@ -285,10 +329,10 @@ test.describe("Life Dock", () => {
     await waitForMockLiveSubscription(page, "general");
     await page.getByTestId("life-dock-toggle").click();
     await expect(page.getByTestId("life-dock")).toBeVisible();
-    const sessionCount = lifeSessionCounts.get(page);
-    if (!sessionCount)
+    const sessionState = lifeSessionStates.get(page);
+    if (!sessionState)
       throw new Error("Life session counter was not installed");
-    await expect.poll(() => sessionCount.value).toBe(1);
+    await expect.poll(() => sessionState.embedCount).toBe(1);
     const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
     await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
     await frame.getByRole("button", { name: "Open action fixture" }).click();
@@ -329,8 +373,8 @@ test.describe("Life Dock", () => {
     await frame.getByRole("button", { name: "Expire Life Session" }).click();
     await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
     await expect(page.getByTestId("life-auth-required")).toBeHidden();
-    await expect.poll(() => sessionCount.value).toBe(2);
+    await expect.poll(() => sessionState.embedCount).toBe(2);
     await page.waitForTimeout(250);
-    expect(sessionCount.value).toBe(2);
+    expect(sessionState.embedCount).toBe(2);
   });
 });
