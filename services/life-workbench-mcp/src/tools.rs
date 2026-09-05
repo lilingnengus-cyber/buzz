@@ -8,7 +8,6 @@ const DEFAULT_LIST_LIMIT: u32 = 50;
 const DEFAULT_SNIPPET_LENGTH: u32 = 500;
 const DEFAULT_GOAL_HORIZON: &str = "QUARTER";
 const DEFAULT_PROJECT_COLOR: &str = "#197b70";
-const DEFAULT_ACTION_PRIORITY: &str = "MEDIUM";
 const DEFAULT_FOCUS_MODE: &str = "append";
 const DEFAULT_KNOWLEDGE_TYPE: &str = "NOTE";
 const DEFAULT_KNOWLEDGE_STATUS: &str = "APPROVED";
@@ -62,6 +61,7 @@ pub(crate) struct ResourceContext {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Invocation {
+    pub(crate) idempotency_key: Option<uuid::Uuid>,
     pub(crate) tool: &'static str,
     pub(crate) capability: &'static str,
     pub(crate) route: String,
@@ -85,6 +85,7 @@ impl Invocation {
             return Err(ToolInputError);
         }
         Ok(Self {
+            idempotency_key: None,
             tool,
             capability: contract.capability,
             route,
@@ -100,7 +101,7 @@ impl Invocation {
         })
     }
 
-    fn write(
+    pub(crate) fn write(
         tool: &'static str,
         route: &str,
         resource_type: &str,
@@ -120,6 +121,7 @@ impl Invocation {
         }
         validate_bounded_value(&api_input, 0)?;
         Ok(Self {
+            idempotency_key: None,
             tool,
             capability: contract.capability,
             route: route.into(),
@@ -143,6 +145,7 @@ impl Invocation {
         }
         let api_input = json!({});
         Ok(Self {
+            idempotency_key: None,
             tool,
             capability: contract.capability,
             route: "/api/workbench/write-commands/execute".into(),
@@ -315,20 +318,6 @@ pub(crate) struct CreateProjectInput {
     pub(crate) domain_id: Option<String>,
     pub(crate) goal_id: Option<String>,
     pub(crate) color: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct CreateActionInput {
-    pub(crate) workspace_id: String,
-    pub(crate) project_id: String,
-    pub(crate) parent_id: Option<String>,
-    pub(crate) title: String,
-    pub(crate) note: Option<String>,
-    pub(crate) priority: Option<String>,
-    pub(crate) due_date: Option<String>,
-    pub(crate) focus_date: Option<String>,
-    pub(crate) estimate_min: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -702,21 +691,8 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
             )
         }
         "create_action" => {
-            let input: CreateActionInput = strict(arguments)?;
-            optional_date(input.due_date.as_deref())?;
-            optional_date(input.focus_date.as_deref())?;
-            Invocation::write(
-                "create_action",
-                "/api/workbench/actions/write",
-                "workspace",
-                input.workspace_id,
-                None,
-                without_nulls_deep(json!({"operation":"create","value":{
-                    "projectId":input.project_id,"parentId":input.parent_id,"title":input.title,"note":input.note,
-                    "priority":input.priority.unwrap_or_else(|| DEFAULT_ACTION_PRIORITY.into()),
-                    "dueDate":input.due_date,"focusDate":input.focus_date,"estimateMin":input.estimate_min
-                }})),
-            )
+            let input: crate::action_intent::CreateActionInput = strict(arguments)?;
+            input.compile()
         }
         "update_action" => {
             let input: UpdateActionInput = strict(arguments)?;
@@ -992,7 +968,7 @@ fn validate_versioned_ids(values: &[VersionedId], maximum: usize) -> Result<(), 
     Ok(())
 }
 
-fn safe_id(value: &str) -> Result<(), ToolInputError> {
+pub(crate) fn safe_id(value: &str) -> Result<(), ToolInputError> {
     if (1..=128).contains(&value.len())
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b':')

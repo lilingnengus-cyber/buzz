@@ -214,6 +214,17 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
             ))
         }
         "execute_confirmed_life_write" => Some("LifeOS 已执行已确认的高风险写入。".into()),
+        "create_action" => {
+            let status = data
+                .pointer("/action/status")
+                .and_then(|value| value.as_str());
+            match status {
+                Some(status @ ("PENDING" | "DOING" | "BLOCKED" | "DONE")) => {
+                    Some(format!("LifeOS 已确认创建行动成功。状态：{status}。"))
+                }
+                _ => Some("LifeOS 已确认创建行动成功。".into()),
+            }
+        }
         _ => Some("LifeOS 已确认写入成功。".into()),
     }
 }
@@ -412,6 +423,39 @@ mod tests {
     use super::*;
     use crate::turn_observer::TurnObserver;
     use serde_json::json;
+
+    #[test]
+    fn created_action_reply_uses_only_service_status_and_identifiers() {
+        let trace = Uuid::new_v4();
+        let audit = Uuid::new_v4();
+        let mut capture = LifeResponseCapture::default();
+        capture.on_session_update(&json!({
+            "sessionUpdate":"agent_message_chunk", "messageId":"message-1",
+            "content":{"text":"fabricated action: DONE"}
+        }));
+        observe_named_result(
+            &mut capture,
+            "create_action",
+            &json!({
+                "ok":true, "data":{"action":{"status":"PENDING"}},
+                "resourceRefs":[{"scheme":"life","type":"action","id":"created-1","version":1}],
+                "auditId":audit, "traceId":trace
+            })
+            .to_string(),
+        );
+        let content = trusted_content(capture.finish());
+        assert!(content.contains("PENDING"));
+        assert!(content.contains("life://action/created-1"));
+        assert!(content.contains(&audit.to_string()));
+        assert!(content.contains(&trace.to_string()));
+        assert!(!content.contains("fabricated"));
+        assert!(!content.contains("DONE"));
+        assert!(
+            !trusted_write_message("create_action", &json!({"action":{"status":"injected"}}))
+                .expect("message")
+                .contains("injected")
+        );
+    }
 
     fn observe_named_result(capture: &mut LifeResponseCapture, tool: &str, text: &str) {
         capture.on_session_update(&json!({

@@ -48,6 +48,29 @@ Enable in this order, with `LIFE_INTEGRATION_CONTRACT_VERSION=1` on both systems
 
 Observe for at least one normal user cycle at each step. Stop on any cross-workspace result, plaintext DM, missing trace edge, duplicate delivery, unexplained authorization increase, or audit write failure.
 
+## Proxy action creation
+
+The proxy extracts a structured `create_action` input from the user's message;
+the MCP compiler validates its exact IDs, title, priority and calendar dates
+before consuming authority. Creation plus focus uses one `create_action` with
+`focusDate`. Missing targets or an unresolved local "today" require clarification;
+the compiler does not infer a project or substitute the server's UTC date.
+
+Write-capable delegations have one total call, including reads. Resolve context
+in a separate read turn or obtain exact IDs from the user before writing.
+The optional `idempotencyKey` UUID is passed to both the gateway and LifeOS
+outside the normalized business input. Without one, the key includes the Agent
+identity, turn, target and normalized payload.
+
+Within one MCP process, concurrent identical writes reuse the same terminal
+result without another gateway or API call. A different write is rejected.
+Cancellation, timeout and unknown transport outcomes keep the write reserved;
+do not blindly retry them in another turn. Reconcile through an authorized read.
+This cache is per delegation process, not a durable action-title index: process
+restarts and cross-turn deduplication still rely on gateway/LifeOS enforcement.
+The reply uses service-provided references, audit/trace IDs and recognized
+action statuses, never an Agent-generated claim of success.
+
 ## Revocation and isolation
 
 - Revoke a Life identity binding to invalidate active delegations and future target selection.

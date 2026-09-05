@@ -16,6 +16,13 @@ const CONSUME_PATH: &str = "/v1/life-agent/delegations/consume";
 pub struct LifeClient {
     config: Config,
     http: reqwest::Client,
+    write: tokio::sync::Mutex<Option<WriteAttempt>>,
+}
+
+struct WriteAttempt {
+    fingerprint: Uuid,
+    key: Uuid,
+    result: Result<String, ClientError>,
 }
 
 impl LifeClient {
@@ -25,12 +32,44 @@ impl LifeClient {
             .timeout(crate::config::HTTP_TIMEOUT)
             .build()
             .map_err(|_| ClientError::Internal)?;
-        Ok(Self { config, http })
+        Ok(Self {
+            config,
+            http,
+            write: tokio::sync::Mutex::new(None),
+        })
     }
 
     pub async fn invoke(&self, tool: &str, arguments: Value) -> Result<String, ClientError> {
         let invocation = parse_invocation(tool, arguments).map_err(|_| ClientError::Validation)?;
-        self.invoke_prepared(&invocation).await
+        if !invocation.is_write {
+            return self.invoke_prepared(&invocation).await;
+        }
+        // Serialize concurrent writes and reserve before any await that can
+        // consume authority. Cancellation leaves a terminal unknown outcome.
+        let fingerprint = deterministic_idempotency_key(
+            &self.config.agent_id,
+            &self.config.agent_turn_id,
+            &invocation,
+        );
+        let key = invocation.idempotency_key.unwrap_or(fingerprint);
+        let mut write = self.write.lock().await;
+        if let Some(previous) = write.as_ref() {
+            return if previous.fingerprint == fingerprint && previous.key == key {
+                previous.result.clone()
+            } else {
+                Err(ClientError::RateLimited)
+            };
+        }
+        *write = Some(WriteAttempt {
+            fingerprint,
+            key,
+            result: Err(ClientError::WriteOutcomeUnknown),
+        });
+        let result = self.invoke_prepared(&invocation).await;
+        if let Some(attempt) = write.as_mut() {
+            attempt.result = result.clone();
+        }
+        result
     }
 
     pub async fn invoke_safe(&self, tool: &str, arguments: Value) -> String {
@@ -41,7 +80,13 @@ impl LifeClient {
     }
 
     async fn invoke_prepared(&self, invocation: &Invocation) -> Result<String, ClientError> {
-        let idempotency_key = deterministic_idempotency_key(&self.config.agent_turn_id, invocation);
+        let idempotency_key = invocation.idempotency_key.unwrap_or_else(|| {
+            deterministic_idempotency_key(
+                &self.config.agent_id,
+                &self.config.agent_turn_id,
+                invocation,
+            )
+        });
         let consume = ConsumeRequest {
             agent_id: &self.config.agent_id,
             agent_turn_id: &self.config.agent_turn_id,
@@ -119,13 +164,23 @@ impl LifeClient {
             }
             let result: WorkbenchResult<Value> = bounded_json(response, MAX_RESPONSE_BYTES)
                 .await
-                .map_err(|_| ClientError::InvalidResponse)?;
+                .map_err(|_| {
+                if invocation.is_write {
+                    ClientError::WriteOutcomeUnknown
+                } else {
+                    ClientError::InvalidResponse
+                }
+            })?;
             let trace_id = match &result {
                 WorkbenchResult::Success(success) => success.trace_id,
                 WorkbenchResult::Failure(failure) => failure.trace_id,
             };
             if trace_id != self.config.trace_id {
-                return Err(ClientError::InvalidResponse);
+                return Err(if invocation.is_write {
+                    ClientError::WriteOutcomeUnknown
+                } else {
+                    ClientError::InvalidResponse
+                });
             }
             let serialized = serde_json::to_string(&result).map_err(|_| ClientError::Internal)?;
             if serialized.len() > MAX_RESPONSE_BYTES {
@@ -137,9 +192,14 @@ impl LifeClient {
     }
 }
 
-fn deterministic_idempotency_key(agent_turn_id: &str, invocation: &Invocation) -> Uuid {
+fn deterministic_idempotency_key(
+    agent_id: &str,
+    agent_turn_id: &str,
+    invocation: &Invocation,
+) -> Uuid {
     let mut hasher = Sha256::new();
     for value in [
+        agent_id,
         agent_turn_id,
         invocation.tool,
         invocation
@@ -154,6 +214,16 @@ fn deterministic_idempotency_key(agent_turn_id: &str, invocation: &Invocation) -
     ] {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value.as_bytes());
+    }
+    if let Some(resource) = &invocation.resource {
+        hasher.update(resource.expected_version.unwrap_or(0).to_be_bytes());
+        hasher.update(
+            resource
+                .preview_hash
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
     }
     let digest = hasher.finalize();
     let mut bytes = [0_u8; 16];

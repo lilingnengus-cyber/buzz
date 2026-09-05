@@ -20,6 +20,9 @@ use std::{
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
+#[path = "support/write_intent.rs"]
+mod write_intent;
+
 #[derive(Default)]
 struct MockState {
     consume_requests: Mutex<Vec<Value>>,
@@ -27,6 +30,7 @@ struct MockState {
     api_attempts: AtomicUsize,
     fail_first_api: AtomicBool,
     oversized_api: AtomicBool,
+    slow_api: AtomicBool,
 }
 
 #[tokio::test]
@@ -342,6 +346,9 @@ async fn mock_server(
         );
         state.api_requests.lock().expect("API lock").push(request);
         state.api_attempts.fetch_add(1, Ordering::SeqCst);
+        if state.slow_api.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_secs(11)).await;
+        }
         if state.fail_first_api.swap(false, Ordering::SeqCst) {
             return (StatusCode::SERVICE_UNAVAILABLE, "temporary").into_response();
         }
@@ -367,6 +374,7 @@ async fn mock_server(
         .route("/v1/life-agent/delegations/consume", post(consume))
         .route("/api/workbench/projects", post(projects))
         .route("/api/workbench/actions/status", post(projects))
+        .route("/api/workbench/actions/write", post(projects))
         .route("/api/workbench/write-commands/execute", post(projects))
         .with_state((state, trace_id));
     let server = tokio::spawn(async move {

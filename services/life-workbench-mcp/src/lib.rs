@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod action_intent;
 pub mod client;
 pub mod config;
 mod tools;
 
+use action_intent::CreateActionInput;
 use client::LifeClient;
 use config::Config;
 use rmcp::{
@@ -18,12 +20,12 @@ use serde_json::Value;
 use std::sync::Arc;
 use tools::{
     ActionInput, ActionListInput, ActionStatusWriteInput, AiExecutionInput, AppendAiOutputInput,
-    CreateActionInput, CreateGoalInput, CreateProjectInput, DailyReviewWriteInput, EmptyInput,
-    FinishAiExecutionInput, FocusWriteInput, JournalSearchInput, JournalWriteInput, KnowledgeInput,
-    KnowledgeSearchInput, KnowledgeWriteInput, PreviewLifeWriteInput, ProjectInput,
-    ProjectListInput, ProjectReviewWriteInput, ReorderActionsInput, ReviewContextInput,
-    StartAiExecutionInput, TodayInput, UpdateActionInput, WeeklyReviewInput,
-    WeeklyReviewWriteInput, WorkspaceInput, READ_TOOL_NAMES, WRITE_TOOL_NAMES,
+    CreateGoalInput, CreateProjectInput, DailyReviewWriteInput, EmptyInput, FinishAiExecutionInput,
+    FocusWriteInput, JournalSearchInput, JournalWriteInput, KnowledgeInput, KnowledgeSearchInput,
+    KnowledgeWriteInput, PreviewLifeWriteInput, ProjectInput, ProjectListInput,
+    ProjectReviewWriteInput, ReorderActionsInput, ReviewContextInput, StartAiExecutionInput,
+    TodayInput, UpdateActionInput, WeeklyReviewInput, WeeklyReviewWriteInput, WorkspaceInput,
+    READ_TOOL_NAMES, WRITE_TOOL_NAMES,
 };
 
 #[derive(Clone)]
@@ -202,7 +204,7 @@ impl LifeWorkbenchMcp {
 
     #[tool(
         name = "create_action",
-        description = "Create one LifeOS action under an exact delegated project."
+        description = "Compile and create one LifeOS action under an exact delegated project. Extract title, projectId, priority and explicit focusDate from the user's request. Include focusDate in this call for create plus focus; never follow it with set_today_focus. Pass a user-supplied UUID as idempotencyKey. Missing IDs or an unresolved local date require clarification before calling; do not spend this write delegation on lookup calls."
     )]
     async fn create_action(
         &self,

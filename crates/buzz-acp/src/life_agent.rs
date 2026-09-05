@@ -407,7 +407,9 @@ impl LifeAgentHostConfig {
             || issued.audience != "life-workbench-mcp"
             || issued.max_calls <= 0
             || issued.max_calls > 100
-            || (exact_confirmation && issued.max_calls != 1)
+            || (effective.iter().any(|capability| {
+                WRITE_CAPABILITIES.contains(capability) || *capability == EXECUTE_WRITE_CAPABILITY
+            }) && issued.max_calls != 1)
             || issued.token.len() != 43
             || !issued
                 .token
@@ -1277,6 +1279,31 @@ mod tests {
         assert!(!debug.contains(&"d".repeat(43)));
         assert!(!debug.contains(&config.mcp_service_token));
         std::mem::forget(access);
+    }
+
+    #[test]
+    fn ordinary_write_delegation_rejects_more_than_one_call() {
+        let config = LifeAgentHostConfig::test_mock();
+        let trace_id = Uuid::new_v4();
+        let result = config.access_from_issue(
+            IssueResponse {
+                delegation_id: Uuid::new_v4(),
+                token: "d".repeat(43),
+                audience: "life-workbench-mcp".into(),
+                effective_capabilities: vec!["action:create".into()],
+                max_calls: 2,
+                trace_id,
+            },
+            IssuedAccessContext {
+                agent_id: &"a".repeat(64),
+                agent_turn_id: "turn-1",
+                trace_id,
+                requested_capabilities: &WRITE_CAPABILITIES,
+                exact_confirmation: false,
+                channel_disclosure: false,
+            },
+        );
+        assert!(result.is_err());
     }
 
     #[tokio::test]
