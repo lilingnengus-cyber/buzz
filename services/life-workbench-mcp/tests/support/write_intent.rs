@@ -13,6 +13,8 @@ async fn create_and_focus_forwards_user_key_and_concurrent_duplicates_use_one_ca
     let client = LifeClient::new(config(&origin, trace)).expect("client");
     let key = Uuid::new_v4();
     let mut input = action();
+    input["dueDate"] = json!("2026-09-06T10:00:00+08:00");
+    input["estimateMin"] = json!(30);
     input["idempotencyKey"] = json!(key);
     let (first, second) = tokio::join!(
         client.invoke("create_action", input.clone()),
@@ -36,6 +38,11 @@ async fn create_and_focus_forwards_user_key_and_concurrent_duplicates_use_one_ca
     assert_eq!(api[0]["idempotencyKey"], json!(key));
     assert_eq!(api[0]["input"]["value"]["focusDate"], "2026-09-05");
     assert_eq!(api[0]["input"]["value"]["priority"], "HIGH");
+    assert_eq!(
+        api[0]["input"]["value"]["dueDate"],
+        "2026-09-06T10:00:00+08:00"
+    );
+    assert_eq!(api[0]["input"]["value"]["estimateMin"], 30);
     assert_eq!(api[0]["input"]["value"]["projectId"], "project-1");
     assert!(api[0]["input"]["value"].get("idempotencyKey").is_none());
     server.abort();
@@ -52,6 +59,9 @@ async fn invalid_extraction_never_consumes_authority_and_can_be_corrected() {
         ("projectId", ""),
         ("focusDate", "today"),
         ("focusDate", "2026-02-30"),
+        ("focusDate", "2026-09-06T10:00:00+08:00"),
+        ("dueDate", "2026-09-06T10:00:00"),
+        ("dueDate", "2026-09-06T25:00:00+08:00"),
         ("priority", "highest"),
         ("idempotencyKey", "not-a-uuid"),
     ] {

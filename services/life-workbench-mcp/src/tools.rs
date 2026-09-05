@@ -707,7 +707,7 @@ pub(crate) fn parse_invocation(tool: &str, arguments: Value) -> Result<Invocatio
         }
         "update_action" => {
             let input: UpdateActionInput = strict(arguments)?;
-            optional_date(input.due_date.as_deref())?;
+            optional_due_date(input.due_date.as_deref())?;
             optional_date(input.focus_date.as_deref())?;
             Invocation::write(
                 "update_action",
@@ -1002,6 +1002,20 @@ fn optional_date(value: Option<&str>) -> Result<(), ToolInputError> {
             .map_err(|_| ToolInputError),
         None => Ok(()),
     }
+}
+
+pub(crate) fn optional_due_date(value: Option<&str>) -> Result<(), ToolInputError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.len() == 10 {
+        return optional_date(Some(value));
+    }
+    if value.as_bytes().get(10) != Some(&b'T') {
+        return Err(ToolInputError);
+    }
+    chrono::DateTime::parse_from_rfc3339(value).map_err(|_| ToolInputError)?;
+    Ok(())
 }
 
 fn validate_window(from: Option<&str>, to: Option<&str>) -> Result<(), ToolInputError> {

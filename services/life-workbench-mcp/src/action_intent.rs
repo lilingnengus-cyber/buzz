@@ -2,7 +2,7 @@
 //! Natural-language interpretation belongs to the agent; this boundary never
 //! guesses identifiers, relative dates, or additional operations.
 
-use crate::tools::{safe_id, Invocation, ToolInputError};
+use crate::tools::{optional_due_date, safe_id, Invocation, ToolInputError};
 use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ pub(crate) struct CreateActionInput {
     title: String,
     note: Option<String>,
     priority: Option<String>,
+    /// YYYY-MM-DD or an RFC3339 instant with explicit timezone, e.g. 2026-09-06T10:00:00+08:00.
     due_date: Option<String>,
     focus_date: Option<String>,
     estimate_min: Option<i32>,
@@ -39,7 +40,8 @@ impl CreateActionInput {
         {
             return Err(ToolInputError);
         }
-        for value in [&self.due_date, &self.focus_date].into_iter().flatten() {
+        optional_due_date(self.due_date.as_deref())?;
+        for value in self.focus_date.iter() {
             let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| ToolInputError)?;
             if date.format("%Y-%m-%d").to_string() != *value {
                 return Err(ToolInputError);
