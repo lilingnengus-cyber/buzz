@@ -53,5 +53,40 @@ including the requested action) and the harness-verified receipt.
 
 No LifeOS domain data was changed during this live check. Cross-turn replay
 feedback is implemented and tested locally, but the LifeOS server changes
-have not been deployed. Deploy that companion change, then replay the existing
-acceptance UUID and confirm the same resource/audit with explicit reuse text.
+had not yet been deployed at the time of the initial read acceptance.
+
+## Production deployment and cross-turn replay acceptance
+
+Completed on 2026-09-05 at approximately 21:40 Asia/Shanghai.
+
+- LifeOS production now runs `09db335c96a1061a71f99660df1aaa06f43475b8`,
+  including replay metadata commit `71ca417` (the main-based cherry-pick of
+  `4117cbb`). Deployment run:
+  https://github.com/lilingnengus-cyber/life-os/actions/runs/33969390468
+- Two untracked configuration backups blocked the existing deployment script.
+  They were preserved outside the repository under
+  `/home/ubuntu/life-os-config-backups/20260905-replay-deploy/`; no backup was
+  deleted or included in Git.
+- The first deployment then exposed three stale dashboard tests that still
+  inspected the page wrapper after its logic moved into shared content.
+  Commit `09db335` points those tests at the shared component without removing
+  assertions. The complete static gate passed locally and in deployment.
+- Production build and Next/MCP health checks passed. Independent checks
+  returned HTTP 200 for both services. The server checkout is clean.
+- The legacy Hermes today-context probe was skipped because no workspace-bound
+  token is configured; the actual delegated Life Proxy workflow below passed.
+
+Replayed the identical acceptance request in a fresh Life Proxy DM turn with
+UUID `0a01540c-3ff3-4236-9c2b-7c8b88312275`. After the agent became idle, the
+thread contained exactly one reply, including:
+
+> 幂等命中，已复用成功结果，未重复执行。
+
+- Source event: `f3142012940c834d295aa6fb1fd82db81f32d4af4f10969be488c3ae7b2ba70f`
+- Resource: `life://action/cmtobzdf0000jwmmt0e8k4rak`, version 1
+- Audit ID: `700f8c28-16d6-49d6-957d-caacbb41cee8`
+- New trace: `82122d1e-3e70-4ed6-9f35-976984451f62`
+
+The resource, version, and audit match the original creation receipt. Life Dock
+also shows the same action at version 1 with status PENDING. This verifies
+server-confirmed reuse across separate turns, with no repeated execution.
