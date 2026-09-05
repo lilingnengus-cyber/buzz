@@ -159,6 +159,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const embedSessionIdRef = React.useRef<string | null>(null);
   const recoveryAttemptsRef = React.useRef(0);
   const sessionStartingRef = React.useRef(false);
+  const pendingOidcResumeRef = React.useRef(false);
   const manuallyDisconnectedRef = React.useRef(false);
   const bridgeHandshakeTimerRef = React.useRef<number | null>(null);
   const lifeAuth = useLifeAuth();
@@ -304,7 +305,13 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         const oidcToken = await lifeAuth.getAccessToken();
         if (!oidcToken) {
           if (!automatic) {
-            await lifeAuth.signIn();
+            // The desktop redirect navigator deliberately leaves its navigation
+            // promise pending after opening the system browser. Do not await it:
+            // doing so keeps sessionStartingRef locked forever and makes every
+            // later "Connect again" click a no-op. Resume from the authenticated
+            // phase after the deep-link callback instead.
+            pendingOidcResumeRef.current = true;
+            void lifeAuth.signIn();
             return;
           }
           throw new Error("Life OIDC session expired.");
@@ -314,7 +321,8 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           const idToken = await lifeAuth.getIdToken();
           if (!readOidcNonce(idToken ?? oidcToken)) {
             if (!automatic) {
-              await lifeAuth.signIn();
+              pendingOidcResumeRef.current = true;
+              void lifeAuth.signIn();
               return;
             }
             throw new Error("Workbench OIDC nonce is unavailable.");
@@ -406,11 +414,22 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   }, [active, auth.phase, startLifeSession, state.open]);
   React.useEffect(() => {
     if (
+      lifeAuth.phase !== "authenticated" ||
+      !pendingOidcResumeRef.current ||
+      sessionStartingRef.current
+    )
+      return;
+    pendingOidcResumeRef.current = false;
+    startLifeSession(true);
+  }, [lifeAuth.phase, startLifeSession]);
+  React.useEffect(() => {
+    if (
       lifeAuth.phase === "authenticated" ||
       lifeAuth.phase === "checking" ||
       lifeAuth.phase === "signing-in"
     )
       return;
+    pendingOidcResumeRef.current = false;
     workbenchSessionTokenRef.current = null;
     setSessionExpiresAt(null);
     embedSessionIdRef.current = null;

@@ -81,6 +81,23 @@ test("automatic recovery is limited to one attempt", () => {
   assert.equal(canAttemptLifeRecovery(2), false);
 });
 
+test("manual Life OIDC reconnect releases the session-start lock and resumes after callback", () => {
+  const source = readFileSync(
+    new URL("./LifeDockProvider.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /pendingOidcResumeRef\.current = true;\s*void lifeAuth\.signIn\(\);/u,
+  );
+  assert.doesNotMatch(source, /await lifeAuth\.signIn\(\)/u);
+  assert.match(
+    source,
+    /lifeAuth\.phase !== "authenticated"[\s\S]*!pendingOidcResumeRef\.current[\s\S]*pendingOidcResumeRef\.current = false;[\s\S]*startLifeSession\(true\);/u,
+  );
+});
+
 test("background resource synchronization never opens the Life Dock", () => {
   const resource = {
     version: 1,
