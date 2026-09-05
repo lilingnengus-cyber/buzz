@@ -36,3 +36,21 @@ identity`. A subsequent read-only database check still found zero matching rows.
 No successful live creation is claimed. Restore the LifeOS session connection
 before retrying; then verify one action with priority HIGH, estimateMin 30, and
 dueDate 2026-09-06T02:00:00Z (10:00 Asia/Shanghai).
+
+## Subsequent read-only acceptance
+
+On 2026-09-06, at the user's request, a production database query scoped to
+`default-workspace` and the exact title `财轻松周例会` returned exactly one row:
+
+- Action: `cmtoopxq70005wmikmj3tjplv`
+- Project: `cmowm68oh0001wmpz60liunii`
+- Priority: `HIGH`
+- dueDate (UTC storage): `2026-09-06 02:00:00`, equivalent to
+  `2026-09-06 10:00:00 +08:00` (Asia/Shanghai)
+- estimateMin: `30`
+
+The persisted title, requested clock time, priority and duration now pass
+acceptance, with no duplicate exact-title action in that workspace. This check
+performed no write and does not attribute the successful creation to the earlier
+rejected retry or establish how its authorization was subsequently restored.
+Reminder delivery was not part of this check.
