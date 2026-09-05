@@ -3,6 +3,51 @@ use axum::{extract::State, routing::post, Json, Router};
 use nostr::{EventBuilder, Keys, Kind, Tag};
 use serde_json::{json, Value};
 
+#[test]
+fn workspace_hint_requires_one_gateway_authorized_workspace() {
+    let config = LifeAgentHostConfig::test_mock();
+    for (workspaces, expected) in [
+        (vec![], None),
+        (vec!["workspace-1"], Some("workspace-1")),
+        (vec!["workspace-1", "workspace-2"], None),
+    ] {
+        let trace_id = Uuid::new_v4();
+        let access = config
+            .access_from_issue(
+                IssueResponse {
+                    effective_data_scope: IssuedDataScope {
+                        workspace: workspaces.into_iter().map(str::to_owned).collect(),
+                    },
+                    delegation_id: Uuid::new_v4(),
+                    token: "d".repeat(43),
+                    audience: "life-workbench-mcp".into(),
+                    effective_capabilities: vec!["action:read".into()],
+                    max_calls: 10,
+                    trace_id,
+                },
+                IssuedAccessContext {
+                    agent_id: &"a".repeat(64),
+                    agent_turn_id: "workspace-hint",
+                    trace_id,
+                    requested_capabilities: &READ_CAPABILITIES,
+                    exact_confirmation: false,
+                    channel_disclosure: false,
+                },
+            )
+            .expect("access");
+        assert_eq!(
+            access
+                .mcp_server
+                .env
+                .iter()
+                .find(|entry| entry.name == "LIFE_DELEGATED_WORKSPACE_ID")
+                .map(|entry| entry.value.as_str()),
+            expected
+        );
+        std::mem::forget(access);
+    }
+}
+
 #[tokio::test]
 async fn short_confirmation_preserves_signature_and_issues_only_bound_execute() {
     let command = Uuid::new_v4();

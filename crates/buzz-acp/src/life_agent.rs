@@ -102,12 +102,20 @@ mod short_tests;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct IssueResponse {
+    #[serde(default)]
+    effective_data_scope: IssuedDataScope,
     delegation_id: Uuid,
     token: String,
     audience: String,
     effective_capabilities: Vec<String>,
     max_calls: i32,
     trace_id: Uuid,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct IssuedDataScope {
+    #[serde(default)]
+    workspace: Vec<String>,
 }
 
 struct LifeAuthorizationRequest<'a> {
@@ -475,7 +483,7 @@ impl LifeAgentHostConfig {
         {
             return Err("Life Agent delegation context mismatch".into());
         }
-        let mcp_server = McpServer {
+        let mut mcp_server = McpServer {
             name: "life-workbench-mcp".into(),
             command: self.mcp_command.clone(),
             args: Vec::new(),
@@ -489,6 +497,14 @@ impl LifeAgentHostConfig {
                 env("LIFE_TRACE_ID", trace_id.to_string()),
             ],
         };
+        if let [workspace] = issued.effective_data_scope.workspace.as_slice() {
+            if !safe_uri_id(workspace) {
+                return Err("Life Agent delegated workspace is invalid".into());
+            }
+            mcp_server
+                .env
+                .push(env("LIFE_DELEGATED_WORKSPACE_ID", workspace));
+        }
         Ok(LifeTurnAccess {
             community_id: String::new(),
             mcp_server,
@@ -1321,6 +1337,7 @@ mod tests {
         let access = config
             .access_from_issue(
                 IssueResponse {
+                    effective_data_scope: IssuedDataScope::default(),
                     delegation_id: Uuid::new_v4(),
                     token: "d".repeat(43),
                     audience: "life-workbench-mcp".into(),
@@ -1365,6 +1382,7 @@ mod tests {
             let capabilities = ["action:read", "write_command:preview"];
             let result = config.access_from_issue(
                 IssueResponse {
+                    effective_data_scope: IssuedDataScope::default(),
                     delegation_id: Uuid::new_v4(),
                     token: "d".repeat(43),
                     audience: "life-workbench-mcp".into(),
@@ -1392,6 +1410,7 @@ mod tests {
         let trace_id = Uuid::new_v4();
         let result = config.access_from_issue(
             IssueResponse {
+                effective_data_scope: IssuedDataScope::default(),
                 delegation_id: Uuid::new_v4(),
                 token: "d".repeat(43),
                 audience: "life-workbench-mcp".into(),
