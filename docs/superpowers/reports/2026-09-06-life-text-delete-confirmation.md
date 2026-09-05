@@ -43,3 +43,16 @@ confirmation authority is available. The user must request a fresh preview.
 - Activating the local binary still requires restarting Life Proxy. Computer Use
   reported that the Mac was locked and could not be unlocked automatically; the
   user was asked to unlock it. No agent restart or live deletion was claimed.
+
+## Activation follow-up
+
+After the user requested execution again, the Mac was available. Life Proxy was
+restarted through its profile's Restart agent control and returned to Online /
+running. The configured binary matches the tested release by SHA-256. The gateway
+readiness endpoint returned 204.
+
+Live workflow acceptance remains pending: the Life Dock reports `LifeOS session
+expired` and `Workbench OIDC nonce is unavailable.` Clicking Connect again left
+the same error. No new confirmation was sent and no deletion was performed in
+this activation turn. Restoring the LifeOS login session is the next prerequisite
+before generating a fresh preview and obtaining the user's actual confirmation.
