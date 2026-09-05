@@ -78,3 +78,19 @@ preview-only request was sent for action `cmtobzdf0000jwmmt0e8k4rak`.
   LifeOS recorded consumption at `2026-09-05 16:38:17.545 UTC`.
 
 The previously pending login and live workflow acceptance are now resolved.
+
+## Named deletion receipts
+
+The user's follow-up requested the deleted action name in the success message.
+LifeOS now reads the action title within the deletion transaction, scoped to the
+confirmed workspace/id/version, and returns it only after the version-checked
+delete succeeds. The harness renders `已删除行动 "行动名称"。` only for a verified
+successful action deletion with a nonempty title. Older receipts retain their
+generic success message; titles remain quoted as data.
+
+Validation: the LifeOS write-command integration script and TypeScript checks
+passed, along with all 10 harness response tests and Clippy with warnings denied.
+LifeOS commit `fba1c9a` deployed successfully through run `33978741981`.
+Harness commit `3680d8c38` was built, installed with a backup, and activated by
+restarting Life Proxy; its profile returned to Online/running. No additional
+live deletion was made for this wording change.
