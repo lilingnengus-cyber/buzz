@@ -90,3 +90,21 @@ thread contained exactly one reply, including:
 The resource, version, and audit match the original creation receipt. Life Dock
 also shows the same action at version 1 with status PENDING. This verifies
 server-confirmed reuse across separate turns, with no repeated execution.
+
+## Full CI after deployment acceptance
+
+The complete `just ci` gate passed (exit 0) on revision `05365a521` on
+2026-09-05. This supersedes the earlier note that full CI had not been rerun.
+
+- Rust tests in the full gate: 4,309 passed; configured ignored tests retained.
+- Desktop JavaScript tests: 5,533 passed, zero failures.
+- Flutter tests: 1,663 passed.
+- Formatting, lint/static checks, file-size gates, desktop/native checks,
+  desktop frontend build, and web build passed.
+- Log: `/tmp/pacioli-life-reply-full-ci.log`.
+
+Used `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0`
+to keep artifacts within available disk space. After the root Rust test stage
+finished and desktop JavaScript tests started, cleaned only the completed root
+development artifacts (3.7 GiB). The separate Tauri target was retained and all
+remaining stages completed normally. No quality gate was skipped.
