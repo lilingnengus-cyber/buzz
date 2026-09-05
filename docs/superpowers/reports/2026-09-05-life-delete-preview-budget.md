@@ -38,3 +38,24 @@ delegation before a delete preview could be issued. No delete call was issued.
   revision `e2f982a5e`. The existing production image has not yet been switched.
 - Live preview validation is pending an available application interaction
   window. No action was deleted and no high-risk feature flag was enabled.
+
+## Production activation and live acceptance
+
+After the user authorized the application interaction, switched the gateway
+to `life-auth-gateway:e2f982a5e` and restarted only Life Proxy. The previous
+compose file is preserved at `/opt/life-auth/compose.before-preview-budget.yml`.
+Gateway readiness returned HTTP 204.
+
+At 23:42 Asia/Shanghai on 2026-09-05, a fresh DM requested an action lookup
+followed by `preview_life_write` for `delete_action`. After the agent became
+idle, the thread contained one verified preview reply, with no deletion.
+
+- Source event: `fa0a5795c22eec0dc8f661761c5add6349559fe476c5be063700e0043e1a2f88`
+- Action: `cmtobzdf0000jwmmt0e8k4rak`
+- Preview: `332b0344-e6b5-480d-8234-a13a80efa4cd`, version 1
+- Trace: `ebfb967c-1d63-4d13-bb68-5df4d54a944e`
+- Audit: `0cf092a6-96df-4f58-b3de-d3e16ee5b6f2`
+
+Actual deletion remains pending a separately signed exact confirmation and
+enabled high-risk execution. No high-risk feature flag was changed by this
+rollout. The preview expires after ten minutes; regenerate it if needed.
