@@ -30,3 +30,21 @@ do not exercise the real identity provider's missing-nonce interactive callback.
 Release status: source fix only. The running installed desktop app has not been
 replaced. Remaining validation is a production-configured desktop build and a
 real reconnect check; the live session is currently restored.
+
+## Installed desktop acceptance
+
+The production-configured desktop release build completed successfully (8m51s)
+with the existing mesh-llm feature, followed by local signing verification.
+Installed at `/Applications/Pacioli.app`; the prior app is preserved at
+`/Applications/Pacioli.backup-before-session-recovery-20260906-181446.app`.
+The current installed buzz-acp and life-workbench-mcp binaries were retained in
+the replacement bundle to avoid reverting earlier agent fixes.
+
+After restart, opening the Dock displayed `Life OIDC session expired.`. One
+click on `Sign in to LifeOS` restored the authenticated Dock and loaded the
+native `/dashboard` page. No second click was needed, and the authenticated
+Sign out control became available. No business data was changed.
+
+This establishes successful one-click recovery after installation. It is not a
+long-duration production soak test and did not reproduce a missing-nonce token
+on demand. The automated near-expiry/dirty-state coverage remains as above.
