@@ -130,3 +130,29 @@ New baseline Dock session: `bc4655fc-f791-49b7-a69f-4bb8758c72c1`, created
 16:35:57Z. The existing one-time follow-up was reactivated for 2026-09-07 00:38
 Asia/Shanghai, with instructions to stop after reporting and not manipulate
 sessions or reconnect during observation.
+
+## Real expiry follow-up after renewal rollout
+
+At the scheduled 2026-09-07 00:39 Asia/Shanghai check, read-only production
+records showed a replacement Dock session created at
+2026-09-06T16:35:58.912Z, about two seconds after the expected renewal trigger
+and before baseline expiry at 16:37:27Z:
+
+- New session: `55309271-2018-4774-bb5e-f81e6ca8f5c9`, ACTIVE,
+  expiresAt 2026-09-06T17:35:31Z, lastSeenAt 2026-09-06T16:38:52.714Z.
+- Baseline `bc4655fc-f791-49b7-a69f-4bb8758c72c1`: REVOKED,
+  lastSeenAt 2026-09-06T16:35:58.873Z.
+
+This establishes timely replacement and continued server session activity after
+the original expiry, consistent with automatic renewal. No matching renewal
+route lines were present in the gateway container logs for the inspected window;
+therefore those logs do not independently establish the request's trigger.
+The Mac was locked: even listing running apps failed, so the client page could
+not be inspected and absence of manual intervention could not be established.
+Full automatic-renewal acceptance remains unconfirmed; do not claim an end-to-end
+pass from session records alone. No login, refresh, reconnect or business write
+was performed by this check. The one-time automation was paused.
+
+Next step: unlock the Mac and inspect the current native page and auth state
+without clicking reconnect, then distinguish confirmed server renewal from
+remaining client continuity evidence.
