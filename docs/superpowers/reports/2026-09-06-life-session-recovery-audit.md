@@ -111,3 +111,22 @@ The temporary local test database was stopped after verification.
 Release status: this renewal correction is committed source, not yet deployed.
 Publish the gateway endpoint before installing the desktop that calls it, then
 perform one normal login to establish a valid baseline for a real expiry cycle.
+
+## Renewal correction deployed
+
+Gateway image `life-auth-gateway:18315cfdf` was built from the committed source
+and deployed. Previous compose preserved at
+`/opt/life-auth/compose.before-renewal-18315cfdf.yml`. Readiness returned 204;
+an invalid-session request to the new renewal endpoint returned 401.
+
+The production-configured desktop build completed (3m40s), was locally signed
+and installed at `/Applications/Pacioli.app`. Previous bundle preserved at
+`/Applications/Pacioli.backup-before-bound-renewal-20260906-233640.app`.
+Current agent/MCP binaries were retained. One normal login restored native
+`/dashboard`; this is startup validation, not yet automatic-renewal acceptance.
+
+New baseline Dock session: `bc4655fc-f791-49b7-a69f-4bb8758c72c1`, created
+2026-09-06T15:37:40.005Z, expires 2026-09-06T16:37:27Z. Expected renewal begins
+16:35:57Z. The existing one-time follow-up was reactivated for 2026-09-07 00:38
+Asia/Shanghai, with instructions to stop after reporting and not manipulate
+sessions or reconnect during observation.
