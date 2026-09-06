@@ -48,3 +48,18 @@ Sign out control became available. No business data was changed.
 This establishes successful one-click recovery after installation. It is not a
 long-duration production soak test and did not reproduce a missing-nonce token
 on demand. The automated near-expiry/dirty-state coverage remains as above.
+
+## Real expiry follow-up (19:16 Asia/Shanghai)
+
+The scheduled read-only check found no new Dock session since the baseline
+`73825065-5e96-4725-9958-636ab2036ff1`. Its expiresAt remained
+2026-09-06T11:15:32Z; lastSeenAt was 2026-09-06T11:13:09.911Z, before the
+expected 11:14:02Z renewal. Its stored ACTIVE status does not override expiry.
+
+The Mac was locked, and Computer Use could not inspect the running page.
+No login, refresh, reconnection or session mutation was attempted. Locking was
+observed; whether sleep or another condition interrupted renewal is unknown.
+Consequently this run did not establish successful automatic renewal and cannot
+isolate its cause. The one-time follow-up automation was paused after reporting.
+Next step: unlock the Mac and inspect the client/authentication failure without
+first manually reconnecting, to preserve diagnostic evidence.
