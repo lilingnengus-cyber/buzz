@@ -63,3 +63,24 @@ Consequently this run did not establish successful automatic renewal and cannot
 isolate its cause. The one-time follow-up automation was paused after reporting.
 Next step: unlock the Mac and inspect the client/authentication failure without
 first manually reconnecting, to preserve diagnostic evidence.
+
+## Unlocked failure inspection
+
+After the user unlocked the Mac, a read-only UI inspection showed the native
+`/dashboard` still mounted, with disabled Sign out and the exact error
+`Workbench OIDC nonce is unavailable.` plus Connect again. No reconnect or
+refresh was clicked. Thus an actual automatic recovery failure is confirmed;
+locking alone is not an adequate explanation for this observed error.
+
+The current client clears the Workbench session token before scheduled renewal,
+then gets access and ID tokens and requires a nonce to create a fresh Workbench
+session. `getValidWorkbenchUser` uses `signinSilent` near OIDC expiry. The pinned
+OIDC library's refresh response validation permits an ID token without nonce;
+therefore successful token refresh does not itself establish that a subsequent
+nonce-required session creation can work. No raw tokens were read, so the exact
+refresh response in this incident remains unverified.
+
+The installed callback-revision fix addresses interactive login completion,
+not this separate automatic credential/session renewal boundary. Next work:
+implement and test a supported session renewal path for refreshed credentials
+without removing nonce checks from initial login or reusing an expired token.
