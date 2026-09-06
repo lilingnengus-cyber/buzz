@@ -319,9 +319,9 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           throw new Error("Life OIDC session expired.");
         }
         let sessionToken = workbenchSessionTokenRef.current;
-        if (!sessionToken) {
+        if (!sessionToken || renewExisting) {
           const idToken = await lifeAuth.getIdToken();
-          if (!readOidcNonce(idToken ?? oidcToken)) {
+          if (!sessionToken && !readOidcNonce(idToken ?? oidcToken)) {
             if (!automatic) {
               pendingOidcResumeRef.current = lifeAuth.loginRevision;
               void lifeAuth.signIn();
@@ -333,6 +333,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
             gateway,
             oidcToken,
             idToken,
+            sessionToken ?? undefined,
           );
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
@@ -473,8 +474,6 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     const delay = lifeSessionRenewalDelay(sessionExpiresAt);
     if (delay === null) return;
     const timer = window.setTimeout(() => {
-      workbenchSessionTokenRef.current = null;
-      setSessionExpiresAt(null);
       startLifeSession(true, true);
     }, delay);
     return () => window.clearTimeout(timer);

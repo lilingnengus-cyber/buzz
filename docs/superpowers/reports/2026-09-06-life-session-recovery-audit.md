@@ -84,3 +84,30 @@ The installed callback-revision fix addresses interactive login completion,
 not this separate automatic credential/session renewal boundary. Next work:
 implement and test a supported session renewal path for refreshed credentials
 without removing nonce checks from initial login or reusing an expired token.
+
+## Refreshed-credential renewal correction
+
+Added a separate `/v1/workbench/sessions/renew` path. It requires an active,
+unexpired Workbench session in the configured deployment plus a fresh RS256
+OIDC credential with the configured issuer/audience, valid expiry and the same
+issuer/subject as that session. Identity resolution is repeated before creating
+the replacement session. Initial session creation still requires the login nonce.
+No expired credential or nonce is fabricated or retained to bypass validation.
+
+The desktop retains the current session through scheduled renewal and submits
+it alongside refreshed credentials to this endpoint. It replaces the token only
+after a successful renewal response and keeps the existing iframe renewal path.
+An already expired session still requires normal interactive recovery.
+
+Validation passed: JWT verification (including missing nonce on refresh versus
+initial login, wrong identity and expired credentials); two real PostgreSQL
+identity/session tests (including invalid, revoked, expired and wrong-deployment
+session rejection); all three Life Dock smoke tests. The near-expiry fixture
+now replaces OIDC credentials with a nonce-free token and checks the renewal
+request carries the previous session; it preserves iframe instance, selected
+action and dirty state. Gateway all-target Clippy with warnings denied passed.
+The temporary local test database was stopped after verification.
+
+Release status: this renewal correction is committed source, not yet deployed.
+Publish the gateway endpoint before installing the desktop that calls it, then
+perform one normal login to establish a valid baseline for a real expiry cycle.

@@ -155,14 +155,18 @@ export async function createLifeWorkbenchSession(
   gateway: string,
   oidcToken: string,
   idToken?: string | null,
+  previousSessionToken?: string,
 ): Promise<LifeWorkbenchSession> {
   const nonce = readOidcNonce(idToken ?? oidcToken);
-  if (!nonce) throw new Error("Workbench OIDC nonce is unavailable.");
+  if (!previousSessionToken && !nonce)
+    throw new Error("Workbench OIDC nonce is unavailable.");
   const value = await postJson(
     gateway,
-    "/v1/workbench/sessions",
+    previousSessionToken
+      ? "/v1/workbench/sessions/renew"
+      : "/v1/workbench/sessions",
     `Bearer ${oidcToken}`,
-    { nonce },
+    previousSessionToken ? { sessionToken: previousSessionToken } : { nonce },
   );
   if (
     !isRecord(value) ||
