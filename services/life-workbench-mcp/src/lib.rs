@@ -204,7 +204,7 @@ impl LifeWorkbenchMcp {
 
     #[tool(
         name = "create_action",
-        description = "Compile and create one LifeOS action under an exact delegated project. Extract title, projectId, priority and explicit focusDate from the user's request. Include focusDate in this call for create plus focus; never follow it with set_today_focus. Pass a user-supplied UUID as idempotencyKey. Missing IDs or an unresolved local date require clarification before calling; do not spend this write delegation on lookup calls."
+        description = "Compile and create one LifeOS action under an exact delegated project. For named subtasks, pass childTitles (up to 20) to create the parent and all children atomically in this single write. Extract title, projectId, priority and explicit focusDate from the user's request. Include focusDate in this call for create plus focus; never follow it with set_today_focus. Pass a user-supplied UUID as idempotencyKey. Missing IDs or an unresolved local date require clarification before calling; do not spend this write delegation on lookup calls."
     )]
     async fn create_action(
         &self,

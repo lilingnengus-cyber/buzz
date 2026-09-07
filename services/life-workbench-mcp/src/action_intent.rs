@@ -16,6 +16,8 @@ pub(crate) struct CreateActionInput {
     project_id: String,
     parent_id: Option<String>,
     title: String,
+    /// Titles of up to 20 direct children, created atomically with this action.
+    child_titles: Option<Vec<String>>,
     note: Option<String>,
     priority: Option<String>,
     /// YYYY-MM-DD or an RFC3339 instant with explicit timezone, e.g. 2026-09-06T10:00:00+08:00.
@@ -38,6 +40,11 @@ impl CreateActionInput {
                 .as_deref()
                 .is_some_and(|note| !valid_text(note, 10_000))
         {
+            return Err(ToolInputError);
+        }
+        if self.child_titles.as_ref().is_some_and(|titles| {
+            titles.len() > 20 || titles.iter().any(|title| !valid_text(title, 200))
+        }) {
             return Err(ToolInputError);
         }
         optional_due_date(self.due_date.as_deref())?;
@@ -64,7 +71,7 @@ impl CreateActionInput {
             "projectId":self.project_id,"parentId":self.parent_id,
             "title":self.title,"note":self.note,"priority":priority,
             "dueDate":self.due_date,"focusDate":self.focus_date,
-            "estimateMin":self.estimate_min
+            "estimateMin":self.estimate_min,"childTitles":self.child_titles
         });
         if let Some(fields) = value.as_object_mut() {
             fields.retain(|_, value| !value.is_null());
@@ -87,4 +94,21 @@ fn valid_text(value: &str, max: usize) -> bool {
         && value.trim() == value
         && value.encode_utf16().count() <= max
         && !value.chars().any(|ch| ch <= '\u{1f}' || ch == '\u{7f}')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejects_invalid_or_unbounded_children_before_writing() {
+        for titles in [
+            json!([""]),
+            json!([" bad"]),
+            json!(["bad\nname"]),
+            json!(vec!["child"; 21]),
+        ] {
+            let input: CreateActionInput = serde_json::from_value(json!({"workspaceId":"workspace-1","projectId":"project-1","title":"parent","childTitles":titles})).unwrap();
+            assert!(input.compile().is_err());
+        }
+    }
 }

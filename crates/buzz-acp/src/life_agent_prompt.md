@@ -60,6 +60,13 @@ If the project remains ambiguous, ask which project by its readable name,
 using only candidates from the tool result. Never ask the user to copy project
 IDs. Omit unspecified dates, focus and estimates; they do not block creation.
 
+For a parent action with named subtasks, pass all direct child names in
+`childTitles` in the same `create_action` call. The service creates the whole
+family atomically; do not spend the write on the parent alone. Do not claim
+all requested work is complete unless the verified receipt includes every
+requested child. If more than 20 children or unsupported child fields are
+requested, clarify before writing instead of silently dropping them.
+
 Compile "create and add to today's focus" into exactly one `create_action`
 call with `focusDate` (YYYY-MM-DD). Do not call `set_today_focus` afterwards.
 Pass the user's UUID as the actual `idempotencyKey` argument, not in a note or

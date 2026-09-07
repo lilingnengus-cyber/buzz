@@ -255,14 +255,28 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
             Some("LifeOS 已执行已确认的高风险写入。".into())
         }
         "create_action" => {
+            if let (Some(requested), Some(created)) = (
+                data.pointer("/completion/requestedChildren")
+                    .and_then(|v| v.as_u64()),
+                data.pointer("/completion/createdChildren")
+                    .and_then(|v| v.as_u64()),
+            ) {
+                if requested > 0 {
+                    return Some(if created == requested {
+                        format!("LifeOS 已完整创建父行动和 {created} 个子任务。")
+                    } else {
+                        format!("LifeOS 仅部分完成：父行动已创建，子任务已创建 {created}/{requested} 个。")
+                    });
+                }
+            }
             let status = data
                 .pointer("/action/status")
                 .and_then(|value| value.as_str());
             match status {
-                Some(status @ ("PENDING" | "DOING" | "BLOCKED" | "DONE")) => {
-                    Some(format!("LifeOS 已确认创建行动成功。状态：{status}。"))
-                }
-                _ => Some("LifeOS 已确认创建行动成功。".into()),
+                Some(status @ ("PENDING" | "DOING" | "BLOCKED" | "DONE")) => Some(format!(
+                    "LifeOS 已确认创建行动成功。状态：{status}。本次回执未包含子任务创建结果。"
+                )),
+                _ => Some("LifeOS 已确认创建行动成功；本次回执未包含子任务创建结果。".into()),
             }
         }
         _ => Some("LifeOS 已确认写入成功。".into()),
@@ -860,5 +874,25 @@ mod tests {
             .to_string(),
         );
         assert!(sensitive.finish().invalid_tool_result);
+    }
+}
+
+#[cfg(test)]
+mod action_family_receipt_tests {
+    use super::trusted_write_message;
+    use serde_json::json;
+
+    #[test]
+    fn distinguishes_complete_partial_and_legacy_receipts() {
+        for (created, expected) in [
+            (3, "已完整创建父行动和 3 个子任务"),
+            (1, "子任务已创建 1/3 个"),
+        ] {
+            let data = json!({"completion":{"requestedChildren":3,"createdChildren":created}});
+            assert!(trusted_write_message("create_action", &data)
+                .is_some_and(|text| text.contains(expected)));
+        }
+        assert!(trusted_write_message("create_action", &json!({}))
+            .is_some_and(|text| text.contains("未包含子任务")));
     }
 }

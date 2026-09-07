@@ -15,6 +15,7 @@ async fn create_and_focus_forwards_user_key_and_concurrent_duplicates_use_one_ca
     let mut input = action();
     input["dueDate"] = json!("2026-09-06T10:00:00+08:00");
     input["estimateMin"] = json!(30);
+    input["childTitles"] = json!(["公司核名", "地址申请", "确认审核通过"]);
     input["idempotencyKey"] = json!(key);
     let (first, second) = tokio::join!(
         client.invoke("create_action", input.clone()),
@@ -43,6 +44,10 @@ async fn create_and_focus_forwards_user_key_and_concurrent_duplicates_use_one_ca
         "2026-09-06T10:00:00+08:00"
     );
     assert_eq!(api[0]["input"]["value"]["estimateMin"], 30);
+    assert_eq!(
+        api[0]["input"]["value"]["childTitles"],
+        json!(["公司核名", "地址申请", "确认审核通过"])
+    );
     assert_eq!(api[0]["input"]["value"]["projectId"], "project-1");
     assert!(api[0]["input"]["value"].get("idempotencyKey").is_none());
     server.abort();
