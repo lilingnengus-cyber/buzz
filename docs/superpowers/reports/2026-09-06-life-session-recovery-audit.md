@@ -156,3 +156,27 @@ was performed by this check. The one-time automation was paused.
 Next step: unlock the Mac and inspect the current native page and auth state
 without clicking reconnect, then distinguish confirmed server renewal from
 remaining client continuity evidence.
+
+## Unlocked live renewal acceptance — 2026-09-07
+
+At 09:17 Asia/Shanghai, Pacioli was already running; the open Life Dock showed
+native `/actions`, the `关键行动 ACTIONS` heading and an enabled Sign out control,
+with no expired/reconnect prompt. Database records showed nine successive
+session replacements overnight, consistent with the scheduled renewal cadence.
+That retrospective pattern alone does not exclude manual intervention.
+
+An additional renewal was then directly observed during this read-only check.
+No login, reconnect, refresh or navigation was clicked. Before the wait, active
+session `81db90f1-4fe2-49f2-990a-b3846d03f5ed` expired at
+2026-09-07T01:19:42Z. After a 40-second observation interval, its replacement
+`da6ec743-813a-42d1-94d0-2bda03327c06` was ACTIVE, created at
+2026-09-07T01:18:13.989Z (88 seconds before old expiry), with expiry
+2026-09-07T02:17:44Z. The old session was REVOKED with lastSeenAt
+2026-09-07T01:18:13.938Z.
+
+Immediately after replacement, the same native `/actions` page and heading
+remained visible, Sign out remained enabled, and no expired/reconnect prompt
+was present. Real scheduled renewal and continued authenticated page display
+pass this observed cycle. This live check does not separately prove iframe
+identity or unsaved-edit preservation; those remain covered by the automated
+fixture. No business data was changed. The one-time automation remains paused.
