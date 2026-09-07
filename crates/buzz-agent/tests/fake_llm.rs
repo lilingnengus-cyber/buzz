@@ -1320,7 +1320,7 @@ async fn mid_turn_usage_includes_earlier_turns() {
 /// Setup: round 1 is a tool call WITH usage (tokens are captured). After the
 /// tool_call_update notification (proving round 1 is fully processed), we gate
 /// the round-2 LLM response behind a `oneshot` barrier that only releases after
-/// cancel is sent. This guarantees the turn exits with `stopReason: "cancelled"`
+/// cancel is acknowledged. This guarantees the turn exits with `stopReason: "cancelled"`
 /// deterministically, even on a slow CI worker.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelled_turn_with_usage_emits_notification_before_response() {
@@ -1335,7 +1335,7 @@ async fn cancelled_turn_with_usage_emits_notification_before_response() {
     // in-flight TCP request can resolve. The queue is empty for round 2, so the
     // agent receives the fallback "no canned response" body which it treats as
     // an LLM error; the cancel check at the round boundary fires first because
-    // the gate is only released after cancel is enqueued.
+    // the gate is only released after cancel is acknowledged.
     let responses = vec![openai_tool_call_with_usage(
         "call_cancel_test",
         "fake__noop",
@@ -1371,7 +1371,7 @@ async fn cancelled_turn_with_usage_emits_notification_before_response() {
                     }
                 }
                 // For request 2+ (round 2), wait for the gate to open before
-                // responding. This ensures cancel is sent before round 2 resolves,
+                // responding. This ensures cancel is acknowledged before round 2 resolves,
                 // making stopReason: cancelled deterministic.
                 if req_num >= 2 {
                     let rx = gate.lock().await.take();
@@ -1415,10 +1415,10 @@ async fn cancelled_turn_with_usage_emits_notification_before_response() {
     })
     .await;
 
-    // Now send cancel and release the round-2 gate. Cancel is enqueued before
-    // round 2 can respond, so the turn exits with stopReason: cancelled.
+    // Send cancel, but keep round 2 blocked until the agent acknowledges it.
+    // Flushing stdin alone does not prove the agent has processed cancellation.
     let c_id = h.send("session/cancel", json!({"sessionId": sid})).await;
-    let _ = gate_tx.send(()); // unblock round 2
+    let mut gate_tx = Some(gate_tx);
 
     let mut saw_usage_before_prompt_response = false;
     let mut saw_usage = false;
@@ -1427,7 +1427,11 @@ async fn cancelled_turn_with_usage_emits_notification_before_response() {
     for _ in 0..40 {
         let v = h.recv().await;
         if v["id"] == json!(c_id) {
+            assert!(v.get("error").is_none(), "cancel must be acknowledged: {v}");
             saw_cancel_ok = true;
+            if let Some(gate) = gate_tx.take() {
+                let _ = gate.send(());
+            }
         } else if is_usage_update(&v) {
             saw_usage = true;
             if !saw_prompt_response {
