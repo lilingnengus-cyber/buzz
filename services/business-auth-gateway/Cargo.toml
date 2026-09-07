@@ -13,7 +13,7 @@ base64 = { workspace = true }
 business-iam = { path = "../../crates/business-iam" }
 chrono = { workspace = true }
 hex = { workspace = true }
-jsonwebtoken = { workspace = true }
+jsonwebtoken = "9.3"
 nostr = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true }

@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { runTauriCommand } from "./tauri-command.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "vite";
-
-const require = createRequire(import.meta.url);
 
 function normalizeDockOrigin(name, value) {
   if (!value?.trim()) return null;
@@ -101,11 +99,12 @@ function withBusinessDockConfig(args) {
 }
 
 async function main() {
-  const cli = require("@tauri-apps/cli");
   try {
-    await cli.run(withBusinessDockConfig(process.argv.slice(2)), "pnpm tauri");
+    process.exitCode = runTauriCommand(
+      withBusinessDockConfig(process.argv.slice(2)),
+    );
   } catch (error) {
-    cli.logError(error instanceof Error ? error.message : String(error));
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }

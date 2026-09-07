@@ -396,7 +396,7 @@ pub(crate) async fn publish(
         parent_event_id: source_event.id,
     };
     let mut builder =
-        match buzz_sdk::build_message(channel_id, &content, Some(&thread), &[], false, &[]) {
+        match buzz_sdk::build_message(channel_id, &content, Some(&thread), &[], false, &[], &[]) {
             Ok(builder) => builder,
             Err(error) => {
                 tracing::warn!(channel = %channel_id, "Life Agent response build failed: {error}");
