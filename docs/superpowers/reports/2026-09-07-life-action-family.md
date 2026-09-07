@@ -27,5 +27,12 @@ Validation:
 - Existing LifeOS write API/idempotency checks and TypeScript check passed.
 
 LifeOS service commit: 5cd123098eefdb752c21aac7e436a9f6b437ad2f.
-Production deployment and local agent activation are recorded below after verification.
+Production deployment completed successfully in GitHub Actions run 34076367244
+(2m24s); the server checkout is 5cd1230 and the system status endpoint returns 200.
+Installed both sidecars in Pacioli and the main checkout, preserving backups at
+/tmp/life-family-sidecars-20260907-102856; the app signature verifies.
+Restarted only 助理Agent_LifeOS at 10:30:55 Asia/Shanghai. Its new harness process
+82919 uses this worktree release binary; relay connection and DM subscription
+completed at 10:31:00 and the UI reports Online.
+A new production parent/child creation through chat has not been performed.
 No existing parent or child actions are recreated for this change.
