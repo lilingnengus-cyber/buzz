@@ -34,5 +34,16 @@ Installed both sidecars in Pacioli and the main checkout, preserving backups at
 Restarted only 助理Agent_LifeOS at 10:30:55 Asia/Shanghai. Its new harness process
 82919 uses this worktree release binary; relay connection and DM subscription
 completed at 10:31:00 and the UI reports Online.
-A new production parent/child creation through chat has not been performed.
+Follow-up live acceptance on 2026-09-07 at 10:41–10:42 Asia/Shanghai:
+A natural-language DM created 父子行动完整验收 20260907 in 帕乔利AI with
+核对父子关联 and 核对完整回执, without dates. The assistant returned the verified
+complete parent + 2 child receipt with all three links:
+- parent cmtqmxut50005wmj2kvk5n5e3
+- child cmtqmxut90007wmj2ffz91tev
+- child cmtqmxutb0009wmj2nkf1es6n
+Trace f2bdce3c-145a-4db9-87b5-084c58612d45;
+audit ef595a73-4b2f-4cfd-98bf-f153c3dbf640.
+The native LifeOS tree shows 2 children, and clicking the second child link
+opens /actions?action=cmtqmxutb0009wmj2nkf1es6n.
+Acceptance data remains present; no cleanup deletion was requested.
 No existing parent or child actions are recreated for this change.
