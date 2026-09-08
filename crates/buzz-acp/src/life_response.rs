@@ -1,3 +1,6 @@
+#[path = "life_reply_links.rs"]
+mod reply_links;
+
 use crate::{acp::AcpClient, relay::RestClient, turn_observer::TurnObserver};
 use life_workbench_contracts::result::{ErrorCode, LifeResourceRef, ResourceType, WorkbenchResult};
 use nostr::{Event, Tag};
@@ -382,7 +385,7 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
     if !last.is_write && !captured.channel_disclosure {
         let concise = concise_read_text(&content);
         if !concise.is_empty() {
-            return concise;
+            return reply_links::link_action_items(&concise, &last.resource_refs);
         }
         return last.message.clone();
     }
