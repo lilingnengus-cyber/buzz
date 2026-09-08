@@ -229,6 +229,58 @@ async function trackSnapshotRows(page: Page) {
   });
 }
 
+// Keep startup states observable until the test explicitly permits revalidation.
+// Intercept only the mocked IPC response; the real channel handler and payload
+// logging still run, and the dedicated cold-boot test retains its timing budget.
+async function holdChannelsResponse(page: Page) {
+  await page.addInitScript(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_RELEASE_CHANNELS__?: () => void;
+    };
+    const ready = new Promise<void>((resolve) => {
+      testWindow.__BUZZ_E2E_RELEASE_CHANNELS__ = resolve;
+    });
+    const internals = {};
+    Object.defineProperty(internals, "invoke", {
+      configurable: true,
+      set(invoke: (command: string, ...args: unknown[]) => Promise<unknown>) {
+        Object.defineProperty(internals, "invoke", {
+          configurable: true,
+          writable: true,
+          value: async (command: string, ...args: unknown[]) => {
+            const response = invoke(command, ...args);
+            if (command === "get_channels") await ready;
+            return response;
+          },
+        });
+      },
+    });
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      writable: true,
+      value: internals,
+    });
+  });
+}
+
+async function releaseChannelsResponse(page: Page) {
+  await page.evaluate(() => {
+    (
+      window as Window & { __BUZZ_E2E_RELEASE_CHANNELS__?: () => void }
+    ).__BUZZ_E2E_RELEASE_CHANNELS__?.();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const client = window.__BUZZ_E2E_QUERY_CLIENT__ as {
+          getQueryState: (key: string[]) => { fetchStatus: string } | undefined;
+        };
+        return client.getQueryState(["channels"])?.fetchStatus;
+      }),
+    )
+    .toBe("idle");
+}
+
 async function getTrackedSnapshotRows(page: Page) {
   return page.evaluate(
     () =>
@@ -294,6 +346,7 @@ test("matching not-modified preserves display mutations without persisting them"
 }) => {
   const optimisticName = "optimistic-local-channel";
   await seedSnapshot(page, { hash: MATCHING_HASH });
+  await holdChannelsResponse(page);
   await installMockBridge(page, {
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,
@@ -302,7 +355,6 @@ test("matching not-modified preserves display mutations without persisting them"
 
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
     FULL_SNAPSHOT.length,
-    { timeout: 500 },
   );
   await mutateDisplayedChannels(page, optimisticName);
   await expect(
@@ -312,6 +364,7 @@ test("matching not-modified preserves display mutations without persisting them"
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: MATCHING_HASH }]);
+  await releaseChannelsResponse(page);
   await expect
     .poll(() => readPersistedSnapshot(page))
     .toEqual({
@@ -329,12 +382,11 @@ test("matching not-modified preserves display mutations without persisting them"
 test("first-ever boot without a snapshot sends null and shows loading", async ({
   page,
 }) => {
+  await holdChannelsResponse(page);
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
   await page.goto("/");
 
-  await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
-  });
+  await expect(page.getByTestId("sidebar-loading")).toBeVisible();
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
     .poll(() => getChannelsPayloads(page))
@@ -346,6 +398,7 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
       presence: "absent",
       serializedBytes: 0,
     });
+  await releaseChannelsResponse(page);
   await expect(page.getByTestId("channel-general")).toBeVisible();
   await expect
     .poll(() => getFullSidebarMeasure(page))
@@ -362,12 +415,11 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
     keyOwnerPubkey: OWNER_PUBKEY,
     ownerPubkey: STALE_COMMUNITY_PUBKEY,
   });
+  await holdChannelsResponse(page);
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
   await page.goto("/");
 
-  await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
-  });
+  await expect(page.getByTestId("sidebar-loading")).toBeVisible();
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
     .poll(() => getChannelsPayloads(page))
@@ -378,6 +430,7 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
       channelCount: 0,
       presence: "invalid",
     });
+  await releaseChannelsResponse(page);
   await expect(page.getByTestId("channel-general")).toBeVisible();
 });
 
@@ -417,15 +470,14 @@ test("partial hash/list write fails toward a full fetch", async ({ page }) => {
       JSON.stringify({ ...snapshot, hash: "newer-partial-hash" }),
     );
   }, snapshotKey(RELAY_URL));
+  await holdChannelsResponse(page);
   await installMockBridge(page, {
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,
   });
   await page.goto("/");
 
-  await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
-  });
+  await expect(page.getByTestId("sidebar-loading")).toBeVisible();
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
     .poll(() => getChannelsPayloads(page))
@@ -436,6 +488,7 @@ test("partial hash/list write fails toward a full fetch", async ({ page }) => {
       channelCount: 0,
       presence: "invalid",
     });
+  await releaseChannelsResponse(page);
   await expect(page.getByTestId("channel-general")).toBeVisible();
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
 });
@@ -458,6 +511,7 @@ test("mismatched not-modified hash falls back to a full list", async ({
   page,
 }) => {
   await seedSnapshot(page, { hash: "persisted-stale-hash" });
+  await holdChannelsResponse(page);
   await installMockBridge(page, {
     channelsReadDelayMs: READ_DELAY_MS,
     channelsNotModifiedResponses: 1,
@@ -465,9 +519,8 @@ test("mismatched not-modified hash falls back to a full list", async ({
   await page.goto("/");
 
   const snapshotRows = page.locator('[data-channel-id^="snapshot-"]');
-  await expect(snapshotRows).toHaveCount(FULL_SNAPSHOT.length, {
-    timeout: 500,
-  });
+  await expect(snapshotRows).toHaveCount(FULL_SNAPSHOT.length);
+  await releaseChannelsResponse(page);
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "persisted-stale-hash" }, { knownHash: null }]);
