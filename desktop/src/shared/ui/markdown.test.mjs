@@ -622,6 +622,14 @@ test("buzzDeepLinkUrlTransform: preserves validated life resource links", () => 
   assert.match(html, /href="life:\/\/action\/next-action"/);
 });
 
+test("verified Life reply autolinks retain their resource destination", () => {
+  const html = renderMarkdown(
+    "已验证 LifeOS 结果：create_action succeeded\n\n- <life://action/next-action> v1 — 财轻松周例会",
+  );
+  assert.match(html, /href="life:\/\/action\/next-action"/);
+  assert.match(html, />life:\/\/action\/next-action<\/a>/);
+});
+
 test("buzzDeepLinkUrlTransform: strips malformed life resource links", () => {
   const html = renderMarkdown("[escape](life://action/%252e%252e)");
   assert.match(html, /href=""/);

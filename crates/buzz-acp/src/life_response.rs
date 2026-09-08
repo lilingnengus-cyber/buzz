@@ -19,6 +19,7 @@ struct ObservedLifeResult {
     trace_id: Uuid,
     audit_id: Option<Uuid>,
     sanitized_summary: Option<String>,
+    pending_delete: Option<serde_json::Value>,
 }
 
 pub(crate) struct CapturedLifeResponse {
@@ -26,6 +27,12 @@ pub(crate) struct CapturedLifeResponse {
     results: Vec<ObservedLifeResult>,
     invalid_tool_result: bool,
     channel_disclosure: bool,
+}
+
+impl CapturedLifeResponse {
+    pub(crate) fn pending_delete(&self) -> Option<serde_json::Value> {
+        self.results.last()?.pending_delete.clone()
+    }
 }
 
 #[derive(Default)]
@@ -120,6 +127,7 @@ impl LifeResponseCapture {
                 trace_id: Uuid::nil(),
                 audit_id: None,
                 sanitized_summary: None,
+                pending_delete: None,
             });
             return;
         }
@@ -185,6 +193,7 @@ impl LifeResponseCapture {
                     message.push_str(" 幂等状态：首次执行。");
                 }
                 self.results.push(ObservedLifeResult {
+                    pending_delete: delete_preview(&tool, &success.data),
                     tool,
                     is_write,
                     succeeded: true,
@@ -204,6 +213,7 @@ impl LifeResponseCapture {
                 trace_id: failure.trace_id,
                 audit_id: None,
                 sanitized_summary: None,
+                pending_delete: None,
             }),
         }
     }
@@ -218,24 +228,83 @@ fn trusted_write_message(tool: &str, data: &serde_json::Value) -> Option<String>
             if !super::life_agent::is_exact_write_confirmation(command) {
                 return None;
             }
+            if data.pointer("/command/tool").and_then(|v| v.as_str()) == Some("delete_action") {
+                delete_preview(tool, data)?;
+                let title = data.pointer("/target/title")?.as_str()?;
+                // JSON quoting keeps resource titles visibly delimited as data.
+                let title = serde_json::to_string(title).ok()?;
+                return Some(format!("确认删除行动 {title} 吗？该行动及允许级联删除的子记录将永久删除，无法恢复。\n尚未删除。请在预览有效期内（最长 10 分钟）回复：确认删除"));
+            }
             Some(format!(
                 "LifeOS 已创建高风险写入预览，尚未执行。请在 10 分钟内原样发送：\n`{command}`"
             ))
         }
-        "execute_confirmed_life_write" => Some("LifeOS 已执行已确认的高风险写入。".into()),
+        "execute_confirmed_life_write" => {
+            if data.get("deleted").and_then(|value| value.as_bool()) == Some(true)
+                && data.get("resourceType").and_then(|value| value.as_str()) == Some("action")
+            {
+                if let Some(title) = data
+                    .get("title")
+                    .and_then(|value| value.as_str())
+                    .filter(|title| !title.trim().is_empty())
+                {
+                    let title = serde_json::to_string(title).ok()?;
+                    return Some(format!("已删除行动 {title}。"));
+                }
+            }
+            Some("LifeOS 已执行已确认的高风险写入。".into())
+        }
         "create_action" => {
+            if let (Some(requested), Some(created)) = (
+                data.pointer("/completion/requestedChildren")
+                    .and_then(|v| v.as_u64()),
+                data.pointer("/completion/createdChildren")
+                    .and_then(|v| v.as_u64()),
+            ) {
+                if requested > 0 {
+                    return Some(if created == requested {
+                        format!("LifeOS 已完整创建父行动和 {created} 个子任务。")
+                    } else {
+                        format!("LifeOS 仅部分完成：父行动已创建，子任务已创建 {created}/{requested} 个。")
+                    });
+                }
+            }
             let status = data
                 .pointer("/action/status")
                 .and_then(|value| value.as_str());
             match status {
-                Some(status @ ("PENDING" | "DOING" | "BLOCKED" | "DONE")) => {
-                    Some(format!("LifeOS 已确认创建行动成功。状态：{status}。"))
-                }
-                _ => Some("LifeOS 已确认创建行动成功。".into()),
+                Some(status @ ("PENDING" | "DOING" | "BLOCKED" | "DONE")) => Some(format!(
+                    "LifeOS 已确认创建行动成功。状态：{status}。本次回执未包含子任务创建结果。"
+                )),
+                _ => Some("LifeOS 已确认创建行动成功；本次回执未包含子任务创建结果。".into()),
             }
         }
         _ => Some("LifeOS 已确认写入成功。".into()),
     }
+}
+
+fn delete_preview(tool: &str, data: &serde_json::Value) -> Option<serde_json::Value> {
+    if tool != "preview_life_write" || data.pointer("/command/tool")?.as_str()? != "delete_action" {
+        return None;
+    }
+    let command = data.get("command")?;
+    let id = Uuid::parse_str(command.get("commandId")?.as_str()?).ok()?;
+    let version = command.get("expectedVersion")?.as_i64()?;
+    let hash = command.get("previewHash")?.as_str()?;
+    let exact = format!("/confirm life-write {id} v{version} {hash}");
+    if command.get("exactConfirmation")?.as_str()? != exact
+        || !super::life_agent::is_exact_write_confirmation(&exact)
+        || command.get("resourceType")?.as_str()? != "action"
+        || command.get("resourceId")? != data.pointer("/target/id")?
+        || command.get("expectedVersion")? != data.pointer("/target/version")?
+        || data.pointer("/target/title")?.as_str()?.is_empty()
+    {
+        return None;
+    }
+    Some(
+        serde_json::json!({"commandId": id, "expectedVersion": version,
+        "previewHash": hash, "expiresAt": command.get("expiresAt")?.as_str()?}),
+    )
 }
 
 impl TurnObserver for LifeResponseCapture {
@@ -316,8 +385,9 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
     content.push_str(&last.tool);
     content.push_str(" succeeded");
     for reference in &last.resource_refs {
-        content.push_str("\n- ");
+        content.push_str("\n- <");
         content.push_str(&reference.life_uri());
+        content.push('>');
         if let Some(version) = reference.version() {
             content.push_str(&format!(" v{version}"));
         }
@@ -376,12 +446,12 @@ pub(crate) async fn publish(
     channel_id: Uuid,
     source_event: &Event,
     captured: CapturedLifeResponse,
-) {
+) -> Option<Event> {
     let trusted_tags = match trusted_result_tags(&captured) {
         Ok(tags) => tags,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Life Agent result tags rejected: {error}");
-            return;
+            return None;
         }
     };
     let content = trusted_content(captured);
@@ -400,7 +470,7 @@ pub(crate) async fn publish(
             Ok(builder) => builder,
             Err(error) => {
                 tracing::warn!(channel = %channel_id, "Life Agent response build failed: {error}");
-                return;
+                return None;
             }
         };
     for tag in trusted_tags {
@@ -410,7 +480,7 @@ pub(crate) async fn publish(
         Ok(event) => event,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Life Agent response signing failed: {error}");
-            return;
+            return None;
         }
     };
     let expected_id = event.id.to_hex();
@@ -418,13 +488,17 @@ pub(crate) async fn publish(
         Ok(Ok(value))
             if value.get("accepted").and_then(|item| item.as_bool()) == Some(true)
                 && value.get("event_id").and_then(|item| item.as_str())
-                    == Some(expected_id.as_str()) => {}
+                    == Some(expected_id.as_str()) =>
+        {
+            return Some(event)
+        }
         Ok(Ok(_)) => tracing::warn!(channel = %channel_id, "Life Agent response was not accepted"),
         Ok(Err(error)) => {
             tracing::warn!(channel = %channel_id, "Life Agent response publish failed: {error}")
         }
         Err(_) => tracing::warn!(channel = %channel_id, "Life Agent response publish timed out"),
     }
+    None
 }
 
 #[cfg(test)]
@@ -432,6 +506,47 @@ mod tests {
     use super::*;
     use crate::turn_observer::TurnObserver;
     use serde_json::json;
+
+    #[test]
+    fn deletion_receipt_names_only_a_confirmed_action() {
+        let tool = "execute_confirmed_life_write";
+        let data = json!({"deleted":true,"resourceType":"action","title":"验收行动"});
+        assert_eq!(
+            trusted_write_message(tool, &data).as_deref(),
+            Some("已删除行动 \"验收行动\"。")
+        );
+        for invalid in [
+            json!({"deleted":false,"resourceType":"action","title":"未删除"}),
+            json!({"deleted":true,"resourceType":"journal","title":"日志"}),
+            json!({"deleted":true}),
+            json!({"deleted":true,"resourceType":"action","title":" "}),
+        ] {
+            assert_eq!(
+                trusted_write_message(tool, &invalid).as_deref(),
+                Some("LifeOS 已执行已确认的高风险写入。")
+            );
+        }
+    }
+
+    #[test]
+    fn delete_prompt_names_target_and_keeps_command_out_of_user_text() {
+        let id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let mut data = json!({"command":{"commandId":id,"tool":"delete_action","resourceType":"action",
+            "resourceId":"action-1","expectedVersion":7,"previewHash":hash,"expiresAt":"2026-09-06T01:00:00Z",
+            "exactConfirmation":format!("/confirm life-write {id} v7 {hash}")},
+            "target":{"id":"action-1","title":"验收行动","version":7}});
+        let text = trusted_write_message("preview_life_write", &data).expect("preview");
+        assert!(text.contains("验收行动"));
+        assert!(text.contains("回复：确认删除"));
+        assert!(text.contains("子记录"));
+        assert!(!text.contains("/confirm"));
+        assert!(!text.contains(&hash));
+        assert!(delete_preview("preview_life_write", &data).is_some());
+        data["target"]["id"] = json!("another-action");
+        assert!(trusted_write_message("preview_life_write", &data).is_none());
+        assert!(delete_preview("preview_life_write", &data).is_none());
+    }
 
     #[test]
     fn replay_feedback_requires_explicit_success_metadata() {
@@ -553,7 +668,7 @@ mod tests {
         );
         let content = trusted_content(capture.finish());
         assert!(content.contains("你的行动仍在进行中"));
-        assert!(content.contains("life://action/action-1 v8"));
+        assert!(content.contains("<life://action/action-1> v8"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
     }
@@ -610,7 +725,7 @@ mod tests {
         let mut capture = LifeResponseCapture::default();
         observe_codex_result(&mut capture, "get_action_detail", &result);
         let content = trusted_content(capture.finish());
-        assert!(content.contains("life://action/action-1 v1"));
+        assert!(content.contains("<life://action/action-1> v1"));
         assert!(content.contains(&trace.to_string()));
         assert!(content.contains(&audit.to_string()));
 
@@ -759,5 +874,25 @@ mod tests {
             .to_string(),
         );
         assert!(sensitive.finish().invalid_tool_result);
+    }
+}
+
+#[cfg(test)]
+mod action_family_receipt_tests {
+    use super::trusted_write_message;
+    use serde_json::json;
+
+    #[test]
+    fn distinguishes_complete_partial_and_legacy_receipts() {
+        for (created, expected) in [
+            (3, "已完整创建父行动和 3 个子任务"),
+            (1, "子任务已创建 1/3 个"),
+        ] {
+            let data = json!({"completion":{"requestedChildren":3,"createdChildren":created}});
+            assert!(trusted_write_message("create_action", &data)
+                .is_some_and(|text| text.contains(expected)));
+        }
+        assert!(trusted_write_message("create_action", &json!({}))
+            .is_some_and(|text| text.contains("未包含子任务")));
     }
 }

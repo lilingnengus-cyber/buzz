@@ -35,7 +35,7 @@ struct Claims {
     iss: String,
     sub: String,
     exp: i64,
-    nonce: String,
+    nonce: Option<String>,
 }
 
 struct CachedKeys {
@@ -81,11 +81,32 @@ impl OidcVerifier {
         token: &str,
         expected_nonce: &str,
     ) -> Result<OidcIdentity, OidcError> {
-        if token.is_empty()
-            || token.len() > 16 * 1024
-            || expected_nonce.is_empty()
-            || expected_nonce.len() > 512
-        {
+        if expected_nonce.is_empty() || expected_nonce.len() > 512 {
+            return Err(OidcError::Rejected);
+        }
+        self.verify_claims(token, Some(expected_nonce)).await
+    }
+
+    /// Verifies refreshed credentials bound to an already authenticated session identity.
+    pub async fn verify_renewal(
+        &self,
+        token: &str,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<OidcIdentity, OidcError> {
+        let identity = self.verify_claims(token, None).await?;
+        if identity.issuer != issuer || identity.subject != subject {
+            return Err(OidcError::Rejected);
+        }
+        Ok(identity)
+    }
+
+    async fn verify_claims(
+        &self,
+        token: &str,
+        expected_nonce: Option<&str>,
+    ) -> Result<OidcIdentity, OidcError> {
+        if token.is_empty() || token.len() > 16 * 1024 {
             return Err(OidcError::Rejected);
         }
         let header = decode_header(token).map_err(|_| OidcError::Rejected)?;
@@ -119,7 +140,7 @@ impl OidcVerifier {
             || claims.sub.is_empty()
             || claims.sub.len() > 512
             || claims.sub.contains(['\r', '\n', '\0'])
-            || claims.nonce != expected_nonce
+            || expected_nonce.is_some_and(|nonce| claims.nonce.as_deref() != Some(nonce))
         {
             return Err(OidcError::Rejected);
         }

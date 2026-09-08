@@ -12,6 +12,8 @@ use life_auth_gateway::{
     Store,
 };
 use life_iam::Capability;
+#[path = "support/preview_budget.rs"]
+mod preview_budget;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind, Timestamp};
 use sha2::{Digest, Sha256};
 use sqlx::{

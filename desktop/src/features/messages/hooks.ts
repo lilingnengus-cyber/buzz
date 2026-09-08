@@ -38,7 +38,7 @@ import {
 
 export { mergeMessages, mergeTimelineCacheMessages };
 import { splitOutgoingTags } from "@/features/messages/lib/imetaMediaMarkdown";
-import { messageMentionPubkeys } from "@/features/messages/lib/messageMentionPubkeys";
+import { resolveMessageMentionPubkeys } from "@/features/messages/lib/messageMentionPubkeys";
 import { buildSentFromThreadTag } from "@/features/messages/lib/sentFromThread";
 import {
   clearTimeoutState,
@@ -53,6 +53,7 @@ import {
   addReaction,
   deleteMessage,
   editMessage,
+  getChannelMembers,
   removeReaction,
   sendChannelMessage,
 } from "@/shared/api/tauri";
@@ -546,10 +547,11 @@ export function useSendMessageMutation(
         mentionTags,
         linkPreviewTags,
       } = splitOutgoingTags(mediaTags);
-      const recipientPubkeys = messageMentionPubkeys(
+      const recipientPubkeys = await resolveMessageMentionPubkeys(
         effectiveChannel,
         identity.pubkey,
         mentionPubkeys,
+        getChannelMembers,
       );
       if (sentFromThreadRootId && parentEventId) {
         throw new Error(

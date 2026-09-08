@@ -87,22 +87,35 @@ pub(crate) struct LifeAgentHostConfig {
     client: reqwest::Client,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ExactWriteConfirmation {
     command_id: Uuid,
     expected_version: i64,
     preview_hash: String,
 }
 
+#[cfg(test)]
+#[path = "life_agent_short_tests.rs"]
+mod short_tests;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct IssueResponse {
+    #[serde(default)]
+    effective_data_scope: IssuedDataScope,
     delegation_id: Uuid,
     token: String,
     audience: String,
     effective_capabilities: Vec<String>,
     max_calls: i32,
     trace_id: Uuid,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct IssuedDataScope {
+    #[serde(default)]
+    workspace: Vec<String>,
 }
 
 struct LifeAuthorizationRequest<'a> {
@@ -126,6 +139,7 @@ struct IssuedAccessContext<'a> {
 }
 
 pub(crate) struct LifeTurnAccess {
+    community_id: String,
     mcp_server: McpServer,
     policy: TurnPolicy,
     revocation: LifeRevocationGuard,
@@ -231,11 +245,48 @@ impl LifeAgentHostConfig {
             return Err("This Agent is not allowed to access LifeOS; route the request through the dedicated Life Proxy".into());
         }
         let trace_id = Uuid::parse_str(trace_id).map_err(|_| "Life Agent trace ID is invalid")?;
-        let exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
-        if exact_confirmation.is_some() && !self.high_risk_write_enabled {
-            return Err("LifeOS high-risk chat writes are disabled".into());
+        let mut exact_confirmation = parse_exact_write_confirmation(&source_event.content)?;
+        let short_delete = source_event.content == "确认删除";
+        if (exact_confirmation.is_some() || short_delete)
+            && (!self.high_risk_write_enabled || !direct_message)
+        {
+            return Err(
+                "LifeOS 高风险聊天写入未启用；删除尚未执行，请先启用该功能再重新生成预览。".into(),
+            );
         }
-        if let Some(confirmation) = &exact_confirmation {
+        if short_delete {
+            let url = self
+                .gateway_base_url
+                .join("v1/write-confirmations/confirm-delete")
+                .map_err(|_| "Life Agent gateway URL is invalid")?;
+            let response = self
+                .client
+                .post(url)
+                .header(
+                    "authorization",
+                    format!("Service {}", self.pacioli_service_token),
+                )
+                .header("x-trace-id", trace_id.to_string())
+                .json(
+                    &serde_json::json!({"signedEvent": source_event, "communityId": community_id,
+                    "agentId": agent_id, "traceId": trace_id}),
+                )
+                .send()
+                .await
+                .map_err(|_| "删除确认服务暂时不可用，尚未执行删除。")?;
+            if !response.status().is_success() {
+                return Err(
+                    "没有唯一有效的待删除预览，或确认已使用；尚未执行删除。请重新发起删除请求。"
+                        .into(),
+                );
+            }
+            exact_confirmation = Some(
+                response
+                    .json::<ExactWriteConfirmation>()
+                    .await
+                    .map_err(|_| "删除确认结果无效，尚未执行删除。")?,
+            );
+        } else if let Some(confirmation) = &exact_confirmation {
             let validation_url = self
                 .gateway_base_url
                 .join("v1/write-confirmations/validate")
@@ -367,7 +418,7 @@ impl LifeAgentHostConfig {
         }
         let issued: IssueResponse = serde_json::from_slice(&bytes)
             .map_err(|_| "Life Agent authorization response was invalid")?;
-        self.access_from_issue(
+        let mut access = self.access_from_issue(
             issued,
             IssuedAccessContext {
                 agent_id,
@@ -377,7 +428,9 @@ impl LifeAgentHostConfig {
                 exact_confirmation: exact_confirmation.is_some(),
                 channel_disclosure: !direct_message,
             },
-        )
+        )?;
+        access.community_id = community_id.to_owned();
+        Ok(access)
     }
 
     fn agent_is_allowed(&self, agent_id: &str) -> bool {
@@ -410,7 +463,11 @@ impl LifeAgentHostConfig {
             || issued.max_calls > 100
             || (effective.iter().any(|capability| {
                 WRITE_CAPABILITIES.contains(capability) || *capability == EXECUTE_WRITE_CAPABILITY
-            }) && issued.max_calls != 1)
+            }) && issued.max_calls != 1
+                && !(issued.max_calls == 4
+                    && effective.contains("write_command:preview")
+                    && effective.iter().any(|c| c.ends_with(":read"))
+                    && !exact_confirmation))
             || issued.token.len() != 43
             || !issued
                 .token
@@ -426,7 +483,7 @@ impl LifeAgentHostConfig {
         {
             return Err("Life Agent delegation context mismatch".into());
         }
-        let mcp_server = McpServer {
+        let mut mcp_server = McpServer {
             name: "life-workbench-mcp".into(),
             command: self.mcp_command.clone(),
             args: Vec::new(),
@@ -440,7 +497,16 @@ impl LifeAgentHostConfig {
                 env("LIFE_TRACE_ID", trace_id.to_string()),
             ],
         };
+        if let [workspace] = issued.effective_data_scope.workspace.as_slice() {
+            if !safe_uri_id(workspace) {
+                return Err("Life Agent delegated workspace is invalid".into());
+            }
+            mcp_server
+                .env
+                .push(env("LIFE_DELEGATED_WORKSPACE_ID", workspace));
+        }
         Ok(LifeTurnAccess {
+            community_id: String::new(),
             mcp_server,
             policy: self.policy(),
             revocation: LifeRevocationGuard {
@@ -518,7 +584,7 @@ impl TurnExtension for LifeAgentHostConfig {
             } if channel_type == "dm"
         );
         if !is_dm {
-            return Ok(if exact_confirmation.is_some() {
+            return Ok(if exact_confirmation.is_some() || content == "确认删除" {
                 TurnApplicability::Ambiguous {
                     reason: "LifeOS writes are never allowed in a multi-party channel",
                 }
@@ -531,7 +597,7 @@ impl TurnExtension for LifeAgentHostConfig {
                 TurnApplicability::NotApplicable
             });
         }
-        Ok(if exact_confirmation.is_some() {
+        Ok(if exact_confirmation.is_some() || content == "确认删除" {
             if self.high_risk_write_enabled {
                 TurnApplicability::Applicable {
                     priority: 400,
@@ -624,13 +690,38 @@ impl TurnExtensionAccess for LifeTurnAccess {
                 if let (Some(captured), Some(source_event), Some(channel_id)) =
                     (captured, context.source_event, context.channel_id)
                 {
-                    super::life_response::publish(
+                    let preview = captured.pending_delete();
+                    let published = super::life_response::publish(
                         context.rest_client,
                         channel_id,
                         source_event,
                         captured,
                     )
                     .await;
+                    if let (Some(mut preview), Some(event)) = (preview, published) {
+                        preview["previewEvent"] = serde_json::json!(event);
+                        preview["communityId"] = serde_json::json!(self.community_id);
+                        preview["delegationId"] = serde_json::json!(self.revocation.delegation_id);
+                        let config = &self.revocation.config;
+                        if let Ok(url) = config
+                            .gateway_base_url
+                            .join("v1/write-confirmations/pending-delete")
+                        {
+                            let result = config
+                                .client
+                                .post(url)
+                                .header(
+                                    "authorization",
+                                    format!("Service {}", config.pacioli_service_token),
+                                )
+                                .json(&preview)
+                                .send()
+                                .await;
+                            if !matches!(result, Ok(response) if response.status().is_success()) {
+                                tracing::warn!("Life delete preview registration failed; short confirmation will be rejected");
+                            }
+                        }
+                    }
                 }
             }
             self.revocation.revoke().await;
@@ -1246,6 +1337,7 @@ mod tests {
         let access = config
             .access_from_issue(
                 IssueResponse {
+                    effective_data_scope: IssuedDataScope::default(),
                     delegation_id: Uuid::new_v4(),
                     token: "d".repeat(43),
                     audience: "life-workbench-mcp".into(),
@@ -1283,11 +1375,42 @@ mod tests {
     }
 
     #[test]
+    fn preview_delegation_accepts_bounded_lookup_budget_only() {
+        let config = LifeAgentHostConfig::test_mock();
+        for max_calls in [1, 4, 5] {
+            let trace_id = Uuid::new_v4();
+            let capabilities = ["action:read", "write_command:preview"];
+            let result = config.access_from_issue(
+                IssueResponse {
+                    effective_data_scope: IssuedDataScope::default(),
+                    delegation_id: Uuid::new_v4(),
+                    token: "d".repeat(43),
+                    audience: "life-workbench-mcp".into(),
+                    effective_capabilities: capabilities.map(str::to_owned).to_vec(),
+                    max_calls,
+                    trace_id,
+                },
+                IssuedAccessContext {
+                    agent_id: &"a".repeat(64),
+                    agent_turn_id: "turn-1",
+                    trace_id,
+                    requested_capabilities: &capabilities,
+                    exact_confirmation: false,
+                    channel_disclosure: false,
+                },
+            );
+            assert_eq!(result.is_ok(), max_calls != 5);
+            std::mem::forget(result);
+        }
+    }
+
+    #[test]
     fn ordinary_write_delegation_rejects_more_than_one_call() {
         let config = LifeAgentHostConfig::test_mock();
         let trace_id = Uuid::new_v4();
         let result = config.access_from_issue(
             IssueResponse {
+                effective_data_scope: IssuedDataScope::default(),
                 delegation_id: Uuid::new_v4(),
                 token: "d".repeat(43),
                 audience: "life-workbench-mcp".into(),

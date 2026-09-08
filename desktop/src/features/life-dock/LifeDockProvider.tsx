@@ -159,7 +159,8 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const embedSessionIdRef = React.useRef<string | null>(null);
   const recoveryAttemptsRef = React.useRef(0);
   const sessionStartingRef = React.useRef(false);
-  const pendingOidcResumeRef = React.useRef(false);
+  const pendingOidcResumeRef = React.useRef<number | null>(null);
+  const [sessionStarting, setSessionStarting] = React.useState(false);
   const manuallyDisconnectedRef = React.useRef(false);
   const bridgeHandshakeTimerRef = React.useRef<number | null>(null);
   const lifeAuth = useLifeAuth();
@@ -300,6 +301,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     (automatic = false, renewExisting = false) => {
       if (!config || !gateway || sessionStartingRef.current) return;
       sessionStartingRef.current = true;
+      setSessionStarting(true);
       if (!renewExisting) setAuth({ phase: "checking" });
       void (async () => {
         const oidcToken = await lifeAuth.getAccessToken();
@@ -310,18 +312,18 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
             // doing so keeps sessionStartingRef locked forever and makes every
             // later "Connect again" click a no-op. Resume from the authenticated
             // phase after the deep-link callback instead.
-            pendingOidcResumeRef.current = true;
+            pendingOidcResumeRef.current = lifeAuth.loginRevision;
             void lifeAuth.signIn();
             return;
           }
           throw new Error("Life OIDC session expired.");
         }
         let sessionToken = workbenchSessionTokenRef.current;
-        if (!sessionToken) {
+        if (!sessionToken || renewExisting) {
           const idToken = await lifeAuth.getIdToken();
-          if (!readOidcNonce(idToken ?? oidcToken)) {
+          if (!sessionToken && !readOidcNonce(idToken ?? oidcToken)) {
             if (!automatic) {
-              pendingOidcResumeRef.current = true;
+              pendingOidcResumeRef.current = lifeAuth.loginRevision;
               void lifeAuth.signIn();
               return;
             }
@@ -331,6 +333,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
             gateway,
             oidcToken,
             idToken,
+            sessionToken ?? undefined,
           );
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
@@ -390,6 +393,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         })
         .finally(() => {
           sessionStartingRef.current = false;
+          setSessionStarting(false);
         });
     },
     [bridgeReady, config, gateway, homeResource, lifeAuth, post],
@@ -415,13 +419,19 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   React.useEffect(() => {
     if (
       lifeAuth.phase !== "authenticated" ||
-      !pendingOidcResumeRef.current ||
-      sessionStartingRef.current
+      pendingOidcResumeRef.current === null ||
+      lifeAuth.loginRevision <= pendingOidcResumeRef.current ||
+      sessionStarting
     )
       return;
-    pendingOidcResumeRef.current = false;
+    pendingOidcResumeRef.current = null;
     startLifeSession(true);
-  }, [lifeAuth.phase, startLifeSession]);
+  }, [
+    lifeAuth.phase,
+    lifeAuth.loginRevision,
+    sessionStarting,
+    startLifeSession,
+  ]);
   React.useEffect(() => {
     if (
       lifeAuth.phase === "authenticated" ||
@@ -429,7 +439,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       lifeAuth.phase === "signing-in"
     )
       return;
-    pendingOidcResumeRef.current = false;
+    pendingOidcResumeRef.current = null;
     workbenchSessionTokenRef.current = null;
     setSessionExpiresAt(null);
     embedSessionIdRef.current = null;
@@ -464,8 +474,6 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     const delay = lifeSessionRenewalDelay(sessionExpiresAt);
     if (delay === null) return;
     const timer = window.setTimeout(() => {
-      workbenchSessionTokenRef.current = null;
-      setSessionExpiresAt(null);
       startLifeSession(true, true);
     }, delay);
     return () => window.clearTimeout(timer);

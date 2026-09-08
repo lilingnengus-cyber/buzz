@@ -46,3 +46,67 @@ test("stream messages preserve explicit-mention semantics", () => {
     [],
   );
 });
+
+const { resolveMessageMentionPubkeys } = await import(
+  "./messageMentionPubkeys.ts"
+);
+
+test("reconnect with an empty DM roster loads recipients before sending", async () => {
+  const calls = [];
+  const result = await resolveMessageMentionPubkeys(
+    channel({ memberPubkeys: [], participantPubkeys: [] }),
+    "owner",
+    [],
+    async (id) => {
+      calls.push(id);
+      return [{ pubkey: "owner" }, { pubkey: "agent" }];
+    },
+  );
+  assert.deepEqual(calls, ["dm-1"]);
+  assert.deepEqual(result, ["agent"]);
+});
+
+test("an explicit mention does not hide an incomplete DM roster", async () => {
+  assert.deepEqual(
+    await resolveMessageMentionPubkeys(
+      channel({ memberPubkeys: ["owner"], participantPubkeys: [] }),
+      "owner",
+      ["third"],
+      async () => [{ pubkey: "owner" }, { pubkey: "agent" }],
+    ),
+    ["third", "agent"],
+  );
+});
+
+test("missing DM recipients and membership failures abort the send", async () => {
+  const incomplete = channel({ memberPubkeys: [], participantPubkeys: [] });
+  await assert.rejects(
+    resolveMessageMentionPubkeys(incomplete, "owner", [], async () => [
+      { pubkey: "owner" },
+    ]),
+    /收件人/,
+  );
+  await assert.rejects(
+    resolveMessageMentionPubkeys(incomplete, "owner", [], async () => {
+      throw new Error("disconnected");
+    }),
+    /disconnected/,
+  );
+});
+
+test("complete DMs and streams do not require another membership request", async () => {
+  const unexpected = async () => assert.fail("unexpected membership read");
+  assert.deepEqual(
+    await resolveMessageMentionPubkeys(channel(), "owner", [], unexpected),
+    ["agent"],
+  );
+  assert.deepEqual(
+    await resolveMessageMentionPubkeys(
+      channel({ channelType: "stream" }),
+      "owner",
+      [],
+      unexpected,
+    ),
+    [],
+  );
+});
