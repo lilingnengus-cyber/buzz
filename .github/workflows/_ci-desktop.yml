@@ -115,7 +115,8 @@ jobs:
   desktop-smoke-e2e:
     name: Desktop Smoke E2E (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Includes cold dependency/browser installation and the E2E build.
+    timeout-minutes: 45
     if: github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust
     strategy:
       fail-fast: false

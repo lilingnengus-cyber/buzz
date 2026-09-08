@@ -3548,17 +3548,22 @@ mod postgres_tests {
             mismatched_approval.is_err(),
             "approval digest must remain database-bound to the frozen request digest"
         );
+        // An ErrorResponse can arrive before PostgreSQL finishes releasing
+        // the failed UPDATE's locks. Await rollback on this connection before
+        // the claim's SKIP LOCKED query uses a different pooled connection.
+        let mut tamper_tx = db.pool.begin().await.expect("begin tamper attempt");
         let mismatched_request = sqlx::query(
             "UPDATE community_deletion_requests SET inventory_digest = $2 WHERE id = $1",
         )
         .bind(request.id)
         .bind(vec![1_u8; 32])
-        .execute(&db.pool)
+        .execute(&mut *tamper_tx)
         .await;
         assert!(
             mismatched_request.is_err(),
             "the frozen request digest must remain bound to its approval"
         );
+        tamper_tx.rollback().await.expect("finish rejected tamper");
         assert!(store
             .claim_specific(request.id, "executor-a", DEFAULT_LEASE_DURATION)
             .await

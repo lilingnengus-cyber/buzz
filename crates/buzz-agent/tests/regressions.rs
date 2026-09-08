@@ -1444,15 +1444,23 @@ async fn cancel_kills_inflight_tool_via_mcp_notification() {
         )
         .await;
 
-    // Wait for the tool call to be in-progress.
-    h.recv_until(|v| {
-        v.get("params")
+    // The real shell requests permission before starting. Acknowledge it so
+    // this test reaches cancellation of an in-flight process, not a pending gate.
+    loop {
+        let v = h.recv().await;
+        if v.get("method") == Some(&json!("session/request_permission")) {
+            h.write(approve_permission(&v)).await;
+            continue;
+        }
+        if v.get("params")
             .and_then(|p| p.get("update"))
             .and_then(|u| u.get("status"))
             .and_then(Value::as_str)
             == Some("in_progress")
-    })
-    .await;
+        {
+            break;
+        }
+    }
 
     // Wait for the shell to spawn and write its PID (bounded).
     let pid_deadline = Instant::now() + Duration::from_secs(3);
@@ -1692,7 +1700,11 @@ async fn prompt_to_completion(h: &mut Harness, sid: &str) -> Value {
 async fn reply_guard_off_by_default() {
     let llm = spawn_capturing_llm(vec![openai_text("done"), openai_text("unexpected")]).await;
     let mut h = Harness::spawn(&llm.url).await;
-    let sid = init_session(&mut h, json!([])).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -1713,7 +1725,11 @@ async fn reply_guard_off_by_default() {
 async fn reply_guard_explicit_zero_is_off() {
     let llm = spawn_capturing_llm(vec![openai_text("done"), openai_text("unexpected")]).await;
     let mut h = Harness::spawn_with_env(&llm.url, &[("BUZZ_AGENT_REQUIRE_REPLY", "0")]).await;
-    let sid = init_session(&mut h, json!([])).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -1725,6 +1741,19 @@ async fn reply_guard_explicit_zero_is_off() {
         "REQUIRE_REPLY=0 must behave as off, got {} LLM calls",
         captured.len()
     );
+    h.shutdown().await;
+}
+
+/// Extension sessions without a shell publish through the harness, so a
+/// shell-only reply reminder must not consume additional LLM rounds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reply_guard_is_inert_without_a_shell() {
+    let llm = spawn_capturing_llm(vec![openai_text("done"), openai_text("unexpected")]).await;
+    let mut h = Harness::spawn_with_env(&llm.url, &[("BUZZ_AGENT_REQUIRE_REPLY", "1")]).await;
+    let sid = init_session(&mut h, json!([])).await;
+    let r = prompt_to_completion(&mut h, &sid).await;
+    assert_eq!(r["result"]["stopReason"], "end_turn");
+    assert_eq!(llm.captured.lock().await.len(), 1);
     h.shutdown().await;
 }
 
@@ -1742,7 +1771,11 @@ async fn reply_guard_nags_twice_then_lets_the_turn_end() {
     ])
     .await;
     let mut h = Harness::spawn_with_env(&llm.url, &[("BUZZ_AGENT_REQUIRE_REPLY", "1")]).await;
-    let sid = init_session(&mut h, json!([])).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -1818,9 +1851,14 @@ async fn reply_guard_satisfied_by_registered_shell_send() {
 /// `has`/`is_hook` checks in the predicate buy.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reply_guard_ignores_unregistered_shell_tool() {
-    // FAKE_MCP_SHELL_TOOL is absent, so `fake__shell` is a hallucination.
+    // A real shell keeps the reply guard enabled, but the model names a
+    // different, unregistered server: `missing__shell` is a hallucination.
     let llm = spawn_capturing_llm(vec![
-        openai_shell_send("tc1"),
+        openai_tool_call(
+            "tc1",
+            "missing__shell",
+            json!({ "command": "buzz messages send --channel c --content hi" }),
+        ),
         openai_text("silent-1"),
         openai_text("silent-2"),
     ])
@@ -1833,7 +1871,11 @@ async fn reply_guard_ignores_unregistered_shell_tool() {
         ],
     )
     .await;
-    let sid = init_session_with_fake_mcp(&mut h, &[("FAKE_MCP_TOOL_COUNT", "1")]).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -1942,7 +1984,11 @@ async fn reply_guard_bounded_by_stop_rejection_budget() {
         ],
     )
     .await;
-    let sid = init_session(&mut h, json!([])).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -1970,7 +2016,11 @@ async fn reply_guard_off_when_stop_budget_is_zero() {
         ],
     )
     .await;
-    let sid = init_session(&mut h, json!([])).await;
+    let sid = init_session_with_fake_mcp(
+        &mut h,
+        &[("FAKE_MCP_TOOL_COUNT", "1"), ("FAKE_MCP_SHELL_TOOL", "1")],
+    )
+    .await;
 
     let r = prompt_to_completion(&mut h, &sid).await;
     assert_eq!(r["result"]["stopReason"], "end_turn");
@@ -2013,6 +2063,7 @@ async fn reply_guard_combines_with_stop_hook_objection() {
         &mut h,
         &[
             ("FAKE_MCP_TOOL_COUNT", "1"),
+            ("FAKE_MCP_SHELL_TOOL", "1"),
             ("FAKE_MCP_STOP_HOOK", "1"),
             ("FAKE_MCP_STOP_TEXT", "you have open todos"),
             ("FAKE_MCP_STOP_COUNT", "3"),
