@@ -503,16 +503,19 @@ test("hash mismatch replaces the snapshot with the full live list", async ({
   page,
 }) => {
   await seedSnapshot(page, { hash: "stale-hash" });
+  await trackSnapshotRows(page);
   await installMockBridge(page, {
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,
   });
   await page.goto("/");
 
-  await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
-    FULL_SNAPSHOT.length,
-    { timeout: 500 },
-  );
+  // The cached frame can disappear before Playwright's first poll on a busy
+  // runner. Observe its DOM insertion, then verify the settled replacement;
+  // the dedicated cold-boot test above covers first-paint timing.
+  await expect
+    .poll(async () => (await getTrackedSnapshotRows(page)).sort())
+    .toEqual(FULL_SNAPSHOT.map((channel) => channel.id).sort());
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "stale-hash" }]);
