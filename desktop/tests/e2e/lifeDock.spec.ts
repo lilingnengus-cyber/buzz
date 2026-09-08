@@ -226,6 +226,33 @@ test.describe("Life Dock", () => {
       AUDIT,
     ]);
     await expect(page.getByText("已完成受信 LifeOS 操作。")).toBeVisible();
+    const details = page
+      .locator("details")
+      .filter({ has: page.getByText("查看执行详情", { exact: true }) });
+    await expect(details).toHaveCount(1);
+    await expect(details.locator("pre")).not.toBeVisible();
+    await details.locator("summary").click();
+    await expect(details.locator("pre")).toContainText(`Audit ID: ${AUDIT}`);
+    await expect(details.locator("pre")).toContainText(
+      "life://action/trusted-action v8",
+    );
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: "http://127.0.0.1:4173",
+      });
+    await details.getByRole("button", { name: "复制执行详情" }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(
+        `action.status.update succeeded\nTrace ID: ${TRACE}\nAudit ID: ${AUDIT}\nlife://action/trusted-action v8`,
+      );
+    await expect(
+      page.getByText("执行详情已复制", { exact: true }),
+    ).toBeVisible();
+    await details.locator("summary").click();
+    await expect(details.locator("pre")).not.toBeVisible();
+
     await expect
       .poll(() =>
         page.evaluate(

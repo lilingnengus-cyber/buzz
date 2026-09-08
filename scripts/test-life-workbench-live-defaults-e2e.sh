@@ -429,11 +429,13 @@ for ((attempt = 1; attempt <= 90; attempt++)); do
     --arg audit "$audit_id" --arg trace "$trace_id" '
       any(.[];
         .pubkey == $agent and
-        (.content | contains($resource)) and
-        (.content | contains($audit)) and
-        (.content | contains($trace)) and
-        any(.tags[]?; .[0] == "pacioli-extension-result") and
-        any(.tags[]?; .[0] == "pacioli-resource-ref"))
+        (.content | contains($audit) | not) and
+        (.content | contains($trace) | not) and
+        any(.tags[]?; length == 7 and .[0] == "pacioli-extension-result"
+          and .[1] == "1" and .[2] == "life" and .[4] == "succeeded"
+          and .[5] == $trace and .[6] == $audit) and
+        any(.tags[]?; length == 6 and .[0] == "pacioli-resource-ref"
+          and .[1] == "1" and .[2] == $trace and .[3] == $resource))
     ' <<<"$messages" >/dev/null; then
     response_ok=true
     break

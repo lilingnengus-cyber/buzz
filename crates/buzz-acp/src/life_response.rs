@@ -1,3 +1,6 @@
+#[path = "life_reply_links.rs"]
+mod reply_links;
+
 use crate::{acp::AcpClient, relay::RestClient, turn_observer::TurnObserver};
 use life_workbench_contracts::result::{ErrorCode, LifeResourceRef, ResourceType, WorkbenchResult};
 use nostr::{Event, Tag};
@@ -363,13 +366,9 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
         };
     };
     if !last.succeeded {
-        return if last.trace_id.is_nil() {
-            last.message.clone()
-        } else {
-            format!("{}\nTrace ID: {}", last.message, last.trace_id)
-        };
+        return last.message.clone();
     }
-    let mut content = if last.is_write {
+    let content = if last.is_write {
         last.message.clone()
     } else if captured.channel_disclosure {
         last.sanitized_summary
@@ -381,29 +380,55 @@ fn trusted_content(captured: CapturedLifeResponse) -> String {
             .filter(|text| !text.trim().is_empty())
             .unwrap_or_else(|| last.message.clone())
     };
-    content.push_str("\n\n已验证 LifeOS 结果：");
-    content.push_str(&last.tool);
-    content.push_str(" succeeded");
-    for reference in &last.resource_refs {
-        content.push_str("\n- <");
-        content.push_str(&reference.life_uri());
-        content.push('>');
-        if let Some(version) = reference.version() {
-            content.push_str(&format!(" v{version}"));
+    // Receipts are published as signed extension tags, not repeated in prose.
+    // The client renders those tags in a single disclosure below the answer.
+    if !last.is_write && !captured.channel_disclosure {
+        let concise = concise_read_text(&content);
+        if !concise.is_empty() {
+            return reply_links::link_action_items(&concise, &last.resource_refs);
         }
-        if let Some(title) = reference.title() {
-            content.push_str(" — ");
-            content.push_str(title);
-        }
+        return last.message.clone();
     }
-    content.push_str(&format!("\nTrace ID: {}", last.trace_id));
-    if let Some(audit_id) = last.audit_id {
-        content.push_str(&format!("\nAudit ID: {audit_id}"));
-    }
+
     content
 }
 
+fn concise_read_text(text: &str) -> String {
+    text.lines()
+        .take_while(|line| !line.trim().starts_with("已验证 LifeOS 结果："))
+        .filter(|line| {
+            let line = line.trim().trim_start_matches("- ").trim_start_matches('*');
+            !["Trace ID", "Audit ID", "行动引用"].iter().any(|prefix| {
+                line.strip_prefix(prefix).is_some_and(|suffix| {
+                    let suffix = suffix.trim_start_matches('*').trim_start();
+                    suffix.starts_with(':') || suffix.starts_with('：')
+                })
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_owned()
+}
+
 fn trusted_result_tags(captured: &CapturedLifeResponse) -> Result<Vec<Tag>, String> {
+    if let Some(last) = captured
+        .results
+        .last()
+        .filter(|last| !last.succeeded && !last.trace_id.is_nil())
+    {
+        return Tag::parse(vec![
+            EXTENSION_RESULT_TAG.to_owned(),
+            "1".to_owned(),
+            "life".to_owned(),
+            last.tool.clone(),
+            "failed".to_owned(),
+            last.trace_id.to_string(),
+            String::new(),
+        ])
+        .map(|tag| vec![tag])
+        .map_err(|error| error.to_string());
+    }
     let Some(last) = captured
         .results
         .last()
@@ -508,6 +533,21 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn concise_reply_removes_duplicate_receipts_but_preserves_task_statuses() {
+        let body = "**注册杭州公司**\n✅ 公司核名\n✅ 地址申请\n⬜ 提交申请\n⬜ 确认审核通过\n已完成 2 / 4";
+        let duplicated = format!("{body}\nAudit ID：old\nTrace ID：old\n\n已验证 LifeOS 结果：list_actions succeeded\n- unrelated action");
+        assert_eq!(concise_read_text(&duplicated), body);
+        assert_eq!(
+            concise_read_text("Audit ID migration is pending"),
+            "Audit ID migration is pending"
+        );
+        assert_eq!(
+            concise_read_text(&format!("{body}\n**Audit ID**: old\n**Trace ID**：old")),
+            body
+        );
+    }
+
+    #[test]
     fn deletion_receipt_names_only_a_confirmed_action() {
         let tool = "execute_confirmed_life_write";
         let data = json!({"deleted":true,"resourceType":"action","title":"验收行动"});
@@ -562,7 +602,8 @@ mod tests {
                 result["idempotencyReplayed"] = replay;
             }
             observe_named_result(&mut capture, tool, &result.to_string());
-            let content = trusted_content(capture.finish());
+            let captured = capture.finish();
+            let content = trusted_content(captured);
             assert!(content.contains(expected), "{content}");
             if result["idempotencyReplayed"] != true {
                 assert!(!content.contains("幂等命中"));
@@ -589,11 +630,14 @@ mod tests {
             })
             .to_string(),
         );
-        let content = trusted_content(capture.finish());
+        let captured = capture.finish();
+        let receipt = trusted_result_tags(&captured).expect("tags");
+        let receipt = format!("{receipt:?}");
+        let content = trusted_content(captured);
         assert!(content.contains("PENDING"));
-        assert!(content.contains("life://action/created-1"));
-        assert!(content.contains(&audit.to_string()));
-        assert!(content.contains(&trace.to_string()));
+        assert!(receipt.contains("life://action/created-1"));
+        assert!(receipt.contains(&audit.to_string()));
+        assert!(receipt.contains(&trace.to_string()));
         assert!(!content.contains("fabricated"));
         assert!(!content.contains("DONE"));
         assert!(
@@ -646,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn trusted_success_appends_only_server_refs_trace_and_audit() {
+    fn trusted_success_keeps_refs_trace_and_audit_in_tags() {
         let trace = Uuid::new_v4();
         let audit = Uuid::new_v4();
         let mut capture = LifeResponseCapture::default();
@@ -666,11 +710,16 @@ mod tests {
             })
             .to_string(),
         );
-        let content = trusted_content(capture.finish());
+        let captured = capture.finish();
+        let receipt = trusted_result_tags(&captured).expect("tags");
+        let receipt = format!("{receipt:?}");
+        let content = trusted_content(captured);
         assert!(content.contains("你的行动仍在进行中"));
-        assert!(content.contains("<life://action/action-1> v8"));
-        assert!(content.contains(&trace.to_string()));
-        assert!(content.contains(&audit.to_string()));
+        assert!(!content.contains("Trace ID"));
+        assert!(!content.contains("Audit ID"));
+        assert!(receipt.contains("life://action/action-1"));
+        assert!(receipt.contains(&trace.to_string()));
+        assert!(receipt.contains(&audit.to_string()));
     }
 
     #[test]
@@ -724,10 +773,15 @@ mod tests {
         .to_string();
         let mut capture = LifeResponseCapture::default();
         observe_codex_result(&mut capture, "get_action_detail", &result);
-        let content = trusted_content(capture.finish());
-        assert!(content.contains("<life://action/action-1> v1"));
-        assert!(content.contains(&trace.to_string()));
-        assert!(content.contains(&audit.to_string()));
+        let captured = capture.finish();
+        let receipt = trusted_result_tags(&captured).expect("tags");
+        let receipt = format!("{receipt:?}");
+        let content = trusted_content(captured);
+        assert!(!content.contains("Trace ID"));
+        assert!(!content.contains("Audit ID"));
+        assert!(receipt.contains("life://action/action-1"));
+        assert!(receipt.contains(&trace.to_string()));
+        assert!(receipt.contains(&audit.to_string()));
 
         let mut foreign = LifeResponseCapture::default();
         foreign.on_session_update(&json!({
@@ -769,10 +823,12 @@ mod tests {
             })
             .to_string(),
         );
-        let content = trusted_content(failed.finish());
+        let captured = failed.finish();
+        let receipt = format!("{:?}", trusted_result_tags(&captured).expect("tags"));
+        let content = trusted_content(captured);
         assert!(!content.contains("成功修改"));
         assert!(content.contains("Life access was denied"));
-        assert!(content.contains(&trace.to_string()));
+        assert!(receipt.contains(&trace.to_string()));
     }
 
     #[test]
@@ -852,7 +908,8 @@ mod tests {
             })
             .to_string(),
         );
-        let content = trusted_content(capture.finish());
+        let captured = capture.finish();
+        let content = trusted_content(captured);
         assert!(content.contains("允许披露的行动摘要"));
         assert!(!content.contains("fabricated"));
         assert!(!content.contains("must not render"));
