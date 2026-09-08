@@ -394,3 +394,40 @@ async fn active_dependants(pool: &PgPool, binding_id: IdentityBindingId) -> i64 
     .await
     .expect("count active dependants")
 }
+
+#[tokio::test]
+async fn renewal_requires_an_active_unexpired_session_in_the_same_deployment() {
+    let Some(database) = TestDatabase::create().await else {
+        eprintln!("LIFE_AUTH_TEST_DATABASE_URL absent; session integration test skipped");
+        return;
+    };
+    let store = Store::new(database.pool.clone());
+    let issued = session(&store, "renew-subject", "renew-user").await;
+    assert!(store
+        .authenticate_workbench_session(&issued.session_token, "life-test")
+        .await
+        .is_ok());
+    assert!(store
+        .authenticate_workbench_session(&issued.session_token, "other-deployment")
+        .await
+        .is_err());
+    assert!(store
+        .authenticate_workbench_session("invalid", "life-test")
+        .await
+        .is_err());
+    sqlx::query("UPDATE life_workbench_sessions SET status='revoked'")
+        .execute(&database.pool)
+        .await
+        .expect("revoke fixture session");
+    assert!(store
+        .authenticate_workbench_session(&issued.session_token, "life-test")
+        .await
+        .is_err());
+    sqlx::query("UPDATE life_workbench_sessions SET status='active',created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour'")
+        .execute(&database.pool).await.expect("expire fixture session");
+    assert!(store
+        .authenticate_workbench_session(&issued.session_token, "life-test")
+        .await
+        .is_err());
+    database.cleanup().await;
+}

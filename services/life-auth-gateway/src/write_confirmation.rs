@@ -15,7 +15,8 @@ const MAX_CONFIRMATION_SECONDS: u64 = 600;
 const FUTURE_SKEW_SECONDS: u64 = 30;
 
 /// Canonical fields extracted from an exact `/confirm life-write ...` message.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExactWriteConfirmation {
     /// Immutable LifeOS WriteCommand identifier.
     pub command_id: Uuid,
@@ -139,12 +140,54 @@ impl Store {
         deployment_id: &str,
         ttl: Duration,
     ) -> Result<ValidatedWriteConfirmation, WriteConfirmationError> {
+        self.validate_confirmation(request, deployment_id, ttl, None)
+            .await
+    }
+
+    /// Resolves a signed short delete confirmation without altering its signed content.
+    pub async fn validate_short_delete(
+        &self,
+        request: crate::pending_delete::ShortDeleteRequest,
+        deployment_id: &str,
+    ) -> Result<ExactWriteConfirmation, WriteConfirmationError> {
+        let parsed = self.resolve_pending_delete(&request).await?;
+        self.validate_confirmation(
+            ValidateWriteConfirmationRequest {
+                signed_event: request.signed_event.clone(),
+                command_id: parsed.command_id,
+                expected_version: parsed.expected_version,
+                preview_hash: parsed.preview_hash.clone(),
+                trace_id: request.trace_id,
+            },
+            deployment_id,
+            Duration::from_secs(600),
+            Some(&request),
+        )
+        .await?;
+        Ok(parsed)
+    }
+
+    async fn validate_confirmation(
+        &self,
+        request: ValidateWriteConfirmationRequest,
+        deployment_id: &str,
+        ttl: Duration,
+        short: Option<&crate::pending_delete::ShortDeleteRequest>,
+    ) -> Result<ValidatedWriteConfirmation, WriteConfirmationError> {
         if !(60..=MAX_CONFIRMATION_SECONDS).contains(&ttl.as_secs())
             || !safe_identifier(deployment_id, 256)
         {
             return Err(WriteConfirmationError::Invalid);
         }
-        let parsed = parse_exact_confirmation(&request.signed_event.content)?;
+        let parsed = if short.is_some() {
+            ExactWriteConfirmation {
+                command_id: request.command_id,
+                expected_version: request.expected_version,
+                preview_hash: request.preview_hash.clone(),
+            }
+        } else {
+            parse_exact_confirmation(&request.signed_event.content)?
+        };
         let event = &request.signed_event;
         let now =
             u64::try_from(Utc::now().timestamp()).map_err(|_| WriteConfirmationError::Invalid)?;
@@ -175,6 +218,12 @@ impl Store {
         .map_err(database)?
         .ok_or(WriteConfirmationError::Unauthorized)?;
         let user_id: Uuid = binding.get("workbench_user_id");
+        if let Some(short) = short {
+            // Registration takes the same user lock; recheck before granting authority.
+            if crate::pending_delete::resolve(&mut transaction, short).await? != parsed {
+                return Err(WriteConfirmationError::Conflict);
+            }
+        }
         let session = sqlx::query(
             "SELECT id FROM life_workbench_sessions
              WHERE workbench_user_id=$1 AND deployment_id=$2

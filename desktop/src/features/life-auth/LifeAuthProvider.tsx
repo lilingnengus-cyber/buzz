@@ -27,6 +27,7 @@ type LifeAuthContextValue = {
   error: string | null;
   identity: LifeAuthIdentity | null;
   phase: LifeAuthPhase;
+  loginRevision: number;
   getAccessToken: () => Promise<string | null>;
   getIdToken: () => Promise<string | null>;
   signIn: () => Promise<void>;
@@ -61,6 +62,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
   const [phase, setPhase] = React.useState<LifeAuthPhase>(
     result.config ? "checking" : result.error ? "failed" : "unconnected",
   );
+  const [loginRevision, setLoginRevision] = React.useState(0);
   const [error, setError] = React.useState<string | null>(result.error);
   const [identity, setIdentity] = React.useState<LifeAuthIdentity | null>(null);
   const callbackReplayGuard = React.useRef(
@@ -88,6 +90,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
         );
         if (!processed) return;
         applyUser(await manager.getUser());
+        setLoginRevision((revision) => revision + 1);
         setError(null);
       } catch (cause) {
         setPhase("failed");
@@ -169,6 +172,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
       error,
       identity,
       phase,
+      loginRevision,
       getAccessToken,
       getIdToken,
       signIn: async () => {
@@ -199,6 +203,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
     }),
     [
       error,
+      loginRevision,
       getAccessToken,
       getIdToken,
       identity,

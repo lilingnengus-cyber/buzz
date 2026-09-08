@@ -201,6 +201,7 @@ impl IntoResponse for ApiError {
             Self::WriteConfirmation(WriteConfirmationError::Database) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
             }
+            Self::Agent(AgentError::RateLimited) => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             Self::Agent(AgentError::Invalid) => (StatusCode::BAD_REQUEST, "validation_failed"),
             Self::Agent(AgentError::Unauthorized) => {
                 (StatusCode::UNAUTHORIZED, "delegation_rejected")
@@ -244,6 +245,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/v1/workbench/sessions", post(create_session))
+        .route("/v1/workbench/sessions/renew", post(renew_session))
         .route("/v1/workbench/membership-events", post(membership_event))
         .route("/v1/embed-sessions", post(issue_embed_session))
         .route("/v1/embed-sessions/consume", post(consume_embed_session))
@@ -256,6 +258,14 @@ pub(crate) fn router(state: AppState) -> Router {
             post(validate_write_confirmation),
         )
         .route("/v1/life-agent/delegations", post(issue_delegation))
+        .route(
+            "/v1/write-confirmations/pending-delete",
+            post(record_pending_delete),
+        )
+        .route(
+            "/v1/write-confirmations/confirm-delete",
+            post(confirm_delete),
+        )
         .route(
             "/v1/pacioli/target-selections",
             post(issue_target_selection),
@@ -429,6 +439,32 @@ async fn validate_write_confirmation(
         state
             .store
             .validate_write_confirmation(request, &runtime.deployment_id, Duration::from_secs(600))
+            .await?,
+    ))
+}
+
+async fn record_pending_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::pending_delete::PendingDeleteRequest>,
+) -> Result<StatusCode, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    state.store.record_pending_delete(request).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn confirm_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::pending_delete::ShortDeleteRequest>,
+) -> Result<Json<crate::write_confirmation::ExactWriteConfirmation>, ApiError> {
+    let runtime = runtime(&state)?;
+    require_service(&headers, &runtime.pacioli_service_token)?;
+    Ok(Json(
+        state
+            .store
+            .validate_short_delete(request, &runtime.deployment_id)
             .await?,
     ))
 }
@@ -608,6 +644,7 @@ async fn consume_delegation(
 
 fn agent_result(error: &AgentError) -> &'static str {
     match error {
+        AgentError::RateLimited => "rate_limited",
         AgentError::Conflict => "conflict",
         AgentError::Denied | AgentError::Unauthorized | AgentError::Invalid => "denied",
         AgentError::Database | AgentError::Signing => "failure",
@@ -711,6 +748,40 @@ async fn create_session(
     let oidc = runtime
         .verifier
         .verify(oidc_token, &request.nonce)
+        .await
+        .map_err(|_| IdentityError::Unauthorized)?;
+    let resolved = runtime
+        .resolver
+        .resolve(&oidc.issuer, &oidc.subject)
+        .await?;
+    Ok(Json(
+        state
+            .store
+            .create_workbench_session(&oidc, &resolved, &runtime.deployment_id, trace_id(&headers))
+            .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RenewSessionRequest {
+    session_token: String,
+}
+
+async fn renew_session(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<RenewSessionRequest>,
+) -> Result<Json<crate::identity::IssuedSession>, ApiError> {
+    let runtime = runtime(&state)?;
+    let principal = state
+        .store
+        .authenticate_workbench_session(&request.session_token, &runtime.deployment_id)
+        .await?;
+    let token = bearer(&headers).ok_or(IdentityError::Unauthorized)?;
+    let oidc = runtime
+        .verifier
+        .verify_renewal(token, &principal.issuer, &principal.subject)
         .await
         .map_err(|_| IdentityError::Unauthorized)?;
     let resolved = runtime

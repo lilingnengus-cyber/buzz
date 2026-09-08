@@ -42,6 +42,7 @@ struct TestClaims {
     sub: String,
     exp: i64,
     aud: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     nonce: String,
 }
 
@@ -98,6 +99,33 @@ async fn validates_signature_issuer_audience_expiry_subject_and_nonce() {
     };
     let verified = verifier.verify(&token(&valid), "oidc-nonce-123").await;
     assert!(verified.is_ok(), "valid token rejected: {verified:?}");
+
+    let refreshed = token(&TestClaims {
+        nonce: String::new(),
+        ..valid.clone()
+    });
+    assert!(verifier.verify(&refreshed, "oidc-nonce-123").await.is_err());
+    assert!(verifier
+        .verify_renewal(&refreshed, &issuer, &valid.sub)
+        .await
+        .is_ok());
+    assert!(verifier
+        .verify_renewal(&refreshed, &issuer, "another-user")
+        .await
+        .is_err());
+    assert!(verifier
+        .verify_renewal(&refreshed, "https://other.invalid", &valid.sub)
+        .await
+        .is_err());
+    let expired = token(&TestClaims {
+        exp: Utc::now().timestamp() - 60,
+        nonce: String::new(),
+        ..valid.clone()
+    });
+    assert!(verifier
+        .verify_renewal(&expired, &issuer, &valid.sub)
+        .await
+        .is_err());
 
     let mut bad_signature = token(&valid);
     let final_byte = bad_signature.pop().expect("JWT byte");

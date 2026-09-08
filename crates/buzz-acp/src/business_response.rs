@@ -288,7 +288,7 @@ fn build_event(
         root_event_id: root_id,
         parent_event_id: source_event.id,
     };
-    buzz_sdk::build_message(channel_id, content, Some(&thread_ref), &[], false, &[])
+    buzz_sdk::build_message(channel_id, content, Some(&thread_ref), &[], false, &[], &[])
         .map_err(|error| error.to_string())?
         .sign_with_keys(&rest.keys)
         .map_err(|error| error.to_string())

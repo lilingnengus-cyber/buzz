@@ -222,6 +222,9 @@ pub struct ConsumeDelegationRequest {
 /// Stable fail-closed Agent delegation failure classes.
 #[derive(Debug, thiserror::Error)]
 pub enum AgentError {
+    /// The authorized turn has no remaining calls for this operation.
+    #[error("Life Agent call budget is exhausted")]
+    RateLimited,
     /// Input shape, signature, kind, time window, or identifiers were invalid.
     #[error("Life Agent request is invalid")]
     Invalid,
@@ -460,6 +463,16 @@ impl Store {
             request.resource_context.as_ref(),
         )?;
         let max_calls = if effective_capabilities
+            .iter()
+            .any(|c| c.as_str() == "write_command:preview")
+            && effective_capabilities
+                .iter()
+                .any(|c| c.as_str().ends_with(":read"))
+        {
+            // Three bounded lookups plus one preview/write. A write closes
+            // the delegation, so this never permits multiple mutations.
+            4
+        } else if effective_capabilities
             .iter()
             .any(|capability| !capability.as_str().ends_with(":read"))
         {
@@ -713,8 +726,7 @@ impl Store {
         } else {
             request.resource.as_ref().ok_or(AgentError::Unauthorized)?
         };
-        let valid = status == "active"
-            && row.get::<i32, _>("remaining_calls") > 0
+        let valid = matches!(status.as_str(), "active" | "exhausted")
             && row.get::<String, _>("audience") == DELEGATION_AUDIENCE
             && row.get::<String, _>("agent_id") == request.agent_id
             && row.get::<String, _>("agent_turn_id") == request.agent_turn_id
@@ -739,6 +751,15 @@ impl Store {
             && obligations_satisfied(&obligations, &conversation, disclosure_current);
         if !valid {
             return Err(AgentError::Unauthorized);
+        }
+        let is_read = request.capability.ends_with(":read");
+        let has_write = capabilities.iter().any(|c| !c.as_str().ends_with(":read"));
+        let remaining_calls = row.get::<i32, _>("remaining_calls");
+        if status == "exhausted"
+            || remaining_calls <= 0
+            || (is_read && has_write && remaining_calls == 1)
+        {
+            return Err(AgentError::RateLimited);
         }
         let call_id = Uuid::new_v4();
         let inserted = sqlx::query(
@@ -767,7 +788,7 @@ impl Store {
             }
             return Err(AgentError::Database);
         }
-        let remaining = row.get::<i32, _>("remaining_calls") - 1;
+        let remaining = if is_read { remaining_calls - 1 } else { 0 };
         sqlx::query(
             "UPDATE life_agent_delegations
              SET remaining_calls=$2,status=CASE WHEN $2=0 THEN 'exhausted' ELSE 'active' END,

@@ -52,7 +52,12 @@ test.describe("Life Dock", () => {
     };
     const bindingPayload = `life-workbench-identity-binding-v1\nfixture\nissued_at=${Math.floor(Date.now() / 1000)}`;
     lifeSessionStates.set(page, sessionState);
-    await page.route("**/v1/workbench/sessions", (route) => {
+    await page.route(/\/v1\/workbench\/sessions(?:\/renew)?$/, (route) => {
+      if (route.request().url().endsWith("/renew")) {
+        expect(route.request().postDataJSON()).toEqual({
+          sessionToken: "S".repeat(43),
+        });
+      }
       sessionState.workbenchCount += 1;
       const ttlMs = sessionState.nextWorkbenchTtlMs;
       sessionState.nextWorkbenchTtlMs = 10 * 60_000;
@@ -237,7 +242,8 @@ test.describe("Life Dock", () => {
     await page.evaluate((agent) => {
       window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
         channelName: "general",
-        content: "普通链接：[下一个行动](life://action/next-action)",
+        content:
+          "已验证 LifeOS 结果：create_action succeeded\n\n- <life://action/next-action> v1 — 财轻松周例会",
         pubkey: agent,
         createdAt: Math.floor(Date.now() / 1000),
       });
@@ -245,7 +251,9 @@ test.describe("Life Dock", () => {
     await expect(page.getByTestId("life-resource-label")).toHaveText(
       "action: trusted-action",
     );
-    const nextActionLink = page.getByRole("link", { name: "下一个行动" });
+    const nextActionLink = page.getByRole("link", {
+      name: "life://action/next-action",
+    });
     await expect(nextActionLink).toHaveAttribute(
       "href",
       "life://action/next-action",
@@ -304,6 +312,13 @@ test.describe("Life Dock", () => {
     await page.getByTestId("life-dock-toggle").click();
     const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
     await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
+    // Refreshed credentials may omit the original interactive-login nonce.
+    await page.evaluate(() => {
+      window.__BUZZ_E2E_LIFE_ACCESS_TOKEN__ =
+        "header." +
+        btoa(JSON.stringify({ sub: "fixture-user" })) +
+        ".signature";
+    });
     await frame.getByRole("button", { name: "Open action fixture" }).click();
     await frame.getByRole("button", { name: "Mark Life Dirty" }).click();
     const instance = await frame.locator("#instance").textContent();

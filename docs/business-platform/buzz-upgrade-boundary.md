@@ -47,15 +47,19 @@
 
 ## 升级流程
 
-1. 更新 `origin/main`，记录 Buzz 上游 commit 和发布 tag。
+1. 更新 Pacioli 的 `origin/main`，再从 `upstream` 获取目标 Buzz 发布 tag；分别记录产品基线和上游 commit。`origin` 是 Pacioli fork，不能再将其当作 Buzz 上游。
 2. 运行 `scripts/check-business-extension-boundary.sh`，先阻止新的核心侵入。
-3. 运行 `scripts/check-buzz-upgrade-compatibility.sh origin/main`。脚本使用隔离索引收集相对共同祖先的全部已提交、暂存、未暂存和未跟踪业务台文件，并在临时工作树中预演完整补丁。
+3. 运行 `scripts/check-buzz-upgrade-compatibility.sh <Buzz发布tag>`。脚本使用隔离索引收集相对共同祖先的全部已提交、暂存、未暂存和未跟踪业务台文件，并在临时工作树中预演完整补丁。
 4. 在独立升级分支中合并 Buzz；先解决扩展插槽，再处理业务适配器。
 5. 运行 Buzz 原生单元测试、桌面类型检查，再运行 Business Adapter/IAM 契约测试。
 6. 用真实工作流验证：人类登录、独立 Agent 查询，代理 Agent 临时查询/写入、任务结束后凭证失效。
 7. 在升级记录中保存上游 commit、契约版本、数据迁移版本和验证证据。
 
-## 当前升级基线（2026-08-24）
+## 最新升级记录
+
+2026-09-07 的 `desktop-v0.5.23` 升级适配和验证状态见 [`upgrade-record-2026-09-07.md`](upgrade-record-2026-09-07.md)。未通过完整验证的候选不得据此视为已部署版本。
+
+## 历史升级基线（2026-08-24）
 
 - 本地 Buzz 基线落后 `origin/main` 74 个提交。
 - 检查目标为 `0720f5380ce8a6c050afac159f8462c06cd51ab5`；最新桌面发布为 `desktop-v0.5.18`。

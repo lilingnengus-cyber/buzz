@@ -89,12 +89,12 @@ test("manual Life OIDC reconnect releases the session-start lock and resumes aft
 
   assert.match(
     source,
-    /pendingOidcResumeRef\.current = true;\s*void lifeAuth\.signIn\(\);/u,
+    /pendingOidcResumeRef\.current = lifeAuth\.loginRevision;\s*void lifeAuth\.signIn\(\);/u,
   );
   assert.doesNotMatch(source, /await lifeAuth\.signIn\(\)/u);
   assert.match(
     source,
-    /lifeAuth\.phase !== "authenticated"[\s\S]*!pendingOidcResumeRef\.current[\s\S]*pendingOidcResumeRef\.current = false;[\s\S]*startLifeSession\(true\);/u,
+    /lifeAuth\.phase !== "authenticated"[\s\S]*pendingOidcResumeRef\.current === null[\s\S]*lifeAuth\.loginRevision <= pendingOidcResumeRef\.current[\s\S]*sessionStarting[\s\S]*pendingOidcResumeRef\.current = null;[\s\S]*startLifeSession\(true\);/u,
   );
 });
 
