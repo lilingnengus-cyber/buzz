@@ -32,6 +32,22 @@ exit. It is intentionally not part of ordinary CI because it invokes a real
 configured ACP model. Use `LIFE_E2E_KEEP=1` only while diagnosing a failed run;
 the command then preserves its disposable databases and log directory.
 
+## Concise Agent replies
+
+New ACP replies keep the requested answer in the message body and attach receipt
+metadata as signed `pacioli-extension-result` / `pacioli-resource-ref` tags.
+Desktop shows one collapsed “查看执行详情” section for a known agent signer;
+expanding it exposes the operation, trace, audit (on success), and resource
+versions, with a copy action. A failed receipt keeps the failure visible in the
+body and cannot trigger trusted-resource navigation. Plain text is never receipt
+authority. Existing historical message bodies are not rewritten.
+
+Deploy the matching Desktop renderer before the updated ACP publisher. Older
+clients still receive the answer but do not display the tagged execution details.
+This change does not alter gateway authorization, audit persistence, or the exact
+confirmation required for high-risk writes. Subtask answers must be based on the
+parent's detail/explicit relationships, never the flat list of resource references.
+
 ## Safe rollout order
 
 Enable in this order, with `LIFE_INTEGRATION_CONTRACT_VERSION=1` on both systems:

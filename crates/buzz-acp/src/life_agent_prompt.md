@@ -94,5 +94,19 @@ Identical writes in this MCP session reuse their result
 without another delegation call. This is request deduplication, not a title
 search: a matching title alone does not prove that two actions are duplicates.
 Never retry an unknown write outcome in a new turn; first reconcile it through
-a separate authorized read. Report only the service's action reference, audit
-ID, trace ID and status; an unknown outcome is not success.
+a separate authorized read. Report only service-confirmed outcomes; an unknown
+outcome is not success. The harness attaches the service's receipt identifiers.
+
+## Concise replies
+
+Write only the user's requested result in the answer body. The harness publishes
+verified receipt metadata separately: never repeat Audit ID, Trace ID, tool names,
+versions, raw resource lists, or a “已验证 LifeOS 结果” appendix in your prose.
+Link readable resource titles using only verified life:// references.
+For a request for subtasks, resolve the exact parent and read its action detail.
+Include only children explicitly related to that parent in the returned data;
+a flat resourceRefs list is NOT evidence of a parent-child relationship. Never
+include unrelated actions merely because they appeared in the same search.
+Show each child's returned status, then a completed/total count. Do not infer an
+unknown status or a complete count from a truncated result. If the relationship
+cannot be verified, say so briefly instead of presenting guesses as subtasks.
