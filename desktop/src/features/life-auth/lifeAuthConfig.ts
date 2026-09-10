@@ -37,3 +37,25 @@ export function readLifeAuthConfig(env: LifeAuthEnv): LifeAuthConfigResult {
 export function getLifeAuthConfig(): LifeAuthConfigResult {
   return readLifeAuthConfig(import.meta.env);
 }
+
+/** Map the fixed desktop handoff back to the registered HTTPS redirect URI. */
+export function normalizeLifeAuthCallback(
+  url: string,
+  config: WorkbenchAuthConfig,
+): string {
+  const target = new URL(config.redirectUri);
+  const actual = new URL(url);
+  if (
+    target.href === "https://life.shiyueshizi.com/auth/pacioli" &&
+    actual.protocol === "pacioli:" &&
+    actual.host === "auth" &&
+    actual.pathname === "/life-callback" &&
+    !actual.username &&
+    !actual.password &&
+    !actual.hash
+  ) {
+    target.search = actual.search;
+    return target.href;
+  }
+  return url;
+}

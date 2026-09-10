@@ -10,7 +10,7 @@ import {
 } from "@/features/workbench-auth/workbenchAuthClient";
 import type { WorkbenchAuthConfig } from "@/features/workbench-auth/workbenchAuthConfig";
 
-import { getLifeAuthConfig } from "./lifeAuthConfig";
+import { getLifeAuthConfig, normalizeLifeAuthCallback } from "./lifeAuthConfig";
 
 type LifeAuthPhase =
   | "unconnected"
@@ -86,7 +86,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
         const processed = await processWorkbenchAuthCallback(
           manager,
           result.config,
-          url,
+          normalizeLifeAuthCallback(url, result.config),
         );
         if (!processed) return;
         applyUser(await manager.getUser());
