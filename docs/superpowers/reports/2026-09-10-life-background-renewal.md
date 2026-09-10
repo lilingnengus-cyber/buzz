@@ -20,3 +20,11 @@ Validation in the active v0.5.23 checkout: eight session/watcher tests passed,
 including hidden-panel timers, coalesced wake events, late timers and logout
 cleanup. Biome and TypeScript checks passed. Live cross-hour sleep/renewal has
 not been performed in this bounded run.
+
+Installed the active v0.5.23 build on September 10 at 20:02 Asia/Shanghai after
+preserving installed agent sidecars and verifying its signature. Backup:
+ /Applications/Pacioli.backup-before-background-renew-20260910-200252.app
+The application restarted. The prior OIDC credential was expired; the existing
+browser sign-in restored LifeOS without password entry. A hidden-panel read-only
+query was sent at 20:04 and received a reply. This is immediate-query verification,
+not proof of a full hourly background renewal.
