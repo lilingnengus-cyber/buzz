@@ -1,3 +1,4 @@
+import { watchLifeSessionRenewal } from "./lifeSessionRenewal";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as React from "react";
 import { toast } from "sonner";
@@ -45,7 +46,6 @@ import {
 import { useLifeDockWidth } from "./useLifeDockWidth";
 import {
   canAttemptLifeRecovery,
-  lifeSessionRenewalDelay,
   readLifeEmbedCode,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession";
@@ -463,28 +463,11 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     startLifeSession(true);
   }, [auth.phase, startLifeSession]);
   React.useEffect(() => {
-    if (
-      !state.open ||
-      !active ||
-      !bridgeReady ||
-      auth.phase !== "authenticated" ||
-      !sessionExpiresAt
-    )
-      return;
-    const delay = lifeSessionRenewalDelay(sessionExpiresAt);
-    if (delay === null) return;
-    const timer = window.setTimeout(() => {
+    if (auth.phase !== "authenticated" || !sessionExpiresAt) return;
+    return watchLifeSessionRenewal(sessionExpiresAt, () => {
       startLifeSession(true, true);
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [
-    active,
-    auth.phase,
-    bridgeReady,
-    sessionExpiresAt,
-    startLifeSession,
-    state.open,
-  ]);
+    });
+  }, [auth.phase, sessionExpiresAt, startLifeSession]);
   React.useEffect(() => {
     if (!state.open || auth.phase !== "authenticated") return;
     const timer = window.setInterval(() => post("CHECK_AUTH"), 60_000);
