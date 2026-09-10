@@ -20,3 +20,11 @@ Existing LifeOS authorization regressions and clippy are also run.
 The patch is applied to both this worktree and the active v0.5.23 checkout to
 avoid replacing the current installed runtime with an older implementation.
 Live verification does not invalidate the user's session to force a denial.
+
+Deployment: the active v0.5.23 checkout uses the newer seven-argument message
+builder; its adapted patch passed the feedback tests, 15 LifeOS regression tests
+and all-target clippy, then built successfully. Installed the matching harness
+in /Applications/Pacioli.app and verified its local signature. Restarted only the
+LifeOS agent; its UI returned Online. A new read-only focus query was sent at
+18:46 Asia/Shanghai and received a reply. The failure path was tested locally,
+not by revoking a live session.
