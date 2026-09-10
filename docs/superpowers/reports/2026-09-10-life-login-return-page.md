@@ -24,3 +24,14 @@ Local browser tests cover valid/error/invalid returns, fixed handoff target,
 query cleanup and response headers. Three desktop config/callback tests and
 TypeScript checks passed. Deployment initially stopped because the production
 checkout had an unpushed timezone fix (6cf162d); preserve it by merging into main.
+
+Deployment: merged the production-only timezone commit without conflicts; main
+5ebbfe6 deployed successfully in run 34478126151 (2m26s). The public return route
+responds HTTP 200. Authentik provider pacioli-life-workbench now includes the
+strict HTTPS authorization callback alongside the previous three entries.
+The desktop bundle was built and signed, installed with backup
+/Applications/Pacioli.backup-before-login-return-20260910-204449.app.
+Automated native-window reads repeatedly timed out after installation and one
+restart; full live OIDC handoff acceptance has not been completed. This limitation
+does not invalidate local callback/browser tests but must not be called a live
+login success. User was asked whether the actual app window is responsive.
