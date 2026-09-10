@@ -400,7 +400,9 @@ impl LifeAgentHostConfig {
             return Err(match response.status().as_u16() {
                 409 => "This signed message has already started a Life Agent turn".into(),
                 429 => "Life Agent call budget is unavailable".into(),
-                _ => "Life Agent turn was not authorized for this identity".into(),
+                401 | 403 => "Life Agent turn was not authorized for this identity".into(),
+                500..=599 => "Life authorization gateway is unavailable".into(),
+                _ => "Life Agent authorization request was rejected".into(),
             });
         }
         if response
@@ -624,6 +626,10 @@ impl TurnExtension for LifeAgentHostConfig {
                 reason: "configured Life Agent direct-message turn",
             }
         })
+    }
+
+    fn begin_error_message(&self, error: &str) -> Option<&'static str> {
+        life_begin_error_message(error)
     }
 
     fn begin_turn<'a>(
@@ -1664,5 +1670,43 @@ mod tests {
         assert_eq!(access.mcp_server.env.len(), 7);
         std::mem::forget(access);
         server.abort();
+    }
+}
+
+fn life_begin_error_message(error: &str) -> Option<&'static str> {
+    match error {
+        "This signed message has already started a Life Agent turn" => None,
+        "Life Agent turn was not authorized for this identity" => Some(
+            "本次 LifeOS 授权未通过，尚未执行查询或修改。请在右侧 LifeOS 重新登录后重试；若已登录仍失败，请检查账号绑定或权限。"
+        ),
+        "Life authorization gateway is unavailable" => Some(
+            "暂时无法连接 LifeOS 授权服务，尚未执行查询或修改，请稍后重试。"
+        ),
+        "Life Agent call budget is unavailable" => Some(
+            "LifeOS 当前请求额度暂不可用，尚未执行查询或修改，请稍后重试。"
+        ),
+        _ => Some("本次 LifeOS 请求未通过执行前检查，尚未查询或修改数据。请检查登录状态、账号权限及请求后重试。"),
+    }
+}
+
+#[cfg(test)]
+mod begin_error_feedback_tests {
+    use super::life_begin_error_message;
+    #[test]
+    fn rejected_turn_feedback_is_actionable_and_does_not_leak_errors() {
+        assert!(
+            life_begin_error_message("Life Agent turn was not authorized for this identity")
+                .is_some_and(|text| text.contains("重新登录") && text.contains("尚未执行"))
+        );
+        assert!(
+            life_begin_error_message("Life authorization gateway is unavailable")
+                .is_some_and(|text| text.contains("稍后重试") && !text.contains("重新登录"))
+        );
+        assert!(life_begin_error_message(
+            "This signed message has already started a Life Agent turn"
+        )
+        .is_none());
+        assert!(life_begin_error_message("secret gateway payload")
+            .is_some_and(|text| !text.contains("secret")));
     }
 }

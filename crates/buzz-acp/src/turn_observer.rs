@@ -142,6 +142,11 @@ pub(crate) trait TurnExtension: Send + Sync {
     fn classify_turn(&self, context: &VerifiedTurnContext<'_>)
         -> Result<TurnApplicability, String>;
 
+    /// Safe, product-owned feedback for a rejected turn, never raw gateway text.
+    fn begin_error_message(&self, _error: &str) -> Option<&'static str> {
+        None
+    }
+
     fn begin_turn<'a>(
         &'a self,
         context: VerifiedTurnContext<'a>,
@@ -210,5 +215,110 @@ mod tests {
                 harness_publishes_response: false,
             }
         );
+    }
+}
+
+pub(crate) async fn publish_begin_error(
+    rest: &RestClient,
+    channel_id: Option<Uuid>,
+    source: Option<&Event>,
+    message: Option<&str>,
+) {
+    let (Some(channel_id), Some(source), Some(message)) = (channel_id, source, message) else {
+        return;
+    };
+    let parsed = crate::queue::parse_thread_tags(source);
+    let thread = buzz_sdk::ThreadRef {
+        root_event_id: parsed
+            .root_event_id
+            .as_deref()
+            .and_then(|id| EventId::from_hex(id).ok())
+            .unwrap_or(source.id),
+        parent_event_id: source.id,
+    };
+    let Ok(builder) =
+        buzz_sdk::build_message(channel_id, message, Some(&thread), &[], false, &[], &[])
+    else {
+        return;
+    };
+    let Ok(event) = builder.sign_with_keys(&rest.keys) else {
+        return;
+    };
+    match tokio::time::timeout(Duration::from_secs(10), rest.submit_event(&event)).await {
+        Ok(Ok(result))
+            if result.get("accepted").and_then(|value| value.as_bool()) == Some(true)
+                && result.get("event_id").and_then(|value| value.as_str())
+                    == Some(event.id.to_hex().as_str()) => {}
+        _ => tracing::warn!("Could not publish turn authorization feedback"),
+    }
+}
+
+#[cfg(test)]
+mod begin_feedback_publish_tests {
+    use super::*;
+    use axum::{extract::State, routing::post, Json, Router};
+    use nostr::Keys;
+    use serde_json::{json, Value};
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn feedback_replies_to_original_thread_without_result_claims() {
+        async fn receive(
+            State(events): State<Arc<Mutex<Vec<Event>>>>,
+            Json(event): Json<Event>,
+        ) -> Json<Value> {
+            event.verify().expect("valid signature");
+            events.lock().expect("events").push(event.clone());
+            Json(json!({"accepted":true,"event_id":event.id.to_hex()}))
+        }
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listen");
+        let rest = RestClient {
+            http: reqwest::Client::new(),
+            base_url: format!("http://{}", listener.local_addr().expect("address")),
+            keys: Keys::generate(),
+            auth_tag_json: None,
+        };
+        let router = Router::new()
+            .route("/events", post(receive))
+            .with_state(events.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.expect("serve");
+        });
+        let channel = Uuid::new_v4();
+        let root = EventId::all_zeros();
+        let source = buzz_sdk::build_message(
+            channel,
+            "查询",
+            Some(&buzz_sdk::ThreadRef {
+                root_event_id: root,
+                parent_event_id: root,
+            }),
+            &[],
+            false,
+            &[],
+            &[],
+        )
+        .expect("message")
+        .sign_with_keys(&Keys::generate())
+        .expect("sign");
+        publish_begin_error(&rest, Some(channel), Some(&source), Some("请重新登录")).await;
+        publish_begin_error(&rest, Some(channel), Some(&source), None).await;
+        let received = events.lock().expect("events");
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].content, "请重新登录");
+        let thread = crate::queue::parse_thread_tags(&received[0]);
+        assert_eq!(thread.root_event_id, Some(root.to_hex()));
+        assert!(received[0]
+            .tags
+            .iter()
+            .any(|tag| tag.as_slice() == ["e", &source.id.to_hex(), "", "reply"]));
+        assert!(!received[0]
+            .tags
+            .iter()
+            .any(|tag| tag.as_slice()[0] == "life_result"));
+        server.abort();
     }
 }

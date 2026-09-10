@@ -2332,12 +2332,22 @@ pub async fn run_prompt_task(
         Some(extension) => match extension.begin_turn(verified_context).await {
             Ok(access) => access,
             Err(error) => {
+                crate::turn_observer::publish_begin_error(
+                    &ctx.rest_client,
+                    source_channel_id,
+                    source_event,
+                    extension.begin_error_message(&error),
+                )
+                .await;
                 send_prompt_result(
                     &result_tx,
                     &turn_id,
                     agent,
                     source,
-                    PromptOutcome::Error(AcpError::Protocol(error)),
+                    PromptOutcome::Error(AcpError::AgentError {
+                        code: -32001,
+                        message: error,
+                    }),
                     None,
                 );
                 return;
