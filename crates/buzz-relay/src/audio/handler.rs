@@ -940,6 +940,15 @@ async fn handle_active_audio_connection(
                 room_emptied = false;
             }
             Ok(()) => {
+                // Archive metadata must follow the database transition so desktop
+                // channel refreshes stop presenting this room as writable.
+                if let Err(error) = crate::handlers::side_effects::emit_group_discovery_events(
+                    &tenant, &state, channel_id,
+                )
+                .await
+                {
+                    warn!(%channel_id, %error, "auto-archive discovery update failed");
+                }
                 room_emptied = state
                     .audio_rooms
                     .cleanup_if_empty(tenant.community(), channel_id);
