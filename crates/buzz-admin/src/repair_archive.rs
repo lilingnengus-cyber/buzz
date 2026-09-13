@@ -35,7 +35,7 @@ pub(super) async fn run(channel: uuid::Uuid, apply: bool) -> Result<()> {
         "channel is not archived; refusing repair"
     );
     let keys = Keys::parse(
-        std::env::var("BUZZ_RELAY_PRIVATE_KEY").context("relay key must be configured")?,
+        &std::env::var("BUZZ_RELAY_PRIVATE_KEY").context("relay key must be configured")?,
     )?;
     let records = db
         .query_events(&EventQuery {
