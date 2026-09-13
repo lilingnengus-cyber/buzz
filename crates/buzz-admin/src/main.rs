@@ -21,6 +21,7 @@
 //! the guard against parallel adds (e.g. `xargs -P`).
 
 mod deletions;
+mod repair_archive;
 
 use std::sync::Arc;
 
@@ -94,6 +95,13 @@ enum Command {
     /// Without `--channel`, only channels missing discovery metadata are
     /// reconciled. With `--channel`, only that channel's member snapshot is
     /// replaced; canonical metadata and admin events remain untouched.
+    /// Repair only the metadata of an already archived channel. Defaults to dry run.
+    RepairArchivedChannel {
+        #[arg(long)]
+        channel: uuid::Uuid,
+        #[arg(long)]
+        apply: bool,
+    },
     ReconcileChannels {
         /// Optional channel UUID to force-republish.
         #[arg(long)]
@@ -161,6 +169,10 @@ async fn run(cli: Cli) -> Result<i32> {
             command: ProductFeedbackCommand::List { limit },
         } => cmd_list_product_feedback(limit).await,
         Command::Deletions { command } => deletions::run(command).await,
+        Command::RepairArchivedChannel { channel, apply } => {
+            repair_archive::run(channel, apply).await?;
+            Ok(0)
+        }
         Command::ReconcileChannels { channel, relay_key } => {
             reconcile_channels(channel, relay_key).await?;
             Ok(0)
