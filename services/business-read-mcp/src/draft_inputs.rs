@@ -207,3 +207,16 @@ struct ReturnDraftReplacement {
     business_note: Option<String>,
     lines: Vec<ReturnLineInput>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReturnCancellationInput {
+    source_document_id: Uuid,
+    command: ReturnCancellationInput,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnCancellationInput {
+    expected_version: i64,
+    reason: String,
+}

@@ -5,17 +5,19 @@ use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrepareReturnDisposition {
-    /// Confirmed return ID from a scoped read.
+    /// Return ID from a scoped read; draft for cancellation, confirmed for logistics or inspection.
     pub source_document_id: Uuid,
-    /// Strictly decoded inspection, dispatch or acknowledgment command.
+    /// Strictly decoded inspection, dispatch, acknowledgment or draft cancellation command.
     pub command: Value,
 }
 fn family(kind: &str) -> Result<(&'static str, &'static str), StoreError> {
     match kind {
-        "sales_return_inspection_intent" => Ok(("sales_return", "shipment:reverse")),
-        "purchase_return_dispatch_intent" | "purchase_return_acknowledgment_intent" => {
-            Ok(("purchase_return", "goods_receipt:reverse"))
+        "sales_return_inspection_intent" | "sales_return_cancellation_intent" => {
+            Ok(("sales_return", "shipment:reverse"))
         }
+        "purchase_return_dispatch_intent"
+        | "purchase_return_acknowledgment_intent"
+        | "purchase_return_cancellation_intent" => Ok(("purchase_return", "goods_receipt:reverse")),
         _ => Err(StoreError::NotFoundOrForbidden),
     }
 }
@@ -226,16 +228,28 @@ async fn snapshot(
     input: &PrepareReturnDisposition,
 ) -> Result<Value, StoreError> {
     family(kind)?;
-    state
-        .return_disposition
-        .agent_preview(actor, input.source_document_id, kind, &input.command)
-        .await
-        .map_err(|e| match e {
-            crate::b2::DomainError::NotFoundOrForbidden => StoreError::NotFoundOrForbidden,
-            crate::b2::DomainError::VersionConflict => StoreError::Conflict,
-            crate::b2::DomainError::Database(e) => StoreError::Database(e),
-            _ => StoreError::Invalid("invalid return disposition input or state".into()),
-        })
+    let result = if kind.ends_with("_cancellation_intent") {
+        state
+            .returns
+            .cancellation_preview(
+                actor,
+                kind == "sales_return_cancellation_intent",
+                input.source_document_id,
+                &input.command,
+            )
+            .await
+    } else {
+        state
+            .return_disposition
+            .agent_preview(actor, input.source_document_id, kind, &input.command)
+            .await
+    };
+    result.map_err(|e| match e {
+        crate::b2::DomainError::NotFoundOrForbidden => StoreError::NotFoundOrForbidden,
+        crate::b2::DomainError::VersionConflict => StoreError::Conflict,
+        crate::b2::DomainError::Database(e) => StoreError::Database(e),
+        _ => StoreError::Invalid("invalid return disposition input or state".into()),
+    })
 }
 async fn execute(
     state: &AppState,
@@ -249,6 +263,26 @@ async fn execute(
     let key = format!("agent-return-disposition:{id}");
     let command = snapshot["command"].clone();
     match kind {
+        "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => {
+            let command: crate::b2::CancelReturnDraft =
+                serde_json::from_value(command).map_err(|e| e.to_string())?;
+            let command = B2VersionCommand {
+                expected_version: command.expected_version,
+                reason_code: Some(command.reason),
+            };
+            if kind == "sales_return_cancellation_intent" {
+                state
+                    .returns
+                    .cancel_sales_return(actor, trace, input.source_document_id, &key, &command)
+                    .await
+            } else {
+                state
+                    .returns
+                    .cancel_purchase_return(actor, trace, input.source_document_id, &key, &command)
+                    .await
+            }
+        }
+
         "sales_return_inspection_intent" => {
             let command = serde_json::from_value(command).map_err(|e| e.to_string())?;
             let guard =

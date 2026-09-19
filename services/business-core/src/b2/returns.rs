@@ -1,4 +1,6 @@
+mod cancellation;
 mod confirmation;
+pub use cancellation::CancelReturnDraft;
 mod draft;
 use super::{
     common::{
@@ -577,6 +579,9 @@ impl ReturnService {
         if let Some(mut replay) =
             begin_idempotent::<CommandResult>(&mut tx, actor, command, key, &hash).await?
         {
+            if replay.id != id {
+                return Err(DomainError::IdempotencyConflict);
+            }
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -597,7 +602,7 @@ impl ReturnService {
             "cancelled",
             version,
             (actor, trace_id),
-            json!({}),
+            json!({"reason":input.reason_code}),
         )
         .await?;
         record(
@@ -608,7 +613,7 @@ impl ReturnService {
             topic,
             entity_type,
             id,
-            json!({"version":version}),
+            json!({"version":version,"reason":input.reason_code}),
         )
         .await?;
         let result = CommandResult {

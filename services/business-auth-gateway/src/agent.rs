@@ -12,7 +12,11 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 65] = [
+const AGENT_SCOPES: [&str; 69] = [
+    "sales_return_cancellation_intent:create",
+    "sales_return_cancellation_intent:approve",
+    "purchase_return_cancellation_intent:create",
+    "purchase_return_cancellation_intent:approve",
     "sales_return:update_draft",
     "purchase_return:update_draft",
     "sales_return:create",
@@ -105,6 +109,14 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "sales-return-cancellation-intent" => (
+            "sales_return_cancellation_intent",
+            "sales_return_cancellation_intent:approve",
+        ),
+        "purchase-return-cancellation-intent" => (
+            "purchase_return_cancellation_intent",
+            "purchase_return_cancellation_intent:approve",
+        ),
         "sales-return" => ("sales_return", "sales_return:approve"),
         "purchase-return" => ("purchase_return", "purchase_return:approve"),
         "sales-return-inspection-intent" => (
@@ -920,6 +932,8 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "sales-return-cancellation-intent",
+            "purchase-return-cancellation-intent",
             "sales-return",
             "purchase-return",
             "sales-return-inspection-intent",

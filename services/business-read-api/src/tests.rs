@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 50);
+    assert_eq!(WRITE_TOOLS.len(), 54);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -557,6 +557,29 @@ fn return_draft_replacement_requires_two_versions_and_cannot_change_source() {
         assert!(!valid_write_input(tool, &invalid));
         let mut invalid = input;
         invalid["draft"]["lines"][0]["quantity"] = json!(0.5);
+        assert!(!valid_write_input(tool, &invalid));
+    }
+}
+
+#[test]
+fn cancellation_input_cannot_override_target_effects_or_confirmation() {
+    for tool in [
+        "prepare_sales_return_cancellation",
+        "prepare_purchase_return_cancellation",
+    ] {
+        let input = json!({"sourceDocumentId":Uuid::new_v4(),"command":{"expectedVersion":2,"reason":"重复草稿"}});
+        assert!(valid_write_input(tool, &input));
+        for (field, value) in [
+            ("quantity", json!("100")),
+            ("approved", json!(true)),
+            ("sourceId", json!(Uuid::new_v4())),
+        ] {
+            let mut invalid = input.clone();
+            invalid["command"][field] = value;
+            assert!(!valid_write_input(tool, &invalid));
+        }
+        let mut invalid = input;
+        invalid["command"].as_object_mut().unwrap().remove("reason");
         assert!(!valid_write_input(tool, &invalid));
     }
 }

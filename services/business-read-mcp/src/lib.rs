@@ -760,6 +760,66 @@ impl BusinessReadMcp {
             )
             .await)
     }
+
+    #[tool(
+        name = "prepare_sales_return_cancellation",
+        description = "Prepare cancellation of a draft sales return using its current version and user-provided reason. Returns immutable 30-minute intent, exact quantity released and complete confirmation command; does not cancel. Confirmed returns cannot be cancelled."
+    )]
+    async fn prepare_sales_return_cancellation(
+        &self,
+        Parameters(input): Parameters<PrepareReturnCancellationInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_sales_return_cancellation",
+                "sales_return_cancellation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_sales_return_cancellation",
+        description = "Apply only the return draft cancellation decision bound to the current verified human signed command. No arguments; cannot change target, version or reason. Only executed=true proves cancellation completed."
+    )]
+    async fn approve_sales_return_cancellation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_sales_return_cancellation",
+                "sales_return_cancellation_intent:approve",
+                "sales_return_cancellation_intent",
+            )
+            .await)
+    }
+
+    #[tool(
+        name = "prepare_purchase_return_cancellation",
+        description = "Prepare cancellation of a draft purchase return using its current version and user-provided reason. Returns immutable 30-minute intent, exact quantity released and complete confirmation command; does not cancel. Confirmed returns cannot be cancelled."
+    )]
+    async fn prepare_purchase_return_cancellation(
+        &self,
+        Parameters(input): Parameters<PrepareReturnCancellationInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_purchase_return_cancellation",
+                "purchase_return_cancellation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_return_cancellation",
+        description = "Apply only the return draft cancellation decision bound to the current verified human signed command. No arguments; cannot change target, version or reason. Only executed=true proves cancellation completed."
+    )]
+    async fn approve_purchase_return_cancellation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_return_cancellation",
+                "purchase_return_cancellation_intent:approve",
+                "purchase_return_cancellation_intent",
+            )
+            .await)
+    }
     #[tool(
         name = "create_sales_return_draft",
         description = "Create a return draft only after the human selects an authorized source, date, reason and exact line quantities. Read source line IDs, returnable quantities and current version first. Does not confirm the return or change inventory or balances. Read the return approval preview before asking for confirmation."
@@ -3496,7 +3556,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 101);
+        assert_eq!(registered.len(), 105);
         for name in [
             "update_sales_return_draft",
             "update_purchase_return_draft",
@@ -3518,6 +3578,8 @@ mod tests {
         }
 
         for name in [
+            "approve_sales_return_cancellation",
+            "approve_purchase_return_cancellation",
             "approve_sales_return",
             "approve_purchase_return",
             "approve_sales_return_inspection",

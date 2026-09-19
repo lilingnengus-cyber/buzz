@@ -31,6 +31,9 @@ pub(super) async fn execute(
         "sales_return_inspection_intent" => {
             invalid_parameters["command"]["lines"][0]["acceptedQuantity"] = json!("999")
         }
+        "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => {
+            invalid_parameters["command"]["reason"] = json!("  ")
+        }
         "purchase_return_dispatch_intent" => invalid_parameters["command"]["carrier"] = json!("  "),
         _ => invalid_parameters["command"]["acknowledgedDate"] = json!("2026-09-18"),
     }
@@ -47,6 +50,7 @@ pub(super) async fn execute(
     assert_eq!(replay["item"]["id"], prepared["item"]["id"]);
     let mut different = input.clone();
     let date_key = match kind {
+        "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => "reason",
         "sales_return_inspection_intent" => "inspectionDate",
         "purchase_return_dispatch_intent" => "dispatchDate",
         _ => "acknowledgedDate",

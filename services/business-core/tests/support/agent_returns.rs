@@ -12,6 +12,7 @@ pub(super) async fn create(
     } else {
         "purchase_return"
     };
+    return_draft_cancellation_checks::check(app, store, f, sales, input).await;
     return_draft_edit_checks::check(app, store, f, sales, input).await;
     let source = format!("/v1/agent-return-sources/{kind}/{}", input.source_id);
     let path = format!("/v1/agent-drafts/returns/{kind}");

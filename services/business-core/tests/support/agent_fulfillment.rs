@@ -8,6 +8,8 @@ mod return_concurrency_checks;
 mod return_confirmation_checks;
 #[path = "agent_return_disposition.rs"]
 mod return_disposition_checks;
+#[path = "return_draft_cancellation.rs"]
+mod return_draft_cancellation_checks;
 #[path = "return_draft_edit.rs"]
 mod return_draft_edit_checks;
 #[path = "return_logistics.rs"]

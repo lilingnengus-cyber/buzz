@@ -9,6 +9,16 @@ async fn target_scope_is_checked_before_persisting_allocation_intent() {
     for allowed in [false, true] {
         for (tool, kind, category) in [
             (
+                "prepare_sales_return_cancellation",
+                "sales_return_cancellation_intent",
+                "return-disposition",
+            ),
+            (
+                "prepare_purchase_return_cancellation",
+                "purchase_return_cancellation_intent",
+                "return-disposition",
+            ),
+            (
                 "prepare_sales_return_inspection",
                 "sales_return_inspection_intent",
                 "return-disposition",
