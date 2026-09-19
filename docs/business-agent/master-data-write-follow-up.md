@@ -283,3 +283,11 @@ shipment_master_status 的真实 PostgreSQL 回归覆盖九类资料（客户、
 新增两类真实 Core 停用测试，复用已验证的表锁与 pg_blocking_pids 等待观测：采购先持资料共享锁并停在插入处，随后发起供应商或 SKU 停用，确认停用等待采购事务；放行草稿后停用返回 blocking operational impacts，资料保持 active。影响预览分别显示一条 open_orders/purchase_inbound 阻塞。取消草稿后真实停用和重新启用均成功，验证阻塞来自当前订单而非永远拒绝操作。
 
 party_sku_reverse 的完整 postgres_b3 闭环通过，包含既有仓库反向交错、九类创建/确认等待、收货及应付流程；严格 Clippy、格式及 diff 检查通过。日志 /tmp/party-sku-reverse.log、/tmp/party-sku-reverse-clippy.log，数据库位于独立 55439。本批仅新增验证，未修改生产业务逻辑，也未部署；助手启停与其他业务入口的完整覆盖仍需继续。
+
+## SKU 停用纳入未结束盘点
+
+影响清单审查发现仓库已有进行中盘点保护，但 SKU 只检查库存余额与订单；零余额 SKU 即使处于 counting/counted 仍被显示为可停用。sku_count_impact_before 在 counting 状态复现 can_disable=true。
+
+SKU 的阻塞影响新增 inventory_counts，统计关联盘点行所属任务为 counting 或 counted。sku_count_impact_after 的完整 B2 回归验证零余额盘点的两个未结束阶段均预览不可停用、真实 change_status 被 blocking operational impacts 拒绝；过账后影响计数归零且可停用。严格 Clippy、格式及差异检查通过，日志 /tmp/sku-count-impact-{before,after,clippy}.log，隔离数据库端口 55439。
+
+这项影响保护尚未部署；不等于盘点所有状态变化方向均已验证。基础资料启停意图、其余业务入口保护及完整流程验收仍待完成。完整覆盖表同步更正 e51 已发布记录与 Windows 候选构建状态，保留新法人授权、近期未部署修复及实际客户端验收缺口。

@@ -30,6 +30,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
         .create(f.actor, Uuid::new_v4(), "count-create-first", &input)
         .await
         .unwrap();
+    sku_disable_impact(store, f, true, "counting").await;
     let detail = service.detail(f.actor, first.id).await.unwrap();
     let line = json!({"countLineId":detail.lines[0].id,"actualOnHandQuantity":"0"});
     let duplicate: SubmitInventoryCount =
@@ -63,6 +64,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
         .await
         .unwrap();
     assert_eq!(submitted.version, 2);
+    sku_disable_impact(store, f, true, "counted").await;
     assert!(
         service
             .submit(
@@ -99,6 +101,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
             .unwrap()
             .idempotent_replay
     );
+    sku_disable_impact(store, f, false, "posted").await;
     let second = service
         .create(f.actor, Uuid::new_v4(), "count-create-second", &input)
         .await
@@ -210,4 +213,49 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     super::inventory_count_frozen_scopes::check(store, &service, f, &input, first.id).await;
     super::inventory_count_creation::check(store, &service, f, &input).await;
     super::inventory_count_operations::check(store, &service, f, &input).await;
+}
+
+async fn sku_disable_impact(store: &PgStore, f: &Fixture, blocked: bool, phase: &str) {
+    use business_core::product_master::{
+        ChangeProductMasterStatus, ProductMasterService, ProductMasterType,
+    };
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT r.role_id,p.key FROM business_user_roles r CROSS JOIN (VALUES ('business_product_master:manage'),('business_product_master:read')) p(key) WHERE r.enterprise_user_id=$1 ON CONFLICT DO NOTHING").bind(f.actor).execute(store.pool()).await.unwrap();
+    let master = ProductMasterService::new(store.clone());
+    let impact = master
+        .impact(f.actor, ProductMasterType::Sku, f.sku)
+        .await
+        .unwrap();
+    assert_eq!(impact.can_disable, !blocked, "{phase}");
+    assert!(
+        impact
+            .impacts
+            .iter()
+            .any(|v| v.code == "inventory_counts" && v.blocking && v.count == i64::from(blocked)),
+        "{phase}"
+    );
+    if blocked {
+        let expected_version: i64 =
+            sqlx::query_scalar("SELECT version FROM business_skus WHERE id=$1")
+                .bind(f.sku)
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        let result = master
+            .change_status(
+                f.actor,
+                Uuid::new_v4(),
+                ProductMasterType::Sku,
+                f.sku,
+                &format!("sku-disable-{phase}"),
+                &ChangeProductMasterStatus {
+                    status: "disabled".into(),
+                    expected_version,
+                },
+            )
+            .await;
+        assert!(
+            matches!(result, Err(DomainError::Invalid(ref message)) if message.contains("blocking operational impacts")),
+            "{phase}: {result:?}"
+        );
+    }
 }
