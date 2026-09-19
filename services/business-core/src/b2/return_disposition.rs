@@ -1,3 +1,4 @@
+mod preview;
 use super::{
     common::{authorize, begin_idempotent, finish_idempotent, money, record, request_hash},
     model::{CommandResult, DecimalString},
@@ -123,6 +124,19 @@ impl ReturnDispositionService {
         key: &str,
         input: &InspectSalesReturn,
     ) -> Result<CommandResult, DomainError> {
+        self.inspect_sales_return_guarded(actor, trace_id, id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn inspect_sales_return_guarded(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        id: Uuid,
+        key: &str,
+        input: &InspectSalesReturn,
+        guard: Option<&super::stock_reversal_guard::StockReversalGuard>,
+    ) -> Result<CommandResult, DomainError> {
         validate_inspection(input)?;
         let pre = sqlx::query(
             "SELECT legal_entity_id,warehouse_id,customer_id FROM sales_returns WHERE id=$1",
@@ -143,7 +157,10 @@ impl ReturnDispositionService {
         )
         .await?;
         super::return_scope::check_return(&self.store, actor, true, id).await?;
-        let hash = request_hash(input)?;
+        let hash = match guard {
+            Some(guard) => request_hash(&(input, guard))?,
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
             begin_idempotent::<CommandResult>(&mut tx, actor, "sales_return:inspect", key, &hash)
@@ -168,6 +185,9 @@ impl ReturnDispositionService {
             return Err(DomainError::Invalid(
                 "inspectionDate cannot precede returnDate".into(),
             ));
+        }
+        if let Some(guard) = guard {
+            guard.check_balances(&mut tx).await?;
         }
         let lines=sqlx::query("SELECT id,sku_id,quantity,unit_cost,total_cost FROM sales_return_lines WHERE sales_return_id=$1 ORDER BY sku_id,id FOR UPDATE").bind(id).fetch_all(&mut *tx).await?;
         let requested = input

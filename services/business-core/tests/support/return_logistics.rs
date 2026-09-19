@@ -97,12 +97,21 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         Err(DomainError::NotFoundOrForbidden)
     ));
     restore(store, f.actor, supplier).await;
+    let dispatch_key = super::return_disposition_checks::execute(
+        app,
+        store,
+        f,
+        returned.id,
+        "purchase_return_dispatch_intent",
+        serde_json::to_value(&dispatch).unwrap(),
+    )
+    .await;
     let result = disposition
         .dispatch_purchase_return(
             f.actor,
             Uuid::new_v4(),
             returned.id,
-            "logistics-dispatch",
+            &dispatch_key,
             &dispatch,
         )
         .await
@@ -115,7 +124,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                 f.actor,
                 Uuid::new_v4(),
                 returned.id,
-                "logistics-dispatch",
+                &dispatch_key,
                 &dispatch
             )
             .await
@@ -130,7 +139,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                 f.actor,
                 Uuid::new_v4(),
                 returned.id,
-                "logistics-dispatch",
+                &dispatch_key,
                 &dispatch
             )
             .await,
@@ -187,12 +196,21 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         Err(DomainError::NotFoundOrForbidden)
     ));
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
+    let acknowledgment_key = super::return_disposition_checks::execute(
+        app,
+        store,
+        f,
+        returned.id,
+        "purchase_return_acknowledgment_intent",
+        serde_json::to_value(&acknowledgment).unwrap(),
+    )
+    .await;
     let result = disposition
         .acknowledge_purchase_return(
             f.actor,
             Uuid::new_v4(),
             returned.id,
-            "logistics-ack",
+            &acknowledgment_key,
             &acknowledgment,
         )
         .await
@@ -205,7 +223,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                 f.actor,
                 Uuid::new_v4(),
                 returned.id,
-                "logistics-ack",
+                &acknowledgment_key,
                 &acknowledgment
             )
             .await
@@ -320,30 +338,15 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
         Err(DomainError::NotFoundOrForbidden)
     ));
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
-    let result = disposition
-        .inspect_sales_return(
-            f.actor,
-            Uuid::new_v4(),
-            returned.id,
-            "inspection-post",
-            &input,
-        )
-        .await
-        .unwrap();
-    assert_eq!(result.version, 3);
-    assert!(
-        disposition
-            .inspect_sales_return(
-                f.actor,
-                Uuid::new_v4(),
-                returned.id,
-                "inspection-post",
-                &input
-            )
-            .await
-            .unwrap()
-            .idempotent_replay
-    );
+    super::return_disposition_checks::execute(
+        app,
+        store,
+        f,
+        returned.id,
+        "sales_return_inspection_intent",
+        serde_json::to_value(&input).unwrap(),
+    )
+    .await;
     assert!(matches!(
         disposition
             .inspect_sales_return(
@@ -359,7 +362,7 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
     let balance:(Decimal,Decimal,Decimal)=sqlx::query_as("SELECT on_hand_quantity,quarantined_quantity,inventory_value FROM inventory_balances WHERE sku_id=$1").bind(sku).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
         balance,
-        (Decimal::new(5, 1), Decimal::ZERO, Decimal::from(25))
+        (Decimal::new(75, 2), Decimal::ZERO, Decimal::new(375, 1))
     );
     let open: Decimal =
         sqlx::query_scalar("SELECT open_amount FROM trade_receivables WHERE shipment_id=$1")
