@@ -7,17 +7,18 @@ use serde_json::Value;
 pub struct PrepareReturnDisposition {
     /// Return ID from a scoped read; draft for cancellation, confirmed for logistics or inspection.
     pub source_document_id: Uuid,
-    /// Strictly decoded inspection, dispatch, acknowledgment or draft cancellation command.
+    /// Strictly decoded inspection, dispatch, acknowledgment draft cancellation or confirmed reversal command.
     pub command: Value,
 }
 fn family(kind: &str) -> Result<(&'static str, &'static str), StoreError> {
     match kind {
-        "sales_return_inspection_intent" | "sales_return_cancellation_intent" => {
-            Ok(("sales_return", "shipment:reverse"))
-        }
+        "sales_return_inspection_intent"
+        | "sales_return_cancellation_intent"
+        | "sales_return_reversal_intent" => Ok(("sales_return", "shipment:reverse")),
         "purchase_return_dispatch_intent"
         | "purchase_return_acknowledgment_intent"
-        | "purchase_return_cancellation_intent" => Ok(("purchase_return", "goods_receipt:reverse")),
+        | "purchase_return_cancellation_intent"
+        | "purchase_return_reversal_intent" => Ok(("purchase_return", "goods_receipt:reverse")),
         _ => Err(StoreError::NotFoundOrForbidden),
     }
 }
@@ -228,7 +229,19 @@ async fn snapshot(
     input: &PrepareReturnDisposition,
 ) -> Result<Value, StoreError> {
     family(kind)?;
-    let result = if kind.ends_with("_cancellation_intent") {
+    let result = if kind.ends_with("_reversal_intent") {
+        let command: crate::b2::ReverseReturn = serde_json::from_value(input.command.clone())
+            .map_err(|_| StoreError::Invalid("invalid return reversal command".into()))?;
+        state
+            .returns
+            .reversal_preview(
+                actor,
+                kind == "sales_return_reversal_intent",
+                input.source_document_id,
+                &command,
+            )
+            .await
+    } else if kind.ends_with("_cancellation_intent") {
         state
             .returns
             .cancellation_preview(
@@ -263,6 +276,20 @@ async fn execute(
     let key = format!("agent-return-disposition:{id}");
     let command = snapshot["command"].clone();
     match kind {
+        "sales_return_reversal_intent" | "purchase_return_reversal_intent" => {
+            let command = serde_json::from_value(command).map_err(|e| e.to_string())?;
+            state
+                .returns
+                .reverse_return_guarded(
+                    (actor, trace),
+                    kind == "sales_return_reversal_intent",
+                    input.source_document_id,
+                    &key,
+                    &command,
+                    snapshot,
+                )
+                .await
+        }
         "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => {
             let command: crate::b2::CancelReturnDraft =
                 serde_json::from_value(command).map_err(|e| e.to_string())?;

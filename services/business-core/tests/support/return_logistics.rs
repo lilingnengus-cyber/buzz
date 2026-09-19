@@ -247,7 +247,10 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
     assert_eq!(open, Decimal::from(100));
     let events:i64=sqlx::query_scalar("SELECT count(*) FROM purchase_return_events WHERE purchase_return_id=$1 AND event_type IN ('dispatched','supplier_acknowledged')").bind(returned.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(events, 2);
-    sales_inspection(app, store, f).await;
+    return_reversal_execution_checks::check(app, store, f, false, returned.id, 4).await;
+    sales_inspection(app, store, f, "pending").await;
+    sales_inspection(app, store, f, "inspected").await;
+    sales_inspection(app, store, f, "intervening").await;
 }
 
 async fn revoke(store: &PgStore, actor: Uuid, supplier: Uuid) {
@@ -264,7 +267,7 @@ async fn restore(store: &PgStore, actor: Uuid, supplier: Uuid) {
     sqlx::query("INSERT INTO business_supplier_scopes(enterprise_user_id,supplier_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(supplier).execute(store.pool()).await.unwrap();
 }
 
-async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
+async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture, scenario: &str) {
     let sku = Uuid::new_v4();
     sqlx::query("INSERT INTO business_skus(id,product_id,code,name) SELECT $1,product_id,$3,'Sales return fixture' FROM business_skus WHERE id=$2").bind(sku).bind(f.sku).bind(format!("SRET-{sku}")).execute(store.pool()).await.unwrap();
     let (status,opening)=call(app,f.actor,"POST","/v1/agent-drafts/inventory-openings",json!({"legalEntityId":f.legal_entity,"businessDate":"2026-09-19","currency":"CNY","lines":[{"warehouseId":f.warehouse,"skuId":sku,"quantity":"2","unitCost":"50"}]})).await;
@@ -300,10 +303,19 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
     let service = business_core::b2::ReturnService::new(store.clone(), "SR".into(), "PR".into());
     let input=serde_json::from_value(json!({"sourceId":id,"returnDate":"2026-09-19","reasonCode":"partial defect","lines":[{"sourceLineId":line,"quantity":"1"}]})).unwrap();
     let returned = service
-        .create_sales_return(f.actor, Uuid::new_v4(), "inspection-create", &input)
+        .create_sales_return(
+            f.actor,
+            Uuid::new_v4(),
+            &format!("inspection-create-{scenario}"),
+            &input,
+        )
         .await
         .unwrap();
     super::return_confirmation_checks::confirm(app, store, f, true, returned.id).await;
+    if scenario == "pending" {
+        return_reversal_execution_checks::check(app, store, f, true, returned.id, 2).await;
+        return;
+    }
     let stored: i64 = sqlx::query_scalar("SELECT version FROM sales_returns WHERE id=$1")
         .bind(returned.id)
         .fetch_one(store.pool())
@@ -316,6 +328,21 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
         .await
         .unwrap();
     let input:business_core::b2::InspectSalesReturn=serde_json::from_value(json!({"expectedVersion":preview.version,"inspectionDate":"2026-09-19","inspectionNote":"Half accepted, half scrapped","lines":[{"returnLineId":preview.lines[0].return_line_id,"acceptedQuantity":"0.5","scrapQuantity":"0.5"}]})).unwrap();
+    if scenario == "inspected" {
+        disposition
+            .inspect_sales_return(
+                f.actor,
+                Uuid::new_v4(),
+                returned.id,
+                "inspection-clean",
+                &input,
+            )
+            .await
+            .unwrap();
+        return_reversal_execution_checks::check(app, store, f, true, returned.id, 3).await;
+        return;
+    }
+
     sqlx::query("DELETE FROM business_brand_scopes WHERE enterprise_user_id=$1 AND brand_id=$2")
         .bind(f.actor)
         .bind(f.brand)

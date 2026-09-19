@@ -117,3 +117,13 @@ Gateway 8、Read API 28、MCP 13、Host 10 项相关测试通过；两类取消�
 隔离数据库 `return_reversal_preview_verified` 完整 B2 流程通过，覆盖销售待质检、采购确认及签收后的预览、重复读取不变、版本/日期/输入/品牌撤权拒绝、夹杂其他库存流水拒绝，以及显式空入账序号被数据库拒绝。预览前后库存流水、审批和意图数量、库存价值及往来余额保持相同。Core 严格 Clippy、格式和文件大小检查通过；日志 `/tmp/business-return-reversal-preview-core-verified.log`、`/tmp/business-return-reversal-preview-clippy.log` 和 `/tmp/business-return-reversal-preview-size.log`。
 
 本批没有实际冲销执行、冲销审批意图或助手工具，候选仍为 105 项，线上仍为 83 项；未部署、未发送真实消息、未写入生产业务记录。下一步需在同一事务内重算并核对签名确认的快照，原子写入反向流水、库存/往来余额、退货状态与审计，再接入完整助手确认链路。
+
+## 已确认退货原子冲销与 Core 审批意图（未部署）
+
+迁移 46 增加退货 reversed 状态、三种反向库存流水类型及销售/采购退货冲销意图类型。预览和执行共用持锁计划：执行事务重算并完整比较获批快照，随后追加与原流水逐笔关联的反向流水，更新库存数量/隔离量/价值/均价及最后流水，恢复应收应付原额和未结余额，保留已结金额，更新退货状态与版本，并写入往来事件、退货事件、审计和幂等结果。原退货行和原库存流水不改写。所有更新同一事务提交，往来版本由既有数据库触发器递增。
+
+新增 `sales_return_reversal_intent`、`purchase_return_reversal_intent`，复用 30 分钟不可变意图、准备/预览、拒绝和确认接口；审批执行调用强制快照校验的服务方法。幂等摘要绑定目标 ID、输入和获批快照，重放前重新检查权限。未新增绕过审批的 HTTP 执行入口。Core 沿用服务边界内的审批上下文；Host/Gateway 的签名消息能力及 MCP 工具尚未接入，不能称为聊天端可用。
+
+隔离数据库 `return_reversal_intents_verified` 完整 B2 流程通过，覆盖销售待质检、销售质检含报废、采购签收后三种冲销。测试验证逐笔反向数量/成本、原流水不变、余额与版本、原因/快照事件、幂等重放、再次冲销与撤权拒绝。持有真实往来行锁并观察执行事务进入等待，再改变往来版本，验证旧快照被拒绝；另在库存和往来更新后的退货事件插入点注入失败，验证全事务回滚且同键可重试。两类意图还验证未知输入、过期、不可变性、拒绝、范围撤销、错误摘要、重复审批及独立退货链接。Core 严格 Clippy、格式、文件大小门禁通过。日志 `/tmp/business-return-reversal-intents-core-verified.log`、`/tmp/business-return-reversal-execution-clippy.log`、`/tmp/business-return-reversal-execution-size.log`。
+
+仍是未部署的源码能力：候选工具数 105、线上 83 未改变，无生产写入或真实消息。下一步接入 Gateway/Read API/MCP/Host，并验证报表与详情对冲销的展示和日期口径。保留此前历史流水顺序缺失、后续库存业务已发生时拒绝自动逆转的限制，其他调整方案仍待实现；完整业务覆盖目标未完成。

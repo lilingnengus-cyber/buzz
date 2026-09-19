@@ -25,6 +25,20 @@ impl ReturnService {
         id: Uuid,
         input: &ReverseReturn,
     ) -> Result<Value, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let snapshot = self.reversal_plan(&mut tx, actor, sales, id, input).await?;
+        tx.rollback().await?;
+        Ok(snapshot)
+    }
+
+    pub(super) async fn reversal_plan(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: Uuid,
+        sales: bool,
+        id: Uuid,
+        input: &ReverseReturn,
+    ) -> Result<Value, DomainError> {
         let mut input = input.clone();
         input.reason = input.reason.trim().to_owned();
         if input.expected_version < 1
@@ -52,7 +66,6 @@ impl ReturnService {
             None,
         )
         .await?;
-        let mut tx = self.store.pool().begin().await?;
         let (table, orders, order_fk, source_fk, financial_fk, party, amount, activity, workflow) =
             if sales {
                 (
@@ -79,7 +92,7 @@ impl ReturnService {
                     "logistics_status",
                 )
             };
-        let row=sqlx::query(AssertSqlSafe(format!("SELECT r.id,r.return_number,r.{source_fk} source_id,r.{order_fk} order_id,r.{financial_fk} financial_id,r.{party} party_id,r.legal_entity_id,r.warehouse_id,r.currency::text currency,r.status,r.version,r.{workflow} workflow_status,r.{amount} amount,{activity} activity_date,o.business_unit_id,o.brand_id FROM {table} r JOIN {orders} o ON o.id=r.{order_fk} WHERE r.id=$1 FOR UPDATE OF r"))).bind(id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let row=sqlx::query(AssertSqlSafe(format!("SELECT r.id,r.return_number,r.{source_fk} source_id,r.{order_fk} order_id,r.{financial_fk} financial_id,r.{party} party_id,r.legal_entity_id,r.warehouse_id,r.currency::text currency,r.status,r.version,r.{workflow} workflow_status,r.{amount} amount,{activity} activity_date,o.business_unit_id,o.brand_id FROM {table} r JOIN {orders} o ON o.id=r.{order_fk} WHERE r.id=$1 FOR UPDATE OF r"))).bind(id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         if !authority
             .scopes
             .legal_entity_ids
@@ -110,21 +123,21 @@ impl ReturnService {
                 "correction date predates return activity".into(),
             ));
         }
-        let parent=sqlx::query(if sales {"SELECT s.status,s.version,o.version order_version FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE s.id=$1 FOR SHARE OF s,o"}else{"SELECT s.status,s.version,o.version order_version FROM goods_receipts s JOIN purchase_orders o ON o.id=s.purchase_order_id WHERE s.id=$1 FOR SHARE OF s,o"}).bind(row.get::<Uuid,_>("source_id")).fetch_one(&mut *tx).await?;
+        let parent=sqlx::query(if sales {"SELECT s.status,s.version,o.version order_version FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE s.id=$1 FOR SHARE OF s,o"}else{"SELECT s.status,s.version,o.version order_version FROM goods_receipts s JOIN purchase_orders o ON o.id=s.purchase_order_id WHERE s.id=$1 FOR SHARE OF s,o"}).bind(row.get::<Uuid,_>("source_id")).fetch_one(&mut **tx).await?;
         if parent.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "return source is no longer confirmed".into(),
             ));
         }
-        let financial=sqlx::query(if sales {"SELECT original_amount,settled_amount,open_amount,status,version FROM trade_receivables WHERE id=$1 FOR UPDATE"}else{"SELECT original_amount,settled_amount,open_amount,status,version FROM trade_payables WHERE id=$1 FOR UPDATE"}).bind(row.get::<Uuid,_>("financial_id")).fetch_one(&mut *tx).await?;
+        let financial=sqlx::query(if sales {"SELECT original_amount,settled_amount,open_amount,status,version FROM trade_receivables WHERE id=$1 FOR UPDATE"}else{"SELECT original_amount,settled_amount,open_amount,status,version FROM trade_payables WHERE id=$1 FOR UPDATE"}).bind(row.get::<Uuid,_>("financial_id")).fetch_one(&mut **tx).await?;
         if financial.get::<String, _>("status") == "reversed" {
             return Err(DomainError::Invalid(
                 "return financial source is reversed".into(),
             ));
         }
-        let lines = scope_lines(&mut tx, sales, id).await?;
+        let lines = scope_lines(tx, sales, id).await?;
         let movements=sqlx::query("SELECT id,legal_entity_id,warehouse_id,sku_id,source_line_id,movement_type,quantity,unit_cost,total_cost,currency::text currency,posting_sequence FROM inventory_movements WHERE source_type=$1 AND source_id=$2 ORDER BY sku_id,posting_sequence,id")
-            .bind(if sales {"sales_return"}else{"purchase_return"}).bind(id).fetch_all(&mut *tx).await?;
+            .bind(if sales {"sales_return"}else{"purchase_return"}).bind(id).fetch_all(&mut **tx).await?;
         validate_movements(sales, &row, &lines, &movements)?;
         let mut by_sku: BTreeMap<Uuid, (Decimal, Decimal, Vec<Uuid>)> = BTreeMap::new();
         let mut inverse = Vec::new();
@@ -139,7 +152,7 @@ impl ReturnService {
         }
         let mut effects = Vec::new();
         for (sku, (quantity, cost, ids)) in by_sku {
-            let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost,last_movement_id FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(row.get::<Uuid,_>("legal_entity_id")).bind(row.get::<Uuid,_>("warehouse_id")).bind(sku).fetch_one(&mut *tx).await?;
+            let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost,last_movement_id FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(row.get::<Uuid,_>("legal_entity_id")).bind(row.get::<Uuid,_>("warehouse_id")).bind(sku).fetch_one(&mut **tx).await?;
             if !balance
                 .get::<Option<Uuid>, _>("last_movement_id")
                 .is_some_and(|last| ids.contains(&last))
@@ -149,7 +162,7 @@ impl ReturnService {
                 ));
             }
             // A later scrap must not hide an intervening movement from another document.
-            let later:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_movements m WHERE m.legal_entity_id=$1 AND m.warehouse_id=$2 AND m.sku_id=$3 AND m.posting_sequence >= (SELECT min(posting_sequence) FROM inventory_movements WHERE id=ANY($4)) AND NOT(m.id=ANY($4)))").bind(row.get::<Uuid,_>("legal_entity_id")).bind(row.get::<Uuid,_>("warehouse_id")).bind(sku).bind(&ids).fetch_one(&mut *tx).await?;
+            let later:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_movements m WHERE m.legal_entity_id=$1 AND m.warehouse_id=$2 AND m.sku_id=$3 AND m.posting_sequence >= (SELECT min(posting_sequence) FROM inventory_movements WHERE id=ANY($4)) AND NOT(m.id=ANY($4)))").bind(row.get::<Uuid,_>("legal_entity_id")).bind(row.get::<Uuid,_>("warehouse_id")).bind(sku).bind(&ids).fetch_one(&mut **tx).await?;
             if later {
                 return Err(DomainError::Invalid(
                     "intervening inventory movements prevent return reversal".into(),
@@ -175,12 +188,11 @@ impl ReturnService {
             } else {
                 Some(money(new_value / new_qty).to_string())
             };
-            effects.push(json!({"skuId":sku,"warehouseId":row.get::<Uuid,_>("warehouse_id"),"onHandQuantityBefore":balance.get::<Decimal,_>("on_hand_quantity").to_string(),"onHandQuantityAfter":new_qty.to_string(),"reservedQuantity":balance.get::<Decimal,_>("reserved_quantity").to_string(),"quarantinedQuantityBefore":balance.get::<Decimal,_>("quarantined_quantity").to_string(),"quarantinedQuantityAfter":new_quarantine.to_string(),"inventoryValueBefore":balance.get::<Decimal,_>("inventory_value").to_string(),"inventoryValueAfter":new_value.to_string(),"averageUnitCostBefore":balance.get::<Option<Decimal>,_>("average_unit_cost").map(|v|v.to_string()),"averageUnitCostAfter":average,"lastMovementId":balance.get::<Option<Uuid>,_>("last_movement_id")}));
+            effects.push(json!({"skuId":sku,"warehouseId":row.get::<Uuid,_>("warehouse_id"),"onHandQuantityBefore":balance.get::<Decimal,_>("on_hand_quantity").to_string(),"onHandQuantityAfter":new_qty.to_string(),"reservedQuantity":balance.get::<Decimal,_>("reserved_quantity").to_string(),"reservedQuantityAfter":balance.get::<Decimal,_>("reserved_quantity").to_string(),"quarantinedQuantityBefore":balance.get::<Decimal,_>("quarantined_quantity").to_string(),"quarantinedQuantityAfter":new_quarantine.to_string(),"inventoryValueBefore":balance.get::<Decimal,_>("inventory_value").to_string(),"inventoryValueAfter":new_value.to_string(),"averageUnitCostBefore":balance.get::<Option<Decimal>,_>("average_unit_cost").map(|v|v.to_string()),"averageUnitCostAfter":average,"lastMovementId":balance.get::<Option<Uuid>,_>("last_movement_id")}));
         }
         let restored: Decimal = row.get("amount");
         let open = financial.get::<Decimal, _>("open_amount") + restored;
         let snapshot = json!({"source":{"id":id,"number":row.get::<String,_>("return_number"),"version":input.expected_version,"legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"businessUnitId":row.get::<Uuid,_>("business_unit_id"),"warehouseId":row.get::<Uuid,_>("warehouse_id"),"brandId":row.get::<Option<Uuid>,_>("brand_id"),"customerId":if sales{Some(row.get::<Uuid,_>("party_id"))}else{None},"supplierId":if sales{None}else{Some(row.get::<Uuid,_>("party_id"))},"currency":row.get::<String,_>("currency"),"status":"confirmed","workflowStatus":row.get::<String,_>("workflow_status"),"fulfillmentId":row.get::<Uuid,_>("source_id"),"fulfillmentVersion":parent.get::<i64,_>("version"),"orderId":row.get::<Uuid,_>("order_id"),"orderVersion":parent.get::<i64,_>("order_version"),"lines":lines},"command":input,"lines":effects,"inverseMovements":inverse,"financial":{"id":row.get::<Uuid,_>("financial_id"),"version":financial.get::<i64,_>("version"),"originalAmountBefore":financial.get::<Decimal,_>("original_amount").to_string(),"originalAmountAfter":(financial.get::<Decimal,_>("original_amount")+restored).to_string(),"openAmountBefore":financial.get::<Decimal,_>("open_amount").to_string(),"openAmountAfter":open.to_string(),"settledAmount":financial.get::<Decimal,_>("settled_amount").to_string(),"statusBefore":financial.get::<String,_>("status"),"statusAfter":balance_status(financial.get("settled_amount"),open)},"statusAfter":"reversed"});
-        tx.rollback().await?;
         Ok(snapshot)
     }
 }

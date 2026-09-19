@@ -3,6 +3,7 @@ mod confirmation;
 pub use cancellation::CancelReturnDraft;
 mod draft;
 mod reversal;
+mod reversal_execution;
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,

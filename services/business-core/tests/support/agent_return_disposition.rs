@@ -31,7 +31,10 @@ pub(super) async fn execute(
         "sales_return_inspection_intent" => {
             invalid_parameters["command"]["lines"][0]["acceptedQuantity"] = json!("999")
         }
-        "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => {
+        "sales_return_cancellation_intent"
+        | "purchase_return_cancellation_intent"
+        | "sales_return_reversal_intent"
+        | "purchase_return_reversal_intent" => {
             invalid_parameters["command"]["reason"] = json!("  ")
         }
         "purchase_return_dispatch_intent" => invalid_parameters["command"]["carrier"] = json!("  "),
@@ -43,14 +46,17 @@ pub(super) async fn execute(
             .0,
         StatusCode::BAD_REQUEST
     );
-    let key = format!("disposition-prepare-{kind}");
+    let key = format!("disposition-prepare-{kind}-{id}");
     let (status, mut prepared) = call_key(app, f.actor, "POST", &path, input.clone(), &key).await;
     assert_eq!(status, StatusCode::OK, "{prepared}");
     let (_, replay) = call_key(app, f.actor, "POST", &path, input.clone(), &key).await;
     assert_eq!(replay["item"]["id"], prepared["item"]["id"]);
     let mut different = input.clone();
     let date_key = match kind {
-        "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" => "reason",
+        "sales_return_cancellation_intent"
+        | "purchase_return_cancellation_intent"
+        | "sales_return_reversal_intent"
+        | "purchase_return_reversal_intent" => "reason",
         "sales_return_inspection_intent" => "inspectionDate",
         "purchase_return_dispatch_intent" => "dispatchDate",
         _ => "acknowledgedDate",
