@@ -3,6 +3,9 @@ use business_core::model::ResourceType;
 
 pub(super) async fn check(store: &PgStore, fixture: &Fixture) {
     let pool = store.pool();
+    let catalog_count: i64 = sqlx::query_scalar("SELECT count(*) FROM business_iam.permissions WHERE capability='business_master_data:read'").fetch_one(pool).await.unwrap();
+    assert_eq!(catalog_count, 1);
+
     sqlx::query("INSERT INTO business_customers(id,legal_entity_id,business_unit_id,code,name,credit_currency,payment_terms_days) SELECT gen_random_uuid(),$1,$2,'A_SEARCH_'||n,'查找同名客户','CNY',30 FROM generate_series(1,205) n")
         .bind(fixture.legal_entity).bind(fixture.business_unit).execute(pool).await.unwrap();
     let mut ids = Vec::new();
