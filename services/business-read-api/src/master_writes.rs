@@ -218,7 +218,11 @@ pub(super) async fn forward(
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     }
-    result["resourceRefs"] = json!([]);
+    result["resourceRefs"] = if result["executed"] == true {
+        json!([resource_ref(&result["createdDocument"])])
+    } else {
+        json!([])
+    };
     Json(result).into_response()
 }
 #[cfg(test)]
@@ -280,7 +284,7 @@ pub(super) async fn read(
         summary: BTreeMap::from([("source".into(), json!("business-core-master-record"))]),
         items: vec![item.clone()],
         pagination: None,
-        resource_refs: vec![],
+        resource_refs: vec![resource_ref(item)],
         evidence: vec![],
         warnings: vec![],
         trace_id: context.trace_id,
@@ -293,4 +297,15 @@ pub(super) fn authorization_scope(
     required: &str,
 ) -> Option<AuthorizationScope> {
     scope::delegation(grant, required)
+}
+
+fn resource_ref(item: &Value) -> business_query_contracts::ResourceRef {
+    let kind = item["resourceType"].as_str().unwrap_or_default();
+    let id = item["id"].as_str().unwrap_or_default();
+    business_query_contracts::ResourceRef {
+        r#type: "master_data".into(),
+        id: Some(id.into()),
+        title: item["code"].as_str().unwrap_or("基础资料").into(),
+        biz_uri: format!("biz://master-data/{kind}/{id}"),
+    }
 }

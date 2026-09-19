@@ -1,6 +1,7 @@
 import type { BusinessDockConfig } from "@/features/business-dock/businessDockConfig";
 
 export type BusinessResourceType =
+  | "master_data"
   | "agent_query"
   | "sales_return"
   | "purchase_return"
@@ -321,7 +322,37 @@ const ROUTES: readonly RouteDefinition[] = [
   },
 ] as const;
 
-const ROUTE_BY_TYPE = new Map(ROUTES.map((route) => [route.type, route]));
+const MASTER_KINDS = new Set([
+  "legal_entity",
+  "business_unit",
+  "customer",
+  "supplier",
+  "warehouse",
+  "unit_of_measure",
+  "product_category",
+  "brand",
+  "product",
+  "sku",
+  "uom_conversion",
+]);
+const MASTER_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function masterResource(kind: string, id: string): BusinessResource | null {
+  return MASTER_KINDS.has(kind) && MASTER_UUID.test(id)
+    ? {
+        version: 1,
+        type: "master_data",
+        id,
+        metadata: { resourceType: kind },
+        path: `/embed/master-data/${kind}/${id}`,
+      }
+    : null;
+}
+
+const ROUTE_BY_TYPE = new Map<
+  Exclude<BusinessResourceType, "generic">,
+  RouteDefinition
+>(ROUTES.map((route) => [route.type, route]));
 const ROUTE_BY_DEEP_LINK = new Map(
   ROUTES.map((route) => [route.deepLink, route]),
 );
@@ -344,6 +375,7 @@ const ACCOUNT_DEEP_LINKS = new Map([
 const RESOURCE_TYPES = new Set<BusinessResourceType>([
   ...ROUTES.map((route) => route.type),
   "generic",
+  "master_data",
 ]);
 const FORBIDDEN_METADATA_KEY =
   /(?:access[_-]?token|cookie|password|secret|credential|bank|invoice.*detail|voucher)/i;
@@ -433,6 +465,11 @@ function normalizeMetadata(value: unknown): Record<string, string> | undefined {
 }
 
 function resourceFromPath(path: string): BusinessResource {
+  const master = path.match(/^\/embed\/master-data\/([^/]+)\/([^/]+)$/);
+  if (master) {
+    const resource = masterResource(master[1], master[2]);
+    if (resource) return resource;
+  }
   const profitability = path.match(
     /^\/embed\/profitability\/(customer|sku|brand|salesperson)\/([^/]+)\/period\/(\d{4}-(?:0[1-9]|1[0-2]))$/,
   );
@@ -497,6 +534,11 @@ export function parseBusinessUrl(
       return null;
     }
     const rawSegments = url.pathname.split("/").filter(Boolean);
+    if (url.hostname === "master-data") {
+      return rawSegments.length === 2
+        ? masterResource(rawSegments[0], rawSegments[1])
+        : null;
+    }
     if (url.hostname === "profitability") {
       if (rawSegments.length !== 3) return null;
       const [dimension, rawId, period] = rawSegments;
@@ -598,6 +640,15 @@ export function isBusinessResource(value: unknown): value is BusinessResource {
     normalizeMetadata(value.metadata) === undefined
   )
     return false;
+  if (value.type === "master_data") {
+    const parsed = resourceFromPath(path);
+    return (
+      parsed.type === "master_data" &&
+      parsed.id === value.id &&
+      isRecord(value.metadata) &&
+      parsed.metadata?.resourceType === value.metadata.resourceType
+    );
+  }
   const route =
     value.type === "generic"
       ? undefined
@@ -647,6 +698,8 @@ export function buildBusinessReference(
   resource: BusinessResource,
 ): string | null {
   if (!isBusinessResource(resource)) return null;
+  if (resource.type === "master_data")
+    return `biz://master-data/${resource.metadata?.resourceType}/${resource.id}`;
   const route =
     resource.type === "generic" ? undefined : ROUTE_BY_TYPE.get(resource.type);
   if (
@@ -699,6 +752,16 @@ export function isBusinessDeepLinkCandidate(value: string): boolean {
   try {
     const url = new URL(value);
     const segments = url.pathname.split("/").filter(Boolean);
+    if (url.hostname === "master-data") {
+      return Boolean(
+        segments.length === 2 &&
+          masterResource(segments[0], segments[1]) &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash,
+      );
+    }
     if (url.hostname === "profitability") {
       return Boolean(
         segments.length === 3 &&

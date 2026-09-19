@@ -91,6 +91,33 @@ impl ValidateInput for SearchMasterDataInput {
 mod tests {
     use super::*;
     #[test]
+    fn master_links_have_a_closed_kind_and_uuid_path() {
+        let id = Uuid::new_v4();
+        for kind in [
+            "legal_entity",
+            "business_unit",
+            "customer",
+            "supplier",
+            "warehouse",
+            "unit_of_measure",
+            "product_category",
+            "brand",
+            "product",
+            "sku",
+            "uom_conversion",
+        ] {
+            assert!(valid_biz_uri(&format!("biz://master-data/{kind}/{id}")));
+        }
+        for path in [
+            format!("users/{id}"),
+            "product/not-a-uuid".into(),
+            format!("product/{id}/extra"),
+            format!("product/{id}?token=bad"),
+        ] {
+            assert!(!valid_biz_uri(&format!("biz://master-data/{path}")));
+        }
+    }
+    #[test]
     fn names_are_bounded_literals_including_conversion_labels() {
         for query in ["产品 / 箱", "客户（杭州）", "%", "O'Reilly", "_", "a\nb"] {
             let mut input: SearchMasterDataInput =

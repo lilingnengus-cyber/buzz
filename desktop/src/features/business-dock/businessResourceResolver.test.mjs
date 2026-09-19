@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isBusinessDeepLinkCandidate,
   buildBusinessReference,
   buildBusinessUrl,
   isBusinessResource,
@@ -372,4 +373,55 @@ test("CRM chat reference opens the exact opportunity", () => {
     resource?.path,
     "/embed/crm/opportunities/123e4567-e89b-12d3-a456-426614174000",
   );
+});
+
+test("master links bind resource kind and UUID across parsing and serialization", () => {
+  const id = "123e4567-e89b-12d3-a456-426614174000";
+  for (const kind of [
+    "legal_entity",
+    "business_unit",
+    "customer",
+    "supplier",
+    "warehouse",
+    "unit_of_measure",
+    "product_category",
+    "brand",
+    "product",
+    "sku",
+    "uom_conversion",
+  ]) {
+    const uri = `biz://master-data/${kind}/${id}`;
+    assert.equal(isBusinessDeepLinkCandidate(uri), true);
+    const resource = parseBusinessUrl(uri, config);
+    assert.equal(resource?.type, "master_data");
+    assert.equal(buildBusinessReference(resource), uri);
+    assert.equal(
+      buildBusinessUrl(resource, config),
+      `${config.origin}/embed/master-data/${kind}/${id}`,
+    );
+    assert.deepEqual(
+      parseBusinessUrl(buildBusinessUrl(resource, config), config),
+      resource,
+    );
+    assert.equal(isBusinessResource({ ...resource, id: "different" }), false);
+    assert.equal(
+      isBusinessResource({
+        ...resource,
+        metadata: { resourceType: "different" },
+      }),
+      false,
+    );
+  }
+  for (const suffix of [
+    `users/${id}`,
+    "product/not-an-id",
+    `product/${id}/extra`,
+    `product/${id}?token=bad`,
+  ]) {
+    assert.equal(
+      isBusinessDeepLinkCandidate(`biz://master-data/${suffix}`),
+      false,
+    );
+    assert.equal(parseBusinessUrl(`biz://master-data/${suffix}`, config), null);
+  }
 });

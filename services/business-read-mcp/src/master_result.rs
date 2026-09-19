@@ -43,14 +43,14 @@ pub(super) fn read(
         &serde_json::to_value(&result).map_err(|_| "Invalid master result")?,
         max,
     )?;
-    if result.items.len() != 1
-        || !result.evidence.is_empty()
-        || !result.warnings.is_empty()
-        || !result.resource_refs.is_empty()
-    {
+    if result.items.len() != 1 || !result.evidence.is_empty() || !result.warnings.is_empty() {
         return Err("Master detail must contain exactly one record".into());
     }
     record(&result.items[0])?;
+    references(
+        &serde_json::to_value(&result.resource_refs).map_err(|_| "Invalid references")?,
+        &result.items[0],
+    )?;
     object(
         &serde_json::to_value(&result.summary).map_err(|_| "Invalid master summary")?,
         &["source"],
@@ -112,7 +112,7 @@ pub(super) fn prepare(
     {
         return Err("Master confirmation does not bind its preview".into());
     }
-    // The web/desktop master detail route is not exposed yet. Do not invent a link.
+    // An unexecuted creation intent is not a master record.
     if result["resourceRefs"] != json!([]) {
         return Err("Unsupported master resource reference".into());
     }
@@ -235,7 +235,6 @@ pub(super) fn approval(
         || c.approval_document_type.as_deref() != Some(&expected)
         || v["traceId"] != json!(c.trace_id)
         || !uuid(&v["requestId"])
-        || v["resourceRefs"] != json!([])
     {
         return Err("Master approval response binding mismatch".into());
     }
@@ -254,6 +253,7 @@ pub(super) fn approval(
     ) {
         (Some(true), Some("executed"), Some("approve")) if count >= minimum => {
             let row = &v["createdDocument"];
+            references(&v["resourceRefs"], row)?;
             flat(
                 row,
                 &[
@@ -282,9 +282,23 @@ pub(super) fn approval(
             }
         }
         (Some(false), Some("pending"), Some("approve"))
-            if count < minimum && v["createdDocument"].is_null() => {}
-        (Some(false), Some("rejected"), Some("reject")) if v["createdDocument"].is_null() => (),
+            if count < minimum
+                && v["createdDocument"].is_null()
+                && v["resourceRefs"] == json!([]) => {}
+        (Some(false), Some("rejected"), Some("reject"))
+            if v["createdDocument"].is_null() && v["resourceRefs"] == json!([]) => {}
         _ => return Err("Inconsistent master approval outcome".into()),
+    }
+    Ok(())
+}
+
+fn references(refs: &Value, row: &Value) -> Result<(), String> {
+    let kind = kind(&row["resourceType"])?;
+    let id = row["id"].as_str().ok_or("Missing record ID")?;
+    let expected = json!([{"type":"master_data","id":id,"title":row["code"],
+        "bizUri":format!("biz://master-data/{kind}/{id}")}]);
+    if *refs != expected {
+        return Err("Master reference does not match the record".into());
     }
     Ok(())
 }
@@ -343,12 +357,14 @@ mod tests {
         context.approval_document_id = Some(Uuid::new_v4());
         context.approval_document_type = Some("core_master_creation_intent".into());
         context.approval_decision = Some("approve".into());
-        let result = json!({"documentId":context.approval_document_id,
+        let mut result = json!({"documentId":context.approval_document_id,
             "documentType":"core_master_creation_intent","requestId":Uuid::new_v4(),
             "status":"executed","executed":true,"approvalCount":1,"minimumApprovers":1,
             "traceId":context.trace_id,"resourceRefs":[],"createdDocument":{
                 "id":Uuid::new_v4(),"resourceType":"warehouse","code":"WH",
                 "status":"active","version":1,"traceId":context.trace_id,"idempotentReplay":false}});
+        let id = result["createdDocument"]["id"].as_str().unwrap();
+        result["resourceRefs"] = json!([{"type":"master_data","id":id,"title":"WH","bizUri":format!("biz://master-data/warehouse/{id}")}]);
         let check =
             |value: &Value| approval("approve_core_master_creation", value, &context, 65536);
         assert!(check(&result).is_ok());
@@ -363,6 +379,10 @@ mod tests {
             invalid[field] = value;
             assert!(check(&invalid).is_err(), "{field}");
         }
+        let mut wrong_link = result.clone();
+        wrong_link["resourceRefs"][0]["bizUri"] =
+            json!(format!("biz://master-data/customer/{}", Uuid::new_v4()));
+        assert!(check(&wrong_link).is_err());
         let mut invalid = result.clone();
         invalid["createdDocument"]["accessToken"] = json!("not-allowed");
         assert!(check(&invalid).is_err());

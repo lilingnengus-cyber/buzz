@@ -524,6 +524,24 @@ pub fn valid_biz_uri(value: &str) -> bool {
         return false;
     };
     let suffix = segments.next();
+    if kind == "master-data" {
+        return matches!(
+            id,
+            "legal_entity"
+                | "business_unit"
+                | "customer"
+                | "supplier"
+                | "warehouse"
+                | "unit_of_measure"
+                | "product_category"
+                | "brand"
+                | "product"
+                | "sku"
+                | "uom_conversion"
+        ) && suffix
+            .is_some_and(|value| value.len() == 36 && Uuid::parse_str(value).is_ok())
+            && segments.next().is_none();
+    }
     if kind == "profitability" {
         let Some(entity_id) = suffix else {
             return false;

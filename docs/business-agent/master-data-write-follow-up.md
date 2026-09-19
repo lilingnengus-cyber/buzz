@@ -132,3 +132,18 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 验证：新库 master_lookup_final 在独立 55439 PostgreSQL 运行 Read API → Core HTTP → 数据库，24 次原有写入闭环及新增三类名称/代码定位、完整记录读取、分页、百分号字面查询、错误委托品牌、撤销 Core 品牌范围、停用换算过滤全部通过。初次联调失败来自名称过滤及对单位精度默认值的错误假设，已修正，未将失败运行计为通过。查询合同 13 项、MCP 23 项（含重新生成的 47 条响应）、Core 26 项单元测试通过；四包严格 Clippy、格式、差异及文件大小门禁通过。日志 /tmp/master-lookup-{final,unit,core-unit,clippy,size}.log。
 
 未部署或执行真实聊天，迁移 0055/0056 仍待配套发布。下一步完成系统内真实基础资料详情路由及返回链接，并继续跨人审批可见性、启停并发引用保护和其余业务流程。
+
+## 2026-09-20 系统详情页与记录链接
+
+11 类资料使用固定 URI `biz://master-data/{resourceType}/{uuid}`，桌面解析为 `/embed/master-data/{resourceType}/{uuid}`，支持复制引用和业务链接识别；限定类型与 UUID，结构化资源的 metadata、ID、路径必须一致。查询合同同步白名单。Read API 的完整记录读取及审批已执行结果返回该记录链接；尚未执行的准备、待审批、拒绝不返回虚构记录链接。MCP 将链接的类型、ID、标题和 URI 与返回记录严格比对。
+
+企业工作台新增复用现有布局的只读详情页，支持嵌入和独立路径，显示代码、状态、版本、归属及适用字段；换算系数保留完整精度，信用额度使用金额格式函数。未知类型或非法 UUID 不发起读取。Core 在现有浏览器基础资料路径增加 GET，复用完整记录的读取/管理权限与对象范围检查；不增加修改按钮，也不改变确认操作。
+
+验证证据：
+- `master_links_final` 隔离 PostgreSQL（55439）：原有 24 次写入闭环与名称定位通过；为同一测试用户建立真实数据库登录会话，11 类 browser GET 全部读取正确记录，无 Cookie 与工作台会话过期均返回 401。
+- 47 条最新真实 API 响应通过 MCP 校验；查询合同 14 项和 MCP 23 项测试通过，错目标链接、非法路径等拒绝。
+- 桌面链接解析 27 项通过；Desktop TypeScript 检查通过。
+- 浏览器 12 项功能测试通过：11 类直接打开指定资料且只发 GET；独立详情路径拒绝访问时显示错误并不泄露记录。这些浏览器测试使用接口夹具，不替代前述真实 API 验证，也不等于已安装客户端聊天验收。
+- Web 类型检查、展示格式巡检、构建、四包严格 Clippy、差异和文件大小门禁通过。日志 `/tmp/master-links-{final-db,final-corpus,resolver-final,ui-final,desktop-ts-final,web-check-final,web-final,clippy-complete,size-final}.log`。
+
+本批仍未部署或替换已安装客户端。下一步检查跨人审批创建后的申请者可见性及发布配置，配套发布 Core/Read API/Gateway/MCP/Web/桌面，随后验证真实聊天链接；启停并发保护和剩余完整业务流程仍未完成。

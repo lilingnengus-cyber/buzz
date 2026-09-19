@@ -9,7 +9,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, post},
     Extension, Json, Router,
 };
 use serde::Deserialize;
@@ -108,7 +108,10 @@ pub fn service_routes() -> Router<Arc<AppState>> {
 pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/core-master-data", get(list).post(create))
-        .route("/api/v1/core-master-data/{resource_type}/{id}", put(update))
+        .route(
+            "/api/v1/core-master-data/{resource_type}/{id}",
+            get(agent_detail).put(update),
+        )
         .route(
             "/api/v1/core-master-data/{resource_type}/{id}/disable-impact",
             get(impact),

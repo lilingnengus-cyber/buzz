@@ -1,3 +1,4 @@
+import { masterDetailRoute } from "./masterDetailRoute";
 import { NAV, type Section } from "./businessNavigation";
 
 export const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
@@ -31,6 +32,15 @@ export function route(): { section: Section; id?: string; embed: boolean } {
   if (clean === "/crm/followups") return { section: "crmFollowups", embed };
   if (clean === "/crm/contacts") return { section: "crmContacts", embed };
   if (clean === "/crm") return { section: "crm", embed };
+  if (clean.startsWith("/master-data/")) {
+    const reference = clean.slice("/master-data/".length);
+    const target = masterDetailRoute(reference);
+    return {
+      section: target?.family === "product" ? "productData" : "coreData",
+      id: reference,
+      embed,
+    };
+  }
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
   const patterns: Array<[Section, RegExp]> = [

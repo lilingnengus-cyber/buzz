@@ -1,3 +1,4 @@
+import { LinkedMasterDetail } from "./LinkedMasterDetail";
 import { route, WORKFLOW_NAV_ALIASES } from "./businessRoute";
 import { NAV_GROUPS, NAV, type Section } from "./businessNavigation";
 import React from "react";
@@ -312,6 +313,8 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
         view={section === "crmFollowups" ? "followups" : "contacts"}
       />
     );
+  if ((section === "coreData" || section === "productData") && id !== undefined)
+    return <LinkedMasterDetail key={id} reference={id} />;
   if (section === "coreData") return <CoreMasterDataCenter />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;

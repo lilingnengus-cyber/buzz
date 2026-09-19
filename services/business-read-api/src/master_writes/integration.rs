@@ -1,4 +1,6 @@
 use super::*;
+#[path = "browser_test.rs"]
+mod browser_test;
 #[path = "lookup_test.rs"]
 mod lookup_test;
 // Optional isolated-test response corpus for the downstream MCP validator.
@@ -87,6 +89,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
     sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage'),($1,'business_product_master:manage'),($1,'business_master_data:read')").bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_approval_policies(action_code,required_permission,eligible_role_keys,min_approvers,allow_self_approval) VALUES('business_master_data:manage','business_master_data:manage',ARRAY['master_adapter'],1,true),('business_product_master:manage','business_product_master:manage',ARRAY['master_adapter'],1,true)").execute(&pool).await.unwrap();
     let config = business_core::Config::from_env().unwrap();
+    let browser_cookie = config.business_session_cookie_name.clone();
     let router = business_core::router(business_core::AppState::new(store, &config));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -327,6 +330,11 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
     assert!(zero_cost);
     let completed: (i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM business_document_approval_requests WHERE status='executed'),(SELECT count(*) FROM business_document_approval_votes),(SELECT count(*) FROM business_core_audit_events WHERE operation IN ('CORE_MASTER_DATA_SAVED','PRODUCT_MASTER_DATA_SAVED'))").fetch_one(&pool).await.unwrap();
     assert_eq!(completed, (24, 24, 24));
+    let browser_entries = entries
+        .iter()
+        .map(|(kind, id, _)| (*kind, *id))
+        .collect::<Vec<_>>();
+    browser_test::check(&core, &pool, actor, &browser_cookie, &browser_entries).await;
     lookup_test::check(&core, &pool, actor, brand).await;
     server.abort();
 }
