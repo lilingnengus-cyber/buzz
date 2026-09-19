@@ -1,6 +1,7 @@
 name: Windows Canary
 
-# Produces an unsigned Windows NSIS installer from main without creating
+# Produces an unsigned Windows NSIS installer from main or the explicit
+# Pacioli integration branch without creating
 # a tag, GitHub Release, or auto-updater artifact. The installer is available
 # only as a short-lived GitHub Actions artifact for explicit testing.
 #
@@ -16,7 +17,7 @@ permissions:
 jobs:
   build:
     name: Build Windows canary
-    if: github.repository == 'block/buzz'
+    if: github.repository == 'block/buzz' || github.repository == 'lilingnengus-cyber/buzz'
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -24,12 +25,15 @@ jobs:
     env:
       TARGET: x86_64-pc-windows-msvc
     steps:
-      - name: Require main
+      - name: Validate candidate source
         shell: bash
         env:
           SOURCE_REF: ${{ github.ref }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
-          if [[ "$SOURCE_REF" != "refs/heads/main" ]]; then
+          if [[ "$SOURCE_REPOSITORY" == "lilingnengus-cyber/buzz" && "$SOURCE_REF" == "refs/heads/codex/life-write-intent-compiler" ]]; then
+            echo "Building the explicit Pacioli integration candidate"
+          elif [[ "$SOURCE_REF" != "refs/heads/main" ]]; then
             echo "::error::Canary builds must run from main; got $SOURCE_REF"
             exit 1
           fi
@@ -179,7 +183,7 @@ jobs:
       # Only this trusted, main-bound canary writes the cache. Excluding bundle
       # output prevents installers from entering it.
       - name: Save exact release Cargo cache
-        if: steps.rust_cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.rust_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
@@ -191,6 +195,7 @@ jobs:
           key: ${{ steps.rust_cache_key.outputs.key }}
 
       - name: Save pnpm store cache
+        if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
