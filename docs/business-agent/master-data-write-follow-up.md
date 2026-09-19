@@ -225,3 +225,11 @@ postgres_b3 中新增九类实际锁等待用例：停用先提交后草稿拒�
 master_purchase_confirm_final 的真实 B3 流程包含九类创建及九类确认等待：确认被拒绝后仍为 draft/v1，恢复全部资料后正常确认并通过取消清理测试单；原采购/收货/成本/应付并发回归继续通过。确认预览同步检查法人、分类、品牌，九类停用均显示不可确认。严格 Clippy、格式和 diff 检查通过，日志 `/tmp/master-purchase-confirm-{before,after,final,clippy-final}.log`。
 
 尚未部署。库存及收货/出库入口、更多归属覆盖与启停意图接入仍未完成。Windows 运行 35471308524 继续处于 NSIS 构建，未重启；持续观察命令会话 82809。
+
+## 期初库存创建与过账资料保护
+
+opening_master_before 复现仓库停用等待后仍创建期初草稿。新增共享 master_refs 校验，期初创建和实际过账都锁定并核对法人、仓库所属业务单元、仓库、SKU、产品、基础单位、分类与可选品牌；过账同时重新检查当前零成本策略，防止沿用草稿保存时的旧策略。
+
+opening_master_after 的 8 类创建 + 8 类过账实际行锁等待测试通过：停用提交后请求拒绝，库存流水数仍为 0；恢复资料后实际过账成功。opening_master_b2/b3 的完整销售与采购闭环、Core/新增测试严格 Clippy、格式及差异检查通过。日志 `/tmp/opening-master-{before,after,regression,clippy}.log`。
+
+尚未部署。期初预览与新父级状态校验的一致性、反向停用检查、收货/出库入口、其他归属和助手状态意图仍需继续完成。Windows 同一运行 35471308524 仍在 NSIS 构建。

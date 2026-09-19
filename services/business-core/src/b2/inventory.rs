@@ -1,3 +1,4 @@
+mod master_refs;
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,
@@ -91,12 +92,14 @@ impl InventoryService {
                 .unit_cost
                 .non_negative("unitCost")
                 .map_err(DomainError::Invalid)?;
-            let row = sqlx::query("SELECT w.legal_entity_id,p.allow_zero_cost FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active' AND s.status='active' AND p.status='active'")
-                .bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-            if row.get::<Uuid, _>("legal_entity_id") != input.legal_entity_id
-                || (cost == Decimal::ZERO && !row.get::<bool, _>("allow_zero_cost"))
-                || quantity.scale() > 6
-            {
+            let allow_zero_cost = master_refs::lock_active(
+                &mut tx,
+                input.legal_entity_id,
+                line.warehouse_id,
+                line.sku_id,
+            )
+            .await?;
+            if (cost == Decimal::ZERO && !allow_zero_cost) || quantity.scale() > 6 {
                 return Err(DomainError::Invalid(
                     "opening line violates legal entity or zero-cost policy".into(),
                 ));
@@ -188,6 +191,18 @@ impl InventoryService {
         }
         let lines=sqlx::query("SELECT id,warehouse_id,sku_id,quantity,unit_cost,total_cost FROM inventory_opening_lines WHERE batch_id=$1 ORDER BY warehouse_id,sku_id,id").bind(batch_id).fetch_all(&mut *tx).await?;
         for line in &lines {
+            let allow_zero_cost = master_refs::lock_active(
+                &mut tx,
+                batch.get("legal_entity_id"),
+                line.get("warehouse_id"),
+                line.get("sku_id"),
+            )
+            .await?;
+            if line.get::<Decimal, _>("unit_cost") == Decimal::ZERO && !allow_zero_cost {
+                return Err(DomainError::Invalid(
+                    "opening line violates current zero-cost policy".into(),
+                ));
+            }
             sqlx::query("INSERT INTO inventory_balances(legal_entity_id,warehouse_id,sku_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(line.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).execute(&mut *tx).await?;
             let balance=sqlx::query("SELECT on_hand_quantity,inventory_value FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(line.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
             let quantity: Decimal = line.get("quantity");
