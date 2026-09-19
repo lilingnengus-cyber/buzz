@@ -70,3 +70,26 @@ test("preserves a specific server message", () => {
 test("falls back to the response status for an empty body", () => {
   assert.equal(apiErrorMessage({}, 503), "请求失败（503）");
 });
+
+test("preserves command idempotency keys while retaining CSRF protection", async (t) => {
+  const { request } = await import("./api.ts");
+  const sent = [];
+  t.mock.method(globalThis, "fetch", async (path, init) => {
+    if (path === "/api/session")
+      return Response.json({ csrfToken: "test-csrf" });
+    sent.push(init.headers);
+    return Response.json({ id: "saved" });
+  });
+  for (let retry = 0; retry < 2; retry++) {
+    await request("/api/v1/crm/opportunities", {
+      method: "POST",
+      headers: { "idempotency-key": "stable-command-key" },
+      body: "{}",
+    });
+  }
+  assert.deepEqual(
+    sent.map((h) => h.get("idempotency-key")),
+    ["stable-command-key", "stable-command-key"],
+  );
+  assert.ok(sent.every((h) => h.get("x-csrf-token") === "test-csrf"));
+});
