@@ -1,4 +1,4 @@
-mod master_refs;
+use super::stock_master_refs as master_refs;
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,

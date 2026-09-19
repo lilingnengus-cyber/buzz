@@ -241,3 +241,11 @@ stock/inventory_opening 预览新增逐行 ready 与整单 canConfirm/readiness�
 opening_master_preview_final 在真实 Core HTTP 路由验证八类资料停用时整单及目标行均不可过账，恢复后预览为可过账且实际过账成功；原 16 个锁等待场景继续通过。首次 preview 库因缺少服务配置未完成，不计通过。运行该测试需同时提供 BUSINESS_OPENING_MASTER_TEST_DATABASE_URL、BUSINESS_CORE_DATABASE_URL、至少 32 字节的隔离 BUSINESS_CORE_SERVICE_CREDENTIAL 和 BUSINESS_WEB_ORIGIN；均使用测试值，不读取生产密钥。严格 Clippy、格式及 diff 检查通过。日志 `/tmp/opening-master-preview-{v2,final,clippy-final}.log`。
 
 本批尚未部署。零成本策略变化的专项并发、反向停用影响检查、收货/出库等余项仍需继续；不能将预览验证等同全流程完成。
+
+## 收货创建、确认与预览资料保护
+
+将期初库存的实际资料行共享锁提取为 b2/stock_master_refs，收货创建与确认复用；额外锁定供应商及采购订单业务单元，并核对法人归属。锁持续到收货事务结束，停用提交后拒绝写入。收货确认预览同步核对这些状态，返回 master_data_not_ready，避免展示可确认却在执行时拒绝。
+
+receiving_master_preview_final 的完整 postgres_b3 回归通过，包含九类资料（仓库、SKU、产品、法人、业务单元、基础单位、分类、供应商、品牌）的 18 个创建/确认真实行锁等待场景。停用后拒绝且库存流水不增加；确认预览不可确认，草稿保持 draft/v1；全部恢复后预览和实际确认成功。共享函数移动后的期初库存并发及 HTTP 预览回归在 receiving_opening_regression 通过。严格 Clippy、格式和 diff 检查通过。日志 /tmp/receiving-master-preview-final.log、/tmp/receiving-master-clippy-final.log、/tmp/receiving-opening-regression.log；数据库均为独立 55439 测试库。
+
+本批尚未部署。销售确认/出库、其他归属、反向停用业务影响及助手启停意图仍需继续完成，完整业务目标保持未完成。Windows 同一运行 35471308524 已成功完成原生 sidecars 和 NSIS 构建，实机安装及真实会话尚未验证。

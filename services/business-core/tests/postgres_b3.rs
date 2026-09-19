@@ -1,5 +1,7 @@
 #[path = "postgres_b3/master_status.rs"]
 mod master_status;
+#[path = "postgres_b3/receiving_master_status.rs"]
+mod receiving_master_status;
 use business_core::{
     b2::{
         model::{
@@ -678,6 +680,7 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         .execute(&pool)
         .await;
     assert!(append_only.is_err());
+    receiving_master_status::check(&pool, &fixture).await;
 }
 
 async fn create_order(

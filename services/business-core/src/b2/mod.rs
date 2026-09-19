@@ -35,3 +35,5 @@ pub use returns::{
 };
 pub use sales::SalesService;
 pub use settlement::SettlementService;
+
+pub(crate) mod stock_master_refs;

@@ -1,7 +1,9 @@
-//! Current master status locks shared by opening entry and posting.
-use super::*;
+//! Current master status locks shared by inventory opening and goods receiving.
+use super::common::DomainError;
+use sqlx::Row;
+use uuid::Uuid;
 
-pub(super) async fn lock_active(
+pub(crate) async fn lock_active(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     legal: Uuid,
     warehouse: Uuid,

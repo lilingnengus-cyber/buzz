@@ -86,11 +86,13 @@ impl ReceivingService {
                 "goods receipt requires an open confirmed purchase order".into(),
             ));
         }
-        let valid_warehouse: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active')")
-            .bind(input.warehouse_id).bind(order.get::<Uuid,_>("legal_entity_id")).fetch_one(&mut *tx).await?;
-        if !valid_warehouse {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
+        lock_receiving_party(
+            &mut tx,
+            order.get("supplier_id"),
+            order.get("business_unit_id"),
+            order.get("legal_entity_id"),
+        )
+        .await?;
         let mut seen = BTreeSet::new();
         for input_line in &input.lines {
             if !seen.insert(input_line.purchase_order_line_id) {
@@ -121,6 +123,13 @@ impl ReceivingService {
                     "goods receipt cannot cross warehouses".into(),
                 ));
             }
+            crate::b2::stock_master_refs::lock_active(
+                &mut tx,
+                order.get("legal_entity_id"),
+                input.warehouse_id,
+                line.get("sku_id"),
+            )
+            .await?;
             let remaining = line.get::<Decimal, _>("ordered_quantity")
                 - line.get::<Decimal, _>("received_quantity")
                 - line.get::<Decimal, _>("cancelled_quantity");
@@ -232,8 +241,22 @@ impl ReceivingService {
                 "purchase order is not open for receiving".into(),
             ));
         }
+        lock_receiving_party(
+            &mut tx,
+            receipt.get("supplier_id"),
+            order.get("business_unit_id"),
+            receipt.get("legal_entity_id"),
+        )
+        .await?;
         let lines=sqlx::query("SELECT grl.id receipt_line_id,grl.purchase_order_line_id,grl.sku_id,grl.received_quantity,pol.ordered_quantity,pol.cancelled_quantity,pol.received_quantity po_received,pol.net_amount po_net,pol.tax_amount po_tax,pol.gross_amount po_gross,pol.received_net_amount,pol.received_tax_amount,pol.received_gross_amount FROM goods_receipt_lines grl JOIN purchase_order_lines pol ON pol.id=grl.purchase_order_line_id WHERE grl.goods_receipt_id=$1 ORDER BY grl.sku_id,grl.id FOR UPDATE OF grl,pol").bind(receipt_id).fetch_all(&mut *tx).await?;
         for line in &lines {
+            crate::b2::stock_master_refs::lock_active(
+                &mut tx,
+                receipt.get("legal_entity_id"),
+                receipt.get("warehouse_id"),
+                line.get("sku_id"),
+            )
+            .await?;
             let remaining = line.get::<Decimal, _>("ordered_quantity")
                 - line.get::<Decimal, _>("po_received")
                 - line.get::<Decimal, _>("cancelled_quantity");
@@ -570,7 +593,7 @@ impl ReceivingService {
         receipt_id: Uuid,
     ) -> Result<GoodsReceiptConfirmationPreview, DomainError> {
         let receipt = sqlx::query(
-            "SELECT gr.goods_receipt_number,gr.purchase_order_id,gr.legal_entity_id,gr.supplier_id,gr.warehouse_id,gr.receipt_date,gr.currency::text currency,gr.status,gr.version,o.purchase_order_number order_number,o.lifecycle_status,o.payment_terms_days,o.business_unit_id,sup.code supplier_code,sup.name supplier_name,w.code warehouse_code,w.name warehouse_name FROM goods_receipts gr JOIN purchase_orders o ON o.id=gr.purchase_order_id JOIN business_suppliers sup ON sup.id=gr.supplier_id JOIN business_warehouses w ON w.id=gr.warehouse_id WHERE gr.id=$1",
+            "SELECT gr.goods_receipt_number,gr.purchase_order_id,gr.legal_entity_id,gr.supplier_id,gr.warehouse_id,gr.receipt_date,gr.currency::text currency,gr.status,gr.version,o.purchase_order_number order_number,o.lifecycle_status,o.payment_terms_days,o.business_unit_id,sup.code supplier_code,sup.name supplier_name,w.code warehouse_code,w.name warehouse_name,(sup.status='active' AND sup.legal_entity_id=gr.legal_entity_id AND w.status='active' AND w.legal_entity_id=gr.legal_entity_id AND EXISTS(SELECT 1 FROM business_legal_entities e WHERE e.id=gr.legal_entity_id AND e.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=o.business_unit_id AND u.legal_entity_id=gr.legal_entity_id AND u.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=w.business_unit_id AND u.legal_entity_id=gr.legal_entity_id AND u.status='active')) master_ready FROM goods_receipts gr JOIN purchase_orders o ON o.id=gr.purchase_order_id JOIN business_suppliers sup ON sup.id=gr.supplier_id JOIN business_warehouses w ON w.id=gr.warehouse_id WHERE gr.id=$1",
         )
         .bind(receipt_id)
         .fetch_optional(self.store.pool())
@@ -588,7 +611,7 @@ impl ReceivingService {
         )
         .await?;
         let rows = sqlx::query(
-            "SELECT grl.purchase_order_line_id,grl.sku_id,sku.code sku_code,sku.name sku_name,grl.received_quantity,pol.ordered_quantity,pol.cancelled_quantity,pol.received_quantity po_received,pol.net_amount po_net,pol.tax_amount po_tax,pol.gross_amount po_gross,pol.received_net_amount,pol.received_tax_amount,pol.received_gross_amount,COALESCE(b.on_hand_quantity,0) current_on_hand_quantity,COALESCE(b.inventory_value,0) current_inventory_value,b.average_unit_cost current_average_unit_cost FROM goods_receipt_lines grl JOIN purchase_order_lines pol ON pol.id=grl.purchase_order_line_id JOIN business_skus sku ON sku.id=grl.sku_id LEFT JOIN inventory_balances b ON b.legal_entity_id=$2 AND b.warehouse_id=$3 AND b.sku_id=grl.sku_id WHERE grl.goods_receipt_id=$1 ORDER BY grl.id",
+            "SELECT grl.purchase_order_line_id,grl.sku_id,sku.code sku_code,sku.name sku_name,(sku.status='active' AND EXISTS(SELECT 1 FROM business_products p JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories c ON c.id=p.category_id WHERE p.id=sku.product_id AND p.status='active' AND u.status='active' AND c.status='active' AND (p.brand_id IS NULL OR EXISTS(SELECT 1 FROM business_brands br WHERE br.id=p.brand_id AND br.status='active')))) master_ready,grl.received_quantity,pol.ordered_quantity,pol.cancelled_quantity,pol.received_quantity po_received,pol.net_amount po_net,pol.tax_amount po_tax,pol.gross_amount po_gross,pol.received_net_amount,pol.received_tax_amount,pol.received_gross_amount,COALESCE(b.on_hand_quantity,0) current_on_hand_quantity,COALESCE(b.inventory_value,0) current_inventory_value,b.average_unit_cost current_average_unit_cost FROM goods_receipt_lines grl JOIN purchase_order_lines pol ON pol.id=grl.purchase_order_line_id JOIN business_skus sku ON sku.id=grl.sku_id LEFT JOIN inventory_balances b ON b.legal_entity_id=$2 AND b.warehouse_id=$3 AND b.sku_id=grl.sku_id WHERE grl.goods_receipt_id=$1 ORDER BY grl.id",
         )
         .bind(receipt_id)
         .bind(receipt.get::<Uuid, _>("legal_entity_id"))
@@ -632,7 +655,9 @@ impl ReceivingService {
                 let projected_quantity = current_quantity + quantity;
                 let projected_value = money(current_value + net);
                 let projected_average = money(projected_value / projected_quantity);
-                let ready = order_open && quantity <= remaining;
+                let master_ready =
+                    receipt.get::<bool, _>("master_ready") && row.get::<bool, _>("master_ready");
+                let ready = order_open && master_ready && quantity <= remaining;
                 GoodsReceiptConfirmationLine {
                     purchase_order_line_id: row.get("purchase_order_line_id"),
                     sku_id: row.get("sku_id"),
@@ -655,6 +680,8 @@ impl ReceivingService {
                         "ready".into()
                     } else if !order_open {
                         "order_not_open".into()
+                    } else if !master_ready {
+                        "master_data_not_ready".into()
                     } else {
                         "over_receipt".into()
                     },
@@ -668,6 +695,11 @@ impl ReceivingService {
             "receipt_not_draft"
         } else if !order_open {
             "order_not_open"
+        } else if lines
+            .iter()
+            .any(|line| line.readiness == "master_data_not_ready")
+        {
+            "master_data_not_ready"
         } else if !all_ready {
             "over_receipt"
         } else if !has_permission {
@@ -775,5 +807,16 @@ async fn receipt_event(
     payload: serde_json::Value,
 ) -> Result<(), DomainError> {
     sqlx::query("INSERT INTO goods_receipt_events(id,goods_receipt_id,event_type,receipt_version,payload,actor_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7)").bind(Uuid::new_v4()).bind(id).bind(event_type).bind(version).bind(payload).bind(actor).bind(trace_id).execute(&mut **tx).await?;
+    Ok(())
+}
+
+async fn lock_receiving_party(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    supplier: Uuid,
+    unit: Uuid,
+    legal: Uuid,
+) -> Result<(), DomainError> {
+    sqlx::query("SELECT s.id FROM business_suppliers s JOIN business_units u ON u.id=$2 WHERE s.id=$1 AND s.legal_entity_id=$3 AND u.legal_entity_id=$3 AND s.status='active' AND u.status='active' FOR SHARE OF s,u")
+        .bind(supplier).bind(unit).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     Ok(())
 }
