@@ -16,7 +16,11 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 46] = [
+const AGENT_SCOPES: [&str; 50] = [
+    "inventory_count_creation_intent:create",
+    "inventory_count_submission_intent:create",
+    "inventory_count_posting_intent:create",
+    "inventory_count_cancellation_intent:create",
     "sales_return_reversal_intent:create",
     "sales_return_cancellation_intent:create",
     "purchase_return_reversal_intent:create",
@@ -71,6 +75,11 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "inventory-count-creation-intent" => "inventory_count_creation_intent:approve",
+        "inventory-count-submission-intent" => "inventory_count_submission_intent:approve",
+        "inventory-count-posting-intent" => "inventory_count_posting_intent:approve",
+        "inventory-count-cancellation-intent" => "inventory_count_cancellation_intent:approve",
+
         "sales-return-reversal-intent" => "sales_return_reversal_intent:approve",
         "sales-return-cancellation-intent" => "sales_return_cancellation_intent:approve",
         "purchase-return-reversal-intent" => "purchase_return_reversal_intent:approve",
@@ -884,7 +893,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 46);
+        assert_eq!(AGENT_SCOPES.len(), 50);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -1034,6 +1043,22 @@ mod tests {
             Some("inventory_opening:approve")
         );
         for (kind, scope) in [
+            (
+                "inventory-count-creation-intent",
+                "inventory_count_creation_intent:approve",
+            ),
+            (
+                "inventory-count-submission-intent",
+                "inventory_count_submission_intent:approve",
+            ),
+            (
+                "inventory-count-posting-intent",
+                "inventory_count_posting_intent:approve",
+            ),
+            (
+                "inventory-count-cancellation-intent",
+                "inventory_count_cancellation_intent:approve",
+            ),
             (
                 "shipment-reversal-intent",
                 "shipment_reversal_intent:approve",

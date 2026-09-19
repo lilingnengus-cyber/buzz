@@ -110,3 +110,22 @@ Core SQL 在 LIMIT/OFFSET 前检查法人、仓库、当前业务单元/品牌�
 53 项查询契约、Read API、MCP 测试通过。独立 PostgreSQL 库 `inventory_count_queries_final` 完整 B2 闭环通过，新覆盖三张盘点分页/精确匹配/多条件过滤、参数拒绝、零库存与空实盘字段、冻结排除与取消恢复、四个范围撤销、当前及冻结品牌/业务单元分别撤权后隐藏整单。Read API 测试覆盖委托缩窄、缺少范围字段、源空页后续游标、trace 不匹配、链接目标和严格输入。四包 all-targets 严格 Clippy、格式、文件大小门禁通过。日志 `/tmp/count-query-unit.log`、`/tmp/count-query-core-final.log`、`/tmp/count-query-clippy.log`、`/tmp/count-query-size.log`。
 
 本批未部署、未发送真实聊天。创建冻结/录入/过账/取消的 Core 审批已存在，但 Gateway/Read API/MCP/Host 写入工具链与签名类型识别仍需接入；普通委托 48 项上限也仍需处理，再配套发布和真实验收。全业务流程目标继续保持未完成。
+
+## 2026-09-20 四类盘点助手写入与签名委托
+
+新增四组固定工具：`prepare_inventory_count_creation/submission/posting/cancellation` 与对应 `approve_inventory_count_*`。候选 MCP 共 120 工具。准备使用封闭 DTO，Core 仍是数量、成本、冻结和版本约束的权威；实盘必须逐行明确提供，重复行、数字 JSON 数量、未知字段、无版本和无取消原因拒绝。Read API 先检查只读预览与委托数据范围，再保存意图，前后完整快照必须一致；服务端返回的摘要、意图 ID、确认/拒绝指令与追踪号必须相符。
+
+确认工具不向模型暴露业务参数。Host/Gateway 识别四个新的精确签名指令类型，MCP 仅从消费后的委托上下文取 ID、版本、摘要和决定；Read API 独立验证委托后，再重读当前预览、核对完整数据范围与摘要，最后把已验证的来源事件/频道写入 Core 审批。执行结果还检查目标意图、实际单据 ID、预期状态/版本与追踪号。创建准备没有实际盘点，因此返回空资源链接；操作准备指向现有盘点；成功执行返回真实创建/更新的盘点详情链接。
+
+Gateway 固定能力数为 81，Host 普通请求能力为 50，普通请求不包含 approve。迁移 53 把委托数组的存储上限从 48 改为 128；Gateway 仍受固定允许列表、功能开关、当前 IAM 和精确签名批准能力约束，不自动增加任何授权或审批策略。发布顺序必须先更新服务端与迁移，再更新请求 50 项能力的 Host，避免新 Host 遇到旧 Gateway 的 48 项限制。
+
+修复两个 MCP 输出边界：明确未录入的 actualOnHandQuantity/varianceQuantity 可为 null，其他数量仍要求字符串；只有盘点创建准备允许没有单据链接，并保留响应大小限制。准备审计的资源链接数按实际数组计算，创建意图不再被计为已有盘点链接。Host 提示明确创建立即冻结、录入保留冻结、过账登记差异、取消不改库存，以及禁止猜测实盘数量和绕过人工确认。
+
+验证：
+- 服务单元测试 59 项、Host 定向测试 10 项通过；PG 工作流在单独设置数据库环境变量后实际执行（默认单元命令不代替数据库验收）。
+- `inventory_count_delegation_verified`：真实 Nostr 签名、四种 approve/reject 委托、ID/版本/摘要/决定替换拒绝、50 项普通能力完整签发和数据库保存、129 项数组拒绝；原委托撤销与并发流程继续通过。
+- `inventory_count_api_workflow_final`：Read API 转发到真实 Core HTTP 与 PostgreSQL，创建准备不生成盘点，确认后冻结；录入 2 件 × 7 元仍不改余额，过账后数量 2/价值 14；第二次盘点取消保持余额，第三次创建拒绝不生成任务，最终无遗留冻结。这是隔离组件闭环，未发送真实聊天。
+- `inventory_count_toolchain_b2`：包含现有盘点、退货和其他 B2 并发/原子审批回归的完整数据库流程通过。
+- 四包 all-targets 严格 Clippy、Rust 格式、差异检查、文件大小门禁通过。日志 `/tmp/count-write-{unit-final,delegation,host,core-workflow-final,b2,clippy-final,size-final}.log`。
+
+本批未部署、未更新已安装客户端。后续需对大盘点/多行查询的返回体和默认 128 KiB MCP 限制做实际容量验证（现有配置允许至 1 MiB），完成候选二进制、兼容回退、限定授权核对、服务端/前端/客户端配套发布，再进行获明确授权的真实聊天验收。已过账盘点纠错和其余业务域继续保持在完整目标中。

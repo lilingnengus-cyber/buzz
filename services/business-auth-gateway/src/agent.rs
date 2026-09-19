@@ -12,7 +12,16 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 73] = [
+const MAX_AGENT_SCOPES: usize = 128;
+const AGENT_SCOPES: [&str; 81] = [
+    "inventory_count_creation_intent:create",
+    "inventory_count_creation_intent:approve",
+    "inventory_count_submission_intent:create",
+    "inventory_count_submission_intent:approve",
+    "inventory_count_posting_intent:create",
+    "inventory_count_posting_intent:approve",
+    "inventory_count_cancellation_intent:create",
+    "inventory_count_cancellation_intent:approve",
     "sales_return_reversal_intent:create",
     "sales_return_cancellation_intent:create",
     "sales_return_reversal_intent:approve",
@@ -113,6 +122,23 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "inventory-count-creation-intent" => (
+            "inventory_count_creation_intent",
+            "inventory_count_creation_intent:approve",
+        ),
+        "inventory-count-submission-intent" => (
+            "inventory_count_submission_intent",
+            "inventory_count_submission_intent:approve",
+        ),
+        "inventory-count-posting-intent" => (
+            "inventory_count_posting_intent",
+            "inventory_count_posting_intent:approve",
+        ),
+        "inventory-count-cancellation-intent" => (
+            "inventory_count_cancellation_intent",
+            "inventory_count_cancellation_intent:approve",
+        ),
+
         "sales-return-reversal-intent" => (
             "sales_return_reversal_intent",
             "sales_return_reversal_intent:approve",
@@ -433,7 +459,7 @@ impl Store {
                 <= 300;
         let valid_scopes = fresh_confirmation
             && !request.scopes.is_empty()
-            && request.scopes.len() <= AGENT_SCOPES.len().min(48)
+            && request.scopes.len() <= AGENT_SCOPES.len().min(MAX_AGENT_SCOPES)
             && request.scopes.iter().all(|scope| {
                 scope_is_allowed(
                     scope,
@@ -944,6 +970,10 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "inventory-count-creation-intent",
+            "inventory-count-submission-intent",
+            "inventory-count-posting-intent",
+            "inventory-count-cancellation-intent",
             "sales-return-reversal-intent",
             "purchase-return-reversal-intent",
             "sales-return-cancellation-intent",

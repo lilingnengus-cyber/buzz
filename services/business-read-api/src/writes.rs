@@ -8,36 +8,38 @@ pub(super) async fn write_tool(
     if !WRITE_TOOLS.contains(&tool.as_str()) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let is_approval = matches!(
-        tool.as_str(),
-        "approve_sales_order"
-            | "approve_sales_return"
-            | "approve_purchase_return"
-            | "approve_sales_return_inspection"
-            | "approve_sales_return_reversal"
-            | "approve_purchase_return_reversal"
-            | "approve_sales_return_cancellation"
-            | "approve_purchase_return_cancellation"
-            | "approve_purchase_return_dispatch"
-            | "approve_purchase_return_acknowledgment"
-            | "approve_purchase_order"
-            | "approve_shipment"
-            | "approve_goods_receipt"
-            | "approve_customer_receipt"
-            | "approve_supplier_payment"
-            | "approve_receivable_allocation"
-            | "approve_payable_allocation"
-            | "approve_customer_receipt_reversal"
-            | "approve_supplier_payment_reversal"
-            | "approve_receivable_allocation_reversal"
-            | "approve_payable_allocation_reversal"
-            | "approve_shipment_reversal"
-            | "approve_goods_receipt_reversal"
-            | "approve_inventory_opening_reversal"
-            | "approve_sales_order_cancellation"
-            | "approve_purchase_order_cancellation"
-            | "approve_inventory_opening"
-    );
+    let is_approval = (inventory_count_writes::family(&tool).is_some()
+        && tool.starts_with("approve_"))
+        || matches!(
+            tool.as_str(),
+            "approve_sales_order"
+                | "approve_sales_return"
+                | "approve_purchase_return"
+                | "approve_sales_return_inspection"
+                | "approve_sales_return_reversal"
+                | "approve_purchase_return_reversal"
+                | "approve_sales_return_cancellation"
+                | "approve_purchase_return_cancellation"
+                | "approve_purchase_return_dispatch"
+                | "approve_purchase_return_acknowledgment"
+                | "approve_purchase_order"
+                | "approve_shipment"
+                | "approve_goods_receipt"
+                | "approve_customer_receipt"
+                | "approve_supplier_payment"
+                | "approve_receivable_allocation"
+                | "approve_payable_allocation"
+                | "approve_customer_receipt_reversal"
+                | "approve_supplier_payment_reversal"
+                | "approve_receivable_allocation_reversal"
+                | "approve_payable_allocation_reversal"
+                | "approve_shipment_reversal"
+                | "approve_goods_receipt_reversal"
+                | "approve_inventory_opening_reversal"
+                | "approve_sales_order_cancellation"
+                | "approve_purchase_order_cancellation"
+                | "approve_inventory_opening"
+        );
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
     {
         return StatusCode::NOT_FOUND.into_response();
@@ -76,6 +78,9 @@ pub(super) async fn write_tool(
     let Some(core) = state.core.as_ref() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if inventory_count_writes::family(&tool).is_some() {
+        return inventory_count_writes::forward(core, &tool, input, &context, &grant).await;
+    }
     if matches!(
         tool.as_str(),
         "prepare_receivable_allocation"
@@ -110,6 +115,9 @@ pub(super) async fn write_tool(
 }
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
+    if inventory_count_writes::family(tool).is_some() {
+        return inventory_count_writes::valid(tool, input);
+    }
     match tool {
         "prepare_sales_return_reversal" | "prepare_purchase_return_reversal" => {
             serde_json::from_value::<

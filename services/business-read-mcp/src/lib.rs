@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod inventory_count_inputs;
+use inventory_count_inputs::*;
 mod draft_inputs;
 use draft_inputs::*;
 
@@ -1421,6 +1423,122 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "prepare_inventory_count_creation",
+        description = "Prepare a new inventory count only after resolving exact legal entity, warehouse, SKU IDs, business date and currency. Preparation does not freeze stock. Present the frozen-stock impact and exact returned confirmation command. Confirmation creates the count and immediately freezes selected stock until posting or cancellation. No count link exists before execution."
+    )]
+    async fn prepare_inventory_count_creation(
+        &self,
+        Parameters(input): Parameters<CountCreationInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_inventory_count_creation",
+                "inventory_count_creation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_inventory_count_creation",
+        description = "Execute only the exact signed human approval or rejection bound to this turn's inventory count creation intent, version and preview hash. Takes no model-controlled document or business arguments. Never confirm on the user's behalf."
+    )]
+    async fn approve_inventory_count_creation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_inventory_count_creation",
+                "inventory_count_creation_intent:approve",
+                "inventory_count_creation_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_inventory_count_submission",
+        description = "Prepare recording all physical count lines with the exact current version and human-provided quantities. Never infer actual quantities from book balances. Shows variance and valuation effects; does not post inventory and retains the stock freeze. Present the exact returned confirmation command."
+    )]
+    async fn prepare_inventory_count_submission(
+        &self,
+        Parameters(input): Parameters<CountOperationInput<CountSubmission>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_inventory_count_submission",
+                "inventory_count_submission_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_inventory_count_submission",
+        description = "Execute only the exact signed human approval or rejection bound to this turn's inventory count submission intent, version and preview hash. Takes no model-controlled document or business arguments. Never confirm on the user's behalf."
+    )]
+    async fn approve_inventory_count_submission(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_inventory_count_submission",
+                "inventory_count_submission_intent:approve",
+                "inventory_count_submission_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_inventory_count_posting",
+        description = "Prepare posting the recorded count differences at the exact current version. Present per-line quantity/value effects and release of the count freeze, then the exact returned confirmation command. Preparation itself does not alter inventory."
+    )]
+    async fn prepare_inventory_count_posting(
+        &self,
+        Parameters(input): Parameters<CountOperationInput<CountPosting>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_inventory_count_posting",
+                "inventory_count_posting_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_inventory_count_posting",
+        description = "Execute only the exact signed human approval or rejection bound to this turn's inventory count posting intent, version and preview hash. Takes no model-controlled document or business arguments. Never confirm on the user's behalf."
+    )]
+    async fn approve_inventory_count_posting(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_inventory_count_posting",
+                "inventory_count_posting_intent:approve",
+                "inventory_count_posting_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_inventory_count_cancellation",
+        description = "Prepare cancellation of an active inventory count at its current version with a human-provided reasonCode. Explain release of the freeze without posting quantity or value differences. Present the exact returned confirmation command."
+    )]
+    async fn prepare_inventory_count_cancellation(
+        &self,
+        Parameters(input): Parameters<CountOperationInput<CountCancellation>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_inventory_count_cancellation",
+                "inventory_count_cancellation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_inventory_count_cancellation",
+        description = "Execute only the exact signed human approval or rejection bound to this turn's inventory count cancellation intent, version and preview hash. Takes no model-controlled document or business arguments. Never confirm on the user's behalf."
+    )]
+    async fn approve_inventory_count_cancellation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_inventory_count_cancellation",
+                "inventory_count_cancellation_intent:approve",
+                "inventory_count_cancellation_intent",
+            )
+            .await)
+    }
+    #[tool(
         name = "search_inventory_counts",
         description = "Search authorized inventory counts by exact ID, number, warehouse, SKU and status. Returns all line IDs, quantities, costs and current version. Follow nextOffset even for empty filtered pages; disambiguate multiple matches."
     )]
@@ -2045,7 +2163,7 @@ impl BusinessReadMcp {
         };
         let (payload, outcome, refs, reason) = match result {
             Ok(value) => {
-                match validate_write_result(&value, &context, self.config.max_payload_bytes) {
+                match validate_write_result(tool, &value, &context, self.config.max_payload_bytes) {
                     Ok(()) => (
                         serde_json::to_string(&value).unwrap_or_else(|_| {
                             write_error_json(
@@ -2055,7 +2173,9 @@ impl BusinessReadMcp {
                             )
                         }),
                         "success",
-                        1,
+                        value["resourceRefs"]
+                            .as_array()
+                            .map_or(0, |refs| refs.len() as i32),
                         None,
                     ),
                     Err(message) => (
@@ -3024,6 +3144,7 @@ fn write_error_json(code: &str, message: impl Into<String>, trace_id: Uuid) -> S
 }
 
 fn validate_write_result(
+    tool: &str,
     result: &Value,
     context: &DelegationContext,
     max_payload_bytes: usize,
@@ -3044,35 +3165,48 @@ fn validate_write_result(
         .get("resourceRefs")
         .and_then(Value::as_array)
         .ok_or_else(|| "Business draft response omitted its resource link".to_string())?;
-    if refs.len() != 1 {
-        return Err("Business draft response must contain exactly one resource link".into());
-    }
-    let uri = refs[0]
-        .get("bizUri")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "Business draft resource link was invalid".to_string())?;
-    let parsed = Url::parse(uri).map_err(|_| "Business draft resource link was invalid")?;
-    if !matches!(
-        parsed.host_str(),
-        Some(
-            "sales-order"
-                | "shipment"
-                | "purchase-order"
-                | "goods-receipt"
-                | "sales-return"
-                | "purchase-return"
-                | "customer-receipt"
-                | "supplier-payment"
-                | "inventory-opening"
-        )
-    ) || parsed.query().is_some()
-        || parsed.fragment().is_some()
-        || parsed.path_segments().is_none_or(|mut values| {
-            let first = values.next();
-            first.is_none() || values.next().is_some()
-        })
-    {
-        return Err("Business draft resource link was not allowlisted".into());
+    let unlinked_count_intent = tool == "prepare_inventory_count_creation"
+        && result["documentType"] == "inventory_count_creation_intent"
+        && refs.is_empty()
+        && result["item"]["id"]
+            .as_str()
+            .is_some_and(|id| Uuid::parse_str(id).is_ok())
+        && result["previewHash"]
+            .as_str()
+            .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()));
+    if !unlinked_count_intent {
+        if refs.len() != 1 {
+            return Err("Business draft response must contain exactly one resource link".into());
+        }
+        let uri = refs[0]
+            .get("bizUri")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Business draft resource link was invalid".to_string())?;
+        let parsed = Url::parse(uri).map_err(|_| "Business draft resource link was invalid")?;
+        if !matches!(
+            parsed.host_str(),
+            Some(
+                "sales-order"
+                    | "shipment"
+                    | "purchase-order"
+                    | "goods-receipt"
+                    | "sales-return"
+                    | "purchase-return"
+                    | "customer-receipt"
+                    | "supplier-payment"
+                    | "inventory-opening"
+                    | "inventory-count"
+            )
+        ) || !valid_biz_uri(uri)
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || parsed.path_segments().is_none_or(|mut values| {
+                let first = values.next();
+                first.is_none() || values.next().is_some()
+            })
+        {
+            return Err("Business draft resource link was not allowlisted".into());
+        }
     }
     if serde_json::to_vec(result)
         .map_err(|_| "Business draft response was invalid")?
@@ -3130,7 +3264,9 @@ fn validate_business_value(value: &Value) -> Result<(), String> {
                 }
             }
             for (key, nested) in object {
-                if key.ends_with("Quantity") && !nested.is_string() {
+                let unset_count_quantity = nested.is_null()
+                    && matches!(key.as_str(), "actualOnHandQuantity" | "varianceQuantity");
+                if key.ends_with("Quantity") && !nested.is_string() && !unset_count_quantity {
                     return Err("Business quantity was not a decimal string".into());
                 }
                 validate_business_value(nested)?;
@@ -3650,9 +3786,50 @@ mod tests {
     }
 
     #[test]
+    fn count_tools_keep_confirmation_arguments_out_of_model_control() {
+        let registered = BusinessReadMcp::tool_router().list_all();
+        for name in ["creation", "submission", "posting", "cancellation"] {
+            let prepare = format!("prepare_inventory_count_{name}");
+            let tool = registered
+                .iter()
+                .find(|t| t.name.as_ref() == prepare)
+                .unwrap();
+            assert_eq!(
+                tool.input_schema.get("additionalProperties"),
+                Some(&json!(false))
+            );
+            let approve = format!("approve_inventory_count_{name}");
+            let tool = registered
+                .iter()
+                .find(|t| t.name.as_ref() == approve)
+                .unwrap();
+            assert!(tool
+                .input_schema
+                .get("properties")
+                .is_none_or(|v| v.as_object().is_some_and(|v| v.is_empty())));
+        }
+        assert!(validate_business_value(&json!({"lines":[{"actualOnHandQuantity":null,"varianceQuantity":null,"snapshotOnHandQuantity":"0"}]})).is_ok());
+        assert!(validate_business_value(&json!({"onHandQuantity":null})).is_err());
+        assert!(validate_business_value(&json!({"actualOnHandQuantity":2})).is_err());
+        let context = context();
+        let value = json!({"schemaVersion":1,"status":"ok","traceId":context.trace_id,"documentType":"inventory_count_creation_intent","item":{"id":Uuid::new_v4(),"status":"draft"},"previewHash":"a".repeat(64),"resourceRefs":[]});
+        assert!(
+            validate_write_result("prepare_inventory_count_creation", &value, &context, 65536)
+                .is_ok()
+        );
+        assert!(
+            validate_write_result("prepare_inventory_count_creation", &value, &context, 10)
+                .is_err()
+        );
+        assert!(
+            validate_write_result("create_sales_order_draft", &value, &context, 65536).is_err()
+        );
+    }
+
+    #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 112);
+        assert_eq!(registered.len(), 120);
         for name in [
             "search_inventory_counts",
             "get_inventory_count",

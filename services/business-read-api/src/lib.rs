@@ -3,6 +3,7 @@
 mod allocation_history;
 mod config;
 mod financial_documents;
+mod inventory_count_writes;
 mod inventory_counts;
 mod master_data;
 mod return_documents;
@@ -95,7 +96,15 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 58] = [
+const WRITE_TOOLS: [&str; 66] = [
+    "prepare_inventory_count_creation",
+    "approve_inventory_count_creation",
+    "prepare_inventory_count_submission",
+    "approve_inventory_count_submission",
+    "prepare_inventory_count_posting",
+    "approve_inventory_count_posting",
+    "prepare_inventory_count_cancellation",
+    "approve_inventory_count_cancellation",
     "prepare_sales_return_reversal",
     "prepare_sales_return_cancellation",
     "prepare_purchase_return_reversal",
@@ -800,6 +809,19 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_inventory_count_creation" => Some("inventory_count_creation_intent:create"),
+        "approve_inventory_count_creation" => Some("inventory_count_creation_intent:approve"),
+        "prepare_inventory_count_submission" => Some("inventory_count_submission_intent:create"),
+        "approve_inventory_count_submission" => Some("inventory_count_submission_intent:approve"),
+        "prepare_inventory_count_posting" => Some("inventory_count_posting_intent:create"),
+        "approve_inventory_count_posting" => Some("inventory_count_posting_intent:approve"),
+        "prepare_inventory_count_cancellation" => {
+            Some("inventory_count_cancellation_intent:create")
+        }
+        "approve_inventory_count_cancellation" => {
+            Some("inventory_count_cancellation_intent:approve")
+        }
+
         "prepare_sales_return_reversal" => Some("sales_return_reversal_intent:create"),
         "prepare_sales_return_cancellation" => Some("sales_return_cancellation_intent:create"),
         "approve_sales_return_reversal" => Some("sales_return_reversal_intent:approve"),

@@ -31,7 +31,7 @@ fn dimension(item: &Value, key: &str, allowed: &BTreeSet<String>, nullable: bool
         _ => false,
     }
 }
-fn permits(item: &Value, scope: &AuthorizationScope, options: bool) -> bool {
+pub(super) fn permits(item: &Value, scope: &AuthorizationScope, options: bool) -> bool {
     if !dimension(item, "legalEntityId", &scope.legal_entity_ids, false)
         || !dimension(item, "warehouseId", &scope.warehouse_ids, false)
         || !dimension(item, "businessUnitId", &scope.business_unit_ids, false)
