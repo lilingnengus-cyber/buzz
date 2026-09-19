@@ -1,4 +1,21 @@
 use super::*;
+// Optional isolated-test response corpus for the downstream MCP validator.
+fn export(tool: &str, trace: Uuid, result: &Value) {
+    use std::io::Write;
+    if let Ok(path) = std::env::var("BUSINESS_MASTER_MCP_FIXTURE_FILE") {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        writeln!(
+            file,
+            "{}",
+            json!({"tool":tool,"traceId":trace,"result":result})
+        )
+        .unwrap();
+    }
+}
 async fn create(
     core: &CoreClient,
     actor: Uuid,
@@ -10,6 +27,7 @@ async fn create(
     let c = context(actor, &tool);
     let authorized = grant(&c, dimensions);
     let prepared = value(forward(core, &tool, fields.clone(), &c, &authorized).await).await;
+    export(&tool, c.trace_id, &prepared);
     assert!(prepared["document"]["current"].is_null());
     let replay = value(forward(core, &tool, fields, &c, &authorized).await).await;
     assert_eq!(prepared["item"]["id"], replay["item"]["id"]);
@@ -18,6 +36,7 @@ async fn create(
     let authorized = grant(&c, dimensions);
     let command = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
     let result = value(forward(core, &tool, command, &c, &authorized).await).await;
+    export(&tool, c.trace_id, &result);
     assert_eq!(result["executed"], true);
     assert_eq!(result["createdDocument"]["version"], 1);
     assert_eq!(result["createdDocument"]["traceId"], c.trace_id.to_string());
@@ -199,6 +218,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
             assert_eq!(intents(&pool).await, before);
         }
         let prepared = value(forward(&core, &tool, patch, &c, &authorized).await).await;
+        export(&tool, c.trace_id, &prepared);
         let fields = &prepared["document"]["command"]["command"];
         match *kind {
             "legal_entity" => assert_eq!(fields["registrationNumber"], "KEEP_REG"),
@@ -227,6 +247,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
             );
         }
         let result = value(forward(&core, &tool, command, &c, &authorized).await).await;
+        export(&tool, c.trace_id, &result);
         assert_eq!(result["createdDocument"]["id"], id.to_string());
         assert_eq!(result["createdDocument"]["version"], 2);
     }
@@ -271,6 +292,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
         ..Default::default()
     };
     let record = value(read(&core, &input, &scope, &c).await).await;
+    export("get_business_master_record", c.trace_id, &record);
     assert_eq!(record["items"][0]["version"], 3);
     assert_eq!(record["items"][0]["name"], "Name only edit");
     assert!(record["items"][0]["barcode"].is_null());

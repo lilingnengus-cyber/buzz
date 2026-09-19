@@ -2,6 +2,9 @@
 
 mod crm_inputs;
 mod crm_result;
+mod master_inputs;
+mod master_result;
+mod master_tools;
 mod tool_visibility;
 use crm_inputs::*;
 mod inventory_count_inputs;
@@ -2385,6 +2388,16 @@ impl BusinessReadMcp {
         });
         let started = std::time::Instant::now();
         let response = self.call_write_api(tool, &input, &context).await;
+        let response = response.and_then(|value| {
+            if master_result::family(tool).is_some()
+                && master_result::approval(tool, &value, &context, self.config.max_payload_bytes)
+                    .is_err()
+            {
+                Err(BusinessCallError::Unavailable)
+            } else {
+                Ok(value)
+            }
+        });
         let reference_count = response
             .as_ref()
             .ok()
@@ -2717,7 +2730,7 @@ impl BusinessReadMcp {
         };
         let (mut result, audit_event, audit_result, reason) = match result {
             Ok(result) => {
-                match crm_result::validate(tool, result, &context, self.config.max_payload_bytes) {
+                match master_result::read(tool, result, &context, self.config.max_payload_bytes) {
                     Ok(result) => {
                         let partial = matches!(result.status, BusinessToolStatus::Partial);
                         (
@@ -3275,6 +3288,9 @@ fn validate_write_result(
     context: &DelegationContext,
     max_payload_bytes: usize,
 ) -> Result<(), String> {
+    if master_result::family(tool).is_some() {
+        return master_result::prepare(tool, result, context, max_payload_bytes);
+    }
     let expected_trace_id = context.trace_id.to_string();
     if result.get("schemaVersion").and_then(Value::as_u64) != Some(1)
         || result.get("status").and_then(Value::as_str) != Some("ok")

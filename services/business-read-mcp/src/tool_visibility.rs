@@ -1,7 +1,7 @@
 //! Keep each session within the native 128-tool limit without widening authority.
 use super::*;
 pub(super) fn router(config: &Config) -> Result<ToolRouter<BusinessReadMcp>, String> {
-    let mut router = BusinessReadMcp::tool_router();
+    let mut router = BusinessReadMcp::all_tools();
     let approval = if let Some(scope) = &config.approval_scope {
         let kind = scope
             .strip_suffix(":approve")
@@ -53,7 +53,7 @@ mod tests {
         assert!(ordinary.len() <= 128);
         assert!(ordinary.iter().all(|t| !t.name.starts_with("approve_")));
         assert!(ordinary.iter().any(|t| t.name == "prepare_crm_creation"));
-        for tool in BusinessReadMcp::tool_router()
+        for tool in BusinessReadMcp::all_tools()
             .list_all()
             .into_iter()
             .filter(|t| t.name.starts_with("approve_"))
@@ -76,6 +76,29 @@ mod tests {
                 .iter()
                 .any(|p| t.name.starts_with(p))));
         }
+        for family in [
+            "core_master_creation",
+            "core_master_update",
+            "product_master_creation",
+            "product_master_update",
+        ] {
+            assert!(ordinary
+                .iter()
+                .any(|t| t.name == format!("prepare_{family}")));
+            config.approval_scope = Some(format!("{family}_intent:approve"));
+            let selected = router(&config).unwrap().list_all();
+            let tool = selected
+                .iter()
+                .find(|t| t.name == format!("approve_{family}"))
+                .unwrap();
+            assert!(tool
+                .input_schema
+                .get("properties")
+                .is_none_or(|p| p.as_object().is_some_and(|o| o.is_empty())));
+        }
+        assert!(ordinary
+            .iter()
+            .any(|t| t.name == "get_business_master_record"));
         config.approval_scope = Some("crm_followup_intent:approve".into());
         assert!(router(&config)
             .unwrap()

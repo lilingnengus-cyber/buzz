@@ -105,3 +105,18 @@ Gateway 固定能力集合从 88 增至 96；Host 普通回合从 54 增至 58�
 日志 /tmp/master-adapter-{final,negative,unit,unit-restored,clippy-final,size}.log、/tmp/master-gateway-test.log、/tmp/master-host-test.log。新库仍仅使用独立 55439 PostgreSQL；没有生产写入、聊天消息或客户端替换。
 
 当前 source 已接到 Read API、Gateway 和 Host，MCP 还没有登记这些新工具；Read API 暂不返回虚构的详情 URI。下一步同时补齐 MCP 输入结构、业务字段返回白名单（现有通用过滤会拒绝 address 等合法基础资料字段）、当前记录读取工具、产品/分类/换算的名称定位及真实客户端详情路由，再联调完整工具回合与配套发布。跨人审批创建后的申请者可见性、启停并发保护和其余完整业务范围继续保持未完成。
+
+## 2026-09-20 MCP 工具与结果校验
+
+MCP 新增 get_business_master_record 和 Core/Product 创建、修改各一组准备/确认工具，共九个。输入限定 11 类资源；修改使用严格补丁，省略字段不会变成 null，只有 registrationNumber/address/barcode 支持显式清空。审批工具不接受模型控制的参数，沿用签名来源的目标、版本、摘要和决定。
+
+新增独立返回白名单，允许 warehouse.address 等必要维护字段，限制长度、类型、嵌套、完整信封、资源家族、版本、trace 和审批结果一致性。准备响应重新计算预览 SHA-256，并检查返回确认/拒绝文本。通用敏感字段过滤保持生效。尚无真实详情路由，因此返回引用必须为空，不虚构详情链接。
+
+验证证据：
+- 新库 master_mcp_adapter_v1（独立 PostgreSQL 55439）执行 Read API → Core HTTP → PostgreSQL，原有 24 次执行/票/审计断言通过。
+- 隔离适配器测试可通过 BUSINESS_MASTER_MCP_FIXTURE_FILE 导出 JSONL 响应；本次 /tmp/master-mcp-corpus-v1.jsonl 的 47 条创建、修改、审批和读取响应全部通过 MCP 校验。MCP 同名环境变量消费语料；未设置的跳过不算端到端证据。
+- MCP 23 项测试通过，含修改省略/清空区别、非法字段、错误签名绑定、预览篡改、敏感字段注入、零参数确认和全部会话工具容量。
+- 使用新建 debug MCP 与 buzz-agent、模拟模型执行运行时探针：普通会话 100 工具；四类签名确认会话分别 59 工具，均只暴露指定的一个审批工具。这不是实际客户端聊天验收。
+- Read API/MCP 严格 Clippy、格式、差异与文件大小门禁通过。日志 /tmp/master-mcp-{adapter,final,clippy-final,size,runtime}.log 与 runtime-* 日志。
+
+本批未部署、未替换客户端、未发送聊天、未创建生产记录。下一步补齐产品/分类/换算名称查找、真实详情路由和字段补问后配套发布。还需检查单位精度省略时的预览默认值、跨人审批后的申请者可见性及启停并发保护；全业务流程目标继续未完成。
