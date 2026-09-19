@@ -52,14 +52,13 @@ impl ProductMasterService {
         }
     }
 
-    pub(super) async fn preview_on(
+    pub(crate) async fn preview_on(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         actor: Uuid,
         command: &ProductMasterCommand,
     ) -> Result<Value, DomainError> {
-        self.snapshot(actor, "business_product_master:manage")
-            .await?;
+        crate::master_write_authority::read(tx, actor, "business_product_master:manage").await?;
         let (kind, id, expected, save, status) = match command {
             MasterCommand::Create { command: input } => {
                 let kind = ProductMasterType::from_str(&input.resource_type)?;

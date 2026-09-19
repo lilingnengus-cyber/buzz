@@ -249,17 +249,35 @@ impl CoreMasterDataService {
         input: &SaveCoreMasterData,
         guard: Option<&serde_json::Value>,
     ) -> Result<CoreMasterCommandResult, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let result = self
+            .save_on(&mut tx, context, id, key, input, guard)
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    /// Save on a caller-owned transaction so approval and business changes commit together.
+    pub(crate) async fn save_on(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        context: (Uuid, Uuid),
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveCoreMasterData,
+        guard: Option<&serde_json::Value>,
+    ) -> Result<CoreMasterCommandResult, DomainError> {
         let (actor, trace_id) = context;
         let kind = CoreMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
-        let mut snapshot = self.snapshot(actor, "business_master_data:manage").await?;
+        let mut snapshot =
+            crate::master_write_authority::read(tx, actor, "business_master_data:manage").await?;
         let hash = match guard {
             Some(snapshot) => request_hash(&("guarded-master-save-v1", id, input, snapshot))?,
             None => request_hash(&(id, input))?,
         };
-        let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CoreMasterCommandResult>(
-            &mut tx,
+            tx,
             actor,
             "core_master_data:save",
             key,
@@ -267,16 +285,15 @@ impl CoreMasterDataService {
         )
         .await?
         {
-            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+            self.existing_write_authority(tx, actor, kind, replay.id)
                 .await?;
             replay.idempotent_replay = true;
-            tx.commit().await?;
             return Ok(replay);
         }
         let target_id = id.unwrap_or_else(Uuid::new_v4);
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(format!("{}:{target_id}", kind.as_str()))
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         if let Some(expected) = guard {
             let command = match id {
@@ -288,15 +305,15 @@ impl CoreMasterDataService {
                     command: input.clone(),
                 },
             };
-            if self.preview_on(&mut tx, actor, &command).await? != *expected {
+            if self.preview_on(tx, actor, &command).await? != *expected {
                 return Err(DomainError::StalePreview);
             }
         }
         if let Some(existing_id) = id {
             snapshot = self
-                .existing_write_authority(&mut tx, actor, kind, existing_id)
+                .existing_write_authority(tx, actor, kind, existing_id)
                 .await?;
-            let current=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(existing_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+            let current=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(existing_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
             if current.get::<i64, _>("version") != input.expected_version.unwrap_or(0) {
                 return Err(DomainError::VersionConflict);
             }
@@ -307,7 +324,7 @@ impl CoreMasterDataService {
                 current.get("business_unit_id"),
                 existing_id,
             )?;
-            update_record(&mut tx, kind, existing_id, input, actor, trace_id).await?;
+            update_record(tx, kind, existing_id, input, actor, trace_id).await?;
         } else {
             if input.expected_version.is_some() {
                 return Err(DomainError::VersionConflict);
@@ -321,10 +338,10 @@ impl CoreMasterDataService {
             {
                 return Err(DomainError::NotFoundOrForbidden);
             }
-            ensure_parents(&mut tx, kind, input).await?;
-            insert_record(&mut tx, kind, target_id, input).await?;
+            ensure_parents(tx, kind, input).await?;
+            insert_record(tx, kind, target_id, input).await?;
             snapshot = crate::master_write_authority::snapshot(
-                &mut tx,
+                tx,
                 actor,
                 "business_master_data:manage",
                 true,
@@ -339,9 +356,9 @@ impl CoreMasterDataService {
             {
                 return Err(DomainError::NotFoundOrForbidden);
             }
-            grant_creator_scope(&mut tx, kind, target_id, actor).await?;
+            grant_creator_scope(tx, kind, target_id, actor).await?;
         }
-        let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(target_id).fetch_one(&mut *tx).await?;
+        let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(target_id).fetch_one(&mut **tx).await?;
         if id.is_some() {
             self.ensure_scope(
                 &snapshot,
@@ -352,7 +369,7 @@ impl CoreMasterDataService {
             )?;
         }
         let version: i64 = row.get("version");
-        record(&mut tx,trace_id,actor,"CORE_MASTER_DATA_SAVED","core_master_data_saved",kind.as_str(),target_id,json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}})).await?;
+        record(tx,trace_id,actor,"CORE_MASTER_DATA_SAVED","core_master_data_saved",kind.as_str(),target_id,json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}})).await?;
         let result = CoreMasterCommandResult {
             id: target_id,
             resource_type: kind.as_str().into(),
@@ -362,8 +379,7 @@ impl CoreMasterDataService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "core_master_data:save", key, &result).await?;
-        tx.commit().await?;
+        finish_idempotent(tx, actor, "core_master_data:save", key, &result).await?;
         Ok(result)
     }
 

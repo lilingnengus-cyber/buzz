@@ -239,19 +239,36 @@ impl ProductMasterService {
         input: &SaveProductMasterData,
         guard: Option<&serde_json::Value>,
     ) -> Result<ProductMasterCommandResult, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let result = self
+            .save_on(&mut tx, context, id, key, input, guard)
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    /// Save on a caller-owned transaction so approval and business changes commit together.
+    pub(crate) async fn save_on(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        context: (Uuid, Uuid),
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveProductMasterData,
+        guard: Option<&serde_json::Value>,
+    ) -> Result<ProductMasterCommandResult, DomainError> {
         let (actor, trace_id) = context;
         let kind = ProductMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
-        let mut snapshot = self
-            .snapshot(actor, "business_product_master:manage")
-            .await?;
+        let mut snapshot =
+            crate::master_write_authority::read(tx, actor, "business_product_master:manage")
+                .await?;
         let hash = match guard {
             Some(snapshot) => request_hash(&("guarded-master-save-v1", id, input, snapshot))?,
             None => request_hash(&(id, input))?,
         };
-        let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<ProductMasterCommandResult>(
-            &mut tx,
+            tx,
             actor,
             "product_master_data:save",
             key,
@@ -259,16 +276,15 @@ impl ProductMasterService {
         )
         .await?
         {
-            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+            self.existing_write_authority(tx, actor, kind, replay.id)
                 .await?;
             replay.idempotent_replay = true;
-            tx.commit().await?;
             return Ok(replay);
         }
         let target_id = id.unwrap_or_else(Uuid::new_v4);
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(format!("{}:{target_id}", kind.as_str()))
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         if let Some(expected) = guard {
             let command = match id {
@@ -280,41 +296,41 @@ impl ProductMasterService {
                     command: input.clone(),
                 },
             };
-            if self.preview_on(&mut tx, actor, &command).await? != *expected {
+            if self.preview_on(tx, actor, &command).await? != *expected {
                 return Err(DomainError::StalePreview);
             }
         }
         if id.is_some() {
             snapshot = self
-                .existing_write_authority(&mut tx, actor, kind, target_id)
+                .existing_write_authority(tx, actor, kind, target_id)
                 .await?;
-            let row = load_record(&mut tx, kind, target_id)
+            let row = load_record(tx, kind, target_id)
                 .await?
                 .ok_or(DomainError::NotFoundOrForbidden)?;
             if row.get::<i64, _>("version") != input.expected_version.unwrap_or(0) {
                 return Err(DomainError::VersionConflict);
             }
             ensure_brand_scope(&snapshot, row.get("brand_id"))?;
-            update_record(&mut tx, kind, target_id, input).await?;
+            update_record(tx, kind, target_id, input).await?;
         } else {
             if input.expected_version.is_some() {
                 return Err(DomainError::VersionConflict);
             }
-            ensure_inputs_accessible(&mut tx, &snapshot, kind, input).await?;
-            insert_record(&mut tx, kind, target_id, input).await?;
+            ensure_inputs_accessible(tx, &snapshot, kind, input).await?;
+            insert_record(tx, kind, target_id, input).await?;
             snapshot = crate::master_write_authority::snapshot(
-                &mut tx,
+                tx,
                 actor,
                 "business_product_master:manage",
                 true,
             )
             .await?;
-            ensure_inputs_accessible(&mut tx, &snapshot, kind, input).await?;
+            ensure_inputs_accessible(tx, &snapshot, kind, input).await?;
             if kind == ProductMasterType::Brand {
-                sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(target_id).execute(&mut *tx).await?;
+                sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(target_id).execute(&mut **tx).await?;
             }
         }
-        let row = load_record(&mut tx, kind, target_id)
+        let row = load_record(tx, kind, target_id)
             .await?
             .ok_or(DomainError::NotFoundOrForbidden)?;
         ensure_brand_scope(&snapshot, row.get("brand_id")).or_else(|error| {
@@ -327,7 +343,7 @@ impl ProductMasterService {
         let version: i64 = row.get("version");
         let code: String = row.get("code");
         let status: String = row.get("status");
-        record(&mut tx,trace_id,actor,"PRODUCT_MASTER_DATA_SAVED","product_master_data_saved",kind.as_str(),target_id,json!({"resourceType":kind.as_str(),"code":code,"version":version,"mode":if id.is_some(){"update"}else{"create"}})).await?;
+        record(tx,trace_id,actor,"PRODUCT_MASTER_DATA_SAVED","product_master_data_saved",kind.as_str(),target_id,json!({"resourceType":kind.as_str(),"code":code,"version":version,"mode":if id.is_some(){"update"}else{"create"}})).await?;
         let result = ProductMasterCommandResult {
             id: target_id,
             resource_type: kind.as_str().into(),
@@ -337,8 +353,7 @@ impl ProductMasterService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "product_master_data:save", key, &result).await?;
-        tx.commit().await?;
+        finish_idempotent(tx, actor, "product_master_data:save", key, &result).await?;
         Ok(result)
     }
 

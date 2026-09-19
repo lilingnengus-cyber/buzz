@@ -56,3 +56,29 @@ Core 与 Product 服务新增 save_guarded，复用原有保存事务和写入�
 负向控制临时关闭 Core 快照比较，错快照用例错误执行并导致测试失败；已恢复且最终新库完整通过。既有事务权限集成回归通过，Core 25 项单元测试通过，严格 Clippy、格式、差异和文件大小检查通过。日志 /tmp/master-guard-{final,authority,unit,negative,clippy-final,size}.log。本批未部署，未发送聊天消息，未写入生产业务记录。
 
 下一步接入不可变意图与实际审批策略，将审批执行完成标记与 save_guarded 的业务写入原子提交；全局基础资料不得伪造法人范围。完成后再登记 Gateway、Read API、MCP 与 Host 的固定准备/确认能力，并补足启停的并发引用保护。
+
+## 2026-09-20 不可变意图与原子审批执行
+
+新增迁移 0055 和四个固定意图类型：core_master_creation_intent、core_master_update_intent、product_master_creation_intent、product_master_update_intent。意图持久化严格反序列化后的完整命令与预览、创建人、幂等键、trace，30 分钟有效且数据库禁止修改/删除。准备的预览读取与意图插入也使用同一事务。迁移只登记八个 IAM 能力定义及审批类型约束，不自动授权、不配置审批策略；本批没有启停意图。
+
+新增服务认证下的 Core 路径：POST /v1/agent-master-intents/{kind}、GET /v1/agent-approval-previews/master/{kind}/{id}、POST /v1/agent-approvals/master/{kind}/{id}。确认仍使用现有 ChatApprovalInput 的版本、摘要、决定与来源事件/频道绑定。没有新增 Relay HTTP API、界面按钮或生产业务写入。
+
+本类审批复用现有审批请求/不可变投票表，但将投票、基础资料 save_on、幂等结果、创建者新对象范围、业务审计及 executed 状态放在一个事务中；没有先提交 executing 再另开保存事务的间隙。当前策略缺失/停用、角色不符、自审禁止、需要 step-up 均拒绝。人数取请求已记录值和当前策略值中的较大值；每次通过票都重新验证此前赞成者的现有角色、能力、范围与原预览。要求业务单元不同的策略在任一方没有业务单元时拒绝，全局资料不伪造法人或业务单元。
+
+目标 advisory 锁顺序与普通保存一致，再锁实际记录、父级及授权 revision。审批另锁当前策略、人员、角色和实际能力来源；Core 角色权限以及 Core 原本支持导入的无附加义务、unrestricted IAM 直接/角色授权分别校验并锁定。有限期 IAM 来源在全部写入和等待之后再次用数据库时间检查；意图有效期同样在提交前检查。保存与预览内部权限读取改为使用已有事务连接，单连接池也可完成此流程。既有浏览器保存接口和幂等摘要保持兼容。
+
+隔离 HTTP/PostgreSQL 用例 postgres_master_intents 覆盖：
+
+- 11 类资料全部准备、确认创建及修改（另含一条换算用单位，共 23 个初始成功审批/业务写入）；同键准备重放，重复确认不重复写入，两个并发确认只产生一条新记录和一票。
+- 全局法人创建没有虚构的 legalEntityId；缺策略拒绝且不产生审批请求。不可变输入、删除、额外字段、错误摘要/版本、过期意图和未开放的启停类型拒绝。
+- 自审、角色、step-up、业务单元区分、对象范围拒绝；两人审批中撤销此前投票者角色后拒绝执行，恢复后可继续；策略提升到三人立即生效，随后降低仍保留三人的请求门槛；拒绝票终结请求。
+- 客户确认真实等待父法人行锁时，策略改为要求 step-up，释放后拒绝且客户版本/票数不变。
+- 在业务插入之后人为使最终审批更新失败，业务记录、范围授权、请求、投票及审计全部回滚；移除故障后可使用同一来源事件重试成功。
+- IAM 直接权限及 IAM 角色权限都可按现有 Core 语义授权。有限期 IAM 角色授权在最后审批更新的真实锁等待期间过期，释放后全事务回滚。临时移除提交前检查时该用例错误返回 executed 并使测试失败；检查已恢复。
+- 最大连接数为 1 的独立连接池完整准备/确认成功，防止事务中再次借连接造成自等待。
+
+最后集成新库 master_intents_final、基础资料预览/保存回归 master_intents_preview_regression、权限回归 master_intents_authority_regression、CRM 回归 master_intents_crm_regression 均在本机独立 55439 实例。运行新测试需显式配置 BUSINESS_CORE_MASTER_INTENT_TEST_DATABASE_URL 和 BUSINESS_CORE_DATABASE_URL 指向同一个隔离新库，以及服务凭据、BUSINESS_WEB_ORIGIN；未配置而跳过不是验收。日志 /tmp/master-intents-{final,previews,authority,crm,negative,unit,clippy-final,size}.log。
+
+本批是 Core 服务侧闭环，未部署；Gateway 尚不签发这些能力，Read API、MCP、Host、名称定位补问、部分字段保留与详情链接仍需接入。创建目前沿用既有保存语义，由执行审批者获得新对象范围；跨人审批中申请者的结果可见性需在接入回读前明确并验证。启停并发引用保护、CRM 真实聊天/Windows 验收及完整业务清单其他未覆盖环节仍未完成。
+
+最终验证：上述四组隔离数据库集成测试均通过；Core 25 项、Gateway 8 项单元测试通过；两包严格 Clippy、Rust 格式、差异及仓库文件大小门禁通过。生产仍未应用迁移 0055。

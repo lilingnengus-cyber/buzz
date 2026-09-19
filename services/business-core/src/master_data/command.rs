@@ -53,13 +53,13 @@ impl CoreMasterDataService {
         }
     }
 
-    pub(super) async fn preview_on(
+    pub(crate) async fn preview_on(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         actor: Uuid,
         command: &CoreMasterCommand,
     ) -> Result<Value, DomainError> {
-        self.snapshot(actor, "business_master_data:manage").await?;
+        crate::master_write_authority::read(tx, actor, "business_master_data:manage").await?;
         let (kind, id, expected, save, status) = match command {
             MasterCommand::Create { command: input } => {
                 let kind = CoreMasterType::from_str(&input.resource_type)?;

@@ -18,6 +18,16 @@ pub(crate) async fn snapshot(
         "SELECT revision FROM business_authorization_revision WHERE singleton FOR SHARE"
     };
     sqlx::query(query).fetch_one(&mut **tx).await?;
+    read(tx, actor, permission).await
+}
+
+/// Read preliminary permission using the existing transaction connection.
+/// Writers still acquire the revision lock and recheck after resource waits.
+pub(crate) async fn read(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+    permission: &str,
+) -> Result<AuthorizationSnapshot, DomainError> {
     let current = PgStore::snapshot_on(tx, actor)
         .await
         .map_err(|_| DomainError::NotFoundOrForbidden)?;
