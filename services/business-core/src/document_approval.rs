@@ -1,6 +1,7 @@
 /// Immutable, scoped allocation preparation and signed execution.
 pub mod allocation;
 mod allocation_history;
+mod crm;
 mod financial_documents;
 mod inventory_count_creation;
 mod inventory_count_operation;
@@ -82,6 +83,7 @@ struct VoteOutcome {
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .merge(stock::routes())
+        .merge(crm::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
         .merge(inventory_count_creation::routes())
@@ -434,6 +436,7 @@ async fn cast_vote(
         .await?,
         "sales_return_inspection_intent" | "purchase_return_dispatch_intent" | "purchase_return_acknowledgment_intent" | "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" | "sales_return_reversal_intent" | "purchase_return_reversal_intent" => Some(return_disposition::authority_row(store,document_type,document_id).await?),
         "inventory_count_submission_intent" | "inventory_count_posting_intent" | "inventory_count_cancellation_intent" => Some(inventory_count_operation::authority_row(store,document_type,document_id).await?),
+        "crm_creation_intent" | "crm_update_intent" | "crm_followup_intent" => Some(crm::authority_row(store,document_type,document_id).await?),
         "inventory_count_creation_intent" => Some(inventory_count_creation::authority_row(store,document_type,document_id).await?),
         "sales_return" | "purchase_return" => Some(returns::authority_row(store,document_type,document_id).await?),
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
@@ -447,6 +450,12 @@ async fn cast_vote(
     .ok_or(StoreError::NotFoundOrForbidden)?;
     let creator: Uuid = row.get("created_by_user_id");
     let wrong_party_scope = if matches!(
+        document_type,
+        "crm_creation_intent" | "crm_update_intent" | "crm_followup_intent"
+    ) {
+        row.get::<Option<Uuid>, _>("party_id")
+            .is_some_and(|id| !snapshot.scopes.customer_ids.contains(&id))
+    } else if matches!(
         document_type,
         "inventory_opening"
             | "inventory_opening_reversal_intent"

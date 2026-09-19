@@ -6,6 +6,8 @@ use business_core::{
 use chrono::NaiveDate;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
+#[path = "support/crm_intents.rs"]
+mod crm_intents;
 #[path = "support/crm_write_authority.rs"]
 mod crm_write_authority;
 #[tokio::test]
@@ -223,6 +225,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     .unwrap();
     assert_eq!(audit, 3);
     crm_write_authority::check(&pool, actor, customer, id).await;
+    crm_intents::check(&pool, actor, customer, legal, unit).await;
     // Every CRM route stays behind the existing browser-session middleware.
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;

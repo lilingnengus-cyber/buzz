@@ -1,6 +1,8 @@
 //! Minimal presales CRM, sharing Business Core identity, scopes and command audit.
 pub mod api;
+mod command;
 mod model;
+pub use command::CrmCommand;
 mod registers;
 mod write_authority;
 use crate::{
@@ -90,6 +92,18 @@ impl CrmService {
         key: &str,
         input: &SaveOpportunity,
     ) -> Result<Value, DomainError> {
+        self.save_inner((actor, trace), id, key, input, None).await
+    }
+
+    async fn save_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveOpportunity,
+        guard: Option<command::Guard<'_>>,
+    ) -> Result<Value, DomainError> {
+        let (actor, trace) = context;
         input.validate()?;
         authorize(
             &self.store,
@@ -114,7 +128,10 @@ impl CrmService {
             return Err(DomainError::Invalid("更新需要当前版本".into()));
         }
         let mut tx = self.store.pool().begin().await?;
-        let hash = request_hash(&(id, input))?;
+        let hash = match &guard {
+            Some(g) => request_hash(&(id, input, g.snapshot))?,
+            None => request_hash(&(id, input))?,
+        };
         if let Some(result) =
             begin_idempotent::<Value>(&mut tx, actor, "crm:save", key, &hash).await?
         {
@@ -124,6 +141,20 @@ impl CrmService {
                 .await?;
             tx.commit().await?;
             return Ok(result);
+        }
+        if let Some(g) = &guard {
+            let command = match id {
+                Some(opportunity_id) => CrmCommand::Update {
+                    opportunity_id,
+                    command: input.clone(),
+                },
+                None => CrmCommand::Create {
+                    command: input.clone(),
+                },
+            };
+            if self.preview_on(&mut tx, actor, &command).await? != *g.snapshot {
+                return Err(DomainError::StalePreview);
+            }
         }
         if let Some(existing_id) = id {
             // An edit can replace the customer. Recheck the old target after
@@ -159,6 +190,7 @@ impl CrmService {
             json!({"version":version,"stage":input.stage}),
         )
         .await?;
+        command::finish_approval(&mut tx, guard.as_ref()).await?;
         finish_idempotent(&mut tx, actor, "crm:save", key, &result).await?;
         tx.commit().await?;
         Ok(result)
@@ -172,12 +204,28 @@ impl CrmService {
         key: &str,
         input: &AddFollowup,
     ) -> Result<Value, DomainError> {
+        self.followup_inner((actor, trace), id, key, input, None)
+            .await
+    }
+
+    async fn followup_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Uuid,
+        key: &str,
+        input: &AddFollowup,
+        guard: Option<command::Guard<'_>>,
+    ) -> Result<Value, DomainError> {
+        let (actor, trace) = context;
         model::text(&input.note, 4000, true)?;
         model::text(&input.next_action, 500, false)?;
         model::stage(&input.stage)?;
         self.accessible(actor, id, "crm:manage").await?;
         let mut tx = self.store.pool().begin().await?;
-        let hash = request_hash(&(id, input))?;
+        let hash = match &guard {
+            Some(g) => request_hash(&(id, input, g.snapshot))?,
+            None => request_hash(&(id, input))?,
+        };
         if let Some(result) =
             begin_idempotent::<Value>(&mut tx, actor, "crm:followup", key, &hash).await?
         {
@@ -187,6 +235,15 @@ impl CrmService {
                 .await?;
             tx.commit().await?;
             return Ok(result);
+        }
+        if let Some(g) = &guard {
+            let command = CrmCommand::Followup {
+                opportunity_id: id,
+                command: input.clone(),
+            };
+            if self.preview_on(&mut tx, actor, &command).await? != *g.snapshot {
+                return Err(DomainError::StalePreview);
+            }
         }
         let version:Option<i64>=sqlx::query_scalar("UPDATE crm_opportunities SET stage=$2,next_action=$3,next_follow_up=$4,version=version+1,updated_at=now() WHERE id=$1 AND version=$5 RETURNING version")
             .bind(id).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?;
@@ -206,6 +263,7 @@ impl CrmService {
             json!({"version":version,"stage":input.stage}),
         )
         .await?;
+        command::finish_approval(&mut tx, guard.as_ref()).await?;
         finish_idempotent(&mut tx, actor, "crm:followup", key, &result).await?;
         tx.commit().await?;
         Ok(result)
