@@ -993,6 +993,25 @@ mod tests {
             chat_approval_scope(&format!("确认 inventory-opening {id} v1 {hash}")),
             Some("inventory_opening:approve")
         );
+        for (kind, scope) in [
+            (
+                "receivable-allocation-intent",
+                "receivable_allocation_intent:approve",
+            ),
+            (
+                "payable-allocation-intent",
+                "payable_allocation_intent:approve",
+            ),
+        ] {
+            assert_eq!(
+                chat_approval_scope(&format!("确认 {kind} {id} v1 {hash}")),
+                Some(scope)
+            );
+            assert_eq!(
+                chat_approval_scope(&format!("确认 {kind} {id} v1 {hash} 金额改为100")),
+                None
+            );
+        }
         assert_eq!(chat_approval_scope("同意"), None);
         assert_eq!(
             chat_approval_scope(&format!("/approve sales-order {id} v3 {hash} 请执行")),

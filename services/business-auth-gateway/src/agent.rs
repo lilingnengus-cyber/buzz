@@ -837,7 +837,12 @@ mod tests {
 
     #[test]
     fn settlement_commands_bind_exact_record_family() {
-        for kind in ["customer-receipt", "supplier-payment"] {
+        for kind in [
+            "customer-receipt",
+            "supplier-payment",
+            "receivable-allocation-intent",
+            "payable-allocation-intent",
+        ] {
             let command = format!("确认 {kind} {} v1 {}", Uuid::new_v4(), "a".repeat(64));
             let parsed =
                 parse_chat_approval_command(&command).expect("valid signed command syntax");
