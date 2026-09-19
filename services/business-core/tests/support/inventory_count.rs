@@ -209,4 +209,5 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
         .await;
     super::inventory_count_frozen_scopes::check(store, &service, f, &input, first.id).await;
     super::inventory_count_creation::check(store, &service, f, &input).await;
+    super::inventory_count_operations::check(store, &service, f, &input).await;
 }

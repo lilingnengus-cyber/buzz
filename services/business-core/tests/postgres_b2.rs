@@ -4,6 +4,8 @@ mod b2_seed;
 mod inventory_count_creation;
 #[path = "support/inventory_count_frozen_scopes.rs"]
 mod inventory_count_frozen_scopes;
+#[path = "support/inventory_count_operations.rs"]
+mod inventory_count_operations;
 #[path = "support/inventory_count_scopes.rs"]
 mod inventory_count_scopes;
 use b2_seed::seed;

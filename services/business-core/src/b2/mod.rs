@@ -21,8 +21,8 @@ pub(crate) mod stock_reversal_guard;
 pub use common::DomainError;
 pub use inventory::InventoryService;
 pub use inventory_count::{
-    CreateInventoryCount, InventoryCountDetail, InventoryCountOption, InventoryCountService,
-    InventoryCountSummary, SubmitInventoryCount,
+    CreateInventoryCount, InventoryCountDetail, InventoryCountOperation, InventoryCountOption,
+    InventoryCountService, InventoryCountSummary, SubmitInventoryCount,
 };
 pub use return_disposition::{
     AcknowledgePurchaseReturn, DispatchPurchaseReturn, InspectSalesReturn, InspectionView,

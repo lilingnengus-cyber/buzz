@@ -1,4 +1,6 @@
 mod creation;
+mod operations;
+pub use operations::InventoryCountOperation;
 
 use super::{
     common::{
@@ -315,13 +317,35 @@ impl InventoryCountService {
         key: &str,
         input: &SubmitInventoryCount,
     ) -> Result<CommandResult, DomainError> {
+        self.submit_inner((actor, trace_id), id, key, input, None)
+            .await
+    }
+
+    async fn submit_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Uuid,
+        key: &str,
+        input: &SubmitInventoryCount,
+        approved: Option<&Value>,
+    ) -> Result<CommandResult, DomainError> {
+        let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:create")
             .await?;
-        let hash = request_hash(input)?;
+        let operation = if approved.is_some() {
+            "inventory_count:submit_guarded"
+        } else {
+            "inventory_count:submit"
+        };
+        let hash = match approved {
+            Some(snapshot) => {
+                request_hash(&json!({"id":id,"command":input,"approvedSnapshot":snapshot}))?
+            }
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
-            begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:submit", key, &hash)
-                .await?
+            begin_idempotent::<CommandResult>(&mut tx, actor, operation, key, &hash).await?
         {
             if replay.id != id {
                 return Err(DomainError::IdempotencyConflict);
@@ -329,6 +353,18 @@ impl InventoryCountService {
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
+        }
+        if let Some(expected) = approved {
+            let snapshot = operations::plan(
+                &mut tx,
+                actor,
+                id,
+                &InventoryCountOperation::Submit(input.clone()),
+            )
+            .await?;
+            if expected != &snapshot {
+                return Err(DomainError::StalePreview);
+            }
         }
         let task = sqlx::query(
             "SELECT count_number,status,version FROM inventory_count_tasks WHERE id=$1 FOR UPDATE",
@@ -417,7 +453,7 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "inventory_count:submit", key, &result).await?;
+        finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -430,13 +466,35 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.post_inner((actor, trace_id), id, key, input, None)
+            .await
+    }
+
+    async fn post_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        approved: Option<&Value>,
+    ) -> Result<CommandResult, DomainError> {
+        let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:post")
             .await?;
-        let hash = request_hash(input)?;
+        let operation = if approved.is_some() {
+            "inventory_count:post_guarded"
+        } else {
+            "inventory_count:post"
+        };
+        let hash = match approved {
+            Some(snapshot) => {
+                request_hash(&json!({"id":id,"command":input,"approvedSnapshot":snapshot}))?
+            }
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
-            begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:post", key, &hash)
-                .await?
+            begin_idempotent::<CommandResult>(&mut tx, actor, operation, key, &hash).await?
         {
             if replay.id != id {
                 return Err(DomainError::IdempotencyConflict);
@@ -444,6 +502,18 @@ impl InventoryCountService {
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
+        }
+        if let Some(expected) = approved {
+            let snapshot = operations::plan(
+                &mut tx,
+                actor,
+                id,
+                &InventoryCountOperation::Post(input.clone()),
+            )
+            .await?;
+            if expected != &snapshot {
+                return Err(DomainError::StalePreview);
+            }
         }
         let task=sqlx::query("SELECT count_number,legal_entity_id,warehouse_id,count_date,currency::text,status,version FROM inventory_count_tasks WHERE id=$1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
         check_task(&task, input.expected_version, "counted")?;
@@ -462,43 +532,27 @@ impl InventoryCountService {
                 .ok_or_else(|| {
                     DomainError::Invalid("count line is missing actual quantity".into())
                 })?;
-            let current: Decimal = balance.get("on_hand_quantity");
-            let variance = actual - current;
+            let effect = operations::effect(
+                &balance,
+                actual,
+                line.get::<Option<Decimal>, _>("surplus_unit_cost"),
+            )?;
+            let variance = effect.variance;
             let mut movement = None;
             let variance_value = if variance == Decimal::ZERO {
                 Decimal::ZERO
             } else {
                 variance_lines += 1;
-                let unit = balance
-                    .get::<Option<Decimal>, _>("average_unit_cost")
-                    .or(line.get::<Option<Decimal>, _>("surplus_unit_cost"))
-                    .ok_or(DomainError::MissingInventoryCost)?;
-                let value = if actual == Decimal::ZERO {
-                    -balance.get::<Decimal, _>("inventory_value")
-                } else {
-                    money(unit * variance)
-                };
+                let unit = effect.unit.ok_or(DomainError::MissingInventoryCost)?;
+                let value = effect.value;
                 let movement_id = Uuid::new_v4();
                 sqlx::query("INSERT INTO inventory_movements(id,legal_entity_id,warehouse_id,sku_id,movement_type,quantity,unit_cost,total_cost,currency,source_type,source_id,source_line_id,business_date,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,'inventory_count_adjustment',$5,$6,$7,$8,'inventory_count',$9,$10,$11,$12,$13)").bind(movement_id).bind(task.get::<Uuid,_>("legal_entity_id")).bind(task.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).bind(variance).bind(unit).bind(value).bind(task.get::<String,_>("currency")).bind(id).bind(line.get::<Uuid,_>("id")).bind(task.get::<NaiveDate,_>("count_date")).bind(actor).bind(trace_id).execute(&mut *tx).await?;
                 movement = Some(movement_id);
                 value
             };
-            let new_value = if actual == Decimal::ZERO {
-                Decimal::ZERO
-            } else {
-                money(balance.get::<Decimal, _>("inventory_value") + variance_value)
-            };
-            if new_value < Decimal::ZERO {
-                return Err(DomainError::Invalid(
-                    "count adjustment would make inventory value negative".into(),
-                ));
-            }
+            let new_value = effect.new_value;
             if variance != Decimal::ZERO {
-                let average = if actual == Decimal::ZERO {
-                    None
-                } else {
-                    Some(money(new_value / actual))
-                };
+                let average = effect.average;
                 sqlx::query("UPDATE inventory_balances SET on_hand_quantity=$4,inventory_value=$5,average_unit_cost=$6,last_movement_id=$7 WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3").bind(task.get::<Uuid,_>("legal_entity_id")).bind(task.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).bind(actual).bind(new_value).bind(average).bind(movement).execute(&mut *tx).await?;
             }
             sqlx::query("UPDATE inventory_count_lines SET variance_quantity=$2,variance_value=$3,inventory_movement_id=$4 WHERE id=$1").bind(line.get::<Uuid,_>("id")).bind(variance).bind(variance_value).bind(movement).execute(&mut *tx).await?;
@@ -516,7 +570,7 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "inventory_count:post", key, &result).await?;
+        finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -529,13 +583,35 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.cancel_inner((actor, trace_id), id, key, input, None)
+            .await
+    }
+
+    async fn cancel_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        approved: Option<&Value>,
+    ) -> Result<CommandResult, DomainError> {
+        let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:reverse")
             .await?;
-        let hash = request_hash(input)?;
+        let operation = if approved.is_some() {
+            "inventory_count:cancel_guarded"
+        } else {
+            "inventory_count:cancel"
+        };
+        let hash = match approved {
+            Some(snapshot) => {
+                request_hash(&json!({"id":id,"command":input,"approvedSnapshot":snapshot}))?
+            }
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
-            begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:cancel", key, &hash)
-                .await?
+            begin_idempotent::<CommandResult>(&mut tx, actor, operation, key, &hash).await?
         {
             if replay.id != id {
                 return Err(DomainError::IdempotencyConflict);
@@ -543,6 +619,18 @@ impl InventoryCountService {
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
+        }
+        if let Some(expected) = approved {
+            let snapshot = operations::plan(
+                &mut tx,
+                actor,
+                id,
+                &InventoryCountOperation::Cancel(input.clone()),
+            )
+            .await?;
+            if expected != &snapshot {
+                return Err(DomainError::StalePreview);
+            }
         }
         let task = sqlx::query(
             "SELECT count_number,status,version FROM inventory_count_tasks WHERE id=$1 FOR UPDATE",
@@ -570,7 +658,7 @@ impl InventoryCountService {
             version,
             actor,
             trace_id,
-            json!({}),
+            json!({"reason":input.reason_code}),
         )
         .await?;
         record(
@@ -581,7 +669,7 @@ impl InventoryCountService {
             "inventory_count_cancelled",
             "inventory_count",
             id,
-            json!({"version":version}),
+            json!({"version":version,"reason":input.reason_code}),
         )
         .await?;
         let result = CommandResult {
@@ -592,7 +680,7 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "inventory_count:cancel", key, &result).await?;
+        finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -752,6 +840,13 @@ fn ensure_snapshot(
                 "inventory count snapshot changed while frozen".into(),
             ));
         }
+    }
+    if balance.get::<Option<Decimal>, _>("average_unit_cost")
+        != line.get::<Option<Decimal>, _>("snapshot_average_unit_cost")
+    {
+        return Err(DomainError::Invalid(
+            "inventory count cost snapshot changed while frozen".into(),
+        ));
     }
     Ok(())
 }
