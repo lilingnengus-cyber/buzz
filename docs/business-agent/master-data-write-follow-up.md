@@ -157,3 +157,15 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 隔离新库 master_requester_checked（独立 55439）完整 postgres_master_intents 通过：品牌及五类 Core 资料由其他人审批后，申请人与审批人的完整记录读取均成功；授权审计归属正确。申请人管理角色撤销或客户创建父级业务单元范围撤销后，执行拒绝，业务记录、对象范围、审批票和审计数量不增加。原有阈值、旧审批人重验、并发等待、事务回滚和 IAM 到期测试继续通过。Core 严格 Clippy、格式、差异及文件大小门禁通过，日志 /tmp/master-requester-{checked,clippy-final,size}.log。
 
 本批未部署。下一步准备基础资料版本的配套发布、权限配置与回滚方案，再验证真实客户端写入及结果链接；启停并发引用保护和其他业务域的剩余流程继续未完成。
+
+## 2026-09-20 法人资料与商品读取权限分离
+
+生产预检查发现 business_master_data:read 的现有 IAM 授权限定法人，不能用于不带法人维度的商品完整记录。新增固定工具 get_business_product_master_record，使用独立 business_product_master:read，输入只允许六类商品资料。Read API 检查能力与资源家族，拒绝使用商品工具读取客户等 Core 资料；Core 仍检查用户的读取/管理权限及真实品牌范围。既有工具、法人读取授权和严格范围交集不放宽。
+
+迁移 0057 只登记该低风险读取能力，不自动授权。Gateway 范围白名单增至 97，普通 Host 请求 59 项能力（只读 17），MCP 普通会话 101 工具、指定确认会话 60 工具。该变更尚未进入 ddecf9c0e 服务端候选或本地已安装 Host/MCP，发布必须换成包含本批的完整版本。
+
+独立 55439 新库 master_product_read_v1 的真实 Read API/Core/PostgreSQL 闭环通过：六类商品记录通过专用读取工具获得正确记录；保留法人范围时仍拒绝全局资料；商品能力读取客户拒绝；原有 24 次业务写入、名称查找、浏览器会话读取和权限校验继续通过。53 条真实响应通过 MCP 校验。另在 master_product_gateway_retry 新库通过 Gateway 完整签名委托/撤销集成测试；MCP 23 项、Host 10 项、四包严格 Clippy、文件大小门禁通过。使用已安装 buzz-agent 和新 debug MCP 的模拟模型原生回合证实 101/60 工具，不等同真实聊天。
+
+中途本机空间耗尽，失败的编译与未创建成功的测试库未计为通过。通过 Cargo 标准 `cargo clean --profile dev` 仅清理可再生成的开发构建产物，恢复约 25 GB 空间，保留发布二进制、源码、日志和数据库；后续关闭增量缓存重跑成功。先前准备的两份临时源码副本仍保留。日志 /tmp/master-product-read-{db,gateway-retry,mcp-retry,host-retry,clippy-retry,runtime,runtime-approval,size}.log。
+
+下一步按新能力制定副本授权方案，重建最终配套版本并演练迁移 57、暂停回滚及客户端文件。生产没有迁移、扩权或切换。

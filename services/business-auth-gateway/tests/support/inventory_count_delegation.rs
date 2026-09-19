@@ -1,5 +1,5 @@
 use super::*;
-const ORDINARY_SCOPES: [&str; 58] = [
+const ORDINARY_SCOPES: [&str; 59] = [
     "core_master_creation_intent:create",
     "core_master_update_intent:create",
     "product_master_creation_intent:create",
@@ -35,6 +35,7 @@ const ORDINARY_SCOPES: [&str; 58] = [
     "receivable_allocation_reversal_intent:create",
     "payable_allocation_reversal_intent:create",
     "business_master_data:read",
+    "business_product_master:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
@@ -103,7 +104,7 @@ pub(super) async fn check(
             .fetch_one(pool)
             .await
             .unwrap();
-    assert_eq!(stored, 58);
+    assert_eq!(stored, 59);
     assert!(sqlx::query("UPDATE agent_read_delegations SET scopes=array_fill('inventory:read'::text,ARRAY[129]) WHERE id=$1").bind(issued.id).execute(pool).await.is_err());
     super::inventory_count_budget::check(pool, keys, user, binding).await;
     sqlx::query("DELETE FROM business_iam.principal_permissions WHERE principal_id=$1 AND permission_id=ANY($2)").bind(human).bind(inserted).execute(pool).await.unwrap();

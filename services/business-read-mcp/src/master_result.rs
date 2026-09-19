@@ -36,7 +36,10 @@ pub(super) fn read(
     context: &DelegationContext,
     max: usize,
 ) -> Result<BusinessToolResult<Value>, String> {
-    if tool != "get_business_master_record" {
+    if !matches!(
+        tool,
+        "get_business_master_record" | "get_business_product_master_record"
+    ) {
         return crm_result::validate(tool, result, context, max);
     }
     limit(
@@ -47,6 +50,10 @@ pub(super) fn read(
         return Err("Master detail must contain exactly one record".into());
     }
     record(&result.items[0])?;
+    if tool == "get_business_product_master_record" && core(kind(&result.items[0]["resourceType"])?)
+    {
+        return Err("Product reader received a core record".into());
+    }
     references(
         &serde_json::to_value(&result.resource_refs).map_err(|_| "Invalid references")?,
         &result.items[0],

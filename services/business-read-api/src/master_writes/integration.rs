@@ -334,6 +334,40 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
         .iter()
         .map(|(kind, id, _)| (*kind, *id))
         .collect::<Vec<_>>();
+    let product_context = context(actor, "get_business_product_master_record");
+    for (kind, id, _) in entries
+        .iter()
+        .filter(|(kind, _, _)| input::family_of_resource(kind) == Some("product"))
+    {
+        let input = json!({"resourceType":kind,"documentId":id});
+        let product_scope = AuthorizationScope::default();
+        let detail = value(read(&core, &input, &product_scope, &product_context).await).await;
+        assert_eq!(detail["items"][0]["id"], json!(id));
+        export(
+            "get_business_product_master_record",
+            product_context.trace_id,
+            &detail,
+        );
+        let old_legal_scope = AuthorizationScope {
+            legal_entity_ids: [legal.to_string()].into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            read(&core, &input, &old_legal_scope, &c).await.status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        read(
+            &core,
+            &json!({"resourceType":"customer","documentId":entries[2].1}),
+            &AuthorizationScope::default(),
+            &product_context
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
     browser_test::check(&core, &pool, actor, &browser_cookie, &browser_entries).await;
     lookup_test::check(&core, &pool, actor, brand).await;
     server.abort();

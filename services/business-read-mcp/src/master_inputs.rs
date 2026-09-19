@@ -207,6 +207,10 @@ mod tests {
 
     #[test]
     fn resource_families_and_identifiers_are_closed() {
+        assert!(serde_json::from_value::<ProductRecordInput>(
+            json!({"resourceType":"customer","documentId":Uuid::new_v4()})
+        )
+        .is_err());
         assert!(serde_json::from_value::<CoreCreation>(json!({
             "resourceType":"sku","code":"SKU","name":"SKU"}))
         .is_err());
@@ -215,5 +219,20 @@ mod tests {
         .is_err());
         let schema = serde_json::to_value(schemars::schema_for!(MasterPatch<CoreKind>)).unwrap();
         assert_eq!(schema["additionalProperties"], false);
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ProductRecordInput {
+    resource_type: ProductKind,
+    document_id: Uuid,
+}
+impl ValidateInput for ProductRecordInput {
+    fn validate_and_normalize(
+        &mut self,
+        _today: chrono::NaiveDate,
+    ) -> Result<(), business_query_contracts::ValidationError> {
+        Ok(())
     }
 }

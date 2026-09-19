@@ -23,3 +23,18 @@
 MCP 发布版备份 /tmp/business-master-client-ddecf9c0e/business-read-mcp，SHA-256 596afe4544bb756dc9f717f1417a8b2e0c99de5ab1f6f8c822672d661d7b5c71；旁边 JSON 记录来源及未安装状态。使用 /Applications/Pacioli.app/Contents/MacOS/buzz-agent 与该候选 MCP 执行模拟模型原生回合，普通会话 100 工具、指定确认会话 59 工具通过。日志 /tmp/business-master-installed-agent-{ordinary,approval}.log。这不是安装、Host 重载或真实聊天验收。
 
 下一步：先确认候选构建实际完成并记录镜像 ID；演练迁移 54→56、限定授权和暂停回滚；准备兼容 Host/桌面链接解析及 Web 配套文件，再切换并进行获准的真实客户端验收。启停保护与其他业务域继续保持未完成。
+
+## 演练候选构建及迁移结果
+
+ddecf9c0e 四服务构建已正常完成，原构建进程结束；镜像 ID 如下。因新增独立商品读取能力及迁移 57，该版本仅用于演练，不作为最终上线候选。
+
+| 服务 | 镜像 ID（sha256） |
+| --- | --- |
+| gateway | 96ad3da6fdf4ad8c7a019638a2a9bd4668453c577da10ecf3a4e6722ad997758 |
+| business-core | b0412cfb512b0f7fba2d80f2428c17839c16b19c475ac487be7f81cd3330a46a |
+| business-read-api | d8e1314e99a49ebf43ea92ad724dd85894079eec8c27b99cc84794f28a07d807 |
+| iam-admin-api | 4c8e1e7de212ed6f1b304654b883ed685f891d3d19992625d1d6f5ea80ed4a74 |
+
+新增生产副本 master_rehearsal_ddecf9c0e，备份 /opt/business-platform/shared/master-rehearsal-ddecf9c0e.dump（0600、813078 字节）。候选 Gateway 的实际 --migrate-only 成功将副本从 54 升至 56，全部 migration success；订单 5、销售/采购退货各 0、商机 1。创建副本脚本最后查询误用了商机表名而报错，副本恢复本身已成功；随后只重做正确的只读核对并执行迁移，没有重复创建副本或恢复。日志 /tmp/business-master-rehearsal-{prepare,migrate}.log。服务器剩余约 1.9 GB，未删除旧镜像或卷。
+
+独立商品读取方案已在源码接入，保留现有法人读取授权；尚需配置精确新权限并在副本演练。包含该方案的 Gateway 新库签名测试、真实 Core 读取闭环与 101/60 工具原生回合通过，详见基础资料跟进文档。旧的 100/59 发布 MCP、暂停源码及 ddecf9c0e 镜像不能混作最终配套版本。暂停运行时、最终迁移 57、生产切换、客户端兼容打包和真实聊天仍未完成。

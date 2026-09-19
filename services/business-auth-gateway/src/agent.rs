@@ -13,7 +13,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 const MAX_AGENT_SCOPES: usize = 128;
-const AGENT_SCOPES: [&str; 96] = [
+const AGENT_SCOPES: [&str; 97] = [
     "core_master_creation_intent:create",
     "core_master_creation_intent:approve",
     "core_master_update_intent:create",
@@ -78,6 +78,7 @@ const AGENT_SCOPES: [&str; 96] = [
     "payable_allocation_reversal_intent:create",
     "payable_allocation_reversal_intent:approve",
     "business_master_data:read",
+    "business_product_master:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",

@@ -48,8 +48,9 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 44] = [
+const READ_TOOLS: [&str; 45] = [
     "get_business_master_record",
+    "get_business_product_master_record",
     "search_crm_opportunities",
     "get_crm_opportunity",
     "search_inventory_counts",
@@ -401,7 +402,10 @@ async fn read_tool(
             if context.required_scope != required {
                 return StatusCode::FORBIDDEN.into_response();
             }
-            let resolved = if tool == "get_business_master_record" {
+            let resolved = if matches!(
+                tool.as_str(),
+                "get_business_master_record" | "get_business_product_master_record"
+            ) {
                 master_writes::authorization_scope(&grant, required)
             } else {
                 iam_authorization_scope(&grant, required)
@@ -427,7 +431,10 @@ async fn read_tool(
             || inventory_counts::handles(&tool)
             || crm::handles(&tool)
             || tool == "search_business_master_data"
-            || tool == "get_business_master_record"
+            || matches!(
+                tool.as_str(),
+                "get_business_master_record" | "get_business_product_master_record"
+            )
             || matches!(
                 tool.as_str(),
                 "get_customer_receipt_allocations"
@@ -840,6 +847,7 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
         "get_business_master_record" => Some("business_master_data:read"),
+        "get_business_product_master_record" => Some("business_product_master:read"),
         "prepare_core_master_creation" => Some("core_master_creation_intent:create"),
         "approve_core_master_creation" => Some("core_master_creation_intent:approve"),
         "prepare_core_master_update" => Some("core_master_update_intent:create"),
@@ -1443,7 +1451,10 @@ async fn core_read_result(
     if tool == "get_inventory_count_approval_preview" {
         return inventory_count_previews::read(core, input, scope, context).await;
     }
-    if tool == "get_business_master_record" {
+    if matches!(
+        tool,
+        "get_business_master_record" | "get_business_product_master_record"
+    ) {
         return master_writes::read(core, input, scope, context).await;
     }
     if crm::handles(tool) {

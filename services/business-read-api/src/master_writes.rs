@@ -248,6 +248,10 @@ pub(super) async fn read(
     let Some(family) = input::family_of_resource(&input.resource_type) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+
+    if context.required_scope == "business_product_master:read" && family != "product" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let record = match fetch(
         core,
         &format!(
