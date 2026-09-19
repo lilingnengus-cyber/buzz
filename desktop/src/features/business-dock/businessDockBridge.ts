@@ -93,6 +93,7 @@ const ACTION_RESOURCE_TYPES = new Set<BusinessResource["type"]>([
   "customer",
   "supplier",
   "inventory",
+  "inventory_opening",
   "receivable",
   "payable",
   "invoice",

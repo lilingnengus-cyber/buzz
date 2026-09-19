@@ -90,6 +90,8 @@ impl DataScope {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Obligation {
+    /// The gateway must bind the exact operation to a fresh signed human chat command.
+    FreshSignedChatCommand,
     HumanApproval,
     StepUpAuthentication,
     DualControl,

@@ -34,6 +34,7 @@ import {
 } from "./businessDockBridge";
 import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
 import { formatAmount, formatMoney } from "./formatters";
+import { LinkedOpeningDetail } from "./LinkedOpeningDetail";
 import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
 import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
@@ -66,6 +67,7 @@ type Section =
   | "numbering"
   | "sales"
   | "shipments"
+  | "inventoryOpening"
   | "inventory"
   | "receivables"
   | "receipts"
@@ -154,6 +156,7 @@ function savedNavigationCollapsed() {
 
 const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
   shipments: "sales",
+  inventoryOpening: "inventory",
   receivables: "sales",
   receipts: "sales",
   goodsReceipts: "purchasing",
@@ -181,6 +184,7 @@ function route(): { section: Section; id?: string; embed: boolean } {
   const patterns: Array<[Section, RegExp]> = [
     ["sales", /^\/(?:sales-orders|sales\/orders)\/([^/]+)$/],
     ["shipments", /^\/shipments\/([^/]+)$/],
+    ["inventoryOpening", /^\/inventory-openings\/([^/]+)$/],
     ["inventory", /^\/inventory\/([^/]+)$/],
     ["receivables", /^\/receivables\/(?:customer\/)?([^/]+)$/],
     ["receipts", /^\/customer-receipts\/([^/]+)$/],
@@ -438,6 +442,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "adjustments") return <ProfitAdjustments id={id} />;
   if (section === "reports") return <ManagementReports id={id} />;
   if (section === "sales") return <SalesOrderWorkflowPage id={id} />;
+  if (section === "inventoryOpening" && id) return <LinkedOpeningDetail id={id} />;
   if (section === "inventory") return <InventoryLedger skuId={id} />;
   if (section === "receivables") return <Receivables customerId={id} />;
   if (section === "receipts") return <ReceiptView id={id} />;

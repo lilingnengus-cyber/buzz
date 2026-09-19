@@ -74,6 +74,7 @@ impl Store {
         // an append-only committed-number issuance ledger, and the logically
         // independent Business IAM schema used by human and Agent principals,
         // including the aligned management-report and agent master-data lookup catalogs.
+        /* Includes fulfillment confirmation preview retries. */
         sqlx::migrate!().run(pool).await
     }
     pub async fn grant_runtime(pool: &PgPool, role: &str) -> std::result::Result<(), sqlx::Error> {

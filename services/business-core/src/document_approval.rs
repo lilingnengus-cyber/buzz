@@ -1,3 +1,6 @@
+mod snapshot;
+pub(crate) mod stock;
+
 use crate::{
     api::AppState,
     b2::model::VersionCommand as B2VersionCommand,
@@ -61,6 +64,15 @@ struct VoteOutcome {
 
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
+        .merge(stock::routes())
+        .route(
+            "/v1/agent-documents/sales-orders/{id}",
+            get(snapshot::sales),
+        )
+        .route(
+            "/v1/agent-documents/purchase-orders/{id}",
+            get(snapshot::purchase),
+        )
         .route(
             "/v1/agent-approvals/sales-orders/{id}",
             post(approve_sales_order),
@@ -90,12 +102,18 @@ async fn sales_order_preview(
         .await
     {
         Ok(preview) => {
+            let details =
+                match snapshot::order(&state, context.actor_user_id, "sales_order", id).await {
+                    Ok(v) => v,
+                    Err(e) => return store_error(e, context.trace_id),
+                };
             let hash = hash_json(&preview);
             Json(json!({
                 "item": preview,
+                "document": details,
                 "previewHash": hash,
-                "approvalCommand": format!("/approve sales-order {id} v{} {hash}", preview.version),
-                "rejectionCommand": format!("/reject sales-order {id} v{} {hash}", preview.version),
+                "approvalCommand": format!("确认 sales-order {id} v{} {hash}", preview.version),
+                "rejectionCommand": format!("拒绝 sales-order {id} v{} {hash}", preview.version),
                 "traceId": context.trace_id,
             }))
             .into_response()
@@ -119,12 +137,18 @@ async fn purchase_order_preview(
         .await
     {
         Ok(preview) => {
+            let details =
+                match snapshot::order(&state, context.actor_user_id, "purchase_order", id).await {
+                    Ok(v) => v,
+                    Err(e) => return store_error(e, context.trace_id),
+                };
             let hash = hash_json(&preview);
             Json(json!({
                 "item": preview,
+                "document": details,
                 "previewHash": hash,
-                "approvalCommand": format!("/approve purchase-order {id} v{} {hash}", preview.version),
-                "rejectionCommand": format!("/reject purchase-order {id} v{} {hash}", preview.version),
+                "approvalCommand": format!("确认 purchase-order {id} v{} {hash}", preview.version),
+                "rejectionCommand": format!("拒绝 purchase-order {id} v{} {hash}", preview.version),
                 "traceId": context.trace_id,
             }))
             .into_response()
@@ -338,6 +362,10 @@ async fn cast_vote(
 ) -> Result<VoteOutcome, StoreError> {
     validate_input(input)?;
     let policy = store.approval_policy(action_code).await?;
+    // No step-up credential is transported by this chat flow; do not downgrade such policies.
+    if policy.step_up_amount_minor.is_some() {
+        return Err(StoreError::NotFoundOrForbidden);
+    }
     let minimum_approvers = effective_minimum_approvers(policy.min_approvers);
     let snapshot = store.snapshot(actor).await?;
     let eligible_role = snapshot.roles.iter().any(|role| {
@@ -366,11 +394,14 @@ async fn cast_vote(
         .bind(document_id)
         .fetch_optional(store.pool())
         .await?,
+        "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         _ => return Err(StoreError::Invalid("document type".into())),
     }
     .ok_or(StoreError::NotFoundOrForbidden)?;
     let creator: Uuid = row.get("created_by_user_id");
-    let wrong_party_scope = if document_type == "sales_order" {
+    let wrong_party_scope = if document_type == "inventory_opening" {
+        false
+    } else if matches!(document_type, "sales_order" | "shipment") {
         !snapshot
             .scopes
             .customer_ids
@@ -388,13 +419,18 @@ async fn cast_vote(
             .scopes
             .legal_entity_ids
             .contains(&row.get::<Uuid, _>("legal_entity_id"))
-        || !snapshot
-            .scopes
-            .business_unit_ids
-            .contains(&row.get::<Uuid, _>("business_unit_id"))
+        || row
+            .get::<Option<Uuid>, _>("business_unit_id")
+            .is_some_and(|unit| !snapshot.scopes.business_unit_ids.contains(&unit))
         || wrong_party_scope
     {
         return Err(StoreError::NotFoundOrForbidden);
+    }
+    if matches!(
+        document_type,
+        "shipment" | "goods_receipt" | "inventory_opening"
+    ) {
+        stock::check_stock_scope(store, actor, document_type, document_id).await?;
     }
     if policy.require_distinct_business_unit {
         let requester_units = store.snapshot(creator).await?.scopes.business_unit_ids;
@@ -408,7 +444,7 @@ async fn cast_vote(
     let request_id: Uuid = sqlx::query_scalar(
         "INSERT INTO business_document_approval_requests(id,document_type,document_id,action_code,expected_version,preview_hash,requester_user_id,minimum_approvers,trace_id)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT(document_type,document_id,expected_version) DO UPDATE SET preview_hash=business_document_approval_requests.preview_hash
+         ON CONFLICT(document_type,document_id,expected_version,preview_hash) DO UPDATE SET preview_hash=business_document_approval_requests.preview_hash
          RETURNING id",
     )
     .bind(proposed_id)

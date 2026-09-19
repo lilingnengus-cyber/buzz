@@ -142,6 +142,80 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
         .verify_binding(&principal, challenge.id, signed, facts(Uuid::new_v4()))
         .await
         .expect("binding");
+    // Approval must survive independent API verification only when every signed field matches.
+    sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id,data_scope,obligations) SELECT $1,id,'{\"mode\":\"unrestricted\"}'::jsonb,'[]'::jsonb FROM business_iam.permissions WHERE capability='inventory_opening:approve'")
+        .bind(human_iam_id).execute(&pool).await.unwrap();
+    let approval_id = Uuid::new_v4();
+    let approval_trace = Uuid::new_v4();
+    let approval_channel = Uuid::new_v4();
+    let hash = "a".repeat(64);
+    let approval_event = EventBuilder::new(
+        Kind::TextNote,
+        format!("确认 inventory-opening {approval_id} v1 {hash}"),
+    )
+    .tags([Tag::custom(
+        TagKind::Custom("h".into()),
+        [approval_channel.to_string()],
+    )])
+    .sign_with_keys(&user_keys)
+    .unwrap();
+    let approval = store
+        .issue_agent_delegation(
+            IssueAgentDelegationRequest {
+                source_event: approval_event.clone(),
+                source_buzz_event_id: approval_event.id.to_hex(),
+                source_buzz_pubkey: approval_event.pubkey.to_hex(),
+                source_channel_id: approval_channel.to_string(),
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "approval-test".into(),
+                scopes: vec!["inventory_opening:approve".into()],
+            },
+            facts(approval_trace),
+        )
+        .await
+        .unwrap();
+    let context = store
+        .consume_agent_delegation(
+            &approval.token,
+            ConsumeAgentDelegationRequest {
+                tool_name: "approve_inventory_opening".into(),
+                required_scope: "inventory_opening:approve".into(),
+                agent_id: "business-query-agent".into(),
+                agent_turn_id: "approval-test".into(),
+            },
+            facts(approval_trace),
+        )
+        .await
+        .unwrap();
+    assert_eq!(context.approval_document_id, Some(approval_id));
+    for (candidate, allowed) in [
+        (Some(approval_id), true),
+        (Some(Uuid::new_v4()), false),
+        (None, false),
+    ] {
+        let result = store
+            .verify_agent_delegation(
+                VerifyAgentDelegationRequest {
+                    delegation_id: approval.id,
+                    enterprise_user_id: principal.user_id,
+                    identity_binding_id: binding.id,
+                    agent_id: "business-query-agent".into(),
+                    agent_turn_id: "approval-test".into(),
+                    trace_id: approval_trace,
+                    used_calls: 1,
+                    required_scope: "inventory_opening:approve".into(),
+                    approval: candidate.map(|id| business_auth_gateway::agent::VerifyApproval {
+                        document_id: id,
+                        expected_version: 1,
+                        preview_hash: hash.clone(),
+                        decision: "approve".into(),
+                    }),
+                },
+                facts(approval_trace),
+            )
+            .await;
+        assert_eq!(result.is_ok(), allowed);
+    }
     let channel = Uuid::new_v4();
     let source = EventBuilder::new(Kind::TextNote, "查一下 SO-001")
         .tags([Tag::custom(
@@ -312,6 +386,7 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     let verified = store
         .verify_agent_delegation(
             VerifyAgentDelegationRequest {
+                approval: None,
                 delegation_id: issued.id,
                 enterprise_user_id: principal.user_id,
                 identity_binding_id: binding.id,
@@ -365,6 +440,7 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
     let verified_after_turn = store
         .verify_agent_delegation(
             VerifyAgentDelegationRequest {
+                approval: None,
                 delegation_id: issued.id,
                 enterprise_user_id: principal.user_id,
                 identity_binding_id: binding.id,

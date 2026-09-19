@@ -192,6 +192,12 @@ fn default_limit() -> i64 {
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/v1/agent-drafts/sales-orders", post(create_order))
+        .route(
+            "/v1/agent-drafts/sales-orders/{id}",
+            axum::routing::put(replace_order),
+        )
+        .route("/v1/agent-drafts/inventory-openings", post(create_opening))
+        .route("/v1/sales-orders/{id}", get(order_detail::get_order))
         .route("/v1/agent-drafts/shipments", post(create_shipment))
         .route("/v1/agent-drafts/customer-receipts", post(create_receipt))
         .route("/v1/sales-orders", get(list_orders))
@@ -247,6 +253,10 @@ pub fn browser_routes(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/inventory-openings",
             get(list_openings).post(create_opening),
+        )
+        .route(
+            "/api/v1/inventory-openings/{id}",
+            get(crate::document_approval::stock::opening_detail),
         )
         .route("/api/v1/inventory-openings/{id}/post", post(post_opening))
         .route(

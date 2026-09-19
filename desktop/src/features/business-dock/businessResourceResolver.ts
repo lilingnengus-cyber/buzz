@@ -8,6 +8,7 @@ export type BusinessResourceType =
   | "goods_receipt"
   | "customer"
   | "supplier"
+  | "inventory_opening"
   | "inventory"
   | "receivable"
   | "payable"
@@ -187,6 +188,13 @@ const ROUTES: readonly RouteDefinition[] = [
     prefix: "/embed/sales-orders/",
     entity: true,
     label: "销售订单",
+  },
+  {
+    type: "inventory_opening",
+    deepLink: "inventory-opening",
+    prefix: "/embed/inventory-openings/",
+    entity: true,
+    label: "期初库存",
   },
   {
     type: "shipment",

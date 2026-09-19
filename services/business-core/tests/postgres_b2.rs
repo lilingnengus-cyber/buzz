@@ -1,3 +1,6 @@
+#[path = "support/agent_fulfillment.rs"]
+mod agent_fulfillment;
+
 #[path = "support/master_search.rs"]
 mod master_search;
 
@@ -826,6 +829,7 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         percentile(&mut receivable_reads, 50),
         percentile(&mut receivable_reads, 95),
     );
+    agent_fulfillment::check(&PgStore::new(pool.clone()), &fixture).await;
 }
 
 fn percentile(samples: &mut [std::time::Duration], percentile: usize) -> std::time::Duration {

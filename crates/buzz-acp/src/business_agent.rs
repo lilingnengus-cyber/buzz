@@ -16,16 +16,21 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 15] = [
+const AGENT_SCOPES: [&str; 20] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
+    "shipment:read",
+    "goods_receipt:read",
     "receivable:read",
     "payable:read",
     "order_profit:read",
     "business_anomaly:read",
     "business_action:read",
+    "sales_order:update_draft",
+    "purchase_order:update_draft",
+    "inventory_opening:create",
     "sales_order:create",
     "shipment:create",
     "purchase_order:create",
@@ -36,12 +41,15 @@ const AGENT_SCOPES: [&str; 15] = [
 
 fn chat_approval_scope(content: &str) -> Option<&'static str> {
     let mut parts = content.split_whitespace();
-    if !matches!(parts.next()?, "/approve" | "/reject") {
+    if !matches!(parts.next()?, "/approve" | "/reject" | "确认" | "拒绝") {
         return None;
     }
     let scope = match parts.next()? {
         "sales-order" => "sales_order:approve",
         "purchase-order" => "purchase_order:approve",
+        "shipment" => "shipment:approve",
+        "goods-receipt" => "goods_receipt:approve",
+        "inventory-opening" => "inventory_opening:approve",
         _ => return None,
     };
     let _: Uuid = parts.next()?.parse().ok()?;
@@ -572,7 +580,10 @@ impl BusinessAgentHostConfig {
         let mut requested_scopes = AGENT_SCOPES
             .iter()
             .copied()
-            .filter(|scope| self.draft_write_enabled || !scope.ends_with(":create"))
+            .filter(|scope| {
+                self.draft_write_enabled
+                    || !(scope.ends_with(":create") || scope.ends_with(":update_draft"))
+            })
             .collect::<Vec<_>>();
         if self.chat_approval_enabled {
             if let Some(scope) = chat_approval_scope(&source_event.content) {
@@ -824,7 +835,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 15);
+        assert_eq!(AGENT_SCOPES.len(), 20);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -837,9 +848,9 @@ mod tests {
         let read_only = AGENT_SCOPES
             .iter()
             .copied()
-            .filter(|scope| !scope.ends_with(":create"))
+            .filter(|scope| !(scope.ends_with(":create") || scope.ends_with(":update_draft")))
             .collect::<Vec<_>>();
-        assert_eq!(read_only.len(), 9);
+        assert_eq!(read_only.len(), 11);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
     }
 
@@ -948,9 +959,9 @@ mod tests {
         }
         assert!(prompt.contains("Never guess identifiers"));
         assert!(prompt.contains("When required fields are missing"));
-        assert!(
-            prompt.contains("shipment/receipt/payment approvals, reversals, allocations, posting, payment execution")
-        );
+        assert!(prompt.contains(
+            "payment approvals, reversals, allocations, unrestricted posting, payment execution"
+        ));
     }
 
     #[test]
@@ -964,6 +975,14 @@ mod tests {
         assert_eq!(
             chat_approval_scope(&format!("/reject purchase-order {id} v2 {hash}")),
             Some("purchase_order:approve")
+        );
+        assert_eq!(
+            chat_approval_scope(&format!("确认 shipment {id} v1 {hash}")),
+            Some("shipment:approve")
+        );
+        assert_eq!(
+            chat_approval_scope(&format!("确认 inventory-opening {id} v1 {hash}")),
+            Some("inventory_opening:approve")
         );
         assert_eq!(chat_approval_scope("同意"), None);
         assert_eq!(

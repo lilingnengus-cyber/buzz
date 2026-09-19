@@ -317,3 +317,9 @@ test("validates structured resources and rejects sensitive metadata", () => {
     false,
   );
 });
+
+test("opens an inventory opening at its exact system detail", () => {
+  const opening = parseBusinessUrl("biz://inventory-opening/OPEN-001", config);
+  assert.equal(opening?.type, "inventory_opening");
+  assert.equal(opening?.path, "/embed/inventory-openings/OPEN-001");
+});

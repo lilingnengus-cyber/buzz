@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 17] = [
+const AGENT_SCOPES: [&str; 25] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
@@ -22,19 +22,28 @@ const AGENT_SCOPES: [&str; 17] = [
     "order_profit:read",
     "business_anomaly:read",
     "business_action:read",
+    "sales_order:update_draft",
+    "purchase_order:update_draft",
+    "inventory_opening:create",
     "sales_order:create",
     "shipment:create",
     "purchase_order:create",
     "goods_receipt:create",
     "customer_receipt:create",
     "supplier_payment:create",
+    "shipment:read",
+    "goods_receipt:read",
+    "shipment:approve",
+    "goods_receipt:approve",
+    "inventory_opening:approve",
     "sales_order:approve",
     "purchase_order:approve",
 ];
 
 fn scope_is_allowed(scope: &str, draft_write_enabled: bool, chat_approval_enabled: bool) -> bool {
     AGENT_SCOPES.contains(&scope)
-        && (draft_write_enabled || !scope.ends_with(":create"))
+        && (draft_write_enabled
+            || !(scope.ends_with(":create") || scope.ends_with(":update_draft")))
         && (chat_approval_enabled || !scope.ends_with(":approve"))
 }
 
@@ -51,13 +60,16 @@ struct ChatApprovalCommand {
 fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
     let mut parts = content.split_whitespace();
     let decision = match parts.next()? {
-        "/approve" => "approve",
-        "/reject" => "reject",
+        "/approve" | "确认" => "approve",
+        "/reject" | "拒绝" => "reject",
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
         "sales-order" => ("sales_order", "sales_order:approve"),
         "purchase-order" => ("purchase_order", "purchase_order:approve"),
+        "shipment" => ("shipment", "shipment:approve"),
+        "goods-receipt" => ("goods_receipt", "goods_receipt:approve"),
+        "inventory-opening" => ("inventory_opening", "inventory_opening:approve"),
         _ => return None,
     };
     let document_id = parts.next()?.parse().ok()?;
@@ -124,6 +136,22 @@ pub struct VerifyAgentDelegationRequest {
     pub trace_id: Uuid,
     pub used_calls: i32,
     pub required_scope: String,
+    #[serde(default)]
+    pub approval: Option<VerifyApproval>,
+}
+
+/// Exact signed authority fields checked again before the Core mutation.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifyApproval {
+    /// Signed document id.
+    pub document_id: Uuid,
+    /// Signed expected version.
+    pub expected_version: i64,
+    /// Signed preview fingerprint.
+    pub preview_hash: String,
+    /// Signed approval or rejection decision.
+    pub decision: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -271,7 +299,15 @@ impl Store {
             && safe_id(&request.agent_turn_id)
             && security::safe_text(&request.source_channel_id, 1, 200);
         let approval_command = parse_chat_approval_command(&request.source_event.content);
-        let valid_scopes = !request.scopes.is_empty()
+        let fresh_confirmation = approval_command.is_none()
+            || request
+                .source_event
+                .created_at
+                .as_secs()
+                .abs_diff(Utc::now().timestamp().max(0) as u64)
+                <= 300;
+        let valid_scopes = fresh_confirmation
+            && !request.scopes.is_empty()
             && request.scopes.len() <= AGENT_SCOPES.len()
             && request.scopes.iter().all(|scope| {
                 scope_is_allowed(
@@ -605,7 +641,7 @@ impl Store {
             return Err(Rejection::Forbidden("delegation_context_rejected"));
         }
         let row = sqlx::query(
-            "SELECT d.effective_grants FROM agent_read_delegations d
+            "SELECT d.effective_grants,d.approval_document_id,d.approval_expected_version,d.approval_preview_hash,d.approval_decision FROM agent_read_delegations d
                JOIN buzz_identity_bindings b ON b.id=d.identity_binding_id
                JOIN enterprise_users u ON u.id=d.enterprise_user_id
                WHERE d.id=$1 AND d.enterprise_user_id=$2 AND d.identity_binding_id=$3
@@ -628,6 +664,23 @@ impl Store {
         .await
         .map_err(|_| Rejection::Database)?;
         if let Some(row) = row {
+            if request.required_scope.ends_with(":approve") {
+                let Some(approval) = request.approval else {
+                    return Err(Rejection::Forbidden("signed_approval_required"));
+                };
+                if row.get::<Option<Uuid>, _>("approval_document_id") != Some(approval.document_id)
+                    || row.get::<Option<i64>, _>("approval_expected_version")
+                        != Some(approval.expected_version)
+                    || row
+                        .get::<Option<String>, _>("approval_preview_hash")
+                        .as_deref()
+                        != Some(approval.preview_hash.as_str())
+                    || row.get::<Option<String>, _>("approval_decision").as_deref()
+                        != Some(approval.decision.as_str())
+                {
+                    return Err(Rejection::Forbidden("signed_approval_mismatch"));
+                }
+            }
             effective_grant(row.get("effective_grants"), &request.required_scope)
                 .ok_or(Rejection::Database)
         } else {

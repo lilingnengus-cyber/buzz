@@ -2,6 +2,8 @@
 
 mod config;
 mod master_data;
+mod writes;
+use writes::*;
 
 pub use config::Config;
 
@@ -36,7 +38,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 17] = [
+const READ_TOOLS: [&str; 20] = [
     "search_business_master_data",
     "get_sales_order",
     "search_sales_orders",
@@ -52,6 +54,9 @@ const READ_TOOLS: [&str; 17] = [
     "get_profit_evidence",
     "get_operating_dashboard",
     "get_business_data_quality",
+    "get_shipment_approval_preview",
+    "get_goods_receipt_approval_preview",
+    "get_inventory_opening_approval_preview",
     "get_sales_order_approval_preview",
     "get_purchase_order_approval_preview",
 ];
@@ -65,13 +70,19 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 8] = [
+const WRITE_TOOLS: [&str; 14] = [
+    "update_sales_order_draft",
+    "update_purchase_order_draft",
+    "create_inventory_opening_draft",
     "create_sales_order_draft",
     "create_shipment_draft",
     "create_purchase_order_draft",
     "create_goods_receipt_draft",
     "create_customer_receipt_draft",
     "create_supplier_payment_draft",
+    "approve_shipment",
+    "approve_goods_receipt",
+    "approve_inventory_opening",
     "approve_sales_order",
     "approve_purchase_order",
 ];
@@ -141,6 +152,8 @@ struct VerifyRequest<'a> {
     trace_id: Uuid,
     used_calls: i32,
     required_scope: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approval: Option<&'a Value>,
 }
 
 enum VerifiedAuthority {
@@ -151,6 +164,14 @@ enum VerifiedAuthority {
 
 impl DelegationVerifier {
     async fn verify(&self, context: &RequestContext) -> Option<VerifiedAuthority> {
+        self.verify_write(context, None).await
+    }
+
+    async fn verify_write(
+        &self,
+        context: &RequestContext,
+        approval: Option<&Value>,
+    ) -> Option<VerifiedAuthority> {
         match self {
             #[cfg(test)]
             Self::AcceptanceTest => Some(VerifiedAuthority::AcceptanceTest),
@@ -175,6 +196,7 @@ impl DelegationVerifier {
                         trace_id: context.trace_id,
                         used_calls: context.used_calls,
                         required_scope: &context.required_scope,
+                        approval,
                     })
                     .send()
                     .await
@@ -239,240 +261,6 @@ fn router_with_runtime(
         .route("/v1/read/{tool}", post(read_tool))
         .route("/v1/write/{tool}", post(write_tool))
         .with_state(state))
-}
-
-async fn write_tool(
-    State(state): State<ApiState>,
-    Path(tool): Path<String>,
-    request: Request<Body>,
-) -> Response {
-    if !WRITE_TOOLS.contains(&tool.as_str()) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let is_approval = matches!(
-        tool.as_str(),
-        "approve_sales_order" | "approve_purchase_order"
-    );
-    if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
-    {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    if !authorized_service(
-        request.headers(),
-        &state.credential_hash,
-        &state.service_audience,
-    ) {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    let Some(context) = parse_context(request.headers()) else {
-        return StatusCode::FORBIDDEN.into_response();
-    };
-    let Some(VerifiedAuthority::Iam(grant)) = state.verifier.verify(&context).await else {
-        return StatusCode::FORBIDDEN.into_response();
-    };
-    let Some(required) = required_capability(&tool) else {
-        return StatusCode::FORBIDDEN.into_response();
-    };
-    if context.required_scope != required || grant.capability.as_str() != required {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let bytes = match axum::body::to_bytes(request.into_body(), state.max_payload_bytes).await {
-        Ok(value) => value,
-        Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
-    };
-    let input: Value = match serde_json::from_slice(&bytes) {
-        Ok(value) if valid_write_input(&tool, &value) => value,
-        _ => return (StatusCode::BAD_REQUEST, "invalid_write_input").into_response(),
-    };
-    let Some(core) = state.core.as_ref() else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    if is_approval {
-        forward_chat_approval(core, &tool, input, &context).await
-    } else {
-        forward_draft_write(core, &tool, input, &context).await
-    }
-}
-
-fn valid_write_input(tool: &str, input: &Value) -> bool {
-    match tool {
-        "create_sales_order_draft" => {
-            serde_json::from_value::<business_core::b2::model::CreateSalesOrder>(input.clone())
-                .is_ok()
-        }
-        "create_shipment_draft" => {
-            serde_json::from_value::<business_core::b2::model::CreateShipment>(input.clone())
-                .is_ok()
-        }
-        "create_customer_receipt_draft" => {
-            serde_json::from_value::<business_core::b2::model::CreateCustomerReceipt>(input.clone())
-                .is_ok()
-        }
-        "create_purchase_order_draft" => {
-            serde_json::from_value::<business_core::b3::model::CreatePurchaseOrder>(input.clone())
-                .is_ok()
-        }
-        "create_goods_receipt_draft" => {
-            serde_json::from_value::<business_core::b3::model::CreateGoodsReceipt>(input.clone())
-                .is_ok()
-        }
-        "create_supplier_payment_draft" => {
-            serde_json::from_value::<business_core::b3::model::CreateSupplierPayment>(input.clone())
-                .is_ok()
-        }
-        "approve_sales_order" | "approve_purchase_order" => {
-            serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
-        }
-        _ => false,
-    }
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ChatApprovalToolInput {
-    document_id: Uuid,
-    expected_version: i64,
-    preview_hash: String,
-    decision: business_core::document_approval::ApprovalDecision,
-}
-
-async fn forward_chat_approval(
-    core: &CoreClient,
-    tool: &str,
-    input: Value,
-    context: &RequestContext,
-) -> Response {
-    let Ok(input) = serde_json::from_value::<ChatApprovalToolInput>(input) else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
-    let path = match tool {
-        "approve_sales_order" => format!("v1/agent-approvals/sales-orders/{}", input.document_id),
-        "approve_purchase_order" => {
-            format!("v1/agent-approvals/purchase-orders/{}", input.document_id)
-        }
-        _ => return StatusCode::NOT_FOUND.into_response(),
-    };
-    let Ok(url) = core.base_url.join(&path) else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let response = core
-        .client
-        .post(url)
-        .header("x-business-service-credential", &core.credential)
-        .header("x-service-audience", "business-core")
-        .header(
-            "x-enterprise-user-id",
-            context.enterprise_user_id.to_string(),
-        )
-        .header("x-trace-id", context.trace_id.to_string())
-        .header(
-            "idempotency-key",
-            format!("agent:{}:{tool}", context.delegation_id),
-        )
-        .json(&json!({
-            "expectedVersion": input.expected_version,
-            "previewHash": input.preview_hash,
-            "decision": input.decision,
-            "sourceBuzzEventId": context.source_buzz_event_id,
-            "sourceChannelId": context.source_channel_id,
-        }))
-        .send()
-        .await;
-    let Ok(response) = response else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let status = response.status();
-    let Ok(value) = response.json::<Value>().await else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    (status, Json(value)).into_response()
-}
-
-async fn forward_draft_write(
-    core: &CoreClient,
-    tool: &str,
-    input: Value,
-    context: &RequestContext,
-) -> Response {
-    let (endpoint, resource_type, uri_type) = match tool {
-        "create_sales_order_draft" => {
-            ("v1/agent-drafts/sales-orders", "sales_order", "sales-order")
-        }
-        "create_shipment_draft" => ("v1/agent-drafts/shipments", "shipment", "shipment"),
-        "create_purchase_order_draft" => (
-            "v1/agent-drafts/purchase-orders",
-            "purchase_order",
-            "purchase-order",
-        ),
-        "create_goods_receipt_draft" => (
-            "v1/agent-drafts/goods-receipts",
-            "goods_receipt",
-            "goods-receipt",
-        ),
-        "create_customer_receipt_draft" => (
-            "v1/agent-drafts/customer-receipts",
-            "customer_receipt",
-            "customer-receipt",
-        ),
-        "create_supplier_payment_draft" => (
-            "v1/agent-drafts/supplier-payments",
-            "supplier_payment",
-            "supplier-payment",
-        ),
-        _ => return StatusCode::NOT_FOUND.into_response(),
-    };
-    let Ok(url) = core.base_url.join(endpoint) else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let response = core
-        .client
-        .post(url)
-        .header("x-business-service-credential", &core.credential)
-        .header("x-service-audience", "business-core")
-        .header(
-            "x-enterprise-user-id",
-            context.enterprise_user_id.to_string(),
-        )
-        .header("x-trace-id", context.trace_id.to_string())
-        .header(
-            "idempotency-key",
-            format!("agent:{}:{tool}", context.delegation_id),
-        )
-        .json(&input)
-        .send()
-        .await;
-    let Ok(response) = response else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let status = response.status();
-    let Ok(value) = response.json::<Value>().await else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    if !status.is_success() {
-        return (status, Json(value)).into_response();
-    }
-    let Some(id) = value.get("id").and_then(Value::as_str) else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let expected_trace_id = context.trace_id.to_string();
-    if value.get("status").and_then(Value::as_str) != Some("draft")
-        || value.get("traceId").and_then(Value::as_str) != Some(expected_trace_id.as_str())
-    {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    }
-    Json(json!({
-        "schemaVersion": 1,
-        "status": "ok",
-        "item": value,
-        "resourceRefs": [{
-            "type": resource_type,
-            "id": id,
-            "title": "打开已创建的业务草稿",
-            "bizUri": format!("biz://{uri_type}/{id}")
-        }],
-        "traceId": context.trace_id
-    }))
-    .into_response()
 }
 
 async fn read_tool(
@@ -933,12 +721,21 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
         "search_business_master_data" => Some("business_master_data:read"),
+        "update_sales_order_draft" => Some("sales_order:update_draft"),
+        "update_purchase_order_draft" => Some("purchase_order:update_draft"),
+        "create_inventory_opening_draft" => Some("inventory_opening:create"),
         "create_sales_order_draft" => Some("sales_order:create"),
         "create_shipment_draft" => Some("shipment:create"),
         "create_purchase_order_draft" => Some("purchase_order:create"),
         "create_goods_receipt_draft" => Some("goods_receipt:create"),
         "create_customer_receipt_draft" => Some("customer_receipt:create"),
         "create_supplier_payment_draft" => Some("supplier_payment:create"),
+        "approve_shipment" => Some("shipment:approve"),
+        "approve_goods_receipt" => Some("goods_receipt:approve"),
+        "approve_inventory_opening" => Some("inventory_opening:approve"),
+        "get_shipment_approval_preview" => Some("shipment:read"),
+        "get_goods_receipt_approval_preview" => Some("goods_receipt:read"),
+        "get_inventory_opening_approval_preview" => Some("inventory:read"),
         "approve_sales_order" => Some("sales_order:approve"),
         "approve_purchase_order" => Some("purchase_order:approve"),
         "get_sales_order" | "search_sales_orders" | "get_sales_order_approval_preview" => {
@@ -1410,15 +1207,43 @@ async fn core_read_result(
         "get_profit_evidence" => "v1/profit-evidence",
         "get_operating_dashboard" => "v1/operations/dashboard",
         "get_business_data_quality" => "v1/operations/data-quality",
-        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview" => "",
+        "get_sales_order_approval_preview"
+        | "get_purchase_order_approval_preview"
+        | "get_shipment_approval_preview"
+        | "get_goods_receipt_approval_preview"
+        | "get_inventory_opening_approval_preview" => "",
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     let Ok(mut url) = core.base_url.join(endpoint) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if matches!(tool, "get_sales_order" | "get_purchase_order") {
+        let Some(id) = input
+            .get("orderId")
+            .and_then(Value::as_str)
+            .and_then(|id| Uuid::parse_str(id).ok())
+        else {
+            return (StatusCode::BAD_REQUEST, "invalid_filter").into_response();
+        };
+        let Ok(detail_url) = core.base_url.join(&format!(
+            "v1/agent-documents/{}/{id}",
+            if tool == "get_sales_order" {
+                "sales-orders"
+            } else {
+                "purchase-orders"
+            }
+        )) else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        url = detail_url;
+    }
     if matches!(
         tool,
-        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview"
+        "get_sales_order_approval_preview"
+            | "get_purchase_order_approval_preview"
+            | "get_shipment_approval_preview"
+            | "get_goods_receipt_approval_preview"
+            | "get_inventory_opening_approval_preview"
     ) {
         let Some(id) = input
             .get("orderId")
@@ -1427,10 +1252,12 @@ async fn core_read_result(
         else {
             return (StatusCode::BAD_REQUEST, "invalid_filter").into_response();
         };
-        let kind = if tool == "get_sales_order_approval_preview" {
-            "sales-orders"
-        } else {
-            "purchase-orders"
+        let kind = match tool {
+            "get_sales_order_approval_preview" => "sales-orders",
+            "get_purchase_order_approval_preview" => "purchase-orders",
+            "get_shipment_approval_preview" => "stock/shipment",
+            "get_goods_receipt_approval_preview" => "stock/goods_receipt",
+            _ => "stock/inventory_opening",
         };
         let Ok(joined) = core
             .base_url
@@ -1523,14 +1350,24 @@ async fn core_read_result(
     };
     let approval_preview = matches!(
         tool,
-        "get_sales_order_approval_preview" | "get_purchase_order_approval_preview"
+        "get_sales_order_approval_preview"
+            | "get_purchase_order_approval_preview"
+            | "get_shipment_approval_preview"
+            | "get_goods_receipt_approval_preview"
+            | "get_inventory_opening_approval_preview"
     );
+    if (approval_preview && !permits_document(&envelope["document"], scope))
+        || (matches!(tool, "get_sales_order" | "get_purchase_order")
+            && !permits_document(&envelope, scope))
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let mut items = envelope
         .get_mut("items")
         .and_then(Value::as_array_mut)
         .map(std::mem::take)
         .unwrap_or_default();
-    if approval_preview {
+    if approval_preview || matches!(tool, "get_sales_order" | "get_purchase_order") {
         items.push(envelope.clone());
     }
     if items.is_empty()
@@ -1549,7 +1386,11 @@ async fn core_read_result(
             .map(std::mem::take)
             .unwrap_or_default();
     }
-    if let Some(exact) = input.get("orderId").and_then(Value::as_str) {
+    if let Some(exact) = input
+        .get("orderId")
+        .and_then(Value::as_str)
+        .filter(|_| !approval_preview)
+    {
         items.retain(|item| {
             item.get("id").and_then(Value::as_str) == Some(exact)
                 || item.get("salesOrderId").and_then(Value::as_str) == Some(exact)
