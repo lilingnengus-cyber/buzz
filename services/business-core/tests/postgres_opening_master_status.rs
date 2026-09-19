@@ -50,6 +50,12 @@ async fn opening_create_and_post_recheck_locked_masters() {
             .fetch_one(&pool)
             .await
             .unwrap();
+    let config = business_core::Config::from_env().unwrap();
+    let credential = config.service_credential.clone();
+    let router = business_core::router(business_core::AppState::new(store.clone(), &config));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let service = InventoryService::new(store, "OPEN".into(), "AR".into());
     let input = CreateInventoryOpening {
         legal_entity_id: f.legal_entity,
@@ -137,6 +143,17 @@ async fn opening_create_and_post_recheck_locked_masters() {
                 ),
                 "{posting}/{table}: {result:?}"
             );
+            if let Some(batch) = batch {
+                let preview: serde_json::Value = reqwest::Client::new()
+                    .get(format!("http://{address}/v1/agent-approval-previews/stock/inventory_opening/{batch}"))
+                    .header("x-business-service-credential",&credential)
+                    .header("x-service-audience","business-core")
+                    .header("x-enterprise-user-id",f.actor.to_string())
+                    .header("x-trace-id",Uuid::new_v4().to_string())
+                    .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+                assert_eq!(preview["item"]["canConfirm"], false, "{table}");
+                assert_eq!(preview["item"]["lines"][0]["ready"], false, "{table}");
+            }
             let movements: i64 = sqlx::query_scalar("SELECT count(*) FROM inventory_movements")
                 .fetch_one(&pool)
                 .await
@@ -151,6 +168,25 @@ async fn opening_create_and_post_recheck_locked_masters() {
             .unwrap();
         }
     }
+    let preview: serde_json::Value = reqwest::Client::new()
+        .get(format!(
+            "http://{address}/v1/agent-approval-previews/stock/inventory_opening/{}",
+            batch.unwrap()
+        ))
+        .header("x-business-service-credential", &credential)
+        .header("x-service-audience", "business-core")
+        .header("x-enterprise-user-id", f.actor.to_string())
+        .header("x-trace-id", Uuid::new_v4().to_string())
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(preview["item"]["canConfirm"], true);
+    assert_eq!(preview["item"]["lines"][0]["ready"], true);
     let result = service
         .post_opening(
             f.actor,
@@ -165,6 +201,7 @@ async fn opening_create_and_post_recheck_locked_masters() {
         .await
         .unwrap();
     assert_eq!(result.status, "posted");
+    server.abort();
 }
 async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {

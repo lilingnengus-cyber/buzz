@@ -233,3 +233,11 @@ opening_master_before 复现仓库停用等待后仍创建期初草稿。新增�
 opening_master_after 的 8 类创建 + 8 类过账实际行锁等待测试通过：停用提交后请求拒绝，库存流水数仍为 0；恢复资料后实际过账成功。opening_master_b2/b3 的完整销售与采购闭环、Core/新增测试严格 Clippy、格式及差异检查通过。日志 `/tmp/opening-master-{before,after,regression,clippy}.log`。
 
 尚未部署。期初预览与新父级状态校验的一致性、反向停用检查、收货/出库入口、其他归属和助手状态意图仍需继续完成。Windows 同一运行 35471308524 仍在 NSIS 构建。
+
+## 期初库存预览一致性
+
+stock/inventory_opening 预览新增逐行 ready 与整单 canConfirm/readiness，包含与实际过账对应的法人、仓库业务单元、仓库、SKU、产品、基础单位、分类、品牌状态、归属与零成本条件。行就绪状态参与现有快照内容，不虚构实际执行结果。
+
+opening_master_preview_final 在真实 Core HTTP 路由验证八类资料停用时整单及目标行均不可过账，恢复后预览为可过账且实际过账成功；原 16 个锁等待场景继续通过。首次 preview 库因缺少服务配置未完成，不计通过。运行该测试需同时提供 BUSINESS_OPENING_MASTER_TEST_DATABASE_URL、BUSINESS_CORE_DATABASE_URL、至少 32 字节的隔离 BUSINESS_CORE_SERVICE_CREDENTIAL 和 BUSINESS_WEB_ORIGIN；均使用测试值，不读取生产密钥。严格 Clippy、格式及 diff 检查通过。日志 `/tmp/opening-master-preview-{v2,final,clippy-final}.log`。
+
+本批尚未部署。零成本策略变化的专项并发、反向停用影响检查、收货/出库等余项仍需继续；不能将预览验证等同全流程完成。

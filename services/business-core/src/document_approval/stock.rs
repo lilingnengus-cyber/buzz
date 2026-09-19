@@ -117,8 +117,17 @@ async fn value(state: &AppState, actor: Uuid, kind: &str, id: Uuid) -> Result<Va
         .map_err(|_| StoreError::Invalid("preview serialization".into())),
         "inventory_opening" => {
             let item: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'number',batch_number,'legalEntityId',legal_entity_id,'businessDate',business_date,'currency',currency,'status',status,'version',version) FROM inventory_opening_batches WHERE id=$1").bind(id).fetch_one(state.store.pool()).await?;
-            let lines: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('warehouseId',l.warehouse_id,'warehouseName',w.name,'skuId',l.sku_id,'skuName',s.name,'quantity',l.quantity::text,'unitCost',l.unit_cost::text,'totalCost',l.total_cost::text) FROM inventory_opening_lines l JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_skus s ON s.id=l.sku_id WHERE l.batch_id=$1 ORDER BY l.line_number").bind(id).fetch_all(state.store.pool()).await?;
+            let lines: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('warehouseId',l.warehouse_id,'warehouseName',w.name,'skuId',l.sku_id,'skuName',s.name,'quantity',l.quantity::text,'unitCost',l.unit_cost::text,'totalCost',l.total_cost::text,'ready',(e.status='active' AND bu.status='active' AND w.status='active' AND s.status='active' AND p.status='active' AND u.status='active' AND c.status='active' AND bu.legal_entity_id=e.id AND w.legal_entity_id=b.legal_entity_id AND (p.brand_id IS NULL OR EXISTS(SELECT 1 FROM business_brands br WHERE br.id=p.brand_id AND br.status='active')) AND (l.unit_cost<>0 OR p.allow_zero_cost))) FROM inventory_opening_lines l JOIN inventory_opening_batches b ON b.id=l.batch_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_legal_entities e ON e.id=w.legal_entity_id JOIN business_units bu ON bu.id=w.business_unit_id JOIN business_skus s ON s.id=l.sku_id JOIN business_products p ON p.id=s.product_id JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories c ON c.id=p.category_id WHERE l.batch_id=$1 ORDER BY l.line_number").bind(id).fetch_all(state.store.pool()).await?;
             let mut item = item;
+            let ready = item["status"] == "draft"
+                && !lines.is_empty()
+                && lines.iter().all(|line| line["ready"] == true);
+            item["canConfirm"] = json!(ready);
+            item["readiness"] = json!(if ready {
+                "ready"
+            } else {
+                "not_draft_or_master_data_not_ready"
+            });
             item["lines"] = json!(lines);
             item["effect"] = json!("登记期初库存数量与成本，不产生采购应付或付款");
             Ok(item)
