@@ -17,9 +17,9 @@ use business_query_contracts::{
     GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput, ManagementProfitReportInput,
     ManagementReportSnapshotInput, OperatingDashboardInput, OrderProfitInput, PayablesInput,
     ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput, ResourceRef, ScopeSummary,
-    SearchMasterDataInput, SearchPurchaseOrdersInput, SearchSalesOrdersInput, ValidateInput,
-    INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ,
-    RECEIVABLE_READ, SALES_ORDER_READ,
+    SearchFinancialDocumentsInput, SearchMasterDataInput, SearchPurchaseOrdersInput,
+    SearchSalesOrdersInput, ValidateInput, INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ,
+    PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ, SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -831,6 +831,56 @@ impl BusinessReadMcp {
                 "purchase_order",
             )
             .await)
+    }
+
+    #[tool(
+        name = "search_customer_receipts",
+        description = "Read accessible customer_receipts by exact document ID, literal number substring, party ID or status. Returns current versions and exact decimal balances for allocation preparation. Read every page using nextOffset before assuming a unique match. Never infer a payment from an outstanding balance."
+    )]
+    async fn search_customer_receipts(
+        &self,
+        Parameters(input): Parameters<SearchFinancialDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_customer_receipts", "customer_receipt:read", input)
+            .await)
+    }
+
+    #[tool(
+        name = "search_supplier_payments",
+        description = "Read accessible supplier_payments by exact document ID, literal number substring, party ID or status. Returns current versions and exact decimal balances for allocation preparation. Read every page using nextOffset before assuming a unique match. Never infer a payment from an outstanding balance."
+    )]
+    async fn search_supplier_payments(
+        &self,
+        Parameters(input): Parameters<SearchFinancialDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_supplier_payments", "supplier_payment:read", input)
+            .await)
+    }
+
+    #[tool(
+        name = "search_receivables",
+        description = "Read accessible receivables by exact document ID, literal number substring, party ID or status. Returns current versions and exact decimal balances for allocation preparation. Read every page using nextOffset before assuming a unique match. Never infer a payment from an outstanding balance."
+    )]
+    async fn search_receivables(
+        &self,
+        Parameters(input): Parameters<SearchFinancialDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_receivables", "receivable:read", input)
+            .await)
+    }
+
+    #[tool(
+        name = "search_payables",
+        description = "Read accessible payables by exact document ID, literal number substring, party ID or status. Returns current versions and exact decimal balances for allocation preparation. Read every page using nextOffset before assuming a unique match. Never infer a payment from an outstanding balance."
+    )]
+    async fn search_payables(
+        &self,
+        Parameters(input): Parameters<SearchFinancialDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self.invoke("search_payables", "payable:read", input).await)
     }
 
     #[tool(
@@ -2825,7 +2875,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 56);
+        assert_eq!(registered.len(), 60);
         assert!(registered
             .iter()
             .any(|tool| tool.name.as_ref() == "search_business_master_data"));

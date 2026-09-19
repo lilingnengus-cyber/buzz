@@ -34,3 +34,5 @@ For draft entry by names/codes, use `search_business_master_data` to resolve cus
 - 用户明确指定收款／付款来源、应收／应付目标及各笔金额后，读取当前版本，调用 prepare_receivable_allocation 或 prepare_payable_allocation；缺少目标、版本或金额时先补问，不自动分配余额。
 - 准备结果仅保存不可变操作意图，不改变余额。展示来源、所有目标、各笔金额、核销后的余额及服务器完整确认指令。意图 30 分钟后失效，单据变化时也必须重新准备。
 - 仅匹配当前签名指令时调用无参数 approve_receivable_allocation 或 approve_payable_allocation；金额、目标和版本全部来自服务器已绑定意图，不能在确认时更换。executed=true 才表示核销成功，返回来源收付款详情链接与 trace ID；核销不是银行转账。
+
+- 核销前使用 search_customer_receipts／search_supplier_payments 查找来源，search_receivables／search_payables 查找目标，按编号、往来方、状态或精确 ID 定位。读取全部 nextOffset 分页后才能判断唯一匹配；从本次结果取 version 与余额，禁止自行推算版本。应收／应付链接打开往来方页面，收付款链接打开对应单据详情。

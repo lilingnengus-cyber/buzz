@@ -65,6 +65,11 @@ const expectedTools = [
   "query_receivables",
   "search_business_anomalies",
   "search_business_master_data",
+  "search_customer_receipts",
+  "search_supplier_payments",
+  "search_receivables",
+  "search_payables",
+
   "search_purchase_orders",
   "search_sales_orders",
   "search_work_items",

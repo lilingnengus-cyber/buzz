@@ -65,6 +65,20 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
             .execute(store.pool())
             .await
             .unwrap();
+        let (status, hidden) = call(
+            app,
+            f.actor,
+            "GET",
+            &format!("/v1/agent-financial-documents/{kind}?documentId={id}"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{hidden}");
+        assert_eq!(
+            hidden["items"],
+            json!([]),
+            "revoked party is absent from lookup"
+        );
         let (status, _) = call(app, f.actor, "GET", &preview_path, Value::Null).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         let (status, _) = call(app, f.actor, "POST", &approval_path, command.clone()).await;

@@ -1,5 +1,6 @@
 /// Immutable, scoped allocation preparation and signed execution.
 pub mod allocation;
+mod financial_documents;
 mod settlement;
 mod snapshot;
 pub(crate) mod stock;
@@ -70,6 +71,10 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(stock::routes())
         .merge(settlement::routes())
         .merge(allocation::routes())
+        .route(
+            "/v1/agent-financial-documents/{kind}",
+            get(financial_documents::search),
+        )
         .route(
             "/v1/agent-documents/sales-orders/{id}",
             get(snapshot::sales),

@@ -31,6 +31,54 @@ pub(super) async fn check(
     let target: Uuid = row.get("id");
     let version: i64 = row.get("version");
     let open: Decimal = row.get("open_amount");
+    let target_kind = if source_kind == "customer_receipt" {
+        "receivable"
+    } else {
+        "payable"
+    };
+    for (family, id, expected) in [
+        (source_kind, source_id.to_owned(), 2),
+        (target_kind, target.to_string(), version),
+    ] {
+        let route = format!(
+            "/v1/agent-financial-documents/{family}?documentId={id}&partyId={party}&limit=1"
+        );
+        let (status, found) = call(app, f.actor, "GET", &route, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{found}");
+        assert_eq!(found["items"].as_array().unwrap().len(), 1);
+        assert_eq!(found["items"][0]["id"], id);
+        assert_eq!(found["items"][0]["version"], expected);
+        let amount_key = if family == source_kind {
+            "unappliedAmount"
+        } else {
+            "openAmount"
+        };
+        assert!(found["items"][0][amount_key].is_string());
+        for suffix in ["&offset=1", "&query=nonexistent", "&status=nonexistent"] {
+            let (status, none) = call(
+                app,
+                f.actor,
+                "GET",
+                &format!("{route}{suffix}"),
+                Value::Null,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{none}");
+            assert_eq!(none["items"], json!([]));
+        }
+        assert_eq!(
+            call(
+                app,
+                f.actor,
+                "GET",
+                &format!("{route}&arbitrary=sql"),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
     let path = format!("/v1/agent-allocation-intents/{kind}");
     let mut body = json!({"sourceDocumentId":source_id,"expectedSourceVersion":2,"allocations":[{"documentId":target,"expectedVersion":version,"amount":"50"}]});
     let key = format!("prepare-allocation-{}", Uuid::new_v4());

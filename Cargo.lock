@@ -974,6 +974,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "business-auth-gateway",
+ "business-query-contracts",
  "chrono",
  "hex",
  "reqwest 0.13.4",

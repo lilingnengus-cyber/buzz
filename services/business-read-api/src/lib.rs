@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod financial_documents;
 mod master_data;
 mod writes;
 use writes::*;
@@ -38,8 +39,12 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 22] = [
+const READ_TOOLS: [&str; 26] = [
     "search_business_master_data",
+    "search_customer_receipts",
+    "search_supplier_payments",
+    "search_receivables",
+    "search_payables",
     "get_sales_order",
     "search_sales_orders",
     "get_purchase_order",
@@ -326,7 +331,15 @@ async fn read_tool(
     let response = if READ_TOOLS.contains(&tool.as_str()) {
         if let Some(core) = &state.core {
             core_read_result(core, &tool, &input, &effective_scope, &context).await
-        } else if tool == "search_business_master_data" {
+        } else if tool == "search_business_master_data"
+            || matches!(
+                tool.as_str(),
+                "search_customer_receipts"
+                    | "search_supplier_payments"
+                    | "search_receivables"
+                    | "search_payables"
+            )
+        {
             StatusCode::SERVICE_UNAVAILABLE.into_response()
         } else {
             legacy_read_result(
@@ -728,6 +741,10 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "search_customer_receipts" => Some("customer_receipt:read"),
+        "search_supplier_payments" => Some("supplier_payment:read"),
+        "search_receivables" => Some("receivable:read"),
+        "search_payables" => Some("payable:read"),
         "search_business_master_data" => Some("business_master_data:read"),
         "prepare_receivable_allocation" => Some("receivable_allocation_intent:create"),
         "approve_receivable_allocation" => Some("receivable_allocation_intent:approve"),
@@ -1209,6 +1226,16 @@ async fn core_read_result(
     scope: &AuthorizationScope,
     context: &RequestContext,
 ) -> Response {
+    let financial_kind = match tool {
+        "search_customer_receipts" => Some("customer_receipt"),
+        "search_supplier_payments" => Some("supplier_payment"),
+        "search_receivables" => Some("receivable"),
+        "search_payables" => Some("payable"),
+        _ => None,
+    };
+    if let Some(kind) = financial_kind {
+        return financial_documents::search(core, kind, input, scope, context).await;
+    }
     if tool == "search_business_master_data" {
         return master_data::search(core, input, scope, context).await;
     }

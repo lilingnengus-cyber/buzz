@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+business-query-contracts = { path = "../../crates/business-query-contracts" }
 axum = { workspace = true }
 business-auth-gateway = { path = "../business-auth-gateway" }
 chrono = { workspace = true }
