@@ -1,3 +1,5 @@
+mod detail;
+
 use super::{
     common::authorize,
     model::{

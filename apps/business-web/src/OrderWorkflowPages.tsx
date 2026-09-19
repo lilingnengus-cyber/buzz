@@ -1,3 +1,4 @@
+import { LinkedOrderDetail } from "./LinkedOrderDetail";
 import React from "react";
 import {
   type ApiFailure,
@@ -109,10 +110,18 @@ const purchaseStages: Array<{ id: PurchaseTab; code: string; label: string }> =
   ];
 
 export function SalesOrderWorkflowPage({ id }: { id?: string }) {
+  return id ? (
+    <LinkedOrderDetail key={id} domain="sales" id={id} />
+  ) : (
+    <SalesOrderRegisterPage />
+  );
+}
+
+function SalesOrderRegisterPage() {
   const [tab, setTab] = React.useState<SalesTab>("orders");
   const [revision, setRevision] = React.useState(0);
   const [modal, setModal] = React.useState<ModalState | null>(null);
-  const [query, setQuery] = React.useState(id ?? "");
+  const [query, setQuery] = React.useState("");
   const state = useWorkflowData<SalesWorkflowData>(async () => {
     const [orders, shipments, receivables, receipts, returns] =
       await Promise.all([
@@ -185,7 +194,7 @@ export function SalesOrderWorkflowPage({ id }: { id?: string }) {
     <WorkflowPage
       domain="sales"
       eyebrow="销售闭环 / Order to cash"
-      title={id ? "销售订单全链路" : "销售订单闭环"}
+      title="销售订单闭环"
       caption="从客户承诺、库存预占、分批出库到经营应收与收款核销，始终沿同一销售订单追溯。"
       primaryAction={
         data && !data.errors.orders ? (
@@ -365,10 +374,18 @@ export function SalesOrderWorkflowPage({ id }: { id?: string }) {
 }
 
 export function PurchaseOrderWorkflowPage({ id }: { id?: string }) {
+  return id ? (
+    <LinkedOrderDetail key={id} domain="purchase" id={id} />
+  ) : (
+    <PurchaseOrderRegisterPage />
+  );
+}
+
+function PurchaseOrderRegisterPage() {
   const [tab, setTab] = React.useState<PurchaseTab>("orders");
   const [revision, setRevision] = React.useState(0);
   const [modal, setModal] = React.useState<ModalState | null>(null);
-  const [query, setQuery] = React.useState(id ?? "");
+  const [query, setQuery] = React.useState("");
   const state = useWorkflowData<PurchaseWorkflowData>(async () => {
     const [orders, receipts, payables, payments, returns] = await Promise.all([
       loadWorkflowStage<PurchaseOrder>("/api/v1/purchase-orders?limit=200"),
@@ -443,7 +460,7 @@ export function PurchaseOrderWorkflowPage({ id }: { id?: string }) {
     <WorkflowPage
       domain="purchase"
       eyebrow="采购闭环 / Procure to pay"
-      title={id ? "采购订单全链路" : "采购订单闭环"}
+      title="采购订单闭环"
       caption="从采购承诺、实际到货、移动平均成本到经营应付与付款核销，所有变化保留来源凭据。"
       primaryAction={
         data && !data.errors.orders ? (

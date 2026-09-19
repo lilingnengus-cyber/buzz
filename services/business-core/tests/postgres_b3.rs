@@ -117,6 +117,29 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         "120",
     )
     .await;
+    assert_eq!(
+        purchasing
+            .get_order(fixture.actor, order.id)
+            .await
+            .unwrap()
+            .id,
+        order.id
+    );
+    assert!(matches!(
+        purchasing.get_order(fixture.actor, Uuid::new_v4()).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("DELETE FROM business_supplier_scopes WHERE enterprise_user_id=$1")
+        .bind(fixture.actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        purchasing.get_order(fixture.actor, order.id).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_supplier_scopes(enterprise_user_id,supplier_id,granted_by) VALUES($1,$2,$1)")
+        .bind(fixture.actor).bind(fixture.supplier).execute(&pool).await.unwrap();
     let draft_options = purchasing
         .entry_options(fixture.actor, Some(order.id))
         .await

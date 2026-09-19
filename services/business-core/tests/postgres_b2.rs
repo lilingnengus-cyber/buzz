@@ -88,6 +88,25 @@ async fn b2_postgres_closed_loop_and_concurrency() {
 
     let first = create_order(&sales, &fixture, date, "order-create-0001").await;
     let second = create_order(&sales, &fixture, date, "order-create-0002").await;
+    assert_eq!(
+        sales.get_order(fixture.actor, first.id).await.unwrap().id,
+        first.id
+    );
+    assert!(matches!(
+        sales.get_order(fixture.actor, Uuid::new_v4()).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("DELETE FROM business_customer_scopes WHERE enterprise_user_id=$1")
+        .bind(fixture.actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        sales.get_order(fixture.actor, first.id).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_customer_scopes(enterprise_user_id,customer_id,granted_by) VALUES($1,$2,$1)")
+        .bind(fixture.actor).bind(fixture.customer).execute(&pool).await.unwrap();
     let preview = sales
         .confirmation_preview(fixture.actor, first.id)
         .await

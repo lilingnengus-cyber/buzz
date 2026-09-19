@@ -1,3 +1,5 @@
+mod order_detail;
+
 use super::model::{
     ApplySupplierPayment, CreateGoodsReceipt, CreatePurchaseOrder, CreateSupplierPayment,
     ReplacePurchaseOrderDraft, ReversePayableAllocation, VersionCommand,
@@ -7,7 +9,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, post},
     Extension, Json, Router,
 };
 use serde::Deserialize;
@@ -188,7 +190,10 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
             "/api/v1/purchase-orders/entry-options",
             get(purchase_order_entry_options),
         )
-        .route("/api/v1/purchase-orders/{id}", put(replace_order))
+        .route(
+            "/api/v1/purchase-orders/{id}",
+            get(order_detail::get_order).put(replace_order),
+        )
         .route(
             "/api/v1/purchase-orders/{id}/confirmation-preview",
             get(purchase_order_confirmation_preview),

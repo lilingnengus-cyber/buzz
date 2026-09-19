@@ -1,3 +1,5 @@
+mod order_detail;
+
 use super::{
     inventory_count_api::{
         cancel_inventory_count, create_inventory_count, get_inventory_count, inventory_aging,
@@ -20,7 +22,7 @@ use axum::{
     http::{header, HeaderMap, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, post},
     Extension, Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -219,7 +221,10 @@ pub fn browser_routes(state: Arc<AppState>) -> Router {
             get(crate::api::get_master_data),
         )
         .route("/api/v1/sales-orders", get(list_orders).post(create_order))
-        .route("/api/v1/sales-orders/{id}", put(replace_order))
+        .route(
+            "/api/v1/sales-orders/{id}",
+            get(order_detail::get_order).put(replace_order),
+        )
         .route("/api/v1/agent-query-runs", get(list_agent_query_runs))
         .route("/api/v1/agent-query-runs/{id}", get(get_agent_query_run))
         .route(
