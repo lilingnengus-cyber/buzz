@@ -6,6 +6,31 @@ use sqlx::{Postgres, Transaction};
 /// Exact product master create, replacement or status command.
 pub type ProductMasterCommand = MasterCommand<SaveProductMasterData, ChangeProductMasterStatus>;
 impl ProductMasterService {
+    /// Read the full current record for authorized maintenance or command preparation.
+    pub async fn detail(
+        &self,
+        actor: Uuid,
+        kind: ProductMasterType,
+        id: Uuid,
+    ) -> Result<ProductMasterRecord, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let scope = PgStore::snapshot_on(&mut tx, actor)
+            .await
+            .map_err(|_| DomainError::NotFoundOrForbidden)?;
+        if !scope
+            .permission_keys
+            .contains("business_product_master:read")
+            && !scope
+                .permission_keys
+                .contains("business_product_master:manage")
+        {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        let record = read_record(&mut tx, kind, id).await?;
+        ensure_brand_scope(&scope, record.brand_id)?;
+        tx.rollback().await?;
+        Ok(record)
+    }
     /// Preview fixed product master operations without creating business records or intents.
     pub async fn command_preview(
         &self,

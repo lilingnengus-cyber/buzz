@@ -99,6 +99,10 @@ pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/v1/product-master-data", get(list))
         .route("/v1/agent-product-master-previews", post(agent_preview))
+        .route(
+            "/v1/agent-product-master-records/{resource_type}/{id}",
+            get(agent_detail),
+        )
 }
 
 pub fn browser_routes() -> Router<Arc<AppState>> {
@@ -243,4 +247,19 @@ async fn agent_preview(
     Ok(Json(
         json!({"document":document,"traceId":context.trace_id}),
     ))
+}
+
+async fn agent_detail(
+    State(state): State<Arc<AppState>>,
+    Extension(context): Extension<RequestContext>,
+    Path((resource_type, id)): Path<(String, Uuid)>,
+) -> Result<Json<impl serde::Serialize>, ProductMasterApiError> {
+    let kind = ProductMasterType::from_str(&resource_type)
+        .map_err(|e| ProductMasterApiError::domain(e, context.trace_id))?;
+    let record = state
+        .product_master
+        .detail(context.actor_user_id, kind, id)
+        .await
+        .map_err(|e| ProductMasterApiError::domain(e, context.trace_id))?;
+    Ok(Json(json!({"item":record,"traceId":context.trace_id})))
 }

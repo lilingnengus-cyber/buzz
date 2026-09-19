@@ -13,7 +13,15 @@ use sqlx::Row;
 use uuid::Uuid;
 
 const MAX_AGENT_SCOPES: usize = 128;
-const AGENT_SCOPES: [&str; 88] = [
+const AGENT_SCOPES: [&str; 96] = [
+    "core_master_creation_intent:create",
+    "core_master_creation_intent:approve",
+    "core_master_update_intent:create",
+    "core_master_update_intent:approve",
+    "product_master_creation_intent:create",
+    "product_master_creation_intent:approve",
+    "product_master_update_intent:create",
+    "product_master_update_intent:approve",
     "crm_creation_intent:create",
     "crm_creation_intent:approve",
     "crm_update_intent:create",
@@ -129,6 +137,22 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "core-master-creation-intent" => (
+            "core_master_creation_intent",
+            "core_master_creation_intent:approve",
+        ),
+        "core-master-update-intent" => (
+            "core_master_update_intent",
+            "core_master_update_intent:approve",
+        ),
+        "product-master-creation-intent" => (
+            "product_master_creation_intent",
+            "product_master_creation_intent:approve",
+        ),
+        "product-master-update-intent" => (
+            "product_master_update_intent",
+            "product_master_update_intent:approve",
+        ),
         "crm-creation-intent" => ("crm_creation_intent", "crm_creation_intent:approve"),
         "crm-update-intent" => ("crm_update_intent", "crm_update_intent:approve"),
         "crm-followup-intent" => ("crm_followup_intent", "crm_followup_intent:approve"),
@@ -980,6 +1004,10 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "core-master-creation-intent",
+            "core-master-update-intent",
+            "product-master-creation-intent",
+            "product-master-update-intent",
             "crm-creation-intent",
             "crm-update-intent",
             "crm-followup-intent",

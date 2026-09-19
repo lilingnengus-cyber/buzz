@@ -16,7 +16,11 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 54] = [
+const AGENT_SCOPES: [&str; 58] = [
+    "core_master_creation_intent:create",
+    "core_master_update_intent:create",
+    "product_master_creation_intent:create",
+    "product_master_update_intent:create",
     "crm_creation_intent:create",
     "crm_update_intent:create",
     "crm_followup_intent:create",
@@ -79,6 +83,10 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "core-master-creation-intent" => "core_master_creation_intent:approve",
+        "core-master-update-intent" => "core_master_update_intent:approve",
+        "product-master-creation-intent" => "product_master_creation_intent:approve",
+        "product-master-update-intent" => "product_master_update_intent:approve",
         "crm-creation-intent" => "crm_creation_intent:approve",
         "crm-update-intent" => "crm_update_intent:approve",
         "crm-followup-intent" => "crm_followup_intent:approve",
@@ -909,7 +917,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 54);
+        assert_eq!(AGENT_SCOPES.len(), 58);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -1059,6 +1067,22 @@ mod tests {
             Some("inventory_opening:approve")
         );
         for (kind, scope) in [
+            (
+                "core-master-creation-intent",
+                "core_master_creation_intent:approve",
+            ),
+            (
+                "core-master-update-intent",
+                "core_master_update_intent:approve",
+            ),
+            (
+                "product-master-creation-intent",
+                "product_master_creation_intent:approve",
+            ),
+            (
+                "product-master-update-intent",
+                "product_master_update_intent:approve",
+            ),
             ("crm-creation-intent", "crm_creation_intent:approve"),
             ("crm-update-intent", "crm_update_intent:approve"),
             ("crm-followup-intent", "crm_followup_intent:approve"),

@@ -7,6 +7,35 @@ use sqlx::{Postgres, Transaction};
 pub type CoreMasterCommand = MasterCommand<SaveCoreMasterData, ChangeCoreMasterStatus>;
 
 impl CoreMasterDataService {
+    /// Read the full current record for authorized maintenance or command preparation.
+    pub async fn detail(
+        &self,
+        actor: Uuid,
+        kind: CoreMasterType,
+        id: Uuid,
+    ) -> Result<CoreMasterRecord, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let scope = PgStore::snapshot_on(&mut tx, actor)
+            .await
+            .map_err(|_| DomainError::NotFoundOrForbidden)?;
+        if !scope.permission_keys.contains("business_master_data:read")
+            && !scope
+                .permission_keys
+                .contains("business_master_data:manage")
+        {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        let record = read_record(&mut tx, kind, id).await?;
+        self.ensure_scope(
+            &scope,
+            kind,
+            record.legal_entity_id,
+            record.business_unit_id,
+            id,
+        )?;
+        tx.rollback().await?;
+        Ok(record)
+    }
     /// Read a stable command preview without saving an intent or changing business state.
     pub async fn command_preview(
         &self,
