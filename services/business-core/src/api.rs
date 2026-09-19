@@ -272,6 +272,7 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::b4::api::service_routes())
         .merge(crate::s1::api::service_routes())
         .merge(crate::master_data_api::service_routes())
+        .merge(crate::crm::api::service_routes())
         .merge(crate::product_master_api::service_routes())
         .merge(crate::numbering_api::service_routes())
         .merge(crate::document_approval::service_routes())

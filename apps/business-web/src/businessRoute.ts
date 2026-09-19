@@ -34,6 +34,7 @@ export function route(): { section: Section; id?: string; embed: boolean } {
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
   const patterns: Array<[Section, RegExp]> = [
+    ["crm", /^\/crm\/opportunities\/([^/]+)$/],
     ["sales", /^\/(?:sales-orders|sales\/orders)\/([^/]+)$/],
     ["salesReturns", /^\/sales-returns\/([^/]+)$/],
     ["purchaseReturns", /^\/purchase-returns\/([^/]+)$/],

@@ -11,6 +11,7 @@ export type BusinessResourceType =
   | "customer"
   | "supplier"
   | "inventory_count"
+  | "crm_opportunity"
   | "inventory_opening"
   | "inventory"
   | "receivable"
@@ -59,6 +60,13 @@ type RouteDefinition = {
 };
 
 const ROUTES: readonly RouteDefinition[] = [
+  {
+    type: "crm_opportunity",
+    deepLink: "crm-opportunity",
+    prefix: "/embed/crm/opportunities/",
+    entity: true,
+    label: "商机",
+  },
   {
     type: "inventory_count",
     deepLink: "inventory-count",

@@ -2,6 +2,7 @@
 
 mod allocation_history;
 mod config;
+mod crm;
 mod financial_documents;
 mod inventory_count_previews;
 mod inventory_count_writes;
@@ -45,7 +46,9 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 41] = [
+const READ_TOOLS: [&str; 43] = [
+    "search_crm_opportunities",
+    "get_crm_opportunity",
     "search_inventory_counts",
     "get_inventory_count",
     "get_inventory_count_approval_preview",
@@ -400,6 +403,7 @@ async fn read_tool(
             core_read_result(core, &tool, &input, &effective_scope, &context).await
         } else if tool == "get_inventory_count_approval_preview"
             || inventory_counts::handles(&tool)
+            || crm::handles(&tool)
             || tool == "search_business_master_data"
             || matches!(
                 tool.as_str(),
@@ -896,6 +900,7 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "search_supplier_payments" => Some("supplier_payment:read"),
         "search_receivables" => Some("receivable:read"),
         "search_payables" => Some("payable:read"),
+        "search_crm_opportunities" | "get_crm_opportunity" => Some("crm:read"),
         "search_business_master_data" => Some("business_master_data:read"),
         "prepare_receivable_allocation" => Some("receivable_allocation_intent:create"),
         "approve_receivable_allocation" => Some("receivable_allocation_intent:approve"),
@@ -1399,6 +1404,9 @@ async fn core_read_result(
     }
     if tool == "get_inventory_count_approval_preview" {
         return inventory_count_previews::read(core, input, scope, context).await;
+    }
+    if crm::handles(tool) {
+        return crm::read(core, tool, input, scope, context).await;
     }
     if inventory_counts::handles(tool) {
         return inventory_counts::read(core, tool, input, scope, context).await;

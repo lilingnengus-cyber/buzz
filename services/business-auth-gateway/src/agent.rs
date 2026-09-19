@@ -13,7 +13,8 @@ use sqlx::Row;
 use uuid::Uuid;
 
 const MAX_AGENT_SCOPES: usize = 128;
-const AGENT_SCOPES: [&str; 81] = [
+const AGENT_SCOPES: [&str; 82] = [
+    "crm:read",
     "inventory_count_creation_intent:create",
     "inventory_count_creation_intent:approve",
     "inventory_count_submission_intent:create",

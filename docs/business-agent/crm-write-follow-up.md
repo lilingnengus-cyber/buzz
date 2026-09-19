@@ -23,3 +23,17 @@
 ## 后续
 
 Gateway 委托、Read API 范围与返回契约、六个固定准备/确认工具、Host 签名解析尚未接入；还需商机查找、分页、缺字段补问、直接详情链接、权限配置和配套部署，以及获准真实聊天验收。线上及已安装 Mac 仍为盘点 121 工具。本域进展不缩减主数据、费用、报表、行动、履约细节和纠错等完整业务目标。
+
+## 2026-09-20 商机定位、分页详情与直接链接候选 123
+
+新增 search_crm_opportunities/get_crm_opportunity，贯通严格查询契约、Core 服务读取、Read API 委托范围交集、MCP 和 Host/Gateway crm:read 能力。既有 IAM 目录已有 crm:read，本批不增加迁移或自动授权。Gateway 固定能力为 82、Host 普通回合能力为 51；CRM 准备/批准能力尚未接入。
+
+搜索支持精确 ID、字面标题/公司/联系人、法人、业务单元、客户、阶段和到期日期；每页最多 20 条简短摘要及当前版本，Core 在分页前做用户范围过滤，Read API 保留源 nextOffset，包括当前页被委托范围全部过滤为空时。expectedAmountMinor 明示币种最小单位，CNY 100 为 1 元。
+
+详情每页最多 3 条完整跟进，后续页必须携带首次版本；Core 锁定商机读取，防止同次详情与跟进历史混合版本，后续版本变化返回冲突。跟进 note 为业务读取所需，MCP 仅对此精确工具使用严格的跟进字段/类型/长度校验，最多 3 条、每条 4000 字；其他工具继续禁止 note，未知密钥字段仍拒绝。原始跟进内容保留，明确作为不可信业务数据而非指令。
+
+资源链接 biz://crm-opportunity/{id} 映射至 /embed/crm/opportunities/{id}，网页同时支持独立 /crm/opportunities/{id}。使用既有 CrmPage 的初始 ID 打开详情，无需再次从列表选择。
+
+验证：隔离 PostgreSQL CRM 全流程及查询场景通过，6 条跟进分两页 ID 无重复，3 条 4000 中文字笔记的完整 Core 返回小于 50 KiB，新增跟进后旧版本页被拒绝，越权查询/详情不可见；Read API 模拟上游验证身份、trace、源分页、过滤后空页和精确 ID 绑定。契约/Gateway/Read API/MCP 单元测试通过（11/8/40/15，随后新增的完整 CRM 笔记校验 2 项单独通过），Host 10 项、桌面链接 26 项通过；网页构建和独立/嵌入链接 2 项 Playwright 功能验收通过。原生 buzz-agent 运行探针证明实际加载 123 个固定工具并完成模拟模型回合，无线上业务调用。严格 Clippy、格式与差异/文件大小检查通过。
+
+日志 /tmp/crm-reads-{unit-final,notes,postgres,host-final,clippy,runtime,links,web-build,web-functional,size}.log。此批未部署，线上及已安装 Mac 仍为 121 工具。下一步接入三个 CRM 准备工具、三个无参数签名确认工具与其 Read API 范围/结果校验，再完成整批发布和获准真实聊天；其他业务域保持未完成。

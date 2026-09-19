@@ -3,6 +3,7 @@ pub mod api;
 mod command;
 mod model;
 pub use command::CrmCommand;
+mod agent_reads;
 mod registers;
 mod write_authority;
 use crate::{

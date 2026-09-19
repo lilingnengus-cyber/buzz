@@ -183,3 +183,34 @@ async fn contacts(
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))
 }
+
+/// Mount read-only CRM lookups behind the existing service authentication boundary.
+pub fn service_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/v1/agent-crm-opportunities", get(agent_search))
+        .route("/v1/agent-crm-opportunity", get(agent_detail))
+}
+async fn agent_search(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<business_query_contracts::SearchCrmOpportunitiesInput>,
+) -> Result<Json<Value>, Error> {
+    let mut result = service(&s)
+        .agent_search(c.actor_user_id, q)
+        .await
+        .map_err(|e| Error(e, c.trace_id))?;
+    result["traceId"] = json!(c.trace_id);
+    Ok(Json(result))
+}
+async fn agent_detail(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<business_query_contracts::GetCrmOpportunityInput>,
+) -> Result<Json<Value>, Error> {
+    let mut result = service(&s)
+        .agent_detail(c.actor_user_id, q)
+        .await
+        .map_err(|e| Error(e, c.trace_id))?;
+    result["traceId"] = json!(c.trace_id);
+    Ok(Json(result))
+}

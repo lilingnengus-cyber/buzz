@@ -14,6 +14,8 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_crm_opportunities",
+  "get_crm_opportunity",
   "get_inventory_count_approval_preview",
   "search_inventory_counts",
   "get_inventory_count",

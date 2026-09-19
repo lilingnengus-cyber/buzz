@@ -16,6 +16,12 @@ const config = {
 
 for (const [name, url, type, id] of [
   [
+    "CRM opportunity",
+    "https://biz.example.com/embed/crm/opportunities/123e4567-e89b-12d3-a456-426614174000",
+    "crm_opportunity",
+    "123e4567-e89b-12d3-a456-426614174000",
+  ],
+  [
     "agent query",
     "https://biz.example.com/embed/agent-queries/fc84644d-43ac-462f-8a30-456e04a2e9a3",
     "agent_query",
@@ -343,10 +349,27 @@ for (const kind of ["sales", "purchase"]) {
 
 test("inventory count reference opens the exact count detail", () => {
   const id = "54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
-  const resource = resolveBusinessResource(`biz://inventory-count/${id}`, config);
+  const resource = resolveBusinessResource(
+    `biz://inventory-count/${id}`,
+    config,
+  );
   assert.equal(resource?.type, "inventory_count");
   assert.equal(resource?.id, id);
   assert.equal(resource?.path, `/embed/inventory-counts/${id}`);
-  assert.equal(buildBusinessUrl(resource, config), `${config.origin}/embed/inventory-counts/${id}`);
+  assert.equal(
+    buildBusinessUrl(resource, config),
+    `${config.origin}/embed/inventory-counts/${id}`,
+  );
   assert.equal(buildBusinessReference(resource), `biz://inventory-count/${id}`);
+});
+
+test("CRM chat reference opens the exact opportunity", () => {
+  const resource = resolveBusinessResource(
+    "biz://crm-opportunity/123e4567-e89b-12d3-a456-426614174000",
+    config,
+  );
+  assert.equal(
+    resource?.path,
+    "/embed/crm/opportunities/123e4567-e89b-12d3-a456-426614174000",
+  );
 });

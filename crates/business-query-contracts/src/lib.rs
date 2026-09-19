@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod crm;
+pub use crm::{GetCrmOpportunityInput, SearchCrmOpportunitiesInput};
 mod inventory_counts;
 pub use inventory_counts::{
     GetInventoryCountInput, GetInventoryCountPreviewInput, SearchInventoryCountOptionsInput,
@@ -549,6 +551,7 @@ pub fn valid_biz_uri(value: &str) -> bool {
                 | "shipment"
                 | "inventory-opening"
                 | "inventory-count"
+                | "crm-opportunity"
                 | "goods-receipt"
                 | "sales-return"
                 | "purchase-return"
