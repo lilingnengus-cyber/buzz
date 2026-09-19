@@ -103,8 +103,7 @@ receives no approval scope.
 
 When deploying with `buzz-agent`, run `just business-agent-runtime-acceptance`. The probe uses
 the real `buzz-agent -> session/new -> business-read-mcp` path and a loopback
-model stub, then asserts that the model sees exactly 30 fixed reads, six fixed
-draft creates, two bound approval tools, and no general-purpose tool. It does not call a model, consume a real
+model stub, then asserts that the model sees exactly 34 fixed reads, seven draft creates, two draft replacements, and five bound approval tools, and no general-purpose tool. It does not call a model, consume a real
 Delegation, or read business data.
 
 ## Debug fixture
