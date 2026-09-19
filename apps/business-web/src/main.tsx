@@ -1,3 +1,4 @@
+import { route, WORKFLOW_NAV_ALIASES } from "./businessRoute";
 import { NAV_GROUPS, NAV, type Section } from "./businessNavigation";
 import React from "react";
 import { createRoot } from "react-dom/client";
@@ -56,6 +57,7 @@ import {
   PurchaseOrderWorkflowPage,
   SalesOrderWorkflowPage,
 } from "./OrderWorkflowPages";
+import { CrmRegisters } from "./CrmRegisters";
 import { CrmPage } from "./CrmPage";
 import "./styles.css";
 
@@ -80,72 +82,6 @@ function savedNavigationCollapsed() {
   } catch {
     return false;
   }
-}
-
-const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
-  salesReturns: "sales",
-  purchaseReturns: "purchasing",
-  shipments: "sales",
-  inventoryOpening: "inventory",
-  receivables: "sales",
-  receipts: "sales",
-  goodsReceipts: "purchasing",
-  payables: "purchasing",
-  supplierPayments: "purchasing",
-};
-
-function route(): { section: Section; id?: string; embed: boolean } {
-  const path = window.location.pathname;
-  const embed = path.startsWith("/embed/");
-  const clean = path.replace(/^\/embed/, "");
-  if (clean === "/operations-dashboard") return { section: "dashboard", embed };
-  if (clean === "/data-quality") return { section: "quality", embed };
-  if (clean === "/operating-incidents") return { section: "incidents", embed };
-  if (clean === "/operating-trends") return { section: "trends", embed };
-  const agentQuery = clean.match(/^\/agent-queries\/([^/]+)$/);
-  if (agentQuery)
-    return {
-      section: "agentQuery",
-      id: decodeURIComponent(agentQuery[1]),
-      embed,
-    };
-  if (clean === "/crm") return { section: "crm", embed };
-  if (clean === "/core-data") return { section: "coreData", embed };
-  if (clean === "/product-data") return { section: "productData", embed };
-  const patterns: Array<[Section, RegExp]> = [
-    ["sales", /^\/(?:sales-orders|sales\/orders)\/([^/]+)$/],
-    ["salesReturns", /^\/sales-returns\/([^/]+)$/],
-    ["purchaseReturns", /^\/purchase-returns\/([^/]+)$/],
-    ["shipments", /^\/shipments\/([^/]+)$/],
-    ["inventoryOpening", /^\/inventory-openings\/([^/]+)$/],
-    ["inventory", /^\/inventory\/([^/]+)$/],
-    ["receivables", /^\/receivables\/(?:customer\/)?([^/]+)$/],
-    ["receipts", /^\/customer-receipts\/([^/]+)$/],
-    ["purchasing", /^\/purchase-orders\/([^/]+)$/],
-    ["goodsReceipts", /^\/goods-receipts\/([^/]+)$/],
-    ["payables", /^\/payables\/supplier\/([^/]+)$/],
-    ["supplierPayments", /^\/supplier-payments\/([^/]+)$/],
-    ["profits", /^\/order-profits\/([^/]+)$/],
-    ["adjustments", /^\/profit-adjustments\/([^/]+)$/],
-    ["reports", /^\/management-reports\/([^/]+)$/],
-    [
-      "profitability",
-      /^\/profitability\/(?:customer|sku|brand|salesperson)\/([^/]+)\/period\/\d{4}-\d{2}$/,
-    ],
-  ];
-  for (const [section, pattern] of patterns) {
-    const match = clean.match(pattern);
-    if (match) return { section, id: decodeURIComponent(match[1]), embed };
-  }
-  const fromHash = window.location.hash.slice(1) as Section;
-  return {
-    section: WORKFLOW_NAV_ALIASES[fromHash]
-      ? WORKFLOW_NAV_ALIASES[fromHash]
-      : NAV.some((item) => item.id === fromHash)
-        ? fromHash
-        : "dashboard",
-    embed,
-  };
 }
 
 function useLoad<T>(
@@ -367,7 +303,14 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
   if (section === "trends") return <OperatingTrendsView />;
-  if (section === "crm") return <CrmPage />;
+  if (section === "crm") return <CrmPage key={id} initialId={id} />;
+  if (section === "crmFollowups" || section === "crmContacts")
+    return (
+      <CrmRegisters
+        key={section}
+        view={section === "crmFollowups" ? "followups" : "contacts"}
+      />
+    );
   if (section === "coreData") return <CoreMasterDataCenter />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;

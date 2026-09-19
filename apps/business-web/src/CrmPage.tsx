@@ -13,7 +13,7 @@ import {
 } from "./crm";
 import "./crm.css";
 type List = { items: Opportunity[]; hasMore: boolean; canManage: boolean };
-export function CrmPage() {
+export function CrmPage({ initialId }: { initialId?: string }) {
   const [data, setData] = React.useState<List>({
     items: [],
     hasMore: false,
@@ -24,7 +24,9 @@ export function CrmPage() {
   const [stage, setStage] = React.useState("");
   const [due, setDue] = React.useState(false);
   const [offset, setOffset] = React.useState(0);
-  const [selected, setSelected] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<string | null>(
+    initialId ?? null,
+  );
   const [detail, setDetail] = React.useState<Detail | null>(null);
   const [editing, setEditing] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
@@ -104,8 +106,8 @@ export function CrmPage() {
     <section className="crm-page">
       <header className="crm-heading">
         <div>
-          <p className="eyebrow">客户与商机</p>
-          <h1>售前 CRM</h1>
+          <p className="eyebrow">售前 CRM</p>
+          <h1>商机</h1>
           <p className="crm-hint">记下客户需求，推进下一次沟通。</p>
         </div>
         {data.canManage && !creating && (
