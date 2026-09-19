@@ -3,6 +3,7 @@
 mod allocation_history;
 mod config;
 mod financial_documents;
+mod inventory_counts;
 mod master_data;
 mod return_documents;
 mod stock_documents;
@@ -42,7 +43,10 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 37] = [
+const READ_TOOLS: [&str; 40] = [
+    "search_inventory_counts",
+    "get_inventory_count",
+    "search_inventory_count_options",
     "search_sales_returns",
     "search_purchase_returns",
     "get_sales_return_source",
@@ -383,7 +387,8 @@ async fn read_tool(
     let response = if READ_TOOLS.contains(&tool.as_str()) {
         if let Some(core) = &state.core {
             core_read_result(core, &tool, &input, &effective_scope, &context).await
-        } else if tool == "search_business_master_data"
+        } else if inventory_counts::handles(&tool)
+            || tool == "search_business_master_data"
             || matches!(
                 tool.as_str(),
                 "get_customer_receipt_allocations"
@@ -857,7 +862,10 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "get_purchase_return_approval_preview" => Some("purchase_return:read"),
         "search_shipments" => Some("shipment:read"),
         "search_goods_receipts" => Some("goods_receipt:read"),
-        "search_inventory_openings" => Some("inventory:read"),
+        "search_inventory_openings"
+        | "search_inventory_counts"
+        | "get_inventory_count"
+        | "search_inventory_count_options" => Some("inventory:read"),
         "search_customer_receipts" => Some("customer_receipt:read"),
         "search_supplier_payments" => Some("supplier_payment:read"),
         "search_receivables" => Some("receivable:read"),
@@ -1362,6 +1370,9 @@ async fn core_read_result(
     }
     if let Some((kind, mode)) = return_documents::family(tool) {
         return return_documents::read(core, kind, mode, input, scope, context).await;
+    }
+    if inventory_counts::handles(tool) {
+        return inventory_counts::read(core, tool, input, scope, context).await;
     }
     let stock_kind = match tool {
         "search_shipments" => Some("shipment"),

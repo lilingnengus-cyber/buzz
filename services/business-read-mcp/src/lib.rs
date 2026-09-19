@@ -17,10 +17,11 @@ use business_query_contracts::{
     GetBusinessDocumentInput, GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput,
     ManagementProfitReportInput, ManagementReportSnapshotInput, OperatingDashboardInput,
     OrderProfitInput, PayablesInput, ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput,
-    ResourceRef, ScopeSummary, SearchFinancialDocumentsInput, SearchMasterDataInput,
-    SearchPurchaseOrdersInput, SearchSalesOrdersInput, SearchStockDocumentsInput,
-    SettlementAllocationsInput, ValidateInput, INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ,
-    PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ, SALES_ORDER_READ,
+    ResourceRef, ScopeSummary, SearchFinancialDocumentsInput, SearchInventoryCountOptionsInput,
+    SearchInventoryCountsInput, SearchMasterDataInput, SearchPurchaseOrdersInput,
+    SearchSalesOrdersInput, SearchStockDocumentsInput, SettlementAllocationsInput, ValidateInput,
+    INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ,
+    RECEIVABLE_READ, SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -1417,6 +1418,42 @@ impl BusinessReadMcp {
                 "supplier_payment:read",
                 input,
             )
+            .await)
+    }
+    #[tool(
+        name = "search_inventory_counts",
+        description = "Search authorized inventory counts by exact ID, number, warehouse, SKU and status. Returns all line IDs, quantities, costs and current version. Follow nextOffset even for empty filtered pages; disambiguate multiple matches."
+    )]
+    async fn search_inventory_counts(
+        &self,
+        Parameters(input): Parameters<SearchInventoryCountsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_inventory_counts", INVENTORY_READ, input)
+            .await)
+    }
+    #[tool(
+        name = "get_inventory_count",
+        description = "Read one exact inventory count including line IDs, recorded actuals, current version and frozen state. This is a read, not approval or execution."
+    )]
+    async fn get_inventory_count(
+        &self,
+        Parameters(input): Parameters<GetBusinessDocumentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("get_inventory_count", INVENTORY_READ, input)
+            .await)
+    }
+    #[tool(
+        name = "search_inventory_count_options",
+        description = "Find authorized inventory balances eligible for a new count by warehouse, SKU or literal SKU name/code. Excludes currently frozen stock. Results may change before preparation; follow nextOffset and ask about ambiguous warehouse or SKU matches."
+    )]
+    async fn search_inventory_count_options(
+        &self,
+        Parameters(input): Parameters<SearchInventoryCountOptionsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_inventory_count_options", INVENTORY_READ, input)
             .await)
     }
     #[tool(
@@ -3615,8 +3652,11 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 109);
+        assert_eq!(registered.len(), 112);
         for name in [
+            "search_inventory_counts",
+            "get_inventory_count",
+            "search_inventory_count_options",
             "update_sales_return_draft",
             "update_purchase_return_draft",
             "search_sales_returns",

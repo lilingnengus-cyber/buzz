@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod inventory_counts;
+pub use inventory_counts::{SearchInventoryCountOptionsInput, SearchInventoryCountsInput};
 mod document_id;
 mod financial_documents;
 pub use document_id::GetBusinessDocumentInput;
@@ -543,6 +545,7 @@ pub fn valid_biz_uri(value: &str) -> bool {
                 | "sales-order"
                 | "shipment"
                 | "inventory-opening"
+                | "inventory-count"
                 | "goods-receipt"
                 | "sales-return"
                 | "purchase-return"

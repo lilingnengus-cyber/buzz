@@ -192,6 +192,18 @@ fn default_limit() -> i64 {
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .merge(super::agent_returns::routes())
+        .route(
+            "/v1/agent-inventory-counts",
+            get(super::agent_inventory_counts::search),
+        )
+        .route(
+            "/v1/agent-inventory-counts/{id}",
+            get(super::agent_inventory_counts::detail),
+        )
+        .route(
+            "/v1/agent-inventory-count-options",
+            get(super::agent_inventory_counts::options),
+        )
         .route("/v1/agent-drafts/sales-orders", post(create_order))
         .route(
             "/v1/agent-drafts/sales-orders/{id}",

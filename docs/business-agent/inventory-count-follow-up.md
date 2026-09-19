@@ -100,3 +100,13 @@ Core all-targets 严格 Clippy、格式和文件大小门禁通过；日志 `/tm
 复用统一加载失败和重试组件；路由切换时清除上张单据，过期异步响应不更新新页面。6 项 Playwright 浏览器功能测试通过，包括独立/嵌入路径、全部状态、空值与零值、无权限切换清除旧记录；测试使用模拟会话与 API，不代表生产权限链路或已安装桌面验收。桌面链接解析 24 项测试通过。前端生产构建、TypeScript、金额/数量格式巡检和文件大小门禁通过。日志 `/tmp/count-detail-{build,check,browser,resolver,size}.log`。
 
 本批未部署，不新增真实聊天或业务数据，Core 审批响应尚未输出该链接。后续仍需完成受范围约束的查询/选择、Gateway/Read API/MCP/Host 的完整盘点工具接入、普通委托数量上限处理及配套发布。
+
+## 2026-09-20 盘点查询与库存选择工具
+
+新增 `search_inventory_counts`、`get_inventory_count`、`search_inventory_count_options`，Core → Read API → MCP 读取链路已接入；源代码注册工具总数为 112。沿用 `inventory:read`，不增加普通委托范围数量。查询契约封闭，UUID/状态/文本/分页严格校验，每页最多 100 条、offset 最多 100000。盘点可按 ID、编号、法人、仓库、包含 SKU、状态筛选；可盘点库存按法人、仓库、SKU 或 SKU 名称/编码筛选并排除当前冻结范围。
+
+Core SQL 在 LIMIT/OFFSET 前检查法人、仓库、当前业务单元/品牌与冻结业务单元/品牌，整单所有行均须允许。精确详情使用同一条授权查询，返回录入所需行 ID、账面数量、实盘数量、成本、差异、版本及冻结状态。Read API 再与当前代理委托范围相交，检查服务返回 trace 与精确 ID；额外委托过滤产生空页时保留源 nextOffset/hasMore，避免误报只有一个候选或遗漏后页。精确未授权记录统一不可访问。盘点结果返回已实现的 `biz://inventory-count/{id}`；库存选择尚未生成盘点，故不伪造盘点链接。缺 Core 时明确失败，不回退为样例结果。
+
+53 项查询契约、Read API、MCP 测试通过。独立 PostgreSQL 库 `inventory_count_queries_final` 完整 B2 闭环通过，新覆盖三张盘点分页/精确匹配/多条件过滤、参数拒绝、零库存与空实盘字段、冻结排除与取消恢复、四个范围撤销、当前及冻结品牌/业务单元分别撤权后隐藏整单。Read API 测试覆盖委托缩窄、缺少范围字段、源空页后续游标、trace 不匹配、链接目标和严格输入。四包 all-targets 严格 Clippy、格式、文件大小门禁通过。日志 `/tmp/count-query-unit.log`、`/tmp/count-query-core-final.log`、`/tmp/count-query-clippy.log`、`/tmp/count-query-size.log`。
+
+本批未部署、未发送真实聊天。创建冻结/录入/过账/取消的 Core 审批已存在，但 Gateway/Read API/MCP/Host 写入工具链与签名类型识别仍需接入；普通委托 48 项上限也仍需处理，再配套发布和真实验收。全业务流程目标继续保持未完成。
