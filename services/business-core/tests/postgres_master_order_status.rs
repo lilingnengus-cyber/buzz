@@ -45,12 +45,22 @@ async fn sales_create_rechecks_master_status_after_disable_wait() {
         .fetch_one(&pool)
         .await
         .unwrap();
+    let category: Uuid =
+        sqlx::query_scalar("SELECT category_id FROM business_products WHERE id=$1")
+            .bind(product)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     for (table, id) in [
         ("business_customers", customer),
         ("business_units", fixture.business_unit),
         ("business_warehouses", fixture.warehouse),
         ("business_skus", fixture.sku),
         ("business_products", product),
+        ("business_legal_entities", fixture.legal_entity),
+        ("business_units_of_measure", fixture.uom),
+        ("business_product_categories", category),
+        ("business_brands", fixture.brand),
     ] {
         let mut blocker = pool.begin().await.unwrap();
         let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")

@@ -1094,13 +1094,25 @@ async fn validate_order_master_data(
     business_unit: Uuid,
     lines: &[SalesOrderLineInput],
 ) -> Result<Option<i32>, DomainError> {
+    sqlx::query("SELECT id FROM business_legal_entities WHERE id=$1 AND status='active' FOR SHARE")
+        .bind(legal)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(DomainError::NotFoundOrForbidden)?;
     // Keep referenced master statuses stable through the order write; a waited-on disable
     // must be observed before inserting a new operational reference.
     let customer_row=sqlx::query("SELECT payment_terms_days FROM business_customers WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE").bind(customer).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     sqlx::query("SELECT id FROM business_units WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE")
         .bind(business_unit).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     for line in lines {
-        let row=sqlx::query("SELECT w.legal_entity_id,s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active' FOR SHARE OF w,s,p").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let row=sqlx::query("SELECT w.legal_entity_id,s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories c ON c.id=p.category_id WHERE w.id=$1 AND s.id=$2 AND w.status='active' AND u.status='active' AND c.status='active' FOR SHARE OF w,s,p,u,c").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        if let Some(brand) = row.get::<Option<Uuid>, _>("brand_id") {
+            sqlx::query("SELECT id FROM business_brands WHERE id=$1 AND status='active' FOR SHARE")
+                .bind(brand)
+                .fetch_optional(&mut **tx)
+                .await?
+                .ok_or(DomainError::NotFoundOrForbidden)?;
+        }
         if row.get::<Uuid, _>("legal_entity_id") != legal
             || row.get::<String, _>("sku_status") != "active"
             || row.get::<String, _>("product_status") != "active"

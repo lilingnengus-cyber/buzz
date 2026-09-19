@@ -201,3 +201,11 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 master_order_refs_after 中五类停用先提交场景均在真实行锁等待后返回 NotFoundOrForbidden，无订单残留；客户的订单先提交反向场景继续通过。master_order_refs_b2 的完整 B2 闭环/并发回归与 Core/新增测试严格 Clippy 通过。日志 `/tmp/master-order-refs-{before,after,b2,clippy}.log`。
 
 尚未部署；不能据此宣称所有状态引用都受保护。法人、计量单位、品牌/分类及明细其他归属、采购/库存等入口仍需核对；其余资料的反向业务阻塞与助手状态意图仍待完成。
+
+## 销售基础资料父级状态校验
+
+新增法人、基础计量单位、产品分类、产品品牌的 active 校验和共享锁，持续到销售草稿事务结束；无品牌的产品仍允许使用。原实现未校验这些父级状态，master_order_parents_before 已复现法人停用提交后仍创建草稿。
+
+新库 master_order_parents_after 中九类资料（客户、业务单元、仓库、SKU、产品、法人、计量单位、分类、品牌）的停用等待场景全部拒绝且无订单残留，客户反向交错继续通过。master_order_parents_b2 的完整 B2 回归和严格 Clippy 通过，日志 `/tmp/master-order-parents-{before,after,b2,clippy}.log`。
+
+尚未部署。销售明细覆盖字段的额外归属、采购/库存等入口和状态意图仍需继续核对，不能用本次九类创建引用测试代替所有业务操作验证。Windows 运行 35471308524 最后检查仍在原生 sidecar 编译。
