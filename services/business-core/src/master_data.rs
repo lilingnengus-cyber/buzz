@@ -1,4 +1,5 @@
 mod command;
+mod status;
 mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
@@ -421,78 +422,10 @@ impl CoreMasterDataService {
         key: &str,
         input: &ChangeCoreMasterStatus,
     ) -> Result<CoreMasterCommandResult, DomainError> {
-        if !matches!(input.status.as_str(), "active" | "disabled") {
-            return Err(DomainError::Invalid(
-                "status must be active or disabled".into(),
-            ));
-        }
-        self.snapshot(actor, "business_master_data:manage").await?;
-        let hash = request_hash(&(kind.as_str(), id, input))?;
         let mut tx = self.store.pool().begin().await?;
-        if let Some(mut replay) = begin_idempotent::<CoreMasterCommandResult>(
-            &mut tx,
-            actor,
-            "core_master_data:status",
-            key,
-            &hash,
-        )
-        .await?
-        {
-            self.existing_write_authority(&mut tx, actor, kind, replay.id)
-                .await?;
-            replay.idempotent_replay = true;
-            tx.commit().await?;
-            return Ok(replay);
-        }
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-            .bind(format!("{}:{id}", kind.as_str()))
-            .execute(&mut *tx)
+        let result = self
+            .change_status_on(&mut tx, (actor, trace_id), (kind, id), key, input, None)
             .await?;
-        let snapshot = self
-            .existing_write_authority(&mut tx, actor, kind, id)
-            .await?;
-        let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-        self.ensure_scope(
-            &snapshot,
-            kind,
-            row.get("legal_entity_id"),
-            row.get("business_unit_id"),
-            id,
-        )?;
-        if row.get::<i64, _>("version") != input.expected_version {
-            return Err(DomainError::VersionConflict);
-        }
-        if input.status == "disabled" {
-            let impacts = load_impacts_on(&mut tx, kind, id).await?;
-            if impacts.iter().any(|item| item.blocking && item.count > 0) {
-                return Err(DomainError::Invalid(
-                    "master data has blocking operational impacts".into(),
-                ));
-            }
-        }
-        update_status(&mut tx, kind, id, &input.status).await?;
-        let version = input.expected_version + 1;
-        record(
-            &mut tx,
-            trace_id,
-            actor,
-            "CORE_MASTER_DATA_STATUS_CHANGED",
-            "core_master_data_status_changed",
-            kind.as_str(),
-            id,
-            json!({"status":input.status,"version":version}),
-        )
-        .await?;
-        let result = CoreMasterCommandResult {
-            id,
-            resource_type: kind.as_str().into(),
-            code: row.get("code"),
-            status: input.status.clone(),
-            version,
-            trace_id,
-            idempotent_replay: false,
-        };
-        finish_idempotent(&mut tx, actor, "core_master_data:status", key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }

@@ -297,3 +297,11 @@ SKU 的阻塞影响新增 inventory_counts，统计关联盘点行所属任务�
 新增 inventory_count_disable 回归：用 inventory_count_tasks 表锁停住已持 SKU 共享锁的盘点创建，观测实际创建 PID；随后调用真实 ProductMasterService.change_status，确认其等待盘点事务。放行创建后盘点成功且保持 counting，停用因 blocking operational impacts 拒绝，SKU 保持 active。取消该盘点后真实停用与重新启用均成功。
 
 count_sku_reverse 的完整 B2 回归及严格 Clippy、格式和 diff 检查通过，日志 /tmp/count-sku-reverse.log、/tmp/count-sku-reverse-clippy.log，独立数据库端口 55439。本批为并发验证，没有新增生产逻辑或部署；它只证明盘点先持锁提交这一方向，不能推导所有盘点/资料状态组合均受保护。完整业务目标与助手启停意图接入继续保持未完成。
+
+## Core 基础资料启停的事务内快照执行
+
+Core change_status 抽出 change_status_on，可在调用方事务中执行；旧接口仍自行提交并保留原幂等摘要。save_guarded 的 ChangeStatus 现会在同一事务内重新生成预览，比较资料/父级/权限/影响快照，再执行现有状态、版本、业务影响和审计逻辑；带快照的摘要使用 guarded-master-status-v1，避免不同快照复用请求键。幂等重放仍重新检查当前写权限。此方法是领域一致性保护，不是审批授权。
+
+core_guarded_status_final 的完整 B3 回归验证：预览后采购草稿先提交导致旧快照 StalePreview；篡改快照拒绝；无阻塞时受保护停用成功；相同请求幂等返回同版本；同键不同快照冲突；测试后真实启用恢复。原仓库/供应商/SKU 反向并发与采购收货闭环继续通过。严格 Clippy、格式及 diff 检查通过，日志 /tmp/core-guarded-status-final.log、/tmp/core-guarded-status-clippy-final.log，隔离数据库端口 55439。
+
+本批未部署，也未开放聊天端 status 工具。Product 对应事务方法、持久化启停意图、审批事务集成、委托能力、Gateway/MCP/Host 和真实验收仍待完成；其他业务域保持完整目标范围。

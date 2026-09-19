@@ -3,6 +3,24 @@ use business_core::master_data::{ChangeCoreMasterStatus, CoreMasterDataService, 
 
 pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
     sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT r.role_id,p.key FROM business_user_roles r CROSS JOIN (VALUES ('business_master_data:manage'),('business_master_data:read')) p(key) WHERE r.enterprise_user_id=$1 ON CONFLICT DO NOTHING").bind(f.actor).execute(pool).await.unwrap();
+    let original_version: i64 =
+        sqlx::query_scalar("SELECT version FROM business_warehouses WHERE id=$1")
+            .bind(f.warehouse)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let original_command = business_core::master_data::CoreMasterCommand::ChangeStatus {
+        resource_type: "warehouse".into(),
+        document_id: f.warehouse,
+        command: ChangeCoreMasterStatus {
+            status: "disabled".into(),
+            expected_version: original_version,
+        },
+    };
+    let original_preview = CoreMasterDataService::new(store.clone())
+        .command_preview(f.actor, &original_command)
+        .await
+        .unwrap();
     let mut gate = pool.begin().await.unwrap();
     sqlx::query("LOCK TABLE purchase_orders IN SHARE MODE")
         .execute(&mut *gate)
@@ -65,6 +83,19 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
         .await
         .unwrap();
     assert!(!impact.can_disable);
+    assert!(matches!(
+        master
+            .save_guarded(
+                f.actor,
+                Uuid::new_v4(),
+                "status-stale-new-order",
+                &original_command,
+                &original_preview
+            )
+            .await,
+        Err(DomainError::StalePreview)
+    ));
+
     assert!(impact
         .impacts
         .iter()
@@ -122,6 +153,78 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
         .await
         .unwrap();
     assert_eq!(enabled.status, "active");
+    let command = business_core::master_data::CoreMasterCommand::ChangeStatus {
+        resource_type: "warehouse".into(),
+        document_id: f.warehouse,
+        command: ChangeCoreMasterStatus {
+            status: "disabled".into(),
+            expected_version: enabled.version,
+        },
+    };
+    let preview = master.command_preview(f.actor, &command).await.unwrap();
+    let mut tampered = preview.clone();
+    tampered["canExecute"] = false.into();
+    assert!(matches!(
+        master
+            .save_guarded(
+                f.actor,
+                Uuid::new_v4(),
+                "status-tampered",
+                &command,
+                &tampered
+            )
+            .await,
+        Err(DomainError::StalePreview)
+    ));
+    let disabled = master
+        .save_guarded(
+            f.actor,
+            Uuid::new_v4(),
+            "status-guarded",
+            &command,
+            &preview,
+        )
+        .await
+        .unwrap();
+    assert_eq!(disabled.status, "disabled");
+    let replay = master
+        .save_guarded(
+            f.actor,
+            Uuid::new_v4(),
+            "status-guarded",
+            &command,
+            &preview,
+        )
+        .await
+        .unwrap();
+    assert!(replay.idempotent_replay);
+    assert_eq!(replay.version, disabled.version);
+    assert!(matches!(
+        master
+            .save_guarded(
+                f.actor,
+                Uuid::new_v4(),
+                "status-guarded",
+                &command,
+                &tampered
+            )
+            .await,
+        Err(DomainError::IdempotencyConflict)
+    ));
+    master
+        .change_status(
+            f.actor,
+            Uuid::new_v4(),
+            CoreMasterType::Warehouse,
+            f.warehouse,
+            "status-guarded-restore",
+            &ChangeCoreMasterStatus {
+                status: "active".into(),
+                expected_version: disabled.version,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 pub(super) async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
