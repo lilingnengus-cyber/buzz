@@ -124,7 +124,7 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
     assert_eq!(enabled.status, "active");
 }
 
-async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
+pub(super) async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
             let pid: Option<i32> = sqlx::query_scalar(

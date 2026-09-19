@@ -1,5 +1,7 @@
 #[path = "postgres_b3/master_status.rs"]
 mod master_status;
+#[path = "postgres_b3/party_sku_disable.rs"]
+mod party_sku_disable;
 #[path = "postgres_b3/receiving_master_status.rs"]
 mod receiving_master_status;
 #[path = "postgres_b3/warehouse_disable.rs"]
@@ -61,6 +63,7 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
     let fixture = seed(&pool).await;
     master_status::check(&pool, &store, &fixture).await;
     warehouse_disable::check(&pool, &store, &fixture).await;
+    party_sku_disable::check(&pool, &store, &fixture).await;
     let date = NaiveDate::from_ymd_opt(2026, 8, 21).unwrap();
     let purchasing = PurchasingService::new(store.clone(), "PO".into(), 30);
     let receiving =

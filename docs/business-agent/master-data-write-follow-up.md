@@ -277,3 +277,9 @@ shipment_master_status 的真实 PostgreSQL 回归覆盖九类资料（客户、
 仓库影响查询改为统计 draft/confirmed 且存在未完成数量的采购行，与采购创建引用保护配合。warehouse_disable_final 中草稿成功提交后停用因 blocking operational impacts 拒绝，仓库保持 active；影响预览显示一条阻塞采购行。取消草稿后预览允许停用，真实停用成功，再启用恢复测试环境。完整 B3 采购/收货/成本/应付及并发回归、严格 Clippy、格式与 diff 检查通过。日志 /tmp/warehouse-disable-{before,after,final,clippy-final}.log；独立数据库端口 55439。
 
 本批未部署。该验证仅证明仓库与采购草稿的反向交错，不能代替其他资料类型或业务入口；助手启停意图及完整业务覆盖余项仍未完成。
+
+## 供应商及 SKU 停用的采购反向交错
+
+新增两类真实 Core 停用测试，复用已验证的表锁与 pg_blocking_pids 等待观测：采购先持资料共享锁并停在插入处，随后发起供应商或 SKU 停用，确认停用等待采购事务；放行草稿后停用返回 blocking operational impacts，资料保持 active。影响预览分别显示一条 open_orders/purchase_inbound 阻塞。取消草稿后真实停用和重新启用均成功，验证阻塞来自当前订单而非永远拒绝操作。
+
+party_sku_reverse 的完整 postgres_b3 闭环通过，包含既有仓库反向交错、九类创建/确认等待、收货及应付流程；严格 Clippy、格式及 diff 检查通过。日志 /tmp/party-sku-reverse.log、/tmp/party-sku-reverse-clippy.log，数据库位于独立 55439。本批仅新增验证，未修改生产业务逻辑，也未部署；助手启停与其他业务入口的完整覆盖仍需继续。
