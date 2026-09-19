@@ -25,3 +25,13 @@ CRM 任务的最新一轮已完成，线上 Core 已变为 `shiyue-business-core
 最终整合候选 `7b5b8f49d` 四服务镜像构建已启动，日志 `/tmp/business-returns-integrated-build.log`，需继续跟进现有进程，不能重复启动。兼容回退源码已复制到 `/opt/business-platform/releases/returns-rollback-7b5b8f49d`，以线上 CRM 源码为基础补入迁移 41–49，尚未编译或验证。
 
 兼容客户端源码 `/Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23` 已通过补丁应用检查后加入 109 工具所需 Host 范围和签名命令支持，原两文件备份在 `/tmp/business-return109-host-backup`。10 项 Host 测试通过，日志 `/tmp/business-return109-compat-host-tests.log`；未替换已安装应用或运行中助手配置。
+
+## 最终候选构建与隔离验证通过
+
+整合候选 `7b5b8f49d` 的四个服务镜像均已构建完成。在迁移 49 的独立演练库中启动最终 Core 成功，两类退货列表均为空，已有销售订单审批预览可读取；Trace ID `6b7fe8bd-e274-4e5d-b165-7a35925d2779`。临时容器已清理。日志 `/tmp/business-returns-final-canary-rollback.log` 的开头保留验证结果，随后为回退镜像构建日志。
+
+兼容回退四服务镜像正在同一日志下构建；当前未完成验证，不可宣称已经具备可用回退。上线前还需运行 `/tmp/business-returns-migration-compat.py` 检查回退 Gateway 的迁移校验，以及 `/tmp/business-returns-canary.py` 检查回退 Core 在迁移 49 的演练库启动和已有订单读取。
+
+Mac 完整候选应用构建成功，路径 `/Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23/desktop/src-tauri/target/release/bundle/macos/Pacioli.app`。已把新 Host `/tmp/business-host-return109` 写入候选包并重新进行 ad hoc 签名，`codesign --verify --deep --strict` 通过。兼容工程的 22 项资源链接测试通过。签名会改变嵌入二进制的文件哈希，不能直接用签名前后全文件哈希相等作为版本校验。已安装应用与助手配置尚未替换，尚无真实会话验收结果。
+
+已核对线上 Core 的 Compose 标签，最后一层为 `compose.crm-registers-20260919.yml`。候选与回退的四服务及两个迁移服务覆盖文件已准备在 `/tmp/compose.returns-{candidate,rollback}-7b5b8f49d.yml`；使用时必须追加到线上完整 Compose 栈末尾。限定授权脚本的审计 actor 已更新为 `deployment:returns-7b5b8f49d`。生产数据库仍未为此次退货版本迁移或授权。
