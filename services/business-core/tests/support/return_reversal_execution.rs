@@ -131,6 +131,7 @@ pub(super) async fn check(
             .await
             .unwrap();
     }
+    let metrics_before = period_metrics(store, f, sales).await;
     let execution_key = return_disposition_checks::execute(
         app,
         store,
@@ -152,6 +153,22 @@ pub(super) async fn check(
         .await
         .unwrap();
     assert_eq!(result.status, "reversed");
+    let metrics_after = period_metrics(store, f, sales).await;
+    assert_eq!(
+        metrics_after.0, metrics_before.0,
+        "original month count remains recorded"
+    );
+    assert_eq!(
+        metrics_after.1, metrics_before.1,
+        "original month amount remains recorded"
+    );
+    assert_eq!(
+        metrics_after.2,
+        metrics_before.2 - 1,
+        "correction month records the net count reduction"
+    );
+    assert_eq!(metrics_after.3, metrics_before.3 - Decimal::from(100));
+
     assert_eq!(result.version, version + 1);
     assert!(
         service
@@ -405,4 +422,13 @@ async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) 
             .await
             .unwrap();
     }
+}
+
+async fn period_metrics(store: &PgStore, f: &Fixture, sales: bool) -> (i64, Decimal, i64, Decimal) {
+    let (count, amount) = if sales {
+        ("sales_return_count", "sales_return_amount")
+    } else {
+        ("purchase_return_count", "purchase_return_amount")
+    };
+    sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT COALESCE(sum({count}) FILTER(WHERE management_period='2026-09-01'),0)::bigint,COALESCE(sum({amount}) FILTER(WHERE management_period='2026-09-01'),0),COALESCE(sum({count}) FILTER(WHERE management_period='2026-10-01'),0)::bigint,COALESCE(sum({amount}) FILTER(WHERE management_period='2026-10-01'),0) FROM return_operating_metrics WHERE legal_entity_id=$1 AND currency='CNY'"))).bind(f.legal_entity).fetch_one(store.pool()).await.unwrap()
 }

@@ -319,16 +319,16 @@ export function ReturnAnalyticsPanel({ side }: { side: "sales" | "purchase" }) {
   return (
     <section className="return-analytics" aria-label="本月退货经营指标">
       <div>
-        <span>本月退货率</span>
+        <span>本月净退货率</span>
         <strong>
           {base === 0 ? "—" : `${((amount / base) * 100).toFixed(2)}%`}
         </strong>
         <small>{sales ? "按销售出库金额" : "按采购收货金额"}</small>
       </div>
       <div>
-        <span>本月退货金额</span>
+        <span>本月退货净额</span>
         <strong>{formatMoney("CNY", amount)}</strong>
-        <small>{items.length} 个经营主体</small>
+        <small>{items.length} 个经营主体；冲销计入冲销当月，净额可为负</small>
       </div>
       {sales && (
         <>
