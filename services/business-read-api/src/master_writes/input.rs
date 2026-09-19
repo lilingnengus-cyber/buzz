@@ -144,3 +144,25 @@ pub(super) fn canonical(family: &str, value: Value, id: Option<Uuid>) -> Option<
         serde_json::to_value(command).ok()
     }
 }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct StatusChange {
+    document_id: Uuid,
+    resource_type: String,
+    expected_version: i64,
+    status: String,
+}
+impl StatusChange {
+    pub(super) fn command(self, family: &str) -> Option<Value> {
+        if family_of_resource(&self.resource_type) != Some(family)
+            || self.expected_version < 1
+            || !matches!(self.status.as_str(), "active" | "disabled")
+        {
+            return None;
+        }
+        Some(
+            json!({"operation":"change_status","resourceType":self.resource_type,"documentId":self.document_id,"command":{"expectedVersion":self.expected_version,"status":self.status}}),
+        )
+    }
+}

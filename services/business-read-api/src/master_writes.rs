@@ -7,6 +7,12 @@ use input::{Approval, Patch};
 
 pub(super) fn family(tool: &str) -> Option<(&'static str, &'static str)> {
     match tool {
+        "prepare_core_master_status" | "approve_core_master_status" => {
+            Some(("core_master_status_intent", "core"))
+        }
+        "prepare_product_master_status" | "approve_product_master_status" => {
+            Some(("product_master_status_intent", "product"))
+        }
         "prepare_core_master_creation" | "approve_core_master_creation" => {
             Some(("core_master_creation_intent", "core"))
         }
@@ -32,6 +38,11 @@ pub(super) fn valid(tool: &str, value: &Value) -> bool {
                 && v.preview_hash.len() == 64
                 && v.preview_hash.bytes().all(|c| c.is_ascii_hexdigit())
         })
+    } else if tool.ends_with("_status") {
+        serde_json::from_value::<input::StatusChange>(value.clone())
+            .ok()
+            .and_then(|v| v.command(family))
+            .is_some()
     } else if tool.ends_with("_creation") {
         input::canonical(family, value.clone(), None).is_some()
     } else {
@@ -57,6 +68,10 @@ pub(super) async fn forward(
     if tool.starts_with("prepare_") {
         let command = if tool.ends_with("_creation") {
             input::canonical(family, value, None)
+        } else if tool.ends_with("_status") {
+            serde_json::from_value::<input::StatusChange>(value)
+                .ok()
+                .and_then(|v| v.command(family))
         } else {
             let Ok(patch) = serde_json::from_value::<Patch>(value) else {
                 return StatusCode::BAD_REQUEST.into_response();
@@ -196,6 +211,8 @@ pub(super) async fn forward(
         let creation = kind.ends_with("creation_intent");
         let expected_status = if creation {
             json!("active")
+        } else if kind.ends_with("status_intent") {
+            preview["document"]["command"]["command"]["status"].clone()
         } else {
             preview["document"]["current"]["status"].clone()
         };
@@ -212,8 +229,7 @@ pub(super) async fn forward(
             || document["status"] != expected_status
             || ((!creation || document["resourceType"] != "uom_conversion")
                 && document["code"] != *expected_code)
-            || (kind.ends_with("update_intent")
-                && json!(target) != preview["document"]["documentId"])
+            || (!creation && json!(target) != preview["document"]["documentId"])
         {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }

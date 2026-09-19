@@ -13,105 +13,8 @@ use sqlx::Row;
 use uuid::Uuid;
 
 const MAX_AGENT_SCOPES: usize = 128;
-const AGENT_SCOPES: [&str; 97] = [
-    "core_master_creation_intent:create",
-    "core_master_creation_intent:approve",
-    "core_master_update_intent:create",
-    "core_master_update_intent:approve",
-    "product_master_creation_intent:create",
-    "product_master_creation_intent:approve",
-    "product_master_update_intent:create",
-    "product_master_update_intent:approve",
-    "crm_creation_intent:create",
-    "crm_creation_intent:approve",
-    "crm_update_intent:create",
-    "crm_update_intent:approve",
-    "crm_followup_intent:create",
-    "crm_followup_intent:approve",
-    "crm:read",
-    "inventory_count_creation_intent:create",
-    "inventory_count_creation_intent:approve",
-    "inventory_count_submission_intent:create",
-    "inventory_count_submission_intent:approve",
-    "inventory_count_posting_intent:create",
-    "inventory_count_posting_intent:approve",
-    "inventory_count_cancellation_intent:create",
-    "inventory_count_cancellation_intent:approve",
-    "sales_return_reversal_intent:create",
-    "sales_return_cancellation_intent:create",
-    "sales_return_reversal_intent:approve",
-    "sales_return_cancellation_intent:approve",
-    "purchase_return_reversal_intent:create",
-    "purchase_return_cancellation_intent:create",
-    "purchase_return_reversal_intent:approve",
-    "purchase_return_cancellation_intent:approve",
-    "sales_return:update_draft",
-    "purchase_return:update_draft",
-    "sales_return:create",
-    "purchase_return:create",
-    "sales_return_inspection_intent:create",
-    "purchase_return_dispatch_intent:create",
-    "purchase_return_acknowledgment_intent:create",
-    "sales_return:approve",
-    "purchase_return:approve",
-    "sales_return_inspection_intent:approve",
-    "purchase_return_dispatch_intent:approve",
-    "purchase_return_acknowledgment_intent:approve",
-    "sales_return:read",
-    "purchase_return:read",
-    "shipment_reversal_intent:create",
-    "shipment_reversal_intent:approve",
-    "goods_receipt_reversal_intent:create",
-    "goods_receipt_reversal_intent:approve",
-    "inventory_opening_reversal_intent:create",
-    "inventory_opening_reversal_intent:approve",
-    "sales_order_cancellation_intent:create",
-    "sales_order_cancellation_intent:approve",
-    "purchase_order_cancellation_intent:create",
-    "purchase_order_cancellation_intent:approve",
-    "customer_receipt_reversal_intent:create",
-    "customer_receipt_reversal_intent:approve",
-    "supplier_payment_reversal_intent:create",
-    "supplier_payment_reversal_intent:approve",
-    "receivable_allocation_reversal_intent:create",
-    "receivable_allocation_reversal_intent:approve",
-    "payable_allocation_reversal_intent:create",
-    "payable_allocation_reversal_intent:approve",
-    "business_master_data:read",
-    "business_product_master:read",
-    "sales_order:read",
-    "purchase_order:read",
-    "inventory:read",
-    "receivable:read",
-    "payable:read",
-    "order_profit:read",
-    "business_anomaly:read",
-    "business_action:read",
-    "sales_order:update_draft",
-    "purchase_order:update_draft",
-    "inventory_opening:create",
-    "receivable_allocation_intent:create",
-    "receivable_allocation_intent:approve",
-    "payable_allocation_intent:create",
-    "payable_allocation_intent:approve",
-    "sales_order:create",
-    "shipment:create",
-    "purchase_order:create",
-    "goods_receipt:create",
-    "customer_receipt:create",
-    "supplier_payment:create",
-    "shipment:read",
-    "goods_receipt:read",
-    "shipment:approve",
-    "goods_receipt:approve",
-    "inventory_opening:approve",
-    "customer_receipt:read",
-    "customer_receipt:approve",
-    "supplier_payment:read",
-    "supplier_payment:approve",
-    "sales_order:approve",
-    "purchase_order:approve",
-];
+mod scopes;
+use scopes::AGENT_SCOPES;
 
 fn scope_is_allowed(scope: &str, draft_write_enabled: bool, chat_approval_enabled: bool) -> bool {
     AGENT_SCOPES.contains(&scope)
@@ -138,6 +41,14 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "core-master-status-intent" => (
+            "core_master_status_intent",
+            "core_master_status_intent:approve",
+        ),
+        "product-master-status-intent" => (
+            "product_master_status_intent",
+            "product_master_status_intent:approve",
+        ),
         "core-master-creation-intent" => (
             "core_master_creation_intent",
             "core_master_creation_intent:approve",
@@ -998,100 +909,4 @@ fn known_reason_code(value: &str) -> Option<&'static str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use nostr::{EventBuilder, Keys, Kind};
-
-    #[test]
-    fn settlement_commands_bind_exact_record_family() {
-        for kind in [
-            "core-master-creation-intent",
-            "core-master-update-intent",
-            "product-master-creation-intent",
-            "product-master-update-intent",
-            "crm-creation-intent",
-            "crm-update-intent",
-            "crm-followup-intent",
-            "inventory-count-creation-intent",
-            "inventory-count-submission-intent",
-            "inventory-count-posting-intent",
-            "inventory-count-cancellation-intent",
-            "sales-return-reversal-intent",
-            "purchase-return-reversal-intent",
-            "sales-return-cancellation-intent",
-            "purchase-return-cancellation-intent",
-            "sales-return",
-            "purchase-return",
-            "sales-return-inspection-intent",
-            "purchase-return-dispatch-intent",
-            "purchase-return-acknowledgment-intent",
-            "shipment-reversal-intent",
-            "goods-receipt-reversal-intent",
-            "inventory-opening-reversal-intent",
-            "sales-order-cancellation-intent",
-            "purchase-order-cancellation-intent",
-            "customer-receipt-reversal-intent",
-            "supplier-payment-reversal-intent",
-            "receivable-allocation-reversal-intent",
-            "payable-allocation-reversal-intent",
-            "customer-receipt",
-            "supplier-payment",
-            "receivable-allocation-intent",
-            "payable-allocation-intent",
-        ] {
-            let command = format!("确认 {kind} {} v1 {}", Uuid::new_v4(), "a".repeat(64));
-            let parsed =
-                parse_chat_approval_command(&command).expect("valid signed command syntax");
-            assert_eq!(parsed.document_type, kind.replace('-', "_"));
-            assert!(!scope_is_allowed(parsed.required_scope, true, false));
-            assert!(scope_is_allowed(parsed.required_scope, true, true));
-        }
-    }
-
-    #[test]
-    fn source_event_must_carry_matching_channel() {
-        let keys = Keys::generate();
-        let event = EventBuilder::new(Kind::TextNote, "query")
-            .tags([nostr::Tag::custom(
-                nostr::TagKind::Custom("h".into()),
-                ["channel-a"],
-            )])
-            .sign_with_keys(&keys)
-            .expect("sign");
-        assert!(source_event_has_channel(&event, "channel-a"));
-        assert!(!source_event_has_channel(&event, "channel-b"));
-    }
-
-    #[test]
-    fn only_fixed_agent_scopes_are_accepted() {
-        assert!(AGENT_SCOPES.contains(&"inventory:read"));
-        assert!(AGENT_SCOPES.contains(&"sales_order:create"));
-        assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
-        assert!(!AGENT_SCOPES.contains(&"payment:execute"));
-        assert!(scope_is_allowed("sales_order:read", false, false));
-        assert!(!scope_is_allowed("sales_order:create", false, false));
-        assert!(scope_is_allowed("sales_order:create", true, false));
-        assert!(!scope_is_allowed("sales_order:approve", true, false));
-        assert!(scope_is_allowed("sales_order:approve", false, true));
-    }
-
-    #[test]
-    fn approval_command_is_exact_and_binds_every_authority_field() {
-        let id = Uuid::new_v4();
-        let hash = "b".repeat(64);
-        let command = parse_chat_approval_command(&format!("/approve sales-order {id} v7 {hash}"))
-            .expect("valid command");
-        assert_eq!(command.decision, "approve");
-        assert_eq!(command.document_type, "sales_order");
-        assert_eq!(command.document_id, id);
-        assert_eq!(command.expected_version, 7);
-        assert_eq!(command.preview_hash, hash);
-        assert_eq!(command.required_scope, "sales_order:approve");
-        assert!(parse_chat_approval_command("同意").is_none());
-        assert!(parse_chat_approval_command(&format!(
-            "/approve sales-order {id} v7 {} extra",
-            "b".repeat(64)
-        ))
-        .is_none());
-    }
-}
+mod tests;

@@ -321,3 +321,11 @@ product_guarded_status 完整 B3 回归验证 SKU 预览后新增采购草稿导
 master_status_intents_atomic 通过真实 Core HTTP 路由验证客户和 SKU 各自禁用/启用，确认只能使用已保存指令，夹带 command 返回 422，重复确认被拒绝，数据库状态正确。有启用商品的品牌停用失败，品牌保持 active，审批请求和投票计数均不增加。原创建/更新、策略、撤权、跨人审批、锁等待及单连接事务回归继续通过。首次测试因测试客户端将 Axum 文本错误体强制解析 JSON 而失败；客户端现保留文本错误体，最终新库全部通过。严格 Clippy、格式与 diff 检查通过，日志 /tmp/master-status-intents-{final,atomic,clippy-final}.log，隔离 PostgreSQL 55439。
 
 本批未部署。Gateway/Read API 的签名委托、MCP 与 Host 启停指令仍未接入，不能把 Core HTTP 通过等同真实聊天可用；完整业务域覆盖及 Windows 实机验收继续未完成。
+
+## Gateway 与 Read API 启停委托接入
+
+Gateway 增加四项启停 prepare/approve 固定能力，并解析绑定类型、对象、版本、摘要的 core/product-master-status-intent 签名确认命令。Read API 增加四个固定工具映射；严格状态输入只接受对应资料族、UUID、正版本及 active/disabled，拒绝多余字段。状态预览使用独立 change_status envelope，继续对当前对象及父级进行委托范围交集检查；执行结果必须匹配原目标、版本递增、目标状态和 trace，而不是沿用修改操作的旧状态。
+
+真实隔离 Core + PostgreSQL status_adapter_real 验证客户和 SKU 各自停用/启用：越权 prepare 返回 403 且意图数不增加；越权 approve 返回 403；合法委托返回准确对象、状态和新版本。Read API 47 项测试通过（本次配置了真实适配器数据库）；Gateway 四项定向测试覆盖新增确认命令及普通会话不能取得 approve 权限。两服务严格 Clippy、格式与 diff 检查通过。日志 /tmp/status-gateway-tests.log、/tmp/status-adapter-real.log、/tmp/status-adapter-clippy-final.log。
+
+Gateway 固定能力清单和测试拆到 agent/scopes.rs、agent/tests.rs，使 agent.rs 保持 912 行。初次 Read API 单元回归因旧工具总数断言仍为 80 失败，更新为实际 84 后通过。本批未部署，MCP、Host 与实际聊天尚未接入/验收；不能据此宣称完整启停链路上线。

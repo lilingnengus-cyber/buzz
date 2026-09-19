@@ -370,5 +370,76 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
     );
     browser_test::check(&core, &pool, actor, &browser_cookie, &browser_entries).await;
     lookup_test::check(&core, &pool, actor, brand).await;
+
+    for resource in ["customer", "sku"] {
+        let (_, id, dimensions) = entries
+            .iter()
+            .find(|(kind, _, _)| *kind == resource)
+            .unwrap();
+        let family = input::family_of_resource(resource).unwrap();
+        let table = if resource == "customer" {
+            "business_customers"
+        } else {
+            "business_skus"
+        };
+        for status in ["disabled", "active"] {
+            let version: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                "SELECT version FROM {table} WHERE id=$1"
+            )))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            let tool = format!("prepare_{family}_master_status");
+            let c = context(actor, &tool);
+            let input = json!({"resourceType":resource,"documentId":id,"expectedVersion":version,"status":status});
+            let before = intents(&pool).await;
+            let denied = grant(
+                &c,
+                &[(
+                    if resource == "customer" {
+                        "customer"
+                    } else {
+                        "brand"
+                    },
+                    Uuid::new_v4(),
+                )],
+            );
+            assert_eq!(
+                forward(&core, &tool, input.clone(), &c, &denied)
+                    .await
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+            assert_eq!(intents(&pool).await, before);
+            let prepared =
+                value(forward(&core, &tool, input, &c, &grant(&c, dimensions)).await).await;
+            let tool = format!("approve_{family}_master_status");
+            let c = context(actor, &tool);
+            let approval = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
+            let denied = grant(
+                &c,
+                &[(
+                    if resource == "customer" {
+                        "customer"
+                    } else {
+                        "brand"
+                    },
+                    Uuid::new_v4(),
+                )],
+            );
+            assert_eq!(
+                forward(&core, &tool, approval.clone(), &c, &denied)
+                    .await
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+            let result =
+                value(forward(&core, &tool, approval, &c, &grant(&c, dimensions)).await).await;
+            assert_eq!(result["createdDocument"]["id"], id.to_string());
+            assert_eq!(result["createdDocument"]["status"], status);
+            assert_eq!(result["createdDocument"]["version"], version + 1);
+        }
+    }
     server.abort();
 }

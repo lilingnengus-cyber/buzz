@@ -146,3 +146,28 @@ fn duplicate_scope_aliases_cannot_union_different_write_ranges() {
     let valid = grant(&c, &[("legalEntityIds", Uuid::new_v4())]);
     assert!(authorization_scope(&valid, &c.required_scope).is_some());
 }
+
+#[test]
+fn status_commands_bind_family_version_and_exact_state() {
+    let command = json!({"resourceType":"customer","documentId":Uuid::new_v4(),"expectedVersion":2,"status":"disabled"});
+    assert!(valid("prepare_core_master_status", &command));
+    assert!(!valid("prepare_product_master_status", &command));
+    for (field, value) in [
+        ("status", json!("deleted")),
+        ("expectedVersion", json!(0)),
+        ("changes", json!({"name":"extra"})),
+        ("documentId", json!("not-a-uuid")),
+    ] {
+        let mut bad = command.clone();
+        bad[field] = value;
+        assert!(!valid("prepare_core_master_status", &bad));
+    }
+    let parsed: input::StatusChange = serde_json::from_value(command.clone()).unwrap();
+    let canonical = parsed.command("core").unwrap();
+    assert_eq!(canonical["operation"], "change_status");
+    assert_eq!(canonical["documentId"], command["documentId"]);
+    assert_eq!(
+        canonical["command"],
+        json!({"status":"disabled","expectedVersion":2})
+    );
+}

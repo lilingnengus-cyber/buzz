@@ -105,9 +105,13 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 80] = [
+const WRITE_TOOLS: [&str; 84] = [
     "prepare_core_master_creation",
     "approve_core_master_creation",
+    "prepare_core_master_status",
+    "approve_core_master_status",
+    "prepare_product_master_status",
+    "approve_product_master_status",
     "prepare_core_master_update",
     "approve_core_master_update",
     "prepare_product_master_creation",
@@ -850,6 +854,10 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "get_business_product_master_record" => Some("business_product_master:read"),
         "prepare_core_master_creation" => Some("core_master_creation_intent:create"),
         "approve_core_master_creation" => Some("core_master_creation_intent:approve"),
+        "prepare_core_master_status" => Some("core_master_status_intent:create"),
+        "approve_core_master_status" => Some("core_master_status_intent:approve"),
+        "prepare_product_master_status" => Some("product_master_status_intent:create"),
+        "approve_product_master_status" => Some("product_master_status_intent:approve"),
         "prepare_core_master_update" => Some("core_master_update_intent:create"),
         "approve_core_master_update" => Some("core_master_update_intent:approve"),
         "prepare_product_master_creation" => Some("product_master_creation_intent:create"),

@@ -47,7 +47,13 @@ pub(super) fn record(record: &Value, scope: &AuthorizationScope) -> bool {
 pub(super) fn preview(snapshot: &Value, scope: &AuthorizationScope, kind: &str) -> bool {
     let command = &snapshot["command"];
     let resource = &snapshot["resourceType"];
-    if snapshot["documentType"] != kind || command["command"]["resourceType"] != *resource {
+    let status = kind.ends_with("status_intent");
+    let command_resource = if status {
+        &command["resourceType"]
+    } else {
+        &command["command"]["resourceType"]
+    };
+    if snapshot["documentType"] != kind || *command_resource != *resource {
         return false;
     }
     let creation = kind.ends_with("creation_intent");
@@ -63,7 +69,7 @@ pub(super) fn preview(snapshot: &Value, scope: &AuthorizationScope, kind: &str) 
             scope,
         )
     } else {
-        command["operation"] == "update"
+        command["operation"] == if status { "change_status" } else { "update" }
             && snapshot["current"]["resourceType"] == *resource
             && snapshot["current"]["id"] == snapshot["documentId"]
             && command["documentId"] == snapshot["documentId"]
