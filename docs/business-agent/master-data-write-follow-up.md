@@ -177,3 +177,11 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 代码核对发现销售草稿的 `b2/sales.rs::validate_order_master_data` 在同一事务读取客户、业务单元、仓库、SKU 和产品状态，却未在这些读取上持有共享行锁。客户/业务单元等停用入口会锁资料底表并统计未完成订单，但普通 FK 的 key-share 保护不足以阻止非键状态更新。因此需要验证“草稿已读 active、停用检查尚无新订单、随后两方提交”的交错；当前这是由代码推导的竞争风险，尚未通过并发测试证明。
 
 下一步使用真实 PostgreSQL 等待观测复现，先验证停用先提交时新草稿被拒绝、草稿先持锁提交时停用因未完成订单被拒绝，再将协议扩展到采购、库存和其他引用入口。不能仅添加助手 status 工具或仅重复静态影响计数，就宣称启停全流程安全。
+
+## 客户停用与销售草稿竞争：复现与首项修复
+
+新增 `postgres_master_order_status` 真实数据库回归：另一事务先锁住客户并设置 disabled，销售创建请求开始后，通过 pg_blocking_pids 确认真正等待；提交停用后检查创建结果。未修复版本在隔离库 master_order_status_before 中错误创建成功，回归按预期失败。销售客户校验增加 FOR SHARE 后，master_order_status_after/control 中请求在等待后返回 NotFoundOrForbidden，销售订单数为 0；恢复 active 后正常创建成功。该共享校验路径也用于草稿更新，但本次并发测试直接覆盖创建。
+
+完整 postgres_b2 在新库 master_order_status_b2 通过；Core 库及新增测试严格 Clippy 通过，格式和差异检查通过。日志 `/tmp/master-order-status-{before,after,control,b2,clippy}.log`，数据库均在独立 55439。
+
+本批尚未部署，也不开放助手启停。反向交错（订单先持锁，停用后检查）、其他资料类型、采购/库存引用及状态意图接入仍需继续完成，不能由客户创建的单项回归推断全量启停安全。Windows 运行 35471308524 在本轮最后核对时仍执行 Build sidecars，未重复触发。

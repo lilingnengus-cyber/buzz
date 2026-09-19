@@ -1094,7 +1094,9 @@ async fn validate_order_master_data(
     business_unit: Uuid,
     lines: &[SalesOrderLineInput],
 ) -> Result<Option<i32>, DomainError> {
-    let customer_row=sqlx::query("SELECT payment_terms_days FROM business_customers WHERE id=$1 AND legal_entity_id=$2 AND status='active'").bind(customer).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    // Keep customer status stable through the order write; a waited-on disable
+    // must be observed before inserting a new operational reference.
+    let customer_row=sqlx::query("SELECT payment_terms_days FROM business_customers WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE").bind(customer).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     let unit_ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND legal_entity_id=$2 AND status='active')").bind(business_unit).bind(legal).fetch_one(&mut **tx).await?;
     if !unit_ok {
         return Err(DomainError::NotFoundOrForbidden);
