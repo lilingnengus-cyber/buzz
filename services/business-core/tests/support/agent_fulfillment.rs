@@ -14,6 +14,8 @@ mod return_draft_cancellation_checks;
 mod return_draft_edit_checks;
 #[path = "return_logistics.rs"]
 mod return_logistics_checks;
+#[path = "return_reversal_preview.rs"]
+mod return_reversal_preview_checks;
 #[path = "return_rounding.rs"]
 mod return_rounding_checks;
 #[path = "agent_settlement.rs"]

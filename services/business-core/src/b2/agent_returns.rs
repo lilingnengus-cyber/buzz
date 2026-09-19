@@ -19,6 +19,10 @@ use uuid::Uuid;
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
+            "/v1/agent-return-reversal-previews/{kind}/{id}",
+            post(reversal_preview),
+        )
+        .route(
             "/v1/agent-return-documents/{kind}",
             get(super::agent_return_search::search),
         )
@@ -180,5 +184,20 @@ async fn edit_source(
     source_value(&state, c.actor_user_id, &kind, source)
         .await
         .map(|item| Json(json!({"item":item,"traceId":c.trace_id})))
+        .map_err(|e| B2ApiError::domain(e, c.trace_id))
+}
+
+async fn reversal_preview(
+    State(state): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path((kind, id)): Path<(String, Uuid)>,
+    Json(input): Json<super::ReverseReturn>,
+) -> Result<Json<Value>, B2ApiError> {
+    let sales = sales(&kind).map_err(|e| B2ApiError::domain(e, c.trace_id))?;
+    state
+        .returns
+        .reversal_preview(c.actor_user_id, sales, id, &input)
+        .await
+        .map(|document| Json(json!({"document":document,"traceId":c.trace_id})))
         .map_err(|e| B2ApiError::domain(e, c.trace_id))
 }

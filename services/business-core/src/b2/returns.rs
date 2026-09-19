@@ -2,6 +2,7 @@ mod cancellation;
 mod confirmation;
 pub use cancellation::CancelReturnDraft;
 mod draft;
+mod reversal;
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,
@@ -12,6 +13,7 @@ use super::{
 use crate::store::PgStore;
 use chrono::{NaiveDate, Utc};
 pub use draft::ReplaceReturnDraft;
+pub use reversal::ReverseReturn;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

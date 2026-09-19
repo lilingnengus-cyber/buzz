@@ -29,7 +29,7 @@ pub use return_disposition::{
 };
 pub use returns::{
     CancelReturnDraft, CreateReturn, ReplaceReturnDraft, ReturnOptions, ReturnService,
-    ReturnSummary,
+    ReturnSummary, ReverseReturn,
 };
 pub use sales::SalesService;
 pub use settlement::SettlementService;

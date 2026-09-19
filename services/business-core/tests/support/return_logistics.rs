@@ -217,6 +217,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         .unwrap();
     assert_eq!(result.status, "supplier_acknowledged");
     assert_eq!(result.version, 4);
+    return_reversal_preview_checks::check(app, store, f, false, returned.id, 4).await;
     assert!(
         disposition
             .acknowledge_purchase_return(
@@ -371,4 +372,22 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
             .await
             .unwrap();
     assert_eq!(open, Decimal::from(100));
+    let (status, blocked) = call(
+        app,
+        f.actor,
+        "POST",
+        &format!(
+            "/v1/agent-return-reversal-previews/sales_return/{}",
+            returned.id
+        ),
+        json!({"expectedVersion":3,"reversalDate":"2026-09-21","reason":"核实纠错"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{blocked}");
+    assert!(
+        blocked
+            .to_string()
+            .contains("intervening inventory movements"),
+        "{blocked}"
+    );
 }

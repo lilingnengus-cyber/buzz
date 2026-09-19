@@ -107,3 +107,13 @@ Gateway 8、Read API 27、MCP 13、Host 10 项相关测试通过，严格 Clippy
 Gateway 8、Read API 28、MCP 13、Host 10 项相关测试通过；两类取消准备均验证委托范围在保存意图前检查，两个确认工具的 schema 无参数。严格 Clippy、格式和文件大小检查通过。实际 buzz-agent + 候选 MCP + 本地模型探针只暴露 105 项固定工具。日志 `/tmp/business-return-cancel-{core-verified,tools-final,host,clippy,runtime,size}.log`。
 
 候选 `/tmp/business-read-mcp-return-candidate105`；已恢复原 83 工具回退二进制，线上和已安装客户端未更新，没有发送真实聊天消息或创建生产业务记录。本节替代前节“助手尚无草稿取消链路”的状态。仍需已确认退货纠错语义与实现、配套部署、真实聊天验收以及完整覆盖清单中的其他业务域。
+
+## 已确认退货冲销预览基础（仅 Core，未部署）
+
+新增严格输入的 `POST /v1/agent-return-reversal-previews/{kind}/{id}`，支持销售/采购已确认退货。锁定退货、原履约/订单、往来余额和相关库存后，核对当前版本、权限、业务日期及原始库存流水，计算逐笔反向流水、数量/隔离量/成本变化和应收应付恢复金额。预览回滚事务，不创建审批、意图或业务记录。
+
+迁移 45 为新库存流水增加不可变入账序号：事务开始时间不能代表等待库存锁后的实际入账顺序。历史流水不回填虚构顺序；新记录必须具有正序号。预览拒绝缺少原始顺序证据、存在后续或夹在退货与报废之间的其他库存变动，以及导致预留量/隔离量/库存价值冲突的冲销。这是保守的原单逆转前提，尚未提供历史或后续业务已发生情况下的调整方案。
+
+隔离数据库 `return_reversal_preview_verified` 完整 B2 流程通过，覆盖销售待质检、采购确认及签收后的预览、重复读取不变、版本/日期/输入/品牌撤权拒绝、夹杂其他库存流水拒绝，以及显式空入账序号被数据库拒绝。预览前后库存流水、审批和意图数量、库存价值及往来余额保持相同。Core 严格 Clippy、格式和文件大小检查通过；日志 `/tmp/business-return-reversal-preview-core-verified.log`、`/tmp/business-return-reversal-preview-clippy.log` 和 `/tmp/business-return-reversal-preview-size.log`。
+
+本批没有实际冲销执行、冲销审批意图或助手工具，候选仍为 105 项，线上仍为 83 项；未部署、未发送真实消息、未写入生产业务记录。下一步需在同一事务内重算并核对签名确认的快照，原子写入反向流水、库存/往来余额、退货状态与审计，再接入完整助手确认链路。
