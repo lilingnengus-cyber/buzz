@@ -148,6 +148,17 @@ jobs:
           cargo build --release --target "$TARGET" -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p business-read-mcp -p life-workbench-mcp -p git-credential-nostr -p buzz-cli
           ./scripts/bundle-sidecars.sh "$TARGET"
 
+      - name: Verify native Business Agent tool loading
+        shell: pwsh
+        run: |
+          $env:BUSINESS_AGENT_TEST_BINARY = Join-Path $PWD "target/$env:TARGET/release/buzz-agent.exe"
+          $env:BUSINESS_MCP_TEST_BINARY = Join-Path $PWD "target/$env:TARGET/release/business-read-mcp.exe"
+          node scripts/business-agent-runtime-acceptance.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:BUSINESS_RUNTIME_APPROVAL_SCOPE = "product_master_update_intent:approve"
+          node scripts/business-agent-runtime-acceptance.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build Windows NSIS installer (unsigned)
         shell: bash
         run: cd desktop && pnpm tauri build --target "$TARGET" --bundles nsis --config src-tauri/tauri.canary.conf.json
