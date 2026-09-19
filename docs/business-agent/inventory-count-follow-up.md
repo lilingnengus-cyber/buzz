@@ -92,3 +92,11 @@ Core all-targets 严格 Clippy、格式和文件大小门禁通过；日志 `/tm
 分别在三类 executed 状态写入时注入数据库异常，逐字段比较盘点头、全部明细、余额及事件/流水数量，验证整个业务操作回滚；解除故障后正常确认成功。最终该 SKU 的数量和价值均为零。日志 `/tmp/business-count-operation-intents-verified.log`；Core/Gateway all-targets 严格 Clippy、格式及文件大小门禁通过，日志 `/tmp/business-count-operation-intents-{clippy,size}.log`。
 
 本批未部署、未发送真实聊天。下一步补齐盘点来源选择/查询和详情链接，将创建冻结、实盘录入、差异过账、取消四类完整审批接入助手工具链，并处理普通委托 48 项上限；随后进行配套发布和获授权的真实会话验收。已过账纠错与全流程其他业务域仍保留在整体目标中。
+
+## 2026-09-20 盘点独立详情与桌面直达链接
+
+新增 `/inventory-counts/{id}` 和 `/embed/inventory-counts/{id}` 独立只读详情页，按实际 ID 调用已有受权限保护的 Core 详情接口。展示盘点编号、日期、币种、版本、冻结状态、商品与账面/预留/隔离/实盘数量、差异数量和金额；实盘零值不会显示为未录入。盘点列表编号可点击进入对应详情。桌面注册 `biz://inventory-count/{id}`，可往返解析到该嵌入详情页。
+
+复用统一加载失败和重试组件；路由切换时清除上张单据，过期异步响应不更新新页面。6 项 Playwright 浏览器功能测试通过，包括独立/嵌入路径、全部状态、空值与零值、无权限切换清除旧记录；测试使用模拟会话与 API，不代表生产权限链路或已安装桌面验收。桌面链接解析 24 项测试通过。前端生产构建、TypeScript、金额/数量格式巡检和文件大小门禁通过。日志 `/tmp/count-detail-{build,check,browser,resolver,size}.log`。
+
+本批未部署，不新增真实聊天或业务数据，Core 审批响应尚未输出该链接。后续仍需完成受范围约束的查询/选择、Gateway/Read API/MCP/Host 的完整盘点工具接入、普通委托数量上限处理及配套发布。

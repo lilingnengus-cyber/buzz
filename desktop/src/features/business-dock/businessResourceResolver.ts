@@ -10,6 +10,7 @@ export type BusinessResourceType =
   | "goods_receipt"
   | "customer"
   | "supplier"
+  | "inventory_count"
   | "inventory_opening"
   | "inventory"
   | "receivable"
@@ -58,6 +59,13 @@ type RouteDefinition = {
 };
 
 const ROUTES: readonly RouteDefinition[] = [
+  {
+    type: "inventory_count",
+    deepLink: "inventory-count",
+    prefix: "/embed/inventory-counts/",
+    entity: true,
+    label: "库存盘点",
+  },
   {
     type: "sales_return",
     deepLink: "sales-return",

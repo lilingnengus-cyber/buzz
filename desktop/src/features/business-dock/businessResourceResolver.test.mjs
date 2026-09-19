@@ -340,3 +340,13 @@ for (const kind of ["sales", "purchase"]) {
     );
   });
 }
+
+test("inventory count reference opens the exact count detail", () => {
+  const id = "54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
+  const resource = resolveBusinessResource(`biz://inventory-count/${id}`, config);
+  assert.equal(resource?.type, "inventory_count");
+  assert.equal(resource?.id, id);
+  assert.equal(resource?.path, `/embed/inventory-counts/${id}`);
+  assert.equal(buildBusinessUrl(resource, config), `${config.origin}/embed/inventory-counts/${id}`);
+  assert.equal(buildBusinessReference(resource), `biz://inventory-count/${id}`);
+});

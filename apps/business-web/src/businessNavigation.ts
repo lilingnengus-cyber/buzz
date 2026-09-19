@@ -14,6 +14,7 @@ export type Section =
   | "shipments"
   | "salesReturns"
   | "purchaseReturns"
+  | "inventoryCount"
   | "inventoryOpening"
   | "inventory"
   | "receivables"

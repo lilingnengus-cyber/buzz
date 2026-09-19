@@ -122,7 +122,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
         {counts.map((item) => (
           <article key={item.id}>
             <div>
-              <strong>{item.countNumber}</strong>
+              <a href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/inventory-counts/${encodeURIComponent(item.id)}`}>{item.countNumber}</a>
               <code>{short(item.warehouseId)}</code>
             </div>
             <span>{item.countDate}</span>

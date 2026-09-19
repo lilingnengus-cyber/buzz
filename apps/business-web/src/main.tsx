@@ -37,6 +37,7 @@ import {
 import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
 import { formatAmount, formatMoney } from "./formatters";
 import { LinkedReturnDetail } from "./LinkedReturnDetail";
+import { LinkedInventoryCountDetail } from "./LinkedInventoryCountDetail";
 import { LinkedOpeningDetail } from "./LinkedOpeningDetail";
 import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
@@ -327,6 +328,8 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
         id={id}
       />
     );
+  if (section === "inventoryCount" && id)
+    return <LinkedInventoryCountDetail key={id} id={id} />;
   if (section === "inventoryOpening" && id)
     return <LinkedOpeningDetail id={id} />;
   if (section === "inventory") return <InventoryLedger skuId={id} />;
