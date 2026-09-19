@@ -2,6 +2,7 @@
 pub mod api;
 mod model;
 mod registers;
+mod write_authority;
 use crate::{
     b2::common::{
         authorize, begin_idempotent, finish_idempotent, record, request_hash, DomainError,
@@ -117,8 +118,18 @@ impl CrmService {
         if let Some(result) =
             begin_idempotent::<Value>(&mut tx, actor, "crm:save", key, &hash).await?
         {
+            let replay_id: Uuid = serde_json::from_value(result["id"].clone())
+                .map_err(|_| DomainError::NotFoundOrForbidden)?;
+            self.check_write_authority(&mut tx, actor, replay_id)
+                .await?;
             tx.commit().await?;
             return Ok(result);
+        }
+        if let Some(existing_id) = id {
+            // An edit can replace the customer. Recheck the old target after
+            // taking its lock, before replacing its scope-bearing fields.
+            self.check_write_authority(&mut tx, actor, existing_id)
+                .await?;
         }
         let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units u JOIN business_legal_entities e ON e.id=u.legal_entity_id WHERE u.id=$1 AND e.id=$2 AND u.status='active' AND e.status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND legal_entity_id=$2 AND business_unit_id=$1 AND status='active'))")
             .bind(input.business_unit_id).bind(input.legal_entity_id).bind(input.customer_id).fetch_one(&mut *tx).await?;
@@ -134,6 +145,8 @@ impl CrmService {
                 .bind(record_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?
         };
         let version = version.ok_or(DomainError::VersionConflict)?;
+        self.check_write_authority(&mut tx, actor, record_id)
+            .await?;
         let result = json!({"id":record_id,"version":version,"traceId":trace});
         record(
             &mut tx,
@@ -168,6 +181,10 @@ impl CrmService {
         if let Some(result) =
             begin_idempotent::<Value>(&mut tx, actor, "crm:followup", key, &hash).await?
         {
+            let replay_id: Uuid = serde_json::from_value(result["id"].clone())
+                .map_err(|_| DomainError::NotFoundOrForbidden)?;
+            self.check_write_authority(&mut tx, actor, replay_id)
+                .await?;
             tx.commit().await?;
             return Ok(result);
         }
@@ -176,6 +193,7 @@ impl CrmService {
         let version = version.ok_or(DomainError::VersionConflict)?;
         sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(Uuid::new_v4()).bind(id).bind(actor).bind(input.note.trim()).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).execute(&mut *tx).await?;
+        self.check_write_authority(&mut tx, actor, id).await?;
         let result = json!({"id":id,"version":version,"traceId":trace});
         record(
             &mut tx,
