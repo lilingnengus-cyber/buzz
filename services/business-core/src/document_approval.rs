@@ -4,6 +4,7 @@ mod allocation_history;
 mod financial_documents;
 /// Bound cancellation of remaining order quantities.
 pub mod order_cancellation;
+mod returns;
 /// Immutable reversal preparation and signed execution.
 pub mod reversal;
 mod settlement;
@@ -77,6 +78,7 @@ struct VoteOutcome {
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .merge(stock::routes())
+        .merge(returns::routes())
         .merge(settlement::routes())
         .merge(allocation::routes())
         .merge(reversal::routes())
@@ -423,6 +425,7 @@ async fn cast_vote(
         .bind(document_id)
         .fetch_optional(store.pool())
         .await?,
+        "sales_return" | "purchase_return" => Some(returns::authority_row(store,document_type,document_id).await?),
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
         "shipment_reversal_intent" | "goods_receipt_reversal_intent" | "inventory_opening_reversal_intent" => Some(stock_reversal::authority_row(store,document_type,document_id).await?),
@@ -441,6 +444,7 @@ async fn cast_vote(
     } else if matches!(
         document_type,
         "sales_order"
+            | "sales_return"
             | "shipment"
             | "shipment_reversal_intent"
             | "customer_receipt"

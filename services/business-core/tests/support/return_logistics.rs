@@ -40,19 +40,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         .create_purchase_return(f.actor, Uuid::new_v4(), "logistics-create", &input)
         .await
         .unwrap();
-    service
-        .confirm_purchase_return(
-            f.actor,
-            Uuid::new_v4(),
-            returned.id,
-            "logistics-confirm",
-            &VersionCommand {
-                expected_version: 1,
-                reason_code: None,
-            },
-        )
-        .await
-        .unwrap();
+    super::return_confirmation_checks::confirm(app, store, f, false, returned.id).await;
     // No customer scope can authorize a supplier operation. Keep the fixture's
     // unrelated customer scope and assert the supplier UUID is not in it.
     let persisted_version: i64 =
@@ -296,25 +284,12 @@ async fn sales_inspection(app: &Router, store: &PgStore, f: &Fixture) {
         .create_sales_return(f.actor, Uuid::new_v4(), "inspection-create", &input)
         .await
         .unwrap();
-    let confirmed = service
-        .confirm_sales_return(
-            f.actor,
-            Uuid::new_v4(),
-            returned.id,
-            "inspection-confirm",
-            &VersionCommand {
-                expected_version: 1,
-                reason_code: None,
-            },
-        )
-        .await
-        .unwrap();
+    super::return_confirmation_checks::confirm(app, store, f, true, returned.id).await;
     let stored: i64 = sqlx::query_scalar("SELECT version FROM sales_returns WHERE id=$1")
         .bind(returned.id)
         .fetch_one(store.pool())
         .await
         .unwrap();
-    assert_eq!(stored, confirmed.version);
     assert_eq!(stored, 2);
     let disposition = business_core::b2::ReturnDispositionService::new(store.clone());
     let preview = disposition

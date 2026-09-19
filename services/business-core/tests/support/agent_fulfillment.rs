@@ -4,8 +4,12 @@ mod agent_return_checks;
 mod cancellation_checks;
 #[path = "return_concurrency.rs"]
 mod return_concurrency_checks;
+#[path = "agent_return_confirmation.rs"]
+mod return_confirmation_checks;
 #[path = "return_logistics.rs"]
 mod return_logistics_checks;
+#[path = "return_rounding.rs"]
+mod return_rounding_checks;
 #[path = "agent_settlement.rs"]
 mod settlement_checks;
 #[path = "agent_stock_reversal.rs"]
@@ -288,6 +292,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     cancellation_checks::check(&app, store, f, supplier, sku).await;
     stock_reversal_checks::check(&app, store, f, supplier).await;
     return_logistics_checks::check(&app, store, f, supplier).await;
+    return_rounding_checks::check(&app, store, f, supplier).await;
 }
 
 async fn shortage_retry(app: &Router, store: &PgStore, f: &Fixture) {
