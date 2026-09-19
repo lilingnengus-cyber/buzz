@@ -6,6 +6,7 @@ pub mod b3;
 pub mod b4;
 mod bootstrap;
 pub mod config;
+pub mod crm;
 pub mod document_approval;
 pub mod master_data;
 pub mod master_data_api;

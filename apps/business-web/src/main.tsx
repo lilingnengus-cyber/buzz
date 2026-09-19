@@ -1,3 +1,4 @@
+import { NAV_GROUPS, NAV, type Section } from "./businessNavigation";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -54,31 +55,9 @@ import {
   PurchaseOrderWorkflowPage,
   SalesOrderWorkflowPage,
 } from "./OrderWorkflowPages";
+import { CrmPage } from "./CrmPage";
 import "./styles.css";
 
-type Section =
-  | "agentQuery"
-  | "dashboard"
-  | "quality"
-  | "incidents"
-  | "trends"
-  | "coreData"
-  | "productData"
-  | "numbering"
-  | "sales"
-  | "shipments"
-  | "inventoryOpening"
-  | "inventory"
-  | "receivables"
-  | "receipts"
-  | "purchasing"
-  | "goodsReceipts"
-  | "payables"
-  | "supplierPayments"
-  | "profits"
-  | "profitability"
-  | "adjustments"
-  | "reports";
 type LoadState<T> = {
   data: T;
   error: ApiFailure | null;
@@ -86,58 +65,6 @@ type LoadState<T> = {
   retry: () => void;
 };
 
-type NavItem = { id: Section; label: string; index: string };
-
-const NAV_GROUPS: Array<{
-  id: string;
-  label: string;
-  index: string;
-  items: NavItem[];
-}> = [
-  {
-    id: "control",
-    label: "经营控制",
-    index: "01",
-    items: [
-      { id: "dashboard", label: "经营驾驶舱", index: "OPS" },
-      { id: "quality", label: "数据质量", index: "DQ" },
-      { id: "incidents", label: "异常处置", index: "INC" },
-      { id: "trends", label: "日报与趋势", index: "TRD" },
-    ],
-  },
-  {
-    id: "master-data",
-    label: "基础资料",
-    index: "02",
-    items: [
-      { id: "coreData", label: "核心数据", index: "MDM" },
-      { id: "productData", label: "商品数据", index: "PDM" },
-      { id: "numbering", label: "编码规则", index: "NUM" },
-    ],
-  },
-  {
-    id: "workflows",
-    label: "业务闭环",
-    index: "03",
-    items: [
-      { id: "sales", label: "销售订单闭环", index: "O2C" },
-      { id: "inventory", label: "库存台账", index: "INV" },
-      { id: "purchasing", label: "采购订单闭环", index: "P2P" },
-    ],
-  },
-  {
-    id: "analysis",
-    label: "经营分析",
-    index: "04",
-    items: [
-      { id: "profits", label: "订单真实利润", index: "P&L" },
-      { id: "profitability", label: "多维盈利分析", index: "DIM" },
-      { id: "adjustments", label: "经营费用归集", index: "ADJ" },
-      { id: "reports", label: "管理利润报表", index: "RPT" },
-    ],
-  },
-];
-const NAV = NAV_GROUPS.flatMap((group) => group.items);
 const NAVIGATION_COLLAPSED_STORAGE_KEY = "bizfin.business.navigationCollapsed";
 const BUSINESS_ENVIRONMENT_LABEL = resolveBusinessEnvironmentLabel(
   import.meta.env.VITE_BUSINESS_ENVIRONMENT_LABEL,
@@ -179,6 +106,7 @@ function route(): { section: Section; id?: string; embed: boolean } {
       id: decodeURIComponent(agentQuery[1]),
       embed,
     };
+  if (clean === "/crm") return { section: "crm", embed };
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
   const patterns: Array<[Section, RegExp]> = [
@@ -434,6 +362,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
   if (section === "trends") return <OperatingTrendsView />;
+  if (section === "crm") return <CrmPage />;
   if (section === "coreData") return <CoreMasterDataCenter />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;

@@ -152,7 +152,7 @@ MCP 确认工具无模型可控单据参数；Read API 再向 Gateway 校验完�
 - 不执行实际银行付款、收款核销、冲销或通用删除。
 - 库存／成本预览变化后允许同一单据版本重新审批；重复确认不重复过账。
 
-部署须同时更新 Gateway、Core、Read API、IAM 服务和客户端 Host/MCP，并应用迁移 0032、0034（0033 为基础资料查找）。迁移只登记 IAM 能力，不授予任何账号权限或创建审批策略。
+部署须同时更新 Gateway、Core、Read API、IAM 服务和客户端 Host/MCP，并应用迁移 0032、0035（0033 为基础资料查找，0034 为已上线 CRM）。迁移只登记 IAM 能力，不授予任何账号权限或创建审批策略。
 运营配置应将能力限定在用户现有业务权限及经营主体范围，按需配置五种审批策略：sales_order:confirm、purchase_order:confirm、shipment:confirm、goods_receipt:confirm、inventory_opening:post。
 缺少策略、角色不符、禁止自审批或不满足跨业务单元规则时拒绝执行；带 step-up 金额要求的策略在当前聊天通道中拒绝执行，不能降级绕过。`BUSINESS_CHAT_APPROVAL_ENABLED` 必须在三层显式启用，草稿仍受 `BUSINESS_AGENT_DRAFT_WRITE_ENABLED` 控制。
 
