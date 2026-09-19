@@ -1,0 +1,5 @@
+# Append AFTER inventory-counts-e7c54b8c1.yml to pause count-agent operations.
+# Keep migrated schema, fixed inventory scopes and the other candidate services.
+services:
+  business-core:
+    image: shiyue-business-counts-paused-business-core:e7c54b8c1

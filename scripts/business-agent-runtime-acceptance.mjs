@@ -296,13 +296,9 @@ try {
         command: process.env.BUSINESS_MCP_TEST_BINARY ?? path.join(repoRoot, "target/debug/business-read-mcp"),
         args: [],
         env: [
-          { name: "BUSINESS_READ_ADAPTER", value: capacityFixture ? "production" : "mock" },
-          { name: "BUSINESS_READ_API_BASE_URL", value: capacityUrl },
+          { name: "BUSINESS_READ_ADAPTER", value: "production" },
+          { name: "BUSINESS_READ_API_BASE_URL", value: capacityFixture ? capacityUrl : "https://127.0.0.1:9/" },
           { name: "BUSINESS_TOOL_MAX_PAYLOAD_BYTES", value: payloadLimit },
-          {
-            name: "BUSINESS_READ_MOCK_ACKNOWLEDGE",
-            value: "Mock Only - Production Disabled",
-          },
           {
             name: "BUSINESS_READ_SERVICE_CREDENTIAL",
             value: "0123456789abcdef0123456789abcdef",
@@ -319,7 +315,7 @@ try {
           },
           {
             name: "BUSINESS_AUTH_GATEWAY_BASE_URL",
-            value: capacityFixture ? capacityUrl : "http://127.0.0.1:9/",
+            value: capacityFixture ? capacityUrl : "https://127.0.0.1:9/",
           },
           { name: "BUSINESS_READ_SERVICE_AUTH_MODE", value: "shared_secret" },
           {

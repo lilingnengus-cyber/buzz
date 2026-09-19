@@ -89,3 +89,11 @@ exercise migration-compatible rollback images, and deploy the Gateway before a
 Host that requests 50 ordinary capabilities. After activation, inspect the new
 container's two budget variables and test read-only delegation behavior. A
 successful tool-budget test alone is not a live model or production chat test.
+
+The reviewed count-agent pause source can be reproduced with
+`scripts/prepare-business-count-rollback.py SOURCE DESTINATION --expected-router-sha256 HASH`.
+Use the exact reviewed source hash from the inventory-count release report;
+the destination must not exist. This pauses the new count-agent endpoints with
+503 while retaining schema compatibility, scope fixes, and manual workbench
+count handling. It does not undo existing freezes, revert all services, or
+replace migration rehearsal and authenticated route checks.

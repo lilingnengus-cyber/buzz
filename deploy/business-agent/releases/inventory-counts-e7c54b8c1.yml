@@ -1,0 +1,18 @@
+# Append to the verified live Compose chain after migration/authorization rehearsal.
+# All images must match the IDs in the 2026-09-20 count release report.
+services:
+  gateway:
+    image: shiyue-business-counts-gateway:e7c54b8c1
+    environment:
+      AGENT_DELEGATION_MAX_CALLS: "64"
+      AGENT_DELEGATION_TTL_SECONDS: "900"
+  migrate:
+    image: shiyue-business-counts-gateway:e7c54b8c1
+  business-core:
+    image: shiyue-business-counts-business-core:e7c54b8c1
+  business-read-api:
+    image: shiyue-business-counts-business-read-api:e7c54b8c1
+  iam-admin-api:
+    image: shiyue-business-counts-iam-admin-api:e7c54b8c1
+  iam-admin-migrate:
+    image: shiyue-business-counts-iam-admin-api:e7c54b8c1
