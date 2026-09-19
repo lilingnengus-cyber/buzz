@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod master_data;
+pub use master_data::{MasterDataKind, SearchMasterDataInput, MASTER_DATA_READ};
+
 use chrono::{DateTime, NaiveDate, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

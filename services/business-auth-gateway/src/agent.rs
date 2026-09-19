@@ -12,7 +12,8 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 16] = [
+const AGENT_SCOPES: [&str; 17] = [
+    "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",

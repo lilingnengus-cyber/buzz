@@ -1,3 +1,5 @@
+mod master_search;
+
 use crate::{
     model::{
         AuthorizationSnapshot, DataScopes, EligibleUser, GrantOperation, GroupProfile,

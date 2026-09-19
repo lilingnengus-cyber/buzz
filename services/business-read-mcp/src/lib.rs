@@ -14,8 +14,9 @@ use business_query_contracts::{
     GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput, ManagementProfitReportInput,
     ManagementReportSnapshotInput, OperatingDashboardInput, OrderProfitInput, PayablesInput,
     ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput, ResourceRef, ScopeSummary,
-    SearchPurchaseOrdersInput, SearchSalesOrdersInput, ValidateInput, INVENTORY_READ,
-    ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ, SALES_ORDER_READ,
+    SearchMasterDataInput, SearchPurchaseOrdersInput, SearchSalesOrdersInput, ValidateInput,
+    INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ,
+    RECEIVABLE_READ, SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -559,6 +560,19 @@ impl BusinessReadMcp {
                 "purchase_order:approve",
                 "purchase_order",
             )
+            .await)
+    }
+
+    #[tool(
+        name = "search_business_master_data",
+        description = "Read accessible active customers, suppliers, SKUs, warehouses, units, legal entities, business units or brands by literal name/code. Read only. Use returned IDs for drafts; never invent IDs. Read all pages before assuming a unique match. Ask the user to resolve multiple matches or missing warehouse/unit choices."
+    )]
+    async fn search_business_master_data(
+        &self,
+        Parameters(input): Parameters<SearchMasterDataInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_business_master_data", MASTER_DATA_READ, input)
             .await)
     }
 
@@ -2503,7 +2517,10 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 38);
+        assert_eq!(registered.len(), 39);
+        assert!(registered
+            .iter()
+            .any(|tool| tool.name.as_ref() == "search_business_master_data"));
         assert!(registered
             .iter()
             .any(|tool| tool.name.as_ref() == "get_operating_dashboard"));

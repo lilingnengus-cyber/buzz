@@ -16,7 +16,8 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 14] = [
+const AGENT_SCOPES: [&str; 15] = [
+    "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
@@ -823,7 +824,8 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 14);
+        assert_eq!(AGENT_SCOPES.len(), 15);
+        assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
         assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
@@ -837,7 +839,7 @@ mod tests {
             .copied()
             .filter(|scope| !scope.ends_with(":create"))
             .collect::<Vec<_>>();
-        assert_eq!(read_only.len(), 8);
+        assert_eq!(read_only.len(), 9);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
     }
 

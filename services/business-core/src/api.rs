@@ -249,13 +249,6 @@ impl ApiError {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ListQuery {
-    #[serde(default = "default_limit")]
-    limit: i64,
-}
-
 fn default_limit() -> i64 {
     100
 }
@@ -357,19 +350,50 @@ async fn authorize_user_read(
         .map(|_| ())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct MasterSearchQuery {
+    #[serde(default = "default_limit")]
+    limit: i64,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    legal_entity_id: Option<Uuid>,
+    #[serde(default)]
+    offset: u32,
+}
+
 pub(crate) async fn list_master_data(
     State(state): State<Arc<AppState>>,
     Extension(context): Extension<RequestContext>,
     Path(resource_type): Path<String>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<MasterSearchQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    if query.offset > 100_000
+        || query
+            .query
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 128)
+    {
+        return Err(ApiError::from_store(
+            StoreError::Invalid("search".into()),
+            context.trace_id,
+        ));
+    }
     let snapshot = require_permission(&state, &context, "business_master_data:read").await?;
     let resource_type = ResourceType::from_str(&resource_type).map_err(|_| {
         ApiError::from_store(StoreError::Invalid("resourceType".into()), context.trace_id)
     })?;
     let records = state
         .store
-        .list_resources(resource_type, &snapshot, query.limit)
+        .search_resources(
+            resource_type,
+            &snapshot,
+            query.query.as_deref().unwrap_or(""),
+            query.legal_entity_id,
+            query.offset,
+            query.limit,
+        )
         .await
         .map_err(|error| ApiError::from_store(error, context.trace_id))?;
     Ok(Json(json!({

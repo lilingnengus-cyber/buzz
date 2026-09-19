@@ -127,3 +127,11 @@ group/other permission bits (use mode 0600). On Windows, restrict the file ACL t
 the service account before use. Do not put Agent identity keys in this file.
 The host continues to pass the credential privately to the per-turn MCP process.
 This option requires an updated buzz-acp binary; older builds cannot use it.
+
+## 按名称录入基础资料（2026-09）
+
+`search_business_master_data` 提供八类固定只读查找：客户、供应商、SKU、仓库、计量单位、法律主体、业务单元、品牌。输入包含 `resourceType`、可选名称/编码字面子串 `query`、可选 `legalEntityId`、`offset` 和 `limit`（1–100）。Core 先应用当前账号全部数据范围，再过滤名称并分页；API 再按当回合 IAM 授权范围过滤。返回 `summary.nextOffset` 与 `pagination.hasMore`，即使某页被委托范围完全过滤也需检查后续页，不能把分页中的单条结果直接当作唯一匹配。
+
+需要当前账号具备 `business_master_data:read` 的 Core 权限与 IAM 委托权限；新增目录迁移只登记能力，不自动给所有人授权。部署后由管理员使用现有 `business-iam-admin permission-grant` 为需要该功能的主体配置明确的数据范围。查询无法获得权限时不得绕过到 SQL、浏览器或通用 HTTP。
+
+助手应从查询结果获取内部 ID，核对用户指定的名称/编码，遇到多个候选、缺少仓库/单位等业务选择时一次性询问。不从旧订单推断价格、数量或日期，不默认选择第一条候选；完整确认业务字段后才创建草稿。该功能不开放通用更新、删除、付款或记账。

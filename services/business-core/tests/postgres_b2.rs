@@ -1,3 +1,6 @@
+#[path = "support/master_search.rs"]
+mod master_search;
+
 use business_core::{
     b2::{
         model::{
@@ -39,6 +42,7 @@ async fn b2_postgres_closed_loop_and_concurrency() {
     let store = PgStore::new(pool.clone());
     store.migrate().await.unwrap();
     let fixture = seed(&pool).await;
+    master_search::check(&store, &fixture).await;
     let sales = SalesService::new(store.clone(), "SO".into(), "SHP".into(), 30);
     let inventory = InventoryService::new(store.clone(), "OPEN".into(), "AR".into());
     let settlement = SettlementService::new(store, "RCPT".into());
