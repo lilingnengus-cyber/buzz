@@ -3,6 +3,8 @@
 mod b2_seed;
 #[path = "postgres_master_order_status/confirmation.rs"]
 mod confirmation;
+#[path = "postgres_master_order_status/shipment.rs"]
+mod shipment;
 use business_core::{
     b2::{
         model::{CreateSalesOrder, DecimalString, SalesOrderLineInput},
@@ -193,6 +195,7 @@ async fn sales_create_rechecks_master_status_after_disable_wait() {
         .unwrap();
     assert_eq!(count, 1);
     confirmation::check(&pool, &fixture, product, category).await;
+    shipment::check(&pool, &fixture, product, category).await;
 }
 async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {

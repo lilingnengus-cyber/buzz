@@ -658,15 +658,13 @@ impl SalesService {
         if order.get::<String, _>("hold_status") != "none" {
             return Err(DomainError::OrderOnHold);
         }
-        let warehouse_legal: Option<Uuid> = sqlx::query_scalar(
-            "SELECT legal_entity_id FROM business_warehouses WHERE id=$1 AND status='active'",
+        super::stock_master_refs::lock_customer(
+            &mut tx,
+            order.get("legal_entity_id"),
+            order.get("customer_id"),
+            order.get("business_unit_id"),
         )
-        .bind(input.warehouse_id)
-        .fetch_optional(&mut *tx)
         .await?;
-        if warehouse_legal != Some(order.get("legal_entity_id")) {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
         let mut seen = BTreeSet::new();
         let mut line_rows = Vec::new();
         let mut sales_total = Decimal::ZERO;
@@ -684,6 +682,13 @@ impl SalesService {
                     "shipment cannot cross warehouses".into(),
                 ));
             }
+            super::stock_master_refs::lock_active(
+                &mut tx,
+                order.get("legal_entity_id"),
+                input.warehouse_id,
+                row.get("sku_id"),
+            )
+            .await?;
             let remaining: Decimal = row.get::<Decimal, _>("ordered_quantity")
                 - row.get::<Decimal, _>("shipped_quantity")
                 - row.get::<Decimal, _>("cancelled_quantity");
@@ -851,6 +856,7 @@ impl SalesService {
         .bind(shipment.get::<Uuid, _>("warehouse_id"))
         .fetch_all(self.store.pool())
         .await?;
+        let masters_ready = master_status::shipment_ready(self.store.pool(), shipment_id).await?;
         let mut total_cost = Decimal::ZERO;
         let mut all_costed = !rows.is_empty();
         let lines = rows
@@ -867,7 +873,9 @@ impl SalesService {
                 } else {
                     all_costed = false;
                 }
-                let readiness = if average.is_none() {
+                let readiness = if !masters_ready {
+                    "master_data_not_ready"
+                } else if average.is_none() {
                     "missing_inventory_cost"
                 } else if quantity > reservation_open || quantity > on_hand || quantity > reserved {
                     "insufficient_inventory"
@@ -901,6 +909,8 @@ impl SalesService {
             "order_on_hold"
         } else if lifecycle_status != "confirmed" {
             "order_not_fulfillable"
+        } else if !masters_ready {
+            "master_data_not_ready"
         } else if lines.iter().any(|line| line.average_unit_cost.is_none()) {
             "missing_inventory_cost"
         } else if !has_inventory {

@@ -259,3 +259,13 @@ sales_confirmation_master_final 及拆分后的 sales_confirmation_split 通过�
 为遵循 1000 行上限，将原销售文件中的草稿校验/插入及确认预览拆到 sales/draft.rs 与 sales/confirmation_preview.rs，sales.rs 为 954 行。完整 B2 闭环与并发在 sales_confirmation_b2 通过；严格 Clippy、格式与 diff 检查通过。日志 /tmp/sales-confirmation-{master-final,split,b2,clippy-final}.log。所有数据库均在独立 55439。
 
 本批未部署。出库创建/确认、额外业务归属字段、反向停用影响及助手启停意图、Windows 实机和真实聊天验收仍未完成，完整业务目标继续保持。
+
+## 出库创建、确认与预览资料保护
+
+出库创建原先只有未持锁的仓库状态检查，确认直接进入库存扣减。现在创建和确认锁定当前客户/订单业务单元，并对本次出库明细逐项使用共享库存资料锁，持有至事务结束；不以整张销售订单的其他未出库行作为本次出库的状态门槛。预览对当前出库资料检查同样的 active 与法人归属，整单和明细返回 master_data_not_ready。
+
+shipment_master_status 的真实 PostgreSQL 回归覆盖九类资料（客户、业务单元、仓库、SKU、产品、法人、基础单位、分类、品牌）各自创建/确认期间停用，共 18 个实际行锁等待场景。被拒绝后库存现存 10、预留 8 不变，库存流水和应收均为 0；确认预览不可执行，出库单 draft/v1。恢复后预览可执行，真实确认成功并生成一笔应收。此前销售创建、确认及客户反向交错继续通过。
+
+完整 B2 销售闭环与并发在 shipment_master_b2 通过；Core 与该测试严格 Clippy、格式及 diff 检查通过。日志 /tmp/shipment-master-{status,b2,clippy}.log；均为独立 55439 测试库。sales.rs 964 行、inventory.rs 846 行，未增加文件长度例外。
+
+本批未部署。其他归属覆盖、状态变更的反向影响检查及助手启停意图仍待接入；Windows 实机及真实会话验收、完整业务覆盖中的其他模块继续保留为未完成。

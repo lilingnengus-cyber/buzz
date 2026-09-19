@@ -437,9 +437,23 @@ impl InventoryService {
                 "sales order is not fulfillable".into(),
             ));
         }
+        master_refs::lock_customer(
+            &mut tx,
+            shipment.get("legal_entity_id"),
+            shipment.get("customer_id"),
+            order.get("business_unit_id"),
+        )
+        .await?;
         let lines=sqlx::query("SELECT sl.id,sl.sales_order_line_id,sl.sku_id,sl.quantity,sl.sales_amount,sl.inventory_reservation_id,r.reserved_quantity,r.consumed_quantity,r.released_quantity FROM shipment_lines sl JOIN inventory_reservations r ON r.id=sl.inventory_reservation_id WHERE sl.shipment_id=$1 ORDER BY sl.sku_id,sl.id FOR UPDATE OF r").bind(shipment_id).fetch_all(&mut *tx).await?;
         let mut total_cost = Decimal::ZERO;
         for line in &lines {
+            master_refs::lock_active(
+                &mut tx,
+                shipment.get("legal_entity_id"),
+                shipment.get("warehouse_id"),
+                line.get("sku_id"),
+            )
+            .await?;
             let quantity: Decimal = line.get("quantity");
             let reservation_open = line.get::<Decimal, _>("reserved_quantity")
                 - line.get::<Decimal, _>("consumed_quantity")

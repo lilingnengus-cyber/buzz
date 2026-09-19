@@ -31,3 +31,33 @@ pub(super) async fn ready(pool: &sqlx::PgPool, order: Uuid) -> Result<bool, Doma
     Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_orders o JOIN business_legal_entities e ON e.id=o.legal_entity_id JOIN business_customers c ON c.id=o.customer_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND e.status='active' AND c.status='active' AND bu.status='active' AND c.legal_entity_id=e.id AND bu.legal_entity_id=e.id AND NOT EXISTS(SELECT 1 FROM sales_order_lines l JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units wu ON wu.id=w.business_unit_id JOIN business_skus s ON s.id=l.sku_id JOIN business_products p ON p.id=s.product_id JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories pc ON pc.id=p.category_id WHERE l.sales_order_id=o.id AND (w.status<>'active' OR wu.status<>'active' OR s.status<>'active' OR p.status<>'active' OR u.status<>'active' OR pc.status<>'active' OR w.legal_entity_id<>e.id OR wu.legal_entity_id<>e.id OR p.base_uom_id<>l.unit_of_measure_id OR (p.brand_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM business_brands b WHERE b.id=p.brand_id AND b.status='active')))))")
         .bind(order).fetch_one(pool).await?)
 }
+
+pub(super) async fn shipment_ready(
+    pool: &sqlx::PgPool,
+    shipment: Uuid,
+) -> Result<bool, DomainError> {
+    Ok(sqlx::query_scalar("SELECT EXISTS(
+        SELECT 1 FROM shipments sh JOIN sales_orders o ON o.id=sh.sales_order_id
+        JOIN business_legal_entities e ON e.id=sh.legal_entity_id
+        JOIN business_customers c ON c.id=sh.customer_id
+        JOIN business_units bu ON bu.id=o.business_unit_id
+        JOIN business_warehouses w ON w.id=sh.warehouse_id
+        JOIN business_units wu ON wu.id=w.business_unit_id
+        WHERE sh.id=$1 AND e.status='active' AND c.status='active' AND bu.status='active'
+        AND w.status='active' AND wu.status='active'
+        AND c.legal_entity_id=e.id AND bu.legal_entity_id=e.id
+        AND w.legal_entity_id=e.id AND wu.legal_entity_id=e.id
+        AND NOT EXISTS(
+            SELECT 1 FROM shipment_lines l JOIN business_skus s ON s.id=l.sku_id
+            JOIN business_products p ON p.id=s.product_id
+            JOIN business_units_of_measure u ON u.id=p.base_uom_id
+            JOIN business_product_categories pc ON pc.id=p.category_id
+            WHERE l.shipment_id=sh.id AND (
+                s.status<>'active' OR p.status<>'active' OR u.status<>'active' OR pc.status<>'active'
+                OR (p.brand_id IS NOT NULL AND NOT EXISTS(
+                    SELECT 1 FROM business_brands b WHERE b.id=p.brand_id AND b.status='active'
+                ))
+            )
+        )
+    )").bind(shipment).fetch_one(pool).await?)
+}

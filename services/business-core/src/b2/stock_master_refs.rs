@@ -20,3 +20,15 @@ pub(crate) async fn lock_active(
     }
     Ok(row.get("allow_zero_cost"))
 }
+
+/// Hold the active sales party and business unit through an inventory write.
+pub(crate) async fn lock_customer(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    legal: Uuid,
+    customer: Uuid,
+    unit: Uuid,
+) -> Result<(), DomainError> {
+    sqlx::query("SELECT c.id FROM business_customers c JOIN business_units u ON u.id=$3 WHERE c.id=$2 AND c.legal_entity_id=$1 AND u.legal_entity_id=$1 AND c.status='active' AND u.status='active' FOR SHARE OF c,u")
+        .bind(legal).bind(customer).bind(unit).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    Ok(())
+}
