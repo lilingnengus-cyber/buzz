@@ -103,6 +103,10 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "update_sales_return_draft" | "update_purchase_return_draft" => {
+            serde_json::from_value::<UpdateReturnDraft>(input.clone())
+                .is_ok_and(|v| v.draft.expected_version > 0 && v.draft.expected_source_version > 0)
+        }
         "create_sales_return_draft" => {
             serde_json::from_value::<business_core::b2::CreateReturn>(input.clone())
                 .is_ok_and(|v| v.expected_source_version.is_some_and(|v| v > 0))
@@ -367,12 +371,12 @@ pub(super) async fn forward_draft_write(
     context: &RequestContext,
 ) -> Response {
     let (endpoint, resource_type, uri_type) = match tool {
-        "create_sales_return_draft" => (
+        "create_sales_return_draft" | "update_sales_return_draft" => (
             "v1/agent-drafts/returns/sales_return",
             "sales_return",
             "sales-return",
         ),
-        "create_purchase_return_draft" => (
+        "create_purchase_return_draft" | "update_purchase_return_draft" => (
             "v1/agent-drafts/returns/purchase_return",
             "purchase_return",
             "purchase-return",
@@ -514,6 +518,8 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "update_sales_return_draft" => input["documentId"].as_str().map(|id|format!("v1/agent-return-edit-sources/sales_return/{id}")),
+        "update_purchase_return_draft" => input["documentId"].as_str().map(|id|format!("v1/agent-return-edit-sources/purchase_return/{id}")),
         "create_sales_return_draft"=>input["sourceId"].as_str().map(|id|format!("v1/agent-return-sources/sales_return/{id}")),
         "create_purchase_return_draft"=>input["sourceId"].as_str().map(|id|format!("v1/agent-return-sources/purchase_return/{id}")),
         "approve_sales_return"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/returns/sales_return/{id}")),
@@ -613,7 +619,10 @@ async fn scope_allows_write(
             value["document"].clone()
         } else if matches!(
             tool,
-            "create_sales_return_draft" | "create_purchase_return_draft"
+            "create_sales_return_draft"
+                | "create_purchase_return_draft"
+                | "update_sales_return_draft"
+                | "update_purchase_return_draft"
         ) {
             value["item"].clone()
         } else {
@@ -645,7 +654,10 @@ async fn scope_allows_write(
     }
     if matches!(
         tool,
-        "create_sales_return_draft" | "create_purchase_return_draft"
+        "create_sales_return_draft"
+            | "create_purchase_return_draft"
+            | "update_sales_return_draft"
+            | "update_purchase_return_draft"
     ) {
         // The authoritative source was checked above, including every source line.
         return true;
@@ -863,3 +875,11 @@ mod tests {
 mod allocation_tests;
 #[cfg(test)]
 mod return_tests;
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateReturnDraft {
+    #[serde(rename = "documentId")]
+    _document_id: Uuid,
+    draft: business_core::b2::ReplaceReturnDraft,
+}

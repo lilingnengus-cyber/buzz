@@ -12,6 +12,8 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "update_sales_return_draft",
+  "update_purchase_return_draft",
   "search_sales_returns",
   "search_purchase_returns",
   "get_sales_return_source",

@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 48);
+    assert_eq!(WRITE_TOOLS.len(), 50);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -536,6 +536,27 @@ fn return_write_inputs_bind_versions_and_reject_unexpected_fields() {
         assert!(!valid_write_input(tool, &invalid));
         let mut invalid = input;
         invalid["url"] = json!("https://example.invalid/write");
+        assert!(!valid_write_input(tool, &invalid));
+    }
+}
+
+#[test]
+fn return_draft_replacement_requires_two_versions_and_cannot_change_source() {
+    for tool in ["update_sales_return_draft", "update_purchase_return_draft"] {
+        let input = json!({"documentId":Uuid::new_v4(),"draft":{"expectedVersion":1,"expectedSourceVersion":2,"returnDate":"2026-09-19","reasonCode":"quality","lines":[{"sourceLineId":Uuid::new_v4(),"quantity":"0.5"}]}});
+        assert!(valid_write_input(tool, &input));
+        for field in ["expectedVersion", "expectedSourceVersion"] {
+            for value in [Value::Null, json!(0), json!(-1)] {
+                let mut invalid = input.clone();
+                invalid["draft"][field] = value;
+                assert!(!valid_write_input(tool, &invalid));
+            }
+        }
+        let mut invalid = input.clone();
+        invalid["draft"]["sourceId"] = json!(Uuid::new_v4());
+        assert!(!valid_write_input(tool, &invalid));
+        let mut invalid = input;
+        invalid["draft"]["lines"][0]["quantity"] = json!(0.5);
         assert!(!valid_write_input(tool, &invalid));
     }
 }

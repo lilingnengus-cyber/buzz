@@ -16,7 +16,9 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 40] = [
+const AGENT_SCOPES: [&str; 42] = [
+    "sales_return:update_draft",
+    "purchase_return:update_draft",
     "sales_return:create",
     "purchase_return:create",
     "sales_return_inspection_intent:create",
@@ -874,7 +876,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 40);
+        assert_eq!(AGENT_SCOPES.len(), 42);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));

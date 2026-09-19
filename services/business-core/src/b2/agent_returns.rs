@@ -8,7 +8,7 @@ use crate::{api::AppState, security::RequestContext};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
-    routing::{get, post},
+    routing::{get, post, put},
     Extension, Json, Router,
 };
 use serde_json::{json, Value};
@@ -23,7 +23,12 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             get(super::agent_return_search::search),
         )
         .route("/v1/agent-return-sources/{kind}/{id}", get(source))
+        .route(
+            "/v1/agent-return-edit-sources/{kind}/{id}",
+            get(edit_source),
+        )
         .route("/v1/agent-drafts/returns/{kind}", post(create))
+        .route("/v1/agent-drafts/returns/{kind}/{id}", put(replace))
 }
 fn sales(kind: &str) -> Result<bool, DomainError> {
     match kind {
@@ -123,4 +128,57 @@ async fn source_value(
     Ok(
         json!({"id":id,"number":row.get::<String,_>("number"),"version":row.get::<i64,_>("version"),"status":row.get::<String,_>("status"),"legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"warehouseId":row.get::<Uuid,_>("warehouse_id"),"businessUnitId":row.get::<Uuid,_>("business_unit_id"),"brandId":row.get::<Option<Uuid>,_>("brand_id"),"customerId":if sales {Some(row.get::<Uuid,_>("party_id"))}else{None},"supplierId":if sales {None}else{Some(row.get::<Uuid,_>("party_id"))},"businessDate":row.get::<chrono::NaiveDate,_>("business_date"),"currency":row.get::<String,_>("currency"),"lines":lines,"canCreateDraft":row.get::<String,_>("status")=="confirmed" && auth.permission_keys.contains(if sales {"shipment:reverse"}else{"goods_receipt:reverse"})}),
     )
+}
+
+async fn replace(
+    State(state): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path((kind, id)): Path<(String, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<super::ReplaceReturnDraft>,
+) -> Result<Json<Value>, B2ApiError> {
+    replace_value(&state, &c, &kind, id, &headers, &input).await
+}
+async fn replace_value(
+    state: &AppState,
+    c: &RequestContext,
+    kind: &str,
+    id: Uuid,
+    headers: &HeaderMap,
+    input: &super::ReplaceReturnDraft,
+) -> Result<Json<Value>, B2ApiError> {
+    let sales = sales(kind).map_err(|e| B2ApiError::domain(e, c.trace_id))?;
+    let result = state
+        .returns
+        .replace_draft(
+            c.actor_user_id,
+            c.trace_id,
+            sales,
+            id,
+            key(headers, c.trace_id)?,
+            input,
+        )
+        .await
+        .map_err(|e| B2ApiError::domain(e, c.trace_id))?;
+    Ok(Json(
+        json!({"id":result.id,"number":result.number,"status":result.status,"version":result.version,"idempotentReplay":result.idempotent_replay,"traceId":c.trace_id}),
+    ))
+}
+
+async fn edit_source(
+    State(state): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path((kind, id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>, B2ApiError> {
+    let Json(ret) =
+        super::agent_return_search::detail(State(state.clone()), Extension(c.clone()), &kind, id)
+            .await?;
+    let source = ret["sourceId"]
+        .as_str()
+        .and_then(|id| id.parse::<Uuid>().ok())
+        .ok_or_else(|| B2ApiError::domain(DomainError::NotFoundOrForbidden, c.trace_id))?;
+    source_value(&state, c.actor_user_id, &kind, source)
+        .await
+        .map(|item| Json(json!({"item":item,"traceId":c.trace_id})))
+        .map_err(|e| B2ApiError::domain(e, c.trace_id))
 }

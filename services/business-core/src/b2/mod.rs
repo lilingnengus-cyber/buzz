@@ -27,6 +27,6 @@ pub use return_disposition::{
     AcknowledgePurchaseReturn, DispatchPurchaseReturn, InspectSalesReturn, InspectionView,
     ReturnDispositionService,
 };
-pub use returns::{CreateReturn, ReturnOptions, ReturnService, ReturnSummary};
+pub use returns::{CreateReturn, ReplaceReturnDraft, ReturnOptions, ReturnService, ReturnSummary};
 pub use sales::SalesService;
 pub use settlement::SettlementService;

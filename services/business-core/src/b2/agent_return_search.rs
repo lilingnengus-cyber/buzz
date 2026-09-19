@@ -143,7 +143,7 @@ pub(super) async fn purchase_detail(
     detail(state, context, "purchase_return", id).await
 }
 
-async fn detail(
+pub(super) async fn detail(
     state: State<Arc<AppState>>,
     context: Extension<RequestContext>,
     kind: &str,

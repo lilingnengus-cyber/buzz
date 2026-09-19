@@ -77,6 +77,20 @@ pub(super) async fn confirm(app: &Router, store: &PgStore, f: &Fixture, sales: b
     let (status, result) = call(app, f.actor, "POST", &approve, cmd.clone()).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["executed"], true, "{result}");
+    let replacement = json!({"expectedVersion":preview["item"]["version"].as_i64().unwrap()+1,"expectedSourceVersion":2,"returnDate":"2026-09-19","reasonCode":"quality","lines":[{"sourceLineId":Uuid::new_v4(),"quantity":"1"}]});
+    assert_eq!(
+        call(
+            app,
+            f.actor,
+            "PUT",
+            &format!("/v1/agent-drafts/returns/{kind}/{id}"),
+            replacement
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+
     assert_eq!(
         result["resourceRefs"][0]["bizUri"],
         format!("biz://{}/{id}", kind.replace('_', "-"))

@@ -1,4 +1,5 @@
 mod confirmation;
+mod draft;
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,
@@ -8,6 +9,7 @@ use super::{
 };
 use crate::store::PgStore;
 use chrono::{NaiveDate, Utc};
+pub use draft::ReplaceReturnDraft;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -629,7 +631,7 @@ fn check_draft(row: &sqlx::postgres::PgRow, expected: i64) -> Result<(), DomainE
     }
     if row.get::<String, _>("status") != "draft" {
         return Err(DomainError::Invalid(
-            "only draft returns can be confirmed".into(),
+            "only draft returns can be changed".into(),
         ));
     }
     Ok(())

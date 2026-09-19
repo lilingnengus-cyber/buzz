@@ -91,7 +91,9 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 48] = [
+const WRITE_TOOLS: [&str; 50] = [
+    "update_sales_return_draft",
+    "update_purchase_return_draft",
     "create_sales_return_draft",
     "create_purchase_return_draft",
     "prepare_sales_return_inspection",
@@ -785,6 +787,8 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "update_sales_return_draft" => Some("sales_return:update_draft"),
+        "update_purchase_return_draft" => Some("purchase_return:update_draft"),
         "create_sales_return_draft" => Some("sales_return:create"),
         "create_purchase_return_draft" => Some("purchase_return:create"),
         "prepare_sales_return_inspection" => Some("sales_return_inspection_intent:create"),

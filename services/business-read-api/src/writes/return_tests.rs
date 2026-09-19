@@ -3,6 +3,8 @@ use super::*;
 #[tokio::test]
 async fn return_source_scope_checks_frozen_and_current_line_brands() {
     for (tool, kind) in [
+        ("update_sales_return_draft", "sales_return"),
+        ("update_purchase_return_draft", "purchase_return"),
         ("create_sales_return_draft", "sales_return"),
         ("create_purchase_return_draft", "purchase_return"),
     ] {
@@ -10,7 +12,12 @@ async fn return_source_scope_checks_frozen_and_current_line_brands() {
             let source = Uuid::new_v4();
             let actor = Uuid::new_v4();
             let trace = Uuid::new_v4();
-            let server = Router::new().route(&format!("/v1/agent-return-sources/{kind}/{source}"), axum::routing::get(move |headers: HeaderMap| async move {
+            let endpoint = if tool.starts_with("update_") {
+                "agent-return-edit-sources"
+            } else {
+                "agent-return-sources"
+            };
+            let server = Router::new().route(&format!("/v1/{endpoint}/{kind}/{source}"), axum::routing::get(move |headers: HeaderMap| async move {
                 assert_eq!(headers["x-enterprise-user-id"], actor.to_string());
                 assert_eq!(headers["x-trace-id"], trace.to_string());
                 assert_eq!(headers["x-service-audience"], "business-core");
@@ -34,7 +41,14 @@ async fn return_source_scope_checks_frozen_and_current_line_brands() {
                 agent_turn_id: "test".into(),
                 trace_id: trace,
                 used_calls: 1,
-                required_scope: format!("{kind}:create"),
+                required_scope: format!(
+                    "{kind}:{}",
+                    if tool.starts_with("update_") {
+                        "update_draft"
+                    } else {
+                        "create"
+                    }
+                ),
                 source_buzz_event_id: "a".repeat(64),
                 source_channel_id: "test".into(),
             };
@@ -49,8 +63,14 @@ async fn return_source_scope_checks_frozen_and_current_line_brands() {
                 obligations: Default::default(),
             };
             assert_eq!(
-                scope_allows_write(&core, tool, &json!({"sourceId":source}), &context, &grant)
-                    .await,
+                scope_allows_write(
+                    &core,
+                    tool,
+                    &json!({"sourceId":source,"documentId":source}),
+                    &context,
+                    &grant
+                )
+                .await,
                 allowed
             );
             task.abort();

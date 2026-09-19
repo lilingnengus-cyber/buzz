@@ -189,3 +189,21 @@ struct ReturnAcknowledgmentInput {
     #[serde(default)]
     acknowledgment_note: Option<String>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct UpdateReturnDraftInput {
+    document_id: Uuid,
+    draft: ReturnDraftReplacement,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnDraftReplacement {
+    expected_version: i64,
+    expected_source_version: i64,
+    return_date: String,
+    reason_code: String,
+    #[serde(default)]
+    business_note: Option<String>,
+    lines: Vec<ReturnLineInput>,
+}
