@@ -240,15 +240,57 @@ impl InventoryCountService {
     ) -> Result<CommandResult, DomainError> {
         match operation {
             InventoryCountOperation::Submit(input) => {
-                self.submit_inner(context, id, key, input, Some(approved))
+                self.submit_inner(context, id, key, input, Some(approved), None)
                     .await
             }
             InventoryCountOperation::Post(input) => {
-                self.post_inner(context, id, key, input, Some(approved))
+                self.post_inner(context, id, key, input, Some(approved), None)
                     .await
             }
             InventoryCountOperation::Cancel(input) => {
-                self.cancel_inner(context, id, key, input, Some(approved))
+                self.cancel_inner(context, id, key, input, Some(approved), None)
+                    .await
+            }
+        }
+    }
+}
+
+pub(super) async fn finish_approval(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    request: Uuid,
+    id: Uuid,
+    kind: &str,
+    snapshot: &Value,
+) -> Result<(), DomainError> {
+    let updated=sqlx::query("UPDATE business_document_approval_requests SET status='executed',executed_at=now(),version=version+1 WHERE id=$1 AND document_type=$2 AND status='executing' AND preview_hash=$3 AND EXISTS(SELECT 1 FROM business_agent_inventory_count_operation_intents i WHERE i.id=business_document_approval_requests.document_id AND i.inventory_count_id=$4 AND i.kind=$2 AND i.expires_at>clock_timestamp())")
+        .bind(request).bind(kind).bind(request_hash(snapshot)?).bind(id).execute(&mut **tx).await?.rows_affected();
+    if updated != 1 {
+        return Err(DomainError::StalePreview);
+    }
+    Ok(())
+}
+impl InventoryCountService {
+    /// Commit an approved count operation and its executed approval outcome atomically.
+    pub(crate) async fn execute_approved(
+        &self,
+        context: (Uuid, Uuid),
+        id: Uuid,
+        operation: &InventoryCountOperation,
+        approved: &Value,
+        request: Uuid,
+    ) -> Result<CommandResult, DomainError> {
+        let key = format!("agent-count-operation:{request}");
+        match operation {
+            InventoryCountOperation::Submit(input) => {
+                self.submit_inner(context, id, &key, input, Some(approved), Some(request))
+                    .await
+            }
+            InventoryCountOperation::Post(input) => {
+                self.post_inner(context, id, &key, input, Some(approved), Some(request))
+                    .await
+            }
+            InventoryCountOperation::Cancel(input) => {
+                self.cancel_inner(context, id, &key, input, Some(approved), Some(request))
                     .await
             }
         }

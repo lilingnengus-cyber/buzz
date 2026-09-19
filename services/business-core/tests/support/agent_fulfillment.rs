@@ -4,6 +4,8 @@ mod agent_return_checks;
 mod cancellation_checks;
 #[path = "agent_inventory_count_creation.rs"]
 mod inventory_count_creation;
+#[path = "agent_inventory_count_operations.rs"]
+mod inventory_count_operations;
 #[path = "return_concurrency.rs"]
 mod return_concurrency_checks;
 #[path = "agent_return_confirmation.rs"]
@@ -304,6 +306,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     stock_reversal_checks::check(&app, store, f, supplier).await;
     return_logistics_checks::check(&app, store, f, supplier).await;
     return_rounding_checks::check(&app, store, f, supplier).await;
+    inventory_count_operations::check(&app, store, f).await;
 }
 
 async fn shortage_retry(app: &Router, store: &PgStore, f: &Fixture) {

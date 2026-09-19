@@ -80,3 +80,15 @@ Core/Gateway all-targets 严格 Clippy、格式及文件大小门禁通过。日
 隔离库 `inventory_count_operations_verified` 完整 B2 流程通过。新增独立 SKU 测试：从零盘盈 2 件 × 7 元，录入后库存仍零，过账后数量 2/价值 14/均价 7；再盘亏清零后数量/价值为零、均价为空，正反流水累计为零。还覆盖预览不改余额、改提交参数拒绝、头版本未变但实盘明细变更拒绝、三类正常幂等、受保护数量拒绝、缺取消原因拒绝、已过账不能取消、取消不改余额且原因可回读、解除冻结后正常重盘。使用独立 SKU 避免改变原销售测试的指定商品流水基线。
 
 Core all-targets 严格 Clippy、格式和文件大小门禁通过；日志 `/tmp/business-count-operations-verified.log`、`/tmp/business-count-operations-{clippy,size}.log`。本批未部署，尚未为这三类操作创建审批意图或接入聊天工具；接下来复用服务端意图与原子审批结果模式，再完成完整盘点助手链路和发布验收。
+
+## 三类盘点操作意图与原子审批
+
+新增 inventory_count_submission_intent、inventory_count_posting_intent、inventory_count_cancellation_intent。准备输入封闭且包含目标盘点 ID 与强类型操作；路径类型必须与操作类型匹配。三类均提供只读预览、30 分钟不可变意图、审批预览及确认/拒绝。确认参数不允许夹带数量、成本或原因，只消费服务端保存的完整快照。迁移 52 新建意图表并登记六项 create/approve 能力及审批/委托类型，没有自动授权或创建审批策略。
+
+录入、过账和取消均把业务变更与审批 executed 状态放进同一事务，执行结束前校验目标盘点、操作类型、审批摘要及意图实际时钟有效期。成功返回实际更新单据的 ID、编号、版本和状态。没有新增绕过绑定的通用写入入口；普通浏览器入口继续兼容。盘点详情链接及助手 Gateway/Read API/MCP/Host 仍未接入。
+
+隔离数据库 `inventory_count_operation_intents_verified` 的完整 B2 流程通过。独立 SKU 经两轮审批完成盘盈 2 件 × 7 元和盘亏清零，再执行取消第三张盘点。每类操作均覆盖：预览不变更业务状态、严格字段拒绝、路径与操作类型不匹配拒绝、重复准备相同 ID、同键变参冲突、不可变记录、过期拒绝、旧摘要/夹带参数拒绝、撤销品牌范围后预览和确认拒绝、拒绝不执行、正常执行且审批同时 executed、重复确认不再次修改。
+
+分别在三类 executed 状态写入时注入数据库异常，逐字段比较盘点头、全部明细、余额及事件/流水数量，验证整个业务操作回滚；解除故障后正常确认成功。最终该 SKU 的数量和价值均为零。日志 `/tmp/business-count-operation-intents-verified.log`；Core/Gateway all-targets 严格 Clippy、格式及文件大小门禁通过，日志 `/tmp/business-count-operation-intents-{clippy,size}.log`。
+
+本批未部署、未发送真实聊天。下一步补齐盘点来源选择/查询和详情链接，将创建冻结、实盘录入、差异过账、取消四类完整审批接入助手工具链，并处理普通委托 48 项上限；随后进行配套发布和获授权的真实会话验收。已过账纠错与全流程其他业务域仍保留在整体目标中。

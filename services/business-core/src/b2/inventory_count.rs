@@ -317,7 +317,7 @@ impl InventoryCountService {
         key: &str,
         input: &SubmitInventoryCount,
     ) -> Result<CommandResult, DomainError> {
-        self.submit_inner((actor, trace_id), id, key, input, None)
+        self.submit_inner((actor, trace_id), id, key, input, None, None)
             .await
     }
 
@@ -328,6 +328,7 @@ impl InventoryCountService {
         key: &str,
         input: &SubmitInventoryCount,
         approved: Option<&Value>,
+        approval_request: Option<Uuid>,
     ) -> Result<CommandResult, DomainError> {
         let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:create")
@@ -453,6 +454,16 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
+        if let Some(request) = approval_request {
+            operations::finish_approval(
+                &mut tx,
+                request,
+                id,
+                "inventory_count_submission_intent",
+                approved.ok_or(DomainError::StalePreview)?,
+            )
+            .await?;
+        }
         finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
@@ -466,7 +477,7 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
-        self.post_inner((actor, trace_id), id, key, input, None)
+        self.post_inner((actor, trace_id), id, key, input, None, None)
             .await
     }
 
@@ -477,6 +488,7 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
         approved: Option<&Value>,
+        approval_request: Option<Uuid>,
     ) -> Result<CommandResult, DomainError> {
         let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:post")
@@ -570,6 +582,16 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
+        if let Some(request) = approval_request {
+            operations::finish_approval(
+                &mut tx,
+                request,
+                id,
+                "inventory_count_posting_intent",
+                approved.ok_or(DomainError::StalePreview)?,
+            )
+            .await?;
+        }
         finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
@@ -583,7 +605,7 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
-        self.cancel_inner((actor, trace_id), id, key, input, None)
+        self.cancel_inner((actor, trace_id), id, key, input, None, None)
             .await
     }
 
@@ -594,6 +616,7 @@ impl InventoryCountService {
         key: &str,
         input: &VersionCommand,
         approved: Option<&Value>,
+        approval_request: Option<Uuid>,
     ) -> Result<CommandResult, DomainError> {
         let (actor, trace_id) = context;
         self.pre_authorize(actor, id, "inventory_opening:reverse")
@@ -680,6 +703,16 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
+        if let Some(request) = approval_request {
+            operations::finish_approval(
+                &mut tx,
+                request,
+                id,
+                "inventory_count_cancellation_intent",
+                approved.ok_or(DomainError::StalePreview)?,
+            )
+            .await?;
+        }
         finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
