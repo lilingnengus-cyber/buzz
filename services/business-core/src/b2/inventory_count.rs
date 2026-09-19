@@ -146,9 +146,11 @@ impl InventoryCountService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, InventoryCountOption>("SELECT b.legal_entity_id,e.functional_currency::text currency,b.warehouse_id,w.code warehouse_code,w.name warehouse_name,b.sku_id,s.code sku_code,s.name sku_name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity,b.inventory_value,b.average_unit_cost FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id JOIN business_skus s ON s.id=b.sku_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND NOT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=b.legal_entity_id AND t.warehouse_id=b.warehouse_id AND l.sku_id=b.sku_id) ORDER BY w.code,s.code LIMIT 1000")
+        sqlx::query_as::<_, InventoryCountOption>("SELECT b.legal_entity_id,e.functional_currency::text currency,b.warehouse_id,w.code warehouse_code,w.name warehouse_name,b.sku_id,s.code sku_code,s.name sku_name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity,b.inventory_value,b.average_unit_cost FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id JOIN business_skus s ON s.id=b.sku_id JOIN business_products p ON p.id=s.product_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND w.business_unit_id=ANY($3) AND (p.brand_id IS NULL OR p.brand_id=ANY($4)) AND NOT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=b.legal_entity_id AND t.warehouse_id=b.warehouse_id AND l.sku_id=b.sku_id) ORDER BY w.code,s.code LIMIT 1000")
             .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>())
+            .bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>())
+            .bind(scope.scopes.brand_ids.into_iter().collect::<Vec<_>>())
             .fetch_all(self.store.pool()).await.map_err(Into::into)
     }
 
@@ -168,22 +170,12 @@ impl InventoryCountService {
             None,
         )
         .await?;
-        sqlx::query_as::<_,InventoryCountSummary>("SELECT t.id,t.count_number,t.legal_entity_id,t.warehouse_id,t.count_date,t.currency::text currency,t.status,count(l.id) line_count,count(l.id) FILTER(WHERE COALESCE(l.variance_quantity,0)<>0) variance_line_count,COALESCE(sum(l.variance_value),0) variance_value,t.version,t.updated_at FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.legal_entity_id=ANY($1) AND t.warehouse_id=ANY($2) GROUP BY t.id ORDER BY t.count_date DESC,t.count_number DESC LIMIT $3").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
+        sqlx::query_as::<_,InventoryCountSummary>("SELECT t.id,t.count_number,t.legal_entity_id,t.warehouse_id,t.count_date,t.currency::text currency,t.status,count(l.id) line_count,count(l.id) FILTER(WHERE COALESCE(l.variance_quantity,0)<>0) variance_line_count,COALESCE(sum(l.variance_value),0) variance_value,t.version,t.updated_at FROM inventory_count_tasks t JOIN business_warehouses w ON w.id=t.warehouse_id JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.legal_entity_id=ANY($1) AND t.warehouse_id=ANY($2) AND w.business_unit_id=ANY($3) AND NOT EXISTS(SELECT 1 FROM inventory_count_lines forbidden JOIN business_skus sku ON sku.id=forbidden.sku_id JOIN business_products product ON product.id=sku.product_id WHERE forbidden.inventory_count_id=t.id AND product.brand_id IS NOT NULL AND NOT(product.brand_id=ANY($4))) GROUP BY t.id ORDER BY t.count_date DESC,t.count_number DESC LIMIT $5").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.brand_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
     }
 
     pub async fn detail(&self, actor: Uuid, id: Uuid) -> Result<InventoryCountDetail, DomainError> {
         let task=sqlx::query("SELECT count_number,legal_entity_id,warehouse_id,count_date,currency::text,status,version FROM inventory_count_tasks WHERE id=$1").bind(id).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
-            &self.store,
-            actor,
-            "inventory:read",
-            Some(task.get("legal_entity_id")),
-            Some(task.get("warehouse_id")),
-            None,
-            None,
-            None,
-        )
-        .await?;
+        self.pre_authorize(actor, id, "inventory:read").await?;
         let lines=sqlx::query_as::<_,InventoryCountLineView>("SELECT l.id,l.sku_id,s.code sku_code,s.name sku_name,l.snapshot_on_hand_quantity,l.snapshot_reserved_quantity,l.snapshot_quarantined_quantity,l.actual_on_hand_quantity,l.snapshot_average_unit_cost,l.surplus_unit_cost,l.variance_quantity,l.variance_value FROM inventory_count_lines l JOIN business_skus s ON s.id=l.sku_id WHERE l.inventory_count_id=$1 ORDER BY s.code,l.id").bind(id).fetch_all(self.store.pool()).await?;
         Ok(InventoryCountDetail {
             id,
@@ -221,6 +213,13 @@ impl InventoryCountService {
         if !scope.scopes.warehouse_ids.contains(&input.warehouse_id) {
             return Err(DomainError::NotFoundOrForbidden);
         }
+        super::inventory_count_scope::check(
+            &self.store,
+            &scope,
+            input.warehouse_id,
+            &input.sku_ids,
+        )
+        .await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -686,7 +685,7 @@ impl InventoryCountService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        let scope = authorize(
             &self.store,
             actor,
             permission,
@@ -697,6 +696,14 @@ impl InventoryCountService {
             None,
         )
         .await?;
+        let skus: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT sku_id FROM inventory_count_lines WHERE inventory_count_id=$1",
+        )
+        .bind(id)
+        .fetch_all(self.store.pool())
+        .await?;
+        super::inventory_count_scope::check(&self.store, &scope, row.get("warehouse_id"), &skus)
+            .await?;
         Ok(())
     }
 }

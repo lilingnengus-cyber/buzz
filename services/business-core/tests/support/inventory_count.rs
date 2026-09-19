@@ -205,4 +205,6 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     .await
     .unwrap();
     assert_eq!(movements, 0);
+    super::inventory_count_scopes::check(store, &service, f, &input, first.id, second.id, &submit)
+        .await;
 }

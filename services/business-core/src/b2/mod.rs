@@ -7,6 +7,7 @@ pub(crate) mod common;
 mod inventory;
 mod inventory_count;
 mod inventory_count_api;
+mod inventory_count_scope;
 pub mod model;
 pub(crate) mod return_confirmation;
 mod return_disposition;
