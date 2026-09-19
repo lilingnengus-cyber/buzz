@@ -243,6 +243,19 @@ pub(super) async fn check(
     .unwrap();
     assert_eq!(event["reason"], input.reason);
     assert_eq!(event["effects"], approved);
+    let cookie = agent_return_checks::browser_session(store, f.actor).await;
+    let detail_path = format!(
+        "/api/v1/{}-returns/{id}",
+        if sales { "sales" } else { "purchase" }
+    );
+    let (status, detail) = agent_return_checks::browser_read(app, &detail_path, &cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["status"], "reversed");
+    assert_eq!(detail["reversal"]["date"], "2026-10-21");
+    assert_eq!(detail["reversal"]["reason"], input.reason);
+    assert_eq!(detail["reversal"]["financial"], approved["financial"]);
+    assert_eq!(detail["reversal"]["inventory"], approved["lines"]);
+
     if sales {
         check_projection(store, f, id, version).await;
     }
@@ -265,6 +278,12 @@ pub(super) async fn check(
             .await,
         Err(DomainError::NotFoundOrForbidden)
     ));
+    assert_eq!(
+        agent_return_checks::browser_read(app, &detail_path, &cookie)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
 }
 

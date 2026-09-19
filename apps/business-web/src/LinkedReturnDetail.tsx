@@ -1,4 +1,5 @@
 import React from "react";
+import { ReturnReversalRecord, type ReversalRecord } from "./ReturnReversalRecord";
 import { request, toApiFailure, type ApiFailure } from "./api";
 import { formatAmount, formatQuantity } from "./formatters";
 import { returnReason, statusLabel } from "./OrderWorkflowRecordDetails";
@@ -17,7 +18,9 @@ type ReturnDetail = {
   businessNote: string | null;
   amount: string;
   cost: string;
+  reversal?: ReversalRecord | null;
   lines: Array<{
+    skuId: string;
     returnLineId: string;
     skuCode: string;
     skuName: string;
@@ -72,7 +75,7 @@ export function LinkedReturnDetail({
           <p>
             {item.businessDate} · {item.currency} ·{" "}
             {item.status === "cancelled" ? "已取消" : statusLabel(item.status)}{" "}
-            · {statusLabel(item.workflowStatus)} · 版本 {item.version}
+            · {item.status === "reversed" ? "冲销前处置状态：" : ""}{statusLabel(item.workflowStatus)} · 版本 {item.version}
           </p>
           <p>退货原因：{returnReason(item.reasonCode)}</p>
           {item.businessNote && <p>备注：{item.businessNote}</p>}
@@ -80,6 +83,7 @@ export function LinkedReturnDetail({
             退货金额：{formatAmount(item.amount)} · 成本：
             {formatAmount(item.cost)}
           </p>
+          {item.reversal && <ReturnReversalRecord record={item.reversal} side={side} currency={item.currency} lines={item.lines} />}
           <table>
             <thead>
               <tr>
@@ -110,7 +114,7 @@ export function LinkedReturnDetail({
             </a>
           </p>
           <p>
-            {item.status === "draft"
+            {item.status === "reversed" ? "原退货与冲销记录均已保留；冲销不代表实际退款或物流操作。" : item.status === "draft"
               ? "草稿尚未改变库存和应收应付；采购退货的最终成本在确认时确定。"
               : "退货确认不代表已经退款或完成后续质检、发运与签收，请核对处置状态。"}
           </p>

@@ -77,3 +77,19 @@ for (const [side, title, workflow] of [
     await expect(page.getByRole("table")).toHaveCount(0);
   });
 }
+
+for (const side of ["sales","purchase"]) {
+  test(`${side} 冲销详情保留原单并展示历史变化`, async ({ page }) => {
+    const id="54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
+    await page.route("**/api/v1/**",route=>route.fulfill({json:{id,number:"RET-REVERSED",sourceId:id,status:"reversed",workflowStatus:"pending",businessDate:"2026-09-19",currency:"CNY",version:3,reasonCode:"QUALITY_ISSUE",amount:"100",cost:"50",lines:[{returnLineId:"l",skuId:"sku",skuCode:"SKU-R",skuName:"退货商品",quantity:"1",unitCost:"50",totalCost:"50"}],reversal:{date:"2026-10-21",reason:"<script>错误登记</script>",version:3,financial:{originalAmountBefore:"100",originalAmountAfter:"200",openAmountBefore:"100",openAmountAfter:"200",settledAmount:"0"},inventory:[{skuId:"sku",onHandQuantityBefore:"1",onHandQuantityAfter:"0",quarantinedQuantityBefore:"1",quarantinedQuantityAfter:"0",inventoryValueBefore:"50",inventoryValueAfter:"0"}]}}}));
+    await page.goto(`/embed/${side}-returns/${id}`);
+    const record=page.getByRole("region",{name:"冲销记录"});
+    await expect(record).toContainText("冲销日期：2026-10-21");
+    await expect(record).toContainText("冲销原因：<script>错误登记</script>");
+    await expect(record).toContainText(`${side==="sales"?"应收":"应付"}未结余额：100.00 → 200.00`);
+    await expect(record.getByRole("table")).toContainText("SKU-R · 退货商品");
+    await expect(record.getByRole("table")).toContainText("50.00 → 0.00");
+    await expect(page.getByText("原退货与冲销记录均已保留",{exact:false})).toBeVisible();
+    await expect(record.getByRole("button")).toHaveCount(0);
+  });
+}

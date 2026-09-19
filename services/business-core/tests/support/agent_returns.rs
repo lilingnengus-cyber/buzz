@@ -170,7 +170,7 @@ pub(super) async fn create(
     serde_json::from_value(result).unwrap()
 }
 
-async fn browser_session(store: &PgStore, actor: Uuid) -> String {
+pub(super) async fn browser_session(store: &PgStore, actor: Uuid) -> String {
     let workbench = Uuid::new_v4();
     let embed = Uuid::new_v4();
     let trace = Uuid::new_v4();
@@ -183,7 +183,7 @@ async fn browser_session(store: &PgStore, actor: Uuid) -> String {
         .bind(Uuid::new_v4()).bind(business_auth_gateway::security::hash(&token)).bind(actor).bind(workbench).bind(embed).bind(trace).execute(store.pool()).await.unwrap();
     token
 }
-async fn browser_read(app: &Router, path: &str, token: &str) -> (StatusCode, Value) {
+pub(super) async fn browser_read(app: &Router, path: &str, token: &str) -> (StatusCode, Value) {
     let response = app
         .clone()
         .oneshot(

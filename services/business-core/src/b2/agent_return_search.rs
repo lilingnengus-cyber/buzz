@@ -150,6 +150,7 @@ pub(super) async fn detail(
     id: Uuid,
 ) -> Result<Json<Value>, B2ApiError> {
     let trace = context.trace_id;
+    let store = state.store.clone();
     let Json(result) = search(
         state,
         context,
@@ -169,6 +170,19 @@ pub(super) async fn detail(
         .and_then(|items| items.first())
         .cloned()
         .ok_or_else(|| B2ApiError::domain(super::DomainError::NotFoundOrForbidden, trace))?;
+    let events = if kind == "sales_return" {
+        "sales_return_events"
+    } else {
+        "purchase_return_events"
+    };
+    let foreign = if kind == "sales_return" {
+        "sales_return_id"
+    } else {
+        "purchase_return_id"
+    };
+    let reversal: Option<Value> = sqlx::query_scalar(AssertSqlSafe(format!("SELECT jsonb_build_object('date',payload->'reversalDate','reason',payload->'reason','version',return_version,'recordedAt',created_at,'financial',payload->'effects'->'financial','inventory',payload->'effects'->'lines') FROM {events} WHERE {foreign}=$1 AND event_type='reversed' ORDER BY return_version DESC LIMIT 1")))
+        .bind(id).fetch_optional(store.pool()).await.map_err(|e|B2ApiError::domain(super::DomainError::Database(e),trace))?;
+    item["reversal"] = reversal.unwrap_or(Value::Null);
     item["traceId"] = json!(trace);
     Ok(Json(item))
 }
