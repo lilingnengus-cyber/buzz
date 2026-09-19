@@ -27,7 +27,12 @@ pub(super) async fn authority_row(
         .ok_or(StoreError::NotFoundOrForbidden)
 }
 
-async fn value(state: &AppState, actor: Uuid, kind: &str, id: Uuid) -> Result<Value, StoreError> {
+pub(super) async fn value(
+    state: &AppState,
+    actor: Uuid,
+    kind: &str,
+    id: Uuid,
+) -> Result<Value, StoreError> {
     let row = authority_row(&state.store, kind, id).await?;
     let snapshot = state.store.snapshot(actor).await?;
     let party: Uuid = row.get("party_id");

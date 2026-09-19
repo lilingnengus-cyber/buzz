@@ -77,3 +77,18 @@ pub(super) struct CreateInventoryOpeningDraftInput {
     currency: String,
     lines: Vec<OpeningLineInput>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareAllocationInput {
+    source_document_id: Uuid,
+    expected_source_version: i64,
+    allocations: Vec<AllocationTargetInput>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AllocationTargetInput {
+    document_id: Uuid,
+    expected_version: i64,
+    amount: String,
+}

@@ -72,7 +72,11 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 16] = [
+const WRITE_TOOLS: [&str; 20] = [
+    "prepare_receivable_allocation",
+    "approve_receivable_allocation",
+    "prepare_payable_allocation",
+    "approve_payable_allocation",
     "update_sales_order_draft",
     "update_purchase_order_draft",
     "create_inventory_opening_draft",
@@ -725,6 +729,11 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
         "search_business_master_data" => Some("business_master_data:read"),
+        "prepare_receivable_allocation" => Some("receivable_allocation_intent:create"),
+        "approve_receivable_allocation" => Some("receivable_allocation_intent:approve"),
+        "prepare_payable_allocation" => Some("payable_allocation_intent:create"),
+        "approve_payable_allocation" => Some("payable_allocation_intent:approve"),
+
         "update_sales_order_draft" => Some("sales_order:update_draft"),
         "update_purchase_order_draft" => Some("purchase_order:update_draft"),
         "create_inventory_opening_draft" => Some("inventory_opening:create"),

@@ -16,7 +16,7 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 22] = [
+const AGENT_SCOPES: [&str; 24] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
@@ -33,6 +33,8 @@ const AGENT_SCOPES: [&str; 22] = [
     "sales_order:update_draft",
     "purchase_order:update_draft",
     "inventory_opening:create",
+    "receivable_allocation_intent:create",
+    "payable_allocation_intent:create",
     "sales_order:create",
     "shipment:create",
     "purchase_order:create",
@@ -51,6 +53,8 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         "purchase-order" => "purchase_order:approve",
         "shipment" => "shipment:approve",
         "goods-receipt" => "goods_receipt:approve",
+        "receivable-allocation-intent" => "receivable_allocation_intent:approve",
+        "payable-allocation-intent" => "payable_allocation_intent:approve",
         "inventory-opening" => "inventory_opening:approve",
         "customer-receipt" => "customer_receipt:approve",
         "supplier-payment" => "supplier_payment:approve",
@@ -840,7 +844,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 22);
+        assert_eq!(AGENT_SCOPES.len(), 24);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -965,7 +969,7 @@ mod tests {
         assert!(prompt.contains("Never guess identifiers"));
         assert!(prompt.contains("When required fields are missing"));
         assert!(prompt.contains(
-            "payment approvals, reversals, allocations, unrestricted posting, payment execution"
+            "bank-payment approvals, reversals, unrestricted allocations, unrestricted posting, payment execution"
         ));
     }
 

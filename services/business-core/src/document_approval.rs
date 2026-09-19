@@ -1,3 +1,5 @@
+/// Immutable, scoped allocation preparation and signed execution.
+pub mod allocation;
 mod settlement;
 mod snapshot;
 pub(crate) mod stock;
@@ -67,6 +69,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .merge(stock::routes())
         .merge(settlement::routes())
+        .merge(allocation::routes())
         .route(
             "/v1/agent-documents/sales-orders/{id}",
             get(snapshot::sales),
@@ -398,6 +401,7 @@ async fn cast_vote(
         .await?,
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
+        "receivable_allocation_intent" | "payable_allocation_intent" => Some(allocation::authority_row(store, document_type, document_id).await?),
         _ => return Err(StoreError::Invalid("document type".into())),
     }
     .ok_or(StoreError::NotFoundOrForbidden)?;
@@ -406,7 +410,7 @@ async fn cast_vote(
         false
     } else if matches!(
         document_type,
-        "sales_order" | "shipment" | "customer_receipt"
+        "sales_order" | "shipment" | "customer_receipt" | "receivable_allocation_intent"
     ) {
         !snapshot
             .scopes

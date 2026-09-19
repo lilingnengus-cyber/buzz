@@ -23,6 +23,25 @@ async fn call(
     path: &str,
     body: Value,
 ) -> (StatusCode, Value) {
+    call_key(
+        app,
+        actor,
+        method,
+        path,
+        body,
+        &format!("fulfillment-test-{}", Uuid::new_v4()),
+    )
+    .await
+}
+
+async fn call_key(
+    app: &Router,
+    actor: Uuid,
+    method: &str,
+    path: &str,
+    body: Value,
+    key: &str,
+) -> (StatusCode, Value) {
     let response = app
         .clone()
         .oneshot(
@@ -33,10 +52,7 @@ async fn call(
                 .header("x-service-audience", "business-core")
                 .header("x-enterprise-user-id", actor.to_string())
                 .header("x-trace-id", Uuid::new_v4().to_string())
-                .header(
-                    "idempotency-key",
-                    format!("fulfillment-test-{}", Uuid::new_v4()),
-                )
+                .header("idempotency-key", key)
                 .header("content-type", "application/json")
                 .body(if method == "GET" {
                     Body::empty()

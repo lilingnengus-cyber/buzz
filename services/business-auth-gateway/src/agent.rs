@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 29] = [
+const AGENT_SCOPES: [&str; 33] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
@@ -25,6 +25,10 @@ const AGENT_SCOPES: [&str; 29] = [
     "sales_order:update_draft",
     "purchase_order:update_draft",
     "inventory_opening:create",
+    "receivable_allocation_intent:create",
+    "receivable_allocation_intent:approve",
+    "payable_allocation_intent:create",
+    "payable_allocation_intent:approve",
     "sales_order:create",
     "shipment:create",
     "purchase_order:create",
@@ -73,6 +77,14 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         "purchase-order" => ("purchase_order", "purchase_order:approve"),
         "shipment" => ("shipment", "shipment:approve"),
         "goods-receipt" => ("goods_receipt", "goods_receipt:approve"),
+        "receivable-allocation-intent" => (
+            "receivable_allocation_intent",
+            "receivable_allocation_intent:approve",
+        ),
+        "payable-allocation-intent" => (
+            "payable_allocation_intent",
+            "payable_allocation_intent:approve",
+        ),
         "inventory-opening" => ("inventory_opening", "inventory_opening:approve"),
         "customer-receipt" => ("customer_receipt", "customer_receipt:approve"),
         "supplier-payment" => ("supplier_payment", "supplier_payment:approve"),

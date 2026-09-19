@@ -190,6 +190,19 @@ impl SettlementService {
         key: &str,
         input: &ApplyReceipt,
     ) -> Result<CommandResult, DomainError> {
+        self.apply_receipt_bound(actor, trace_id, receipt_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn apply_receipt_bound(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        receipt_id: Uuid,
+        key: &str,
+        input: &ApplyReceipt,
+        target_versions: Option<&std::collections::BTreeMap<Uuid, i64>>,
+    ) -> Result<CommandResult, DomainError> {
         if input.allocations.is_empty() || input.allocations.len() > 100 {
             return Err(DomainError::Invalid("allocations are required".into()));
         }
@@ -217,7 +230,11 @@ impl SettlementService {
                 .positive("allocation amount")
                 .map_err(DomainError::Invalid)?;
         }
-        let hash = request_hash(input)?;
+        let hash = if target_versions.is_some() {
+            request_hash(&json!({"input": input, "targetVersions": target_versions}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -250,7 +267,14 @@ impl SettlementService {
         sorted.sort_by_key(|allocation| allocation.receivable_id);
         for allocation in sorted {
             let amount = allocation.amount.0;
-            let row=sqlx::query("SELECT id,legal_entity_id,customer_id,currency,open_amount,settled_amount,original_amount,status FROM trade_receivables WHERE id=$1 FOR UPDATE").bind(allocation.receivable_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+            let row=sqlx::query("SELECT id,legal_entity_id,customer_id,currency,open_amount,settled_amount,original_amount,status,version FROM trade_receivables WHERE id=$1 FOR UPDATE").bind(allocation.receivable_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+            if target_versions.is_some_and(|versions| {
+                versions.len() != input.allocations.len()
+                    || versions.get(&allocation.receivable_id)
+                        != Some(&row.get::<i64, _>("version"))
+            }) {
+                return Err(DomainError::VersionConflict);
+            }
             if row.get::<Uuid, _>("legal_entity_id") != receipt.get::<Uuid, _>("legal_entity_id")
                 || row.get::<Uuid, _>("customer_id") != receipt.get::<Uuid, _>("customer_id")
                 || row.get::<String, _>("currency") != receipt.get::<String, _>("currency")

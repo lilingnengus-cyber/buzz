@@ -191,6 +191,19 @@ impl PayablesService {
         key: &str,
         input: &ApplySupplierPayment,
     ) -> Result<CommandResult, DomainError> {
+        self.apply_payment_bound(actor, trace_id, payment_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn apply_payment_bound(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        payment_id: Uuid,
+        key: &str,
+        input: &ApplySupplierPayment,
+        target_versions: Option<&std::collections::BTreeMap<Uuid, i64>>,
+    ) -> Result<CommandResult, DomainError> {
         if input.allocations.is_empty() || input.allocations.len() > 200 {
             return Err(DomainError::Invalid("allocations are required".into()));
         }
@@ -206,7 +219,11 @@ impl PayablesService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = if target_versions.is_some() {
+            request_hash(&json!({"input": input, "targetVersions": target_versions}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -248,7 +265,7 @@ impl PayablesService {
             return Err(DomainError::OverAllocation);
         }
         let ordered: Vec<Uuid> = ids.into_iter().collect();
-        let rows=sqlx::query("SELECT id,legal_entity_id,supplier_id,currency::text,open_amount,status FROM trade_payables WHERE id=ANY($1) ORDER BY id FOR UPDATE").bind(&ordered).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT id,legal_entity_id,supplier_id,currency::text,open_amount,status,version FROM trade_payables WHERE id=ANY($1) ORDER BY id FOR UPDATE").bind(&ordered).fetch_all(&mut *tx).await?;
         if rows.len() != ordered.len() {
             return Err(DomainError::NotFoundOrForbidden);
         }
@@ -259,6 +276,12 @@ impl PayablesService {
                 .find(|a| a.payable_id == row.get::<Uuid, _>("id"))
                 .ok_or(DomainError::NotFoundOrForbidden)?;
             let amount = allocation.amount.0;
+            if target_versions.is_some_and(|versions| {
+                versions.len() != input.allocations.len()
+                    || versions.get(&allocation.payable_id) != Some(&row.get::<i64, _>("version"))
+            }) {
+                return Err(DomainError::VersionConflict);
+            }
             if row.get::<Uuid, _>("legal_entity_id") != payment.get::<Uuid, _>("legal_entity_id")
                 || row.get::<Uuid, _>("supplier_id") != payment.get::<Uuid, _>("supplier_id")
                 || row.get::<String, _>("currency") != payment.get::<String, _>("currency")

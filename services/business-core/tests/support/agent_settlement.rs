@@ -1,3 +1,5 @@
+#[path = "agent_allocations.rs"]
+mod allocations;
 use super::*;
 
 pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: Uuid) {
@@ -5,6 +7,7 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         "supplier_payment:read",
         "supplier_payment:create",
         "supplier_payment:confirm",
+        "payable_allocation:create",
     ] {
         sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT role_id,$2 FROM business_user_roles WHERE enterprise_user_id=$1 ON CONFLICT DO NOTHING").bind(f.actor).bind(capability).execute(store.pool()).await.unwrap();
     }
@@ -94,5 +97,6 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         assert_eq!(after["item"]["status"], "confirmed");
         assert_eq!(after["item"]["unappliedAmount"], "123.450000");
         assert_eq!(after["item"]["allocatedAmount"], "0.000000");
+        allocations::check(app, store, f, kind, party, id).await;
     }
 }

@@ -16,6 +16,8 @@ pub(super) async fn write_tool(
             | "approve_goods_receipt"
             | "approve_customer_receipt"
             | "approve_supplier_payment"
+            | "approve_receivable_allocation"
+            | "approve_payable_allocation"
             | "approve_inventory_opening"
     );
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
@@ -56,6 +58,12 @@ pub(super) async fn write_tool(
     let Some(core) = state.core.as_ref() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if matches!(
+        tool.as_str(),
+        "prepare_receivable_allocation" | "prepare_payable_allocation"
+    ) {
+        return forward_allocation_prepare(core, &tool, input, &context, &grant).await;
+    }
     if !scope_allows_write(core, &tool, &input, &context, &grant).await {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -68,6 +76,10 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "prepare_receivable_allocation" | "prepare_payable_allocation" => serde_json::from_value::<
+            business_core::document_approval::allocation::PrepareAllocation,
+        >(input.clone())
+        .is_ok(),
         "update_sales_order_draft" => {
             serde_json::from_value::<UpdateSalesDraft>(input.clone()).is_ok()
         }
@@ -108,6 +120,8 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
         | "approve_goods_receipt"
         | "approve_customer_receipt"
         | "approve_supplier_payment"
+        | "approve_receivable_allocation"
+        | "approve_payable_allocation"
         | "approve_inventory_opening" => {
             serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
         }
@@ -140,6 +154,14 @@ async fn forward_chat_approval(
         ),
         "approve_supplier_payment" => format!(
             "v1/agent-approvals/settlement/supplier_payment/{}",
+            input.document_id
+        ),
+        "approve_receivable_allocation" => format!(
+            "v1/agent-approvals/allocations/receivable_allocation_intent/{}",
+            input.document_id
+        ),
+        "approve_payable_allocation" => format!(
+            "v1/agent-approvals/allocations/payable_allocation_intent/{}",
             input.document_id
         ),
         "approve_shipment" => format!("v1/agent-approvals/stock/shipment/{}", input.document_id),
@@ -367,6 +389,12 @@ async fn scope_allows_write(
         "approve_supplier_payment" => input["documentId"]
             .as_str()
             .map(|id| format!("v1/agent-approval-previews/settlement/supplier_payment/{id}")),
+        "approve_receivable_allocation" => input["documentId"].as_str().map(|id| {
+            format!("v1/agent-approval-previews/allocations/receivable_allocation_intent/{id}")
+        }),
+        "approve_payable_allocation" => input["documentId"].as_str().map(|id| {
+            format!("v1/agent-approval-previews/allocations/payable_allocation_intent/{id}")
+        }),
         "approve_inventory_opening" => input["documentId"]
             .as_str()
             .map(|id| format!("v1/agent-approval-previews/stock/inventory_opening/{id}")),
@@ -468,6 +496,73 @@ pub(super) fn permits_document(value: &Value, scope: &AuthorizationScope) -> boo
     })
 }
 
+async fn forward_allocation_prepare(
+    core: &CoreClient,
+    tool: &str,
+    input: Value,
+    context: &RequestContext,
+    grant: &EffectiveGrant,
+) -> Response {
+    let kind = if tool == "prepare_receivable_allocation" {
+        "receivable_allocation_intent"
+    } else {
+        "payable_allocation_intent"
+    };
+    let Some(scope) = iam_authorization_scope(grant, &context.required_scope) else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let mut prepared = Value::Null;
+    for phase in ["agent-allocation-previews", "agent-allocation-intents"] {
+        let Ok(url) = core.base_url.join(&format!("v1/{phase}/{kind}")) else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        let response = core
+            .client
+            .post(url)
+            .header("x-business-service-credential", &core.credential)
+            .header("x-service-audience", "business-core")
+            .header(
+                "x-enterprise-user-id",
+                context.enterprise_user_id.to_string(),
+            )
+            .header("x-trace-id", context.trace_id.to_string())
+            .header(
+                "idempotency-key",
+                format!("agent:{}:{tool}", context.delegation_id),
+            )
+            .json(&input)
+            .send()
+            .await;
+        let Ok(response) = response else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        let status = response.status();
+        let Ok(value) = response.json::<Value>().await else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        if !status.is_success() {
+            return (status, Json(value)).into_response();
+        }
+        if !permits_document(&value["document"], &scope) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        prepared = value;
+    }
+    let source_kind = if kind == "receivable_allocation_intent" {
+        "customer_receipt"
+    } else {
+        "supplier_payment"
+    };
+    let Some(source_id) = input["sourceDocumentId"].as_str() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    prepared["item"]["status"] = json!("draft");
+    prepared["schemaVersion"] = json!(1);
+    prepared["status"] = json!("ok");
+    prepared["resourceRefs"] = json!([{"type":source_kind,"id":source_id,"title":"查看核销来源单据","bizUri":format!("biz://{}/{source_id}",source_kind.replace('_',"-"))}]);
+    Json(prepared).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,5 +586,91 @@ mod tests {
             &json!({"legalEntityId":"sg","lines":[{"warehouseId":"allowed"}]}),
             &scope
         ));
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    #[tokio::test]
+    async fn target_scope_is_checked_before_persisting_allocation_intent() {
+        for allowed in [false, true] {
+            let writes = Arc::new(AtomicUsize::new(0));
+            let snapshot = json!({"document":{"source":{"legalEntityId":"cn"},"allocations":[{"warehouseId":if allowed {"allowed"} else {"outside"}}]},"item":{"id":Uuid::new_v4(),"version":1}});
+            let read = snapshot.clone();
+            let counter = writes.clone();
+            let server = Router::new()
+                .route(
+                    "/v1/agent-allocation-previews/receivable_allocation_intent",
+                    axum::routing::post(move || {
+                        let value = read.clone();
+                        async move { Json(value) }
+                    }),
+                )
+                .route(
+                    "/v1/agent-allocation-intents/receivable_allocation_intent",
+                    axum::routing::post(move || {
+                        let value = snapshot.clone();
+                        let writes = counter.clone();
+                        async move {
+                            writes.fetch_add(1, Ordering::SeqCst);
+                            Json(value)
+                        }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let task = tokio::spawn(async move {
+                axum::serve(listener, server).await.unwrap();
+            });
+            let core = CoreClient {
+                client: reqwest::Client::new(),
+                base_url: Url::parse(&format!("http://{address}/")).unwrap(),
+                credential: "c".repeat(32),
+            };
+            let context = RequestContext {
+                enterprise_user_id: Uuid::new_v4(),
+                identity_binding_id: Uuid::new_v4(),
+                delegation_id: Uuid::new_v4(),
+                agent_id: "test".into(),
+                agent_turn_id: "test".into(),
+                trace_id: Uuid::new_v4(),
+                used_calls: 1,
+                required_scope: "receivable_allocation_intent:create".into(),
+                source_buzz_event_id: "a".repeat(64),
+                source_channel_id: "test".into(),
+            };
+            let grant = EffectiveGrant {
+                capability: business_iam::Capability::parse(&context.required_scope).unwrap(),
+                data_scope: DataScope::Restricted(BTreeMap::from([
+                    ("legal_entity".into(), ["cn".into()].into()),
+                    ("warehouse".into(), ["allowed".into()].into()),
+                ])),
+                obligations: Default::default(),
+            };
+            let response = forward_allocation_prepare(
+                &core,
+                "prepare_receivable_allocation",
+                json!({"sourceDocumentId":Uuid::new_v4()}),
+                &context,
+                &grant,
+            )
+            .await;
+            assert_eq!(
+                response.status(),
+                if allowed {
+                    StatusCode::OK
+                } else {
+                    StatusCode::FORBIDDEN
+                }
+            );
+            assert_eq!(writes.load(Ordering::SeqCst), usize::from(allowed));
+            task.abort();
+        }
     }
 }

@@ -22,6 +22,11 @@ const expectedTools = [
   "approve_shipment",
   "approve_purchase_order",
   "approve_sales_order",
+  "prepare_receivable_allocation",
+  "approve_receivable_allocation",
+  "prepare_payable_allocation",
+  "approve_payable_allocation",
+
   "approve_customer_receipt",
   "get_customer_receipt_approval_preview",
   "approve_supplier_payment",
