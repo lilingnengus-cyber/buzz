@@ -37,6 +37,6 @@ crm:manage 审批策略复制 sales_order:confirm 的角色、审批人数、自
 
 发布版 MCP SHA-256 68ba5c94da4d6860acc5bd417516e5ca0df40f124b4d3c0b64265d5052d36a74。原生 runtime 验证普通回合 95、指定确认回合 58 个工具，不是同会话加载全部 129。Host/MCP 必须配套安装以传递 BUSINESS_AGENT_APPROVAL_SCOPE。
 
-兼容工作树 /Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23 仅应用 Host、提示词和资源解析器 CRM 增量，保留原有修改，修改前四文件备份 /tmp/business-crm-compat-before-6239a7224。Host 10 项、链接 26 项测试通过，Host release 与 Mac 应用构建通过。候选 /tmp/Pacioli-crm-6239a7224.app 已应用本地 ad-hoc 签名并严格验证；打包的 buzz-acp SHA-256 1a377b8ece1624320c28839a0797eef673d867a013a7edc9c955d34f97677f21。不是正式签名公证安装包，未安装或启动。日志 /tmp/business-crm-{release-runtime-ordinary,release-runtime-approval,host-compat-test,host-compat-build,links-compat-test,mac-app-build}.log。
+兼容工作树 /Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23 仅应用 Host、提示词和资源解析器 CRM 增量，保留原有修改，修改前四文件备份 /tmp/business-crm-compat-before-6239a7224。Host 10 项、链接 25 项测试通过，Host release 与 Mac 应用构建通过。候选 /tmp/Pacioli-crm-6239a7224.app 已应用本地 ad-hoc 签名并严格验证；打包的 buzz-acp SHA-256 1a377b8ece1624320c28839a0797eef673d867a013a7edc9c955d34f97677f21。不是正式签名公证安装包，未安装或启动。日志 /tmp/business-crm-{release-runtime-ordinary,release-runtime-approval,host-compat-test,host-compat-build,links-compat-test,mac-app-build}.log。
 
 下一步：完成暂停版演练、Compose 核对、生产新备份及迁移/限定授权、四服务与网页及客户端配套切换，再做获准真实聊天和 Windows 验收。主数据、费用、报表、行动、履约细节与纠错范围仍未完成。
