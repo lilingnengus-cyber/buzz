@@ -14,6 +14,8 @@ pub(super) async fn write_tool(
             | "approve_sales_return"
             | "approve_purchase_return"
             | "approve_sales_return_inspection"
+            | "approve_sales_return_reversal"
+            | "approve_purchase_return_reversal"
             | "approve_sales_return_cancellation"
             | "approve_purchase_return_cancellation"
             | "approve_purchase_return_dispatch"
@@ -77,6 +79,8 @@ pub(super) async fn write_tool(
     if matches!(
         tool.as_str(),
         "prepare_receivable_allocation"
+            | "prepare_sales_return_reversal"
+            | "prepare_purchase_return_reversal"
             | "prepare_sales_return_cancellation"
             | "prepare_purchase_return_cancellation"
             | "prepare_sales_return_inspection"
@@ -107,6 +111,15 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "prepare_sales_return_reversal" | "prepare_purchase_return_reversal" => {
+            serde_json::from_value::<
+                business_core::document_approval::return_disposition::PrepareReturnDisposition,
+            >(input.clone())
+            .is_ok_and(|v| {
+                serde_json::from_value::<business_core::b2::ReverseReturn>(v.command).is_ok()
+            })
+        }
+
         "prepare_sales_return_cancellation" | "prepare_purchase_return_cancellation" => {
             serde_json::from_value::<
                 business_core::document_approval::return_disposition::PrepareReturnDisposition,
@@ -204,7 +217,9 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
             serde_json::from_value::<business_core::b3::model::CreateSupplierPayment>(input.clone())
                 .is_ok()
         }
-        "approve_sales_return_cancellation"
+        "approve_sales_return_reversal"
+        | "approve_purchase_return_reversal"
+        | "approve_sales_return_cancellation"
         | "approve_purchase_return_cancellation"
         | "approve_sales_order"
         | "approve_sales_return"
@@ -254,8 +269,16 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_sales_return_reversal" => format!(
+            "v1/agent-approvals/return-dispositions/sales_return_reversal_intent/{}",
+            input.document_id
+        ),
         "approve_sales_return_cancellation" => format!(
             "v1/agent-approvals/return-dispositions/sales_return_cancellation_intent/{}",
+            input.document_id
+        ),
+        "approve_purchase_return_reversal" => format!(
+            "v1/agent-approvals/return-dispositions/purchase_return_reversal_intent/{}",
             input.document_id
         ),
         "approve_purchase_return_cancellation" => format!(
@@ -541,7 +564,9 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "approve_sales_return_reversal" => input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/sales_return_reversal_intent/{id}")),
         "approve_sales_return_cancellation" => input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/sales_return_cancellation_intent/{id}")),
+        "approve_purchase_return_reversal" => input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/purchase_return_reversal_intent/{id}")),
         "approve_purchase_return_cancellation" => input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/purchase_return_cancellation_intent/{id}")),
         "update_sales_return_draft" => input["documentId"].as_str().map(|id|format!("v1/agent-return-edit-sources/sales_return/{id}")),
         "update_purchase_return_draft" => input["documentId"].as_str().map(|id|format!("v1/agent-return-edit-sources/purchase_return/{id}")),
@@ -739,10 +764,20 @@ async fn forward_intent_prepare(
     grant: &EffectiveGrant,
 ) -> Response {
     let (kind, category, source_kind) = match tool {
+        "prepare_sales_return_reversal" => (
+            "sales_return_reversal_intent",
+            "return-disposition",
+            "sales_return",
+        ),
         "prepare_sales_return_cancellation" => (
             "sales_return_cancellation_intent",
             "return-disposition",
             "sales_return",
+        ),
+        "prepare_purchase_return_reversal" => (
+            "purchase_return_reversal_intent",
+            "return-disposition",
+            "purchase_return",
         ),
         "prepare_purchase_return_cancellation" => (
             "purchase_return_cancellation_intent",

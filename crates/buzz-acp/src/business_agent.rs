@@ -16,8 +16,10 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 44] = [
+const AGENT_SCOPES: [&str; 46] = [
+    "sales_return_reversal_intent:create",
     "sales_return_cancellation_intent:create",
+    "purchase_return_reversal_intent:create",
     "purchase_return_cancellation_intent:create",
     "sales_return:update_draft",
     "purchase_return:update_draft",
@@ -69,7 +71,9 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "sales-return-reversal-intent" => "sales_return_reversal_intent:approve",
         "sales-return-cancellation-intent" => "sales_return_cancellation_intent:approve",
+        "purchase-return-reversal-intent" => "purchase_return_reversal_intent:approve",
         "purchase-return-cancellation-intent" => "purchase_return_cancellation_intent:approve",
         "sales-return" => "sales_return:approve",
         "purchase-return" => "purchase_return:approve",
@@ -880,7 +884,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 44);
+        assert_eq!(AGENT_SCOPES.len(), 46);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -1035,8 +1039,16 @@ mod tests {
                 "shipment_reversal_intent:approve",
             ),
             (
+                "sales-return-reversal-intent",
+                "sales_return_reversal_intent:approve",
+            ),
+            (
                 "sales-return-cancellation-intent",
                 "sales_return_cancellation_intent:approve",
+            ),
+            (
+                "purchase-return-reversal-intent",
+                "purchase_return_reversal_intent:approve",
             ),
             (
                 "purchase-return-cancellation-intent",

@@ -91,10 +91,14 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 54] = [
+const WRITE_TOOLS: [&str; 58] = [
+    "prepare_sales_return_reversal",
     "prepare_sales_return_cancellation",
+    "prepare_purchase_return_reversal",
     "prepare_purchase_return_cancellation",
+    "approve_sales_return_reversal",
     "approve_sales_return_cancellation",
+    "approve_purchase_return_reversal",
     "approve_purchase_return_cancellation",
     "update_sales_return_draft",
     "update_purchase_return_draft",
@@ -791,11 +795,15 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_sales_return_reversal" => Some("sales_return_reversal_intent:create"),
         "prepare_sales_return_cancellation" => Some("sales_return_cancellation_intent:create"),
+        "approve_sales_return_reversal" => Some("sales_return_reversal_intent:approve"),
         "approve_sales_return_cancellation" => Some("sales_return_cancellation_intent:approve"),
+        "prepare_purchase_return_reversal" => Some("purchase_return_reversal_intent:create"),
         "prepare_purchase_return_cancellation" => {
             Some("purchase_return_cancellation_intent:create")
         }
+        "approve_purchase_return_reversal" => Some("purchase_return_reversal_intent:approve"),
         "approve_purchase_return_cancellation" => {
             Some("purchase_return_cancellation_intent:approve")
         }

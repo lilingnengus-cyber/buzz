@@ -220,3 +220,17 @@ struct ReturnCancellationInput {
     expected_version: i64,
     reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReturnReversalInput {
+    source_document_id: Uuid,
+    command: ReturnReversalInput,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnReversalInput {
+    expected_version: i64,
+    reversal_date: String,
+    reason: String,
+}

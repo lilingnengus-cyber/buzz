@@ -127,3 +127,13 @@ Gateway 8、Read API 28、MCP 13、Host 10 项相关测试通过；两类取消�
 隔离数据库 `return_reversal_intents_verified` 完整 B2 流程通过，覆盖销售待质检、销售质检含报废、采购签收后三种冲销。测试验证逐笔反向数量/成本、原流水不变、余额与版本、原因/快照事件、幂等重放、再次冲销与撤权拒绝。持有真实往来行锁并观察执行事务进入等待，再改变往来版本，验证旧快照被拒绝；另在库存和往来更新后的退货事件插入点注入失败，验证全事务回滚且同键可重试。两类意图还验证未知输入、过期、不可变性、拒绝、范围撤销、错误摘要、重复审批及独立退货链接。Core 严格 Clippy、格式、文件大小门禁通过。日志 `/tmp/business-return-reversal-intents-core-verified.log`、`/tmp/business-return-reversal-execution-clippy.log`、`/tmp/business-return-reversal-execution-size.log`。
 
 仍是未部署的源码能力：候选工具数 105、线上 83 未改变，无生产写入或真实消息。下一步接入 Gateway/Read API/MCP/Host，并验证报表与详情对冲销的展示和日期口径。保留此前历史流水顺序缺失、后续库存业务已发生时拒绝自动逆转的限制，其他调整方案仍待实现；完整业务覆盖目标未完成。
+
+## 退货冲销助手链路（109 工具候选，未部署）
+
+新增 `prepare_sales_return_reversal`、`prepare_purchase_return_reversal` 和对应两个无参数 `approve_*`，接入 Gateway → Read API → MCP → Host。准备输入封闭，要求目标退货 ID、当前版本、冲销日期和原因；Read API 先获取 Core 只读快照并检查委托范围，再保存不可变意图。确认仅消费当前人类完整签名指令绑定的类型、意图 ID、版本、摘要和决策，不能由模型更换目标或影响。Host 提示词说明原记录保留、库存和往来影响、历史顺序/后续库存阻塞及不发起银行退款或实际物流。
+
+迁移 47 注册四项 IAM 能力，没有自动授权或审批策略。Gateway 固定能力集 73，Host 普通会话申请 46（审批仅随匹配指令单独申请），MCP 固定工具 109。Gateway 8、Read API 29、MCP 13、Host 10 项相关测试通过；新增准备委托越权在意图保存前拒绝、必填日期/未知字段/非法日期拒绝、两类签名指令及无参数确认 schema 验证。严格 Clippy、格式、文件大小门禁通过。实际 buzz-agent + 候选 MCP + 本地模型探针确认模型只见 109 项固定工具；没有调用真实业务工具、真实模型或发送聊天消息。
+
+候选二进制 `/tmp/business-read-mcp-return-candidate109`，原 83 工具回退二进制已恢复。日志 `/tmp/business-return109-{gateway,api,mcp,host,clippy,size,runtime,core}.log`。配套迁移在隔离数据库 `return_tools109_verified` 的完整 B2 流程验证；线上服务、已安装客户端和生产记录未改变。
+
+发布阻塞：检查发现利润投影只读取 sales_return_confirmed、不读取 sales_return_reversed，且确认投影查询限定当前 confirmed 状态；因此快速冲销可能使延迟确认事件失败，已投影的退货也缺少抵消事实。下一步必须补齐投影和延迟消费/幂等/跨期日期测试，再完成详情/报表验收与配套发布。此次工具接入不代表报表闭环或完整业务目标完成。

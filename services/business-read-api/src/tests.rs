@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 54);
+    assert_eq!(WRITE_TOOLS.len(), 58);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -581,5 +581,31 @@ fn cancellation_input_cannot_override_target_effects_or_confirmation() {
         let mut invalid = input;
         invalid["command"].as_object_mut().unwrap().remove("reason");
         assert!(!valid_write_input(tool, &invalid));
+    }
+}
+
+#[test]
+fn return_reversal_requires_date_and_cannot_override_approved_effects() {
+    for tool in [
+        "prepare_sales_return_reversal",
+        "prepare_purchase_return_reversal",
+    ] {
+        let input = json!({"sourceDocumentId":Uuid::new_v4(),"command":{"expectedVersion":2,"reversalDate":"2026-09-21","reason":"退货登记错误"}});
+        assert!(valid_write_input(tool, &input));
+        for field in ["reversalDate", "reason", "expectedVersion"] {
+            let mut invalid = input.clone();
+            invalid["command"].as_object_mut().unwrap().remove(field);
+            assert!(!valid_write_input(tool, &invalid));
+        }
+        for (field, value) in [
+            ("quantity", json!("10")),
+            ("approved", json!(true)),
+            ("reversalDate", json!("tomorrow")),
+            ("sourceId", json!(Uuid::new_v4())),
+        ] {
+            let mut invalid = input.clone();
+            invalid["command"][field] = value;
+            assert!(!valid_write_input(tool, &invalid));
+        }
     }
 }

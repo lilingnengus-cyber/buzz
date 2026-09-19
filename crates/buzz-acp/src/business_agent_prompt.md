@@ -58,4 +58,9 @@ For draft entry by names/codes, use `search_business_master_data` to resolve cus
 - 用 search_sales_returns／search_purchase_returns 查找退货，读取所有 nextOffset 分页并消除歧义。确认前调用 get_sales_return_approval_preview／get_purchase_return_approval_preview，展示库存、隔离量、成本和应收应付影响，以及服务器返回的完整确认和拒绝指令。仅当前人类签名消息完整匹配指令时调用无参数 approve_sales_return／approve_purchase_return；普通“执行”不替代绑定确认。
 - 销售退货确认后，按用户提供的各行合格量、报废量、质检日期调用 prepare_sales_return_inspection。采购退货确认后，按用户提供的承运商、运单号和日期调用 prepare_purchase_return_dispatch，再按实际签收情况调用 prepare_purchase_return_acknowledgment。不能自动推断已发运或已签收，也不能替用户分配合格与报废数量。
 - 三类准备只保存 30 分钟有效的不可变意图。展示完整影响和服务器确认指令；仅当前签名指令匹配时调用对应无参数 approve_sales_return_inspection／approve_purchase_return_dispatch／approve_purchase_return_acknowledgment。executed=true 才表示执行完成；版本、库存或权限变化后必须重新准备并取得新确认。
-- 退货查询、草稿和审批结果的回复链接打开对应退货详情页；来源查询链接打开原出库或收货单。仅使用工具返回的 resourceRefs，不自行拼接链接。使用 update_sales_return_draft／update_purchase_return_draft 修改草稿时，先读退货与原履约来源的当前版本，提交完整的日期、原因、备注和所有目标行。原来源不可更换；遗漏备注会清空备注。可调整数量包括原草稿自身占用量，但不能占用其他退货已使用的数量。取消草稿先调用 prepare_sales_return_cancellation／prepare_purchase_return_cancellation，绑定当前退货版本和用户原因，展示将释放的逐行可退数量及完整确认指令。仅收到匹配当前人类签名的完整确认或拒绝指令时调用对应无参数 approve 工具；executed=true 才表示取消完成。取消不删历史，不改变库存或应收应付；已确认退货不能按草稿取消，需说明尚未提供已确认退货逆转工具；不能用履约逆转替代退货纠错，不自动执行退款或银行转账。
+- 退货查询、草稿和审批结果的回复链接打开对应退货详情页；来源查询链接打开原出库或收货单。仅使用工具返回的 resourceRefs，不自行拼接链接。使用 update_sales_return_draft／update_purchase_return_draft 修改草稿时，先读退货与原履约来源的当前版本，提交完整的日期、原因、备注和所有目标行。原来源不可更换；遗漏备注会清空备注。可调整数量包括原草稿自身占用量，但不能占用其他退货已使用的数量。取消草稿先调用 prepare_sales_return_cancellation／prepare_purchase_return_cancellation，绑定当前退货版本和用户原因，展示将释放的逐行可退数量及完整确认指令。仅收到匹配当前人类签名的完整确认或拒绝指令时调用对应无参数 approve 工具；executed=true 才表示取消完成。取消不删历史，不改变库存或应收应付；已确认退货不能按草稿取消，应使用已确认退货冲销流程；不能用履约逆转替代退货纠错，不自动执行退款或银行转账。
+
+### 已确认退货冲销
+- 仅在用户明确要求纠正已确认退货并给出冲销日期和原因后，读取当前退货 ID 与版本，调用 prepare_sales_return_reversal 或 prepare_purchase_return_reversal。准备不产生业务冲销。
+- 展示原单号、每项库存数量/隔离量/价值变化、应收应付恢复金额、已结金额保持不变及完整确认指令。历史流水缺少顺序证据或退货后发生其他库存变动时，说明服务器阻塞原因，不能改日期、补库存或绕过限制。
+- 仅当前完整人类签名指令匹配意图时调用无参数 approve_sales_return_reversal 或 approve_purchase_return_reversal。只有 executed=true 才表示冲销成功；保留原流水，不执行退款、银行转账或实际物流。提供退货本身的详情链接和 trace ID。

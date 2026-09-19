@@ -762,6 +762,65 @@ impl BusinessReadMcp {
     }
 
     #[tool(
+        name = "prepare_sales_return_reversal",
+        description = "Prepare reversal of a confirmed return using its current version, reversal date and human reason. Returns a 30-minute immutable intent with exact stock and receivable/payable effects and the confirmation command. No business effects until confirmed; later stock movements or missing historical ordering evidence prevent automatic reversal."
+    )]
+    async fn prepare_sales_return_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReturnReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_sales_return_reversal",
+                "sales_return_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_sales_return_reversal",
+        description = "Apply only the confirmed return reversal decision bound to the current verified human signed command. No arguments; cannot change target, version or reason or date. Only executed=true proves reversal completed."
+    )]
+    async fn approve_sales_return_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_sales_return_reversal",
+                "sales_return_reversal_intent:approve",
+                "sales_return_reversal_intent",
+            )
+            .await)
+    }
+
+    #[tool(
+        name = "prepare_purchase_return_reversal",
+        description = "Prepare reversal of a confirmed return using its current version, reversal date and human reason. Returns a 30-minute immutable intent with exact stock and receivable/payable effects and the confirmation command. No business effects until confirmed; later stock movements or missing historical ordering evidence prevent automatic reversal."
+    )]
+    async fn prepare_purchase_return_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReturnReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_purchase_return_reversal",
+                "purchase_return_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_return_reversal",
+        description = "Apply only the confirmed return reversal decision bound to the current verified human signed command. No arguments; cannot change target, version or reason or date. Only executed=true proves reversal completed."
+    )]
+    async fn approve_purchase_return_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_return_reversal",
+                "purchase_return_reversal_intent:approve",
+                "purchase_return_reversal_intent",
+            )
+            .await)
+    }
+    #[tool(
         name = "prepare_sales_return_cancellation",
         description = "Prepare cancellation of a draft sales return using its current version and user-provided reason. Returns immutable 30-minute intent, exact quantity released and complete confirmation command; does not cancel. Confirmed returns cannot be cancelled."
     )]
@@ -3556,7 +3615,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 105);
+        assert_eq!(registered.len(), 109);
         for name in [
             "update_sales_return_draft",
             "update_purchase_return_draft",
@@ -3578,7 +3637,9 @@ mod tests {
         }
 
         for name in [
+            "approve_sales_return_reversal",
             "approve_sales_return_cancellation",
+            "approve_purchase_return_reversal",
             "approve_purchase_return_cancellation",
             "approve_sales_return",
             "approve_purchase_return",
