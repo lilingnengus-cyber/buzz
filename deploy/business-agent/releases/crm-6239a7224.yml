@@ -1,0 +1,18 @@
+# Append to the verified live Compose chain after migration/authorization rehearsal.
+# All images must match the IDs in the 2026-09-20 CRM release report.
+services:
+  gateway:
+    image: shiyue-business-crm-gateway:6239a7224
+    environment:
+      AGENT_DELEGATION_MAX_CALLS: "64"
+      AGENT_DELEGATION_TTL_SECONDS: "900"
+  migrate:
+    image: shiyue-business-crm-gateway:6239a7224
+  business-core:
+    image: shiyue-business-crm-business-core:6239a7224
+  business-read-api:
+    image: shiyue-business-crm-business-read-api:6239a7224
+  iam-admin-api:
+    image: shiyue-business-crm-iam-admin-api:6239a7224
+  iam-admin-migrate:
+    image: shiyue-business-crm-iam-admin-api:6239a7224

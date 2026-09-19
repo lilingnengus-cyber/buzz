@@ -1,0 +1,5 @@
+# Append after the CRM candidate overlay. Retains migration 54 and CRM scope fixes.
+# Build and verify the paused image before using this override.
+services:
+  business-core:
+    image: shiyue-business-crm-paused-business-core:6239a7224
