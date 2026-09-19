@@ -5,6 +5,8 @@ export type Section =
   | "incidents"
   | "trends"
   | "crm"
+  | "crmFollowups"
+  | "crmContacts"
   | "coreData"
   | "productData"
   | "numbering"
@@ -51,11 +53,20 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    id: "workflows",
-    label: "业务闭环",
+    id: "crm",
+    label: "售前 CRM",
     index: "03",
     items: [
-      { id: "crm", label: "售前 CRM", index: "CRM" },
+      { id: "crm", label: "商机", index: "OPP" },
+      { id: "crmFollowups", label: "跟进记录", index: "LOG" },
+      { id: "crmContacts", label: "客户联系人", index: "CON" },
+    ],
+  },
+  {
+    id: "workflows",
+    label: "业务闭环",
+    index: "04",
+    items: [
       { id: "sales", label: "销售订单闭环", index: "O2C" },
       { id: "inventory", label: "库存台账", index: "INV" },
       { id: "purchasing", label: "采购订单闭环", index: "P2P" },
@@ -64,7 +75,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "analysis",
     label: "经营分析",
-    index: "04",
+    index: "05",
     items: [
       { id: "profits", label: "订单真实利润", index: "P&L" },
       { id: "profitability", label: "多维盈利分析", index: "DIM" },

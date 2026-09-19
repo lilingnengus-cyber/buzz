@@ -115,6 +115,50 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     let detail = crm.detail(actor, id, 0).await.unwrap();
     assert_eq!(detail["followups"].as_array().unwrap().len(), 1);
     assert_eq!(detail["item"]["stage"], "quoting");
+    for contacts in [false, true] {
+        let page = crm
+            .register(actor, &Filters::default(), contacts)
+            .await
+            .unwrap();
+        assert_eq!(page["items"].as_array().unwrap().len(), 1);
+        let hidden = crm
+            .register(outsider, &Filters::default(), contacts)
+            .await
+            .unwrap();
+        assert!(hidden["items"].as_array().unwrap().is_empty());
+        let missing = Filters {
+            query: Some("不存在%".into()),
+            ..Default::default()
+        };
+        assert!(
+            crm.register(actor, &missing, contacts).await.unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        let next = Filters {
+            offset: 50,
+            ..Default::default()
+        };
+        assert!(crm.register(actor, &next, contacts).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+    let contacts = crm
+        .register(actor, &Filters::default(), true)
+        .await
+        .unwrap();
+    assert_eq!(contacts["items"][0]["contactName"], "张经理");
+    assert_eq!(
+        contacts["items"][0]["opportunities"][0]["id"],
+        id.to_string()
+    );
+    let history = crm
+        .register(actor, &Filters::default(), false)
+        .await
+        .unwrap();
+    assert_eq!(history["items"][0]["note"], note.note);
     input.expected_version = Some(2);
     input.stage = "won".into();
     crm.save(actor, Uuid::new_v4(), Some(id), "update-key-1", &input)
@@ -155,6 +199,15 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .await,
         Err(DomainError::NotFoundOrForbidden)
     ));
+    for contacts in [false, true] {
+        assert!(crm
+            .register(actor, &Filters::default(), contacts)
+            .await
+            .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM sales_orders")
         .fetch_one(&pool)
         .await
@@ -176,6 +229,8 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         for (method, path) in [
             ("GET", "/api/v1/crm/options".to_string()),
             ("GET", "/api/v1/crm/opportunities".into()),
+            ("GET", "/api/v1/crm/followups".into()),
+            ("GET", "/api/v1/crm/contacts".into()),
             ("POST", "/api/v1/crm/opportunities".into()),
             ("PUT", format!("/api/v1/crm/opportunities/{id}")),
             ("POST", format!("/api/v1/crm/opportunities/{id}/followups")),

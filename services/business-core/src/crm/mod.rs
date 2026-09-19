@@ -1,6 +1,7 @@
 //! Minimal presales CRM, sharing Business Core identity, scopes and command audit.
 pub mod api;
 mod model;
+mod registers;
 use crate::{
     b2::common::{
         authorize, begin_idempotent, finish_idempotent, record, request_hash, DomainError,

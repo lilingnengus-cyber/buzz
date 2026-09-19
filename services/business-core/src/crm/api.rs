@@ -52,6 +52,8 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/crm/opportunities", get(list).post(create))
         .route("/api/v1/crm/options", get(options))
+        .route("/api/v1/crm/followups", get(followups))
+        .route("/api/v1/crm/contacts", get(contacts))
         .route("/api/v1/crm/opportunities/{id}", get(detail).put(update))
         .route("/api/v1/crm/opportunities/{id}/followups", post(followup))
 }
@@ -154,6 +156,29 @@ async fn followup(
             key(&h, c.trace_id)?,
             &input,
         )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn followups(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<Filters>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .register(c.actor_user_id, &q, false)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn contacts(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<Filters>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .register(c.actor_user_id, &q, true)
         .await
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))
