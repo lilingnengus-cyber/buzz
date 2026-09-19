@@ -327,6 +327,9 @@ impl InventoryCountService {
             begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:submit", key, &hash)
                 .await?
         {
+            if replay.id != id {
+                return Err(DomainError::IdempotencyConflict);
+            }
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -344,7 +347,8 @@ impl InventoryCountService {
             .iter()
             .map(|line| (line.count_line_id, line))
             .collect::<BTreeMap<_, _>>();
-        if values.len() != lines.len()
+        if values.len() != input.lines.len()
+            || values.len() != lines.len()
             || lines
                 .iter()
                 .any(|line| !values.contains_key(&line.get::<Uuid, _>("id")))
@@ -438,6 +442,9 @@ impl InventoryCountService {
             begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:post", key, &hash)
                 .await?
         {
+            if replay.id != id {
+                return Err(DomainError::IdempotencyConflict);
+            }
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -534,6 +541,9 @@ impl InventoryCountService {
             begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:cancel", key, &hash)
                 .await?
         {
+            if replay.id != id {
+                return Err(DomainError::IdempotencyConflict);
+            }
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
