@@ -50,3 +50,19 @@ Web 配套 `tsc --noEmit && vite build` 通过，入口 `index-ChD_1Fhb.js`、�
 Host 提示补充基础资料查找、专用商品读取、字段保留及显式清空、计量精度询问、不可变字段、签名确认及实际链接规则，并修正顶部审批例外范围。10 项 Host 定向测试通过，提交 `ee7b26b81`。兼容源码已加入该段提示，Host 发布版重建完成，已替换 `/tmp/Pacioli-master-e51a84b9c.app` 内 Host 并重新 ad-hoc 签名；严格深度签名校验通过。当前包内 Host SHA-256 为 `c9b75dbaf19d863c1e64f4b8df4182db38297ed4db454a84af203c356036f3a0`，取代前述旧候选哈希。尚未安装。
 
 下一步是配套生产迁移/授权/服务/Web 切换及真实客户端验收。基础资料启停、新法人授权与其他业务域仍未完成。
+
+## 实际配套发布
+
+生产四服务已从 CRM 6239a7224 切换为上述 e51a84b9c 镜像，3100/3110 readiness 与 3120/3130 health 全部通过。实际 Compose 链从当前容器标签获取，再追加 `/opt/business-platform/app/compose.master-e51a84b9c.yml`。暂停覆盖为同目录 `compose.master-paused-e51a84b9c.yml`，引用已验证的暂停镜像。执行脚本 `/tmp/business-master-e51-deploy.py` 校验候选镜像 ID、旧线上标签、授权 SQL SHA 和磁盘阈值；日志 `/tmp/business-master-e51-deploy.log`。
+
+发布前备份 `/opt/business-platform/shared/before-master-e51a84b9c.dump`（0600，813079 字节）。生产迁移最新为 57 且全部成功，新增 9 项限定用途能力及 2 条保留原限制的审批策略，授权审计 trace `308245b5-4999-4a4f-89c6-201cd5e18bf5`。原法人读取授权不变；创建新法人的授权仍未配置。
+
+Web 已原子切换至 `/opt/business-platform/shared/business-web-a281e3423-1b660e9cf319`，前版 `/opt/business-platform/shared/business-web-154f02bfd-e95318bf8c91` 已保留。入口 `assets/index-ChD_1Fhb.js`，SHA-256 `aade4af64a75f1568cbdf408a50b51b11c32be740431169f17402b70998a2622`；发布脚本的资源与服务检查通过。日志 `/tmp/business-master-e51-web-release.log`。
+
+Mac `/Applications/Pacioli.app` 已安装当前签名候选，严格深度签名验证通过；旧应用保留 `/Applications/Pacioli-before-master.app`，完整备份位于应用数据目录 `backups/master-e51a84b9c`。两条企业助手配置保留 gpt-5.5 模型，使用版本固定路径 `tools/business-agent/master-e51a84b9c/business-read-mcp` 并追加基础资料提示。配置备份权限为 0600。日志 `/tmp/business-master-e51-install-client.log`。
+
+已安装的 Agent/MCP 模拟模型原生回合验证普通 101、指定确认 60 个固定工具，日志 `/tmp/business-master-installed-runtime{,-approval}.log`。Mac 屏幕锁定，未重启或重载运行中的客户端，未发送聊天；安装不等于真实会话已加载。
+
+生产只读检查证明订单预览、退货、盘点查询和四类基础资料详情可用。销售订单仍为 5，原单 `7706b2ff-395f-422c-8794-73619618c304` 仍为 draft/v1/gross 200，基础资料意图为 0。首次核对脚本把销售状态列写成 status 而失败，随后按实际 schema 改为 lifecycle_status 并完成检查；没有为修复检查修改业务数据。未创建生产基础资料测试记录。
+
+后续仍需真实聊天与 Windows 配套验收；新法人授权、基础资料启停并发保护，以及完整业务覆盖文档中其余业务域保持未完成。
