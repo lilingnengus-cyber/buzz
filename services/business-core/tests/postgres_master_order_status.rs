@@ -27,7 +27,7 @@ struct Fixture {
 }
 
 #[tokio::test]
-async fn sales_create_rechecks_customer_after_disable_wait() {
+async fn sales_create_rechecks_master_status_after_disable_wait() {
     let Ok(url) = std::env::var("BUSINESS_MASTER_ORDER_TEST_DATABASE_URL") else {
         return;
     };
@@ -40,71 +40,73 @@ async fn sales_create_rechecks_customer_after_disable_wait() {
     store.migrate().await.unwrap();
     let fixture = b2_seed::seed(&pool).await;
     let customer = fixture.customer;
-    let mut blocker = pool.begin().await.unwrap();
-    let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *blocker)
-        .await
-        .unwrap();
-    sqlx::query("SELECT id FROM business_customers WHERE id=$1 FOR UPDATE")
-        .bind(customer)
-        .execute(&mut *blocker)
-        .await
-        .unwrap();
-    sqlx::query("UPDATE business_customers SET status='disabled' WHERE id=$1")
-        .bind(customer)
-        .execute(&mut *blocker)
-        .await
-        .unwrap();
-    let task_store = store.clone();
-    let task_fixture = fixture.clone();
-    let pending = tokio::spawn(async move {
-        let service = SalesService::new(task_store, "SO".into(), "SHP".into(), 30);
-        create_order(
-            &service,
-            &task_fixture,
-            NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
-            "master-disable-wait",
-        )
-        .await
-    });
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        loop {
-            let waiting: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))",
-            )
-            .bind(pid)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-            if waiting {
-                break;
-            }
-            assert!(!pending.is_finished(), "order must wait for the master row");
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-    blocker.commit().await.unwrap();
-    let result = pending.await.unwrap();
-    assert!(
-        matches!(
-            result,
-            Err(business_core::b2::DomainError::NotFoundOrForbidden)
-        ),
-        "order must reject a customer disabled while validation waited"
-    );
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM sales_orders WHERE customer_id=$1")
-        .bind(customer)
+    let product: Uuid = sqlx::query_scalar("SELECT product_id FROM business_skus WHERE id=$1")
+        .bind(fixture.sku)
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(count, 0);
-    sqlx::query("UPDATE business_customers SET status='active' WHERE id=$1")
-        .bind(customer)
+    for (table, id) in [
+        ("business_customers", customer),
+        ("business_units", fixture.business_unit),
+        ("business_warehouses", fixture.warehouse),
+        ("business_skus", fixture.sku),
+        ("business_products", product),
+    ] {
+        let mut blocker = pool.begin().await.unwrap();
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *blocker)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT id FROM {table} WHERE id=$1 FOR UPDATE"
+        )))
+        .bind(id)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "UPDATE {table} SET status='disabled' WHERE id=$1"
+        )))
+        .bind(id)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+        let task_store = store.clone();
+        let task_fixture = fixture.clone();
+        let pending = tokio::spawn(async move {
+            create_order(
+                &SalesService::new(task_store, "SO".into(), "SHP".into(), 30),
+                &task_fixture,
+                NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+                table,
+            )
+            .await
+        });
+        blocked_pid(&pool, pid).await;
+        blocker.commit().await.unwrap();
+        let result = pending.await.unwrap();
+        assert!(
+            matches!(
+                result,
+                Err(business_core::b2::DomainError::NotFoundOrForbidden)
+            ),
+            "disabled {table} must reject order: {result:?}"
+        );
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM sales_orders WHERE customer_id=$1")
+                .bind(customer)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(count, 0);
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "UPDATE {table} SET status='active' WHERE id=$1"
+        )))
+        .bind(id)
         .execute(&pool)
         .await
         .unwrap();
+    }
     // Hold the order insert after validation has acquired its customer share lock.
     sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT role_id,'business_master_data:manage' FROM business_user_roles WHERE enterprise_user_id=$1 ON CONFLICT DO NOTHING")
         .bind(fixture.actor).execute(&pool).await.unwrap();

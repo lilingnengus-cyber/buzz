@@ -193,3 +193,11 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 首次反向测试误用固定 expected_version=1，而前面的直接状态切换已触发版本递增，导致版本冲突；改为读取当前版本后，在新隔离库 master_order_status_reverse_v2 通过，证明命中的是业务影响保护。两个方向都在同一回归内执行，严格 Clippy、格式和 diff 检查通过。日志 `/tmp/master-order-status-reverse-v2.log` 与 `/tmp/master-order-status-reverse-clippy.log`。
 
 这补齐客户创建路径的双向证据，其他资料及写入入口仍未补齐，尚未部署或开放助手启停。Windows 同一运行 35471308524 仍在 Build sidecars。
+
+## 销售草稿引用保护扩展
+
+五类资料等待测试已扩展到客户、业务单元、仓库、SKU、产品。未修复版本在 master_order_refs_before 中复现业务单元已停用仍返回成功草稿。业务单元校验改为实际行的 FOR SHARE，仓库/SKU/产品联查增加 FOR SHARE OF w,s,p，直到草稿事务提交才释放。该公共校验也用于草稿更新。
+
+master_order_refs_after 中五类停用先提交场景均在真实行锁等待后返回 NotFoundOrForbidden，无订单残留；客户的订单先提交反向场景继续通过。master_order_refs_b2 的完整 B2 闭环/并发回归与 Core/新增测试严格 Clippy 通过。日志 `/tmp/master-order-refs-{before,after,b2,clippy}.log`。
+
+尚未部署；不能据此宣称所有状态引用都受保护。法人、计量单位、品牌/分类及明细其他归属、采购/库存等入口仍需核对；其余资料的反向业务阻塞与助手状态意图仍待完成。
