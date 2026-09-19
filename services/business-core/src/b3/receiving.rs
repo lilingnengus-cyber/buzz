@@ -344,6 +344,20 @@ impl ReceivingService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_receipt_guarded(actor, trace_id, receipt_id, key, input, None)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn reverse_receipt_guarded(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        receipt_id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        guard: Option<&crate::b2::stock_reversal_guard::StockReversalGuard>,
+    ) -> Result<CommandResult, DomainError> {
         let scope = self.receipt_scope(receipt_id).await?;
         authorize(
             &self.store,
@@ -356,7 +370,10 @@ impl ReceivingService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = match guard {
+            Some(guard) => request_hash(&json!({"command":input,"guard":guard}))?,
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
             begin_idempotent::<CommandResult>(&mut tx, actor, "goods_receipt:reverse", key, &hash)
@@ -375,16 +392,34 @@ impl ReceivingService {
                 "only confirmed goods receipts can be reversed".into(),
             ));
         }
+        if let Some(guard) = guard {
+            guard
+                .check_order(&mut tx, false, receipt.get("purchase_order_id"))
+                .await?;
+        }
         let payable = sqlx::query(
-            "SELECT id,settled_amount FROM trade_payables WHERE goods_receipt_id=$1 FOR UPDATE",
+            "SELECT id,settled_amount,version FROM trade_payables WHERE goods_receipt_id=$1 FOR UPDATE",
         )
         .bind(receipt_id)
         .fetch_one(&mut *tx)
         .await?;
+        if let Some(guard) = guard {
+            guard.check_financial(payable.get("version"))?;
+        }
         if payable.get::<Decimal, _>("settled_amount") > Decimal::ZERO {
             return Err(DomainError::PayableAlreadySettled);
         }
+        if guard.is_some() {
+            let active_returns: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM purchase_returns WHERE goods_receipt_id=$1 AND status IN ('draft','confirmed'))")
+                .bind(receipt_id).fetch_one(&mut *tx).await?;
+            if active_returns {
+                return Err(DomainError::Invalid("source has active returns".into()));
+            }
+        }
         let lines=sqlx::query("SELECT grl.id receipt_line_id,grl.purchase_order_line_id,grl.sku_id,grl.received_quantity,grl.net_amount,grl.tax_amount,grl.gross_amount,grl.provisional_total_cost,grl.inventory_movement_id,m.posted_at FROM goods_receipt_lines grl JOIN inventory_movements m ON m.id=grl.inventory_movement_id WHERE grl.goods_receipt_id=$1 ORDER BY grl.sku_id,grl.id FOR UPDATE OF grl").bind(receipt_id).fetch_all(&mut *tx).await?;
+        if let Some(guard) = guard {
+            guard.check_balances(&mut tx).await?;
+        }
         // Serialize against inventory writers before checking their committed movements.
         for line in &lines {
             sqlx::query("SELECT 1 FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE")
@@ -479,7 +514,7 @@ impl ReceivingService {
             "goods_receipt_reversed",
             "goods_receipt",
             receipt_id,
-            json!({"version":version}),
+            json!({"version":version,"reason":input.reason_code}),
         )
         .await?;
         let result = CommandResult {

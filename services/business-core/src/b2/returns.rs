@@ -358,7 +358,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        crate::b3::common::authorize(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -497,7 +497,12 @@ impl ReturnService {
         }
         let ret=sqlx::query("SELECT return_number,shipment_id,receivable_id,legal_entity_id,warehouse_id,return_date,currency::text,status,version FROM sales_returns WHERE id=$1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
         check_draft(&ret, input.expected_version)?;
-        let receivable=sqlx::query("SELECT original_amount,settled_amount,open_amount FROM trade_receivables WHERE id=$1 FOR UPDATE").bind(ret.get::<Uuid,_>("receivable_id")).fetch_one(&mut *tx).await?;
+        let receivable=sqlx::query("SELECT original_amount,settled_amount,open_amount,status FROM trade_receivables WHERE id=$1 FOR UPDATE").bind(ret.get::<Uuid,_>("receivable_id")).fetch_one(&mut *tx).await?;
+        if receivable.get::<String, _>("status") == "reversed" {
+            return Err(DomainError::Invalid(
+                "cannot return a reversed source".into(),
+            ));
+        }
         let lines=sqlx::query("SELECT rl.id,rl.shipment_line_id,rl.sku_id,rl.quantity,sl.quantity source_quantity,sl.sales_amount source_sales,sl.unit_cost,sl.total_cost FROM sales_return_lines rl JOIN shipment_lines sl ON sl.id=rl.shipment_line_id WHERE rl.sales_return_id=$1 ORDER BY rl.sku_id,rl.id FOR UPDATE OF rl").bind(id).fetch_all(&mut *tx).await?;
         let mut sales_total = Decimal::ZERO;
         let mut cost_total = Decimal::ZERO;
@@ -584,7 +589,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        crate::b3::common::authorize(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -607,7 +612,12 @@ impl ReturnService {
         }
         let ret=sqlx::query("SELECT return_number,goods_receipt_id,payable_id,legal_entity_id,warehouse_id,return_date,currency::text,status,version FROM purchase_returns WHERE id=$1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
         check_draft(&ret, input.expected_version)?;
-        let payable=sqlx::query("SELECT original_amount,settled_amount,open_amount FROM trade_payables WHERE id=$1 FOR UPDATE").bind(ret.get::<Uuid,_>("payable_id")).fetch_one(&mut *tx).await?;
+        let payable=sqlx::query("SELECT original_amount,settled_amount,open_amount,status FROM trade_payables WHERE id=$1 FOR UPDATE").bind(ret.get::<Uuid,_>("payable_id")).fetch_one(&mut *tx).await?;
+        if payable.get::<String, _>("status") == "reversed" {
+            return Err(DomainError::Invalid(
+                "cannot return a reversed source".into(),
+            ));
+        }
         let lines=sqlx::query("SELECT rl.id,rl.goods_receipt_line_id,rl.sku_id,rl.quantity,gl.received_quantity source_quantity,gl.net_amount source_net,gl.tax_amount source_tax,gl.gross_amount source_gross FROM purchase_return_lines rl JOIN goods_receipt_lines gl ON gl.id=rl.goods_receipt_line_id WHERE rl.purchase_return_id=$1 ORDER BY rl.sku_id,rl.id FOR UPDATE OF rl").bind(id).fetch_all(&mut *tx).await?;
         let mut net_total = Decimal::ZERO;
         let mut tax_total = Decimal::ZERO;
@@ -771,17 +781,26 @@ impl ReturnService {
             .fetch_optional(self.store.pool())
             .await?
             .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        let scope = authorize(
             &self.store,
             actor,
             permission,
             Some(pre.get("legal_entity_id")),
             Some(pre.get("warehouse_id")),
-            Some(pre.get("partner_id")),
+            None,
             None,
             None,
         )
         .await?;
+        let partner: Uuid = pre.get("partner_id");
+        let allowed = if side == "sales" {
+            scope.scopes.customer_ids.contains(&partner)
+        } else {
+            scope.scopes.supplier_ids.contains(&partner)
+        };
+        if !allowed {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =

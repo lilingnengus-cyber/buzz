@@ -243,6 +243,20 @@ impl InventoryService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_opening_guarded(actor, trace_id, batch_id, key, input, None)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn reverse_opening_guarded(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        batch_id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        guard: Option<&crate::b2::stock_reversal_guard::StockReversalGuard>,
+    ) -> Result<CommandResult, DomainError> {
         let pre = sqlx::query("SELECT legal_entity_id FROM inventory_opening_batches WHERE id=$1")
             .bind(batch_id)
             .fetch_optional(self.store.pool())
@@ -259,7 +273,10 @@ impl InventoryService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = match guard {
+            Some(guard) => request_hash(&json!({"command":input,"guard":guard}))?,
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -284,6 +301,9 @@ impl InventoryService {
             ));
         }
         let movements=sqlx::query("SELECT m.id,m.warehouse_id,m.sku_id,m.quantity,m.unit_cost,m.total_cost,m.posted_at,l.id line_id FROM inventory_movements m JOIN inventory_opening_lines l ON l.id=m.source_line_id WHERE m.source_id=$1 AND m.movement_type='opening_balance' ORDER BY m.warehouse_id,m.sku_id,m.id").bind(batch_id).fetch_all(&mut *tx).await?;
+        if let Some(guard) = guard {
+            guard.check_balances(&mut tx).await?;
+        }
         for movement in &movements {
             let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,last_movement_id FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(movement.get::<Uuid,_>("warehouse_id")).bind(movement.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
             let later:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_movements WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 AND posted_at>$4)").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(movement.get::<Uuid,_>("warehouse_id")).bind(movement.get::<Uuid,_>("sku_id")).bind(movement.get::<chrono::DateTime<chrono::Utc>,_>("posted_at")).fetch_one(&mut *tx).await?;
@@ -332,7 +352,7 @@ impl InventoryService {
             "inventory_opening_reversed",
             "inventory_opening",
             batch_id,
-            json!({"version":version}),
+            json!({"version":version,"reason":input.reason_code}),
         )
         .await?;
         let result = CommandResult {
@@ -530,6 +550,20 @@ impl InventoryService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_shipment_guarded(actor, trace_id, shipment_id, key, input, None)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn reverse_shipment_guarded(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        shipment_id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        guard: Option<&crate::b2::stock_reversal_guard::StockReversalGuard>,
+    ) -> Result<CommandResult, DomainError> {
         let pre = sqlx::query(
             "SELECT legal_entity_id,warehouse_id,customer_id FROM shipments WHERE id=$1",
         )
@@ -548,7 +582,10 @@ impl InventoryService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = match guard {
+            Some(guard) => request_hash(&json!({"command":input,"guard":guard}))?,
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
             begin_idempotent::<CommandResult>(&mut tx, actor, "shipment:reverse", key, &hash)
@@ -567,11 +604,29 @@ impl InventoryService {
                 "only confirmed shipments can be reversed".into(),
             ));
         }
-        let receivable=sqlx::query("SELECT id,original_amount,settled_amount,status FROM trade_receivables WHERE shipment_id=$1 FOR UPDATE").bind(shipment_id).fetch_one(&mut *tx).await?;
+        if let Some(guard) = guard {
+            guard
+                .check_order(&mut tx, true, shipment.get("sales_order_id"))
+                .await?;
+        }
+        let receivable=sqlx::query("SELECT id,original_amount,settled_amount,status,version FROM trade_receivables WHERE shipment_id=$1 FOR UPDATE").bind(shipment_id).fetch_one(&mut *tx).await?;
+        if let Some(guard) = guard {
+            guard.check_financial(receivable.get("version"))?;
+        }
         if receivable.get::<Decimal, _>("settled_amount") > Decimal::ZERO {
             return Err(DomainError::ReceivableAlreadySettled);
         }
+        if guard.is_some() {
+            let active_returns: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_returns WHERE shipment_id=$1 AND status IN ('draft','confirmed'))")
+                .bind(shipment_id).fetch_one(&mut *tx).await?;
+            if active_returns {
+                return Err(DomainError::Invalid("source has active returns".into()));
+            }
+        }
         let lines=sqlx::query("SELECT sl.id,sl.sales_order_line_id,sl.sku_id,sl.quantity,sl.unit_cost,sl.total_cost,sl.inventory_reservation_id,r.consumed_quantity,r.released_quantity,r.reserved_quantity,m.id movement_id FROM shipment_lines sl JOIN inventory_reservations r ON r.id=sl.inventory_reservation_id JOIN inventory_movements m ON m.source_line_id=sl.id AND m.movement_type='sales_shipment' WHERE sl.shipment_id=$1 ORDER BY sl.sku_id,sl.id FOR UPDATE OF r").bind(shipment_id).fetch_all(&mut *tx).await?;
+        if let Some(guard) = guard {
+            guard.check_balances(&mut tx).await?;
+        }
         for line in &lines {
             let quantity: Decimal = line.get("quantity");
             let cost: Decimal = line
@@ -627,7 +682,7 @@ impl InventoryService {
             "shipment_reversed",
             "shipment",
             shipment_id,
-            json!({"version":version}),
+            json!({"version":version,"reason":input.reason_code}),
         )
         .await?;
         record(

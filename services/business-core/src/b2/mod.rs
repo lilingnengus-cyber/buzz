@@ -11,6 +11,7 @@ mod return_disposition_api;
 mod returns;
 mod sales;
 mod settlement;
+pub(crate) mod stock_reversal_guard;
 
 pub use common::DomainError;
 pub use inventory::InventoryService;

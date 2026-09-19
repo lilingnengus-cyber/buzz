@@ -9,6 +9,8 @@ pub mod reversal;
 mod settlement;
 mod snapshot;
 pub(crate) mod stock;
+/// Immutable stock reversal preparation and signed execution.
+pub mod stock_reversal;
 
 use crate::{
     api::AppState,
@@ -78,6 +80,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(allocation::routes())
         .merge(reversal::routes())
         .merge(order_cancellation::routes())
+        .merge(stock_reversal::routes())
         .route(
             "/v1/agent-allocation-history/{kind}",
             get(allocation_history::search),
@@ -417,6 +420,7 @@ async fn cast_vote(
         .await?,
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
+        "shipment_reversal_intent" | "goods_receipt_reversal_intent" | "inventory_opening_reversal_intent" => Some(stock_reversal::authority_row(store,document_type,document_id).await?),
         "sales_order_cancellation_intent" | "purchase_order_cancellation_intent" => Some(order_cancellation::authority_row(store,document_type,document_id).await?),
         "customer_receipt_reversal_intent" | "supplier_payment_reversal_intent" | "receivable_allocation_reversal_intent" | "payable_allocation_reversal_intent" => Some(reversal::authority_row(store, document_type, document_id).await?),
         "receivable_allocation_intent" | "payable_allocation_intent" => Some(allocation::authority_row(store, document_type, document_id).await?),
@@ -424,12 +428,16 @@ async fn cast_vote(
     }
     .ok_or(StoreError::NotFoundOrForbidden)?;
     let creator: Uuid = row.get("created_by_user_id");
-    let wrong_party_scope = if document_type == "inventory_opening" {
+    let wrong_party_scope = if matches!(
+        document_type,
+        "inventory_opening" | "inventory_opening_reversal_intent"
+    ) {
         false
     } else if matches!(
         document_type,
         "sales_order"
             | "shipment"
+            | "shipment_reversal_intent"
             | "customer_receipt"
             | "receivable_allocation_intent"
             | "sales_order_cancellation_intent"

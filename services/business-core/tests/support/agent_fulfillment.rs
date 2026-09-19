@@ -2,6 +2,8 @@
 mod cancellation_checks;
 #[path = "agent_settlement.rs"]
 mod settlement_checks;
+#[path = "agent_stock_reversal.rs"]
+mod stock_reversal_checks;
 
 use super::*;
 use axum::{
@@ -278,6 +280,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     shortage_retry(&app, store, f).await;
     settlement_checks::check(&app, store, f, supplier).await;
     cancellation_checks::check(&app, store, f, supplier, sku).await;
+    stock_reversal_checks::check(&app, store, f, supplier).await;
 }
 
 async fn shortage_retry(app: &Router, store: &PgStore, f: &Fixture) {

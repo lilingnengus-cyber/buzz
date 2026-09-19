@@ -1,7 +1,7 @@
 //! Business Core B3 purchasing, receiving and supplier settlement modules.
 
 pub mod api;
-mod common;
+pub(crate) mod common;
 mod delivery;
 mod delivery_api;
 pub mod model;
