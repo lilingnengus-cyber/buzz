@@ -31,4 +31,12 @@ MCP 候选 `/tmp/business-master-client-e51a84b9c/business-read-mcp`，SHA-256 �
 
 ## 后续发布条件
 
+## 发布镜像运行时补充验证
+
+e51 Core 候选实际连接 `master_rehearsal_ddecf9c0e`，通过隔离容器及仅回环端口 33120 运行。订单预览、两种退货读取，以及法人、业务单元、客户、SKU 的完整记录读取均成功。四类 master intent 各三个路由共 12 项检查通过：缺少幂等键的准备请求返回 400，不存在意图预览返回 404，缺少审批字段返回 422。日志 `/tmp/business-master-e51-canary.log`。
+
+随后在同一副本真实准备并确认创建一个计量单位，重放准备请求得到同一意图，执行结果为 executed=true，新增对象 `054f3674-0f84-4af1-8222-10631effa194`，完整详情可读。日志 `/tmp/business-master-e51-write-canary.log`，执行脚本 `/tmp/business-master-e51-write-canary.py`。仅副本发生测试写入；本次直接测试内部 Core 服务接口，使用明确标记的合成来源 ID，不是签名 Gateway 或真实聊天验收。
+
+暂停镜像采用流式源码构建，避免另存一份服务器源码目录。暂停路由文件输入和输出 SHA 与先前已审核版本一致；构建开始前检查至少 1.5 GiB，运行中低于 1 GiB 自动终止。日志 `/tmp/business-master-e51-paused-build.log`。构建及暂停路由运行结果须以随后实际检查为准。
+
 尚需构建并运行验证 e51 暂停镜像、准备 Web 配套、完成新能力的副本运行时检查，再进行配套生产切换和真实客户端验收。服务器根分区构建后约剩 1.6 GB，继续构建须遵守已有磁盘阈值，不能直接删除生产数据或旧镜像。当前 Compose 文件均为候选覆盖，不能独立启动；暂停覆盖引用的镜像尚未构建。
