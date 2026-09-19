@@ -291,3 +291,9 @@ party_sku_reverse 的完整 postgres_b3 闭环通过，包含既有仓库反向�
 SKU 的阻塞影响新增 inventory_counts，统计关联盘点行所属任务为 counting 或 counted。sku_count_impact_after 的完整 B2 回归验证零余额盘点的两个未结束阶段均预览不可停用、真实 change_status 被 blocking operational impacts 拒绝；过账后影响计数归零且可停用。严格 Clippy、格式及差异检查通过，日志 /tmp/sku-count-impact-{before,after,clippy}.log，隔离数据库端口 55439。
 
 这项影响保护尚未部署；不等于盘点所有状态变化方向均已验证。基础资料启停意图、其余业务入口保护及完整流程验收仍待完成。完整覆盖表同步更正 e51 已发布记录与 Windows 候选构建状态，保留新法人授权、近期未部署修复及实际客户端验收缺口。
+
+## 盘点创建先提交时的 SKU 停用交错
+
+新增 inventory_count_disable 回归：用 inventory_count_tasks 表锁停住已持 SKU 共享锁的盘点创建，观测实际创建 PID；随后调用真实 ProductMasterService.change_status，确认其等待盘点事务。放行创建后盘点成功且保持 counting，停用因 blocking operational impacts 拒绝，SKU 保持 active。取消该盘点后真实停用与重新启用均成功。
+
+count_sku_reverse 的完整 B2 回归及严格 Clippy、格式和 diff 检查通过，日志 /tmp/count-sku-reverse.log、/tmp/count-sku-reverse-clippy.log，独立数据库端口 55439。本批为并发验证，没有新增生产逻辑或部署；它只证明盘点先持锁提交这一方向，不能推导所有盘点/资料状态组合均受保护。完整业务目标与助手启停意图接入继续保持未完成。

@@ -213,6 +213,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     super::inventory_count_frozen_scopes::check(store, &service, f, &input, first.id).await;
     super::inventory_count_creation::check(store, &service, f, &input).await;
     super::inventory_count_operations::check(store, &service, f, &input).await;
+    super::inventory_count_disable::check(store, &service, f, &input).await;
 }
 
 async fn sku_disable_impact(store: &PgStore, f: &Fixture, blocked: bool, phase: &str) {
