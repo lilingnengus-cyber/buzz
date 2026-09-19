@@ -9,3 +9,11 @@
 验证：`returns_crm_merge` 的 CRM 数据库闭环、`returns_merge_b2` 的完整 B2 流程通过；CRM、退货详情、期初库存页面共 9 项 Playwright 功能测试通过；Web 构建、Core 严格 Clippy、格式和文件大小门禁通过。日志 `/tmp/business-returns-{crm-core,merge-b2,crm-ui,crm-build,merge-clippy,merge-size}.log`。
 
 待发布工作：确认共享服务器发布顺序、构建整合后的最终候选、备份及迁移演练、兼容新迁移的回退程序、限定授权、前后业务计数、服务/前端/客户端发布与真实会话验收。旧程序缺少新迁移，不视为可直接回切方案。未发送真实聊天消息或执行生产退货业务写入；客户端仍为原版本。
+
+## 演练库与共享发布状态复核
+
+CRM 任务的最新一轮已完成，线上 Core 已变为 `shiyue-business-core:crm-registers-20260919`，Gateway/Read API/IAM Admin 仍为 stock 版本。当前分支的整合提交为 `7b5b8f49d`，其源码包已上传 `/tmp/business-returns-7b5b8f49d.tar.gz`，整合镜像构建脚本 `/tmp/business-returns-integrated-build.sh` 已上传，尚未启动该次构建。
+
+已从在线库执行只读备份，文件 `/opt/business-platform/shared/returns-rehearsal-7b5b8f49d.dump`，权限受 umask 077 保护；恢复到独立数据库 `returns_rehearsal_7b5b8f49d`。恢复后迁移 40 全成功、销售订单 5、销售退货 0、采购退货 0。生产库未执行迁移、授权或业务变更。演练迁移脚本 `/tmp/business-returns-rehearsal.py` 已上传，仅将连接指向该独立数据库；凭据通过容器标准输入传递，不打印到日志或命令参数。
+
+基线 f78e87f77 构建已越过 CRM 的缓存锁等待，正在编译；必须从实际构建进程/日志确认完成后再执行演练，不能因为观察超时而重启。该基线缺少后合并的 CRM registers 更新，只用于演练，不作为直接覆盖线上 Core 的最终版本。磁盘曾复核剩余约 3.3 GB，继续构建前需关注可用空间，不删除现有回退镜像。
