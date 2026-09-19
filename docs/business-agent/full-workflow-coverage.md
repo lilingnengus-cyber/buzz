@@ -99,3 +99,11 @@ Core 已实现 shipment / goods_receipt / inventory_opening 三类不可变逆�
 Core 23 项单元测试、独立新库 B2/B3 闭环、Core/Gateway 严格 Clippy 与文件大小门禁通过。Gateway 新增 build.rs 跟踪迁移目录，解决增量构建漏纳新增 SQLx 迁移的问题。
 
 本批是 Core 层证据，尚未接入 Gateway 委托、Read API、MCP、Host 与来源查询，也未部署或进行真实聊天验收。线上和安装客户端仍为 74 工具。下一步补齐固定查询/准备/确认工具及完整签名链路，再配套发布；全流程目标仍未完成。
+
+## 2026-09-19 履约逆转助手候选
+
+已接入三类来源查询、三类准备及三类零参数确认，候选共 83 工具。Gateway、Read API、MCP 与 Host 均登记固定能力和完整确认命令；普通回合仅获得准备权限，确认仍绑定签名消息。Gateway 请求范围维持数据库 48 项上限，当前普通 Host 委托为 33 项。
+
+来源查询支持 ID、单据编号、往来方、状态、offset 与 limit；Core 在分页前校验法人、业务单元、往来方、仓库及品牌范围，Read API 保留未过滤源页的 nextOffset。隔离查询测试验证三类单据当前版本、组合条件、分页、无权不可见和拒绝未知字段。Read API 测试证明过滤后空页仍能继续翻页，并在越权准备意图持久化前拒绝。
+
+合同 8 项、Gateway 8 项、Read API 23 项、MCP 13 项、Host 定向 10 项、Core 隔离闭环、严格 Clippy 与运行时 83 工具探针通过。MCP 对白名单内业务阻塞返回固定处理建议，核对 Trace ID，拒绝透传任意上游消息。未部署前保留线上 74 工具配套路径，候选二进制为 `/tmp/business-read-mcp-stock-candidate83`。下一步配套发布并记录线上只读验证；实际聊天验收仍待完成。

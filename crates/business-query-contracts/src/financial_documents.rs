@@ -4,14 +4,14 @@ use super::*;
 /// Search one fixed document family by ID, number, party, or lifecycle status.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SearchFinancialDocumentsInput {
+pub struct SearchBusinessDocumentsInput {
     /// Exact document ID; filters are combined rather than overriding authorization.
     pub document_id: Option<Uuid>,
     /// Literal case-insensitive substring of the document number.
     pub query: Option<String>,
     /// Customer or supplier ID resolved through authorized master-data lookup.
     pub party_id: Option<Uuid>,
-    /// Exact lifecycle status, such as confirmed, partially_allocated, or open.
+    /// Exact lifecycle status, such as draft, confirmed, posted, reversed, or open.
     pub status: Option<String>,
     /// Offset in the authorized source result set.
     #[serde(default)]
@@ -20,7 +20,11 @@ pub struct SearchFinancialDocumentsInput {
     #[serde(default = "default_limit")]
     pub limit: u32,
 }
-impl ValidateInput for SearchFinancialDocumentsInput {
+/// Bounded lookup of financial sources and allocation targets.
+pub type SearchFinancialDocumentsInput = SearchBusinessDocumentsInput;
+/// Bounded lookup of shipment, goods receipt or inventory opening sources.
+pub type SearchStockDocumentsInput = SearchBusinessDocumentsInput;
+impl ValidateInput for SearchBusinessDocumentsInput {
     fn validate_and_normalize(&mut self, _today: NaiveDate) -> Result<(), ValidationError> {
         normalize_optional(&mut self.query)?;
         normalize_optional(&mut self.status)?;

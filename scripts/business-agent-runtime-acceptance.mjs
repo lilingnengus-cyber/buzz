@@ -12,6 +12,16 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_shipments",
+  "search_goods_receipts",
+  "search_inventory_openings",
+  "prepare_shipment_reversal",
+  "approve_shipment_reversal",
+  "prepare_goods_receipt_reversal",
+  "approve_goods_receipt_reversal",
+  "prepare_inventory_opening_reversal",
+  "approve_inventory_opening_reversal",
+
   "prepare_sales_order_cancellation",
   "prepare_purchase_order_cancellation",
   "approve_sales_order_cancellation",

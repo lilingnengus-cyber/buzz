@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod financial_documents;
-pub use financial_documents::{SearchFinancialDocumentsInput, SettlementAllocationsInput};
+pub use financial_documents::{
+    SearchFinancialDocumentsInput, SearchStockDocumentsInput, SettlementAllocationsInput,
+};
 mod master_data;
 pub use master_data::{MasterDataKind, SearchMasterDataInput, MASTER_DATA_READ};
 

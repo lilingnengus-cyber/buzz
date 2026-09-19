@@ -4,6 +4,7 @@ mod allocation_history;
 mod config;
 mod financial_documents;
 mod master_data;
+mod stock_documents;
 mod writes;
 use writes::*;
 
@@ -40,7 +41,10 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 28] = [
+const READ_TOOLS: [&str; 31] = [
+    "search_shipments",
+    "search_goods_receipts",
+    "search_inventory_openings",
     "get_customer_receipt_allocations",
     "get_supplier_payment_allocations",
     "search_business_master_data",
@@ -80,7 +84,13 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 32] = [
+const WRITE_TOOLS: [&str; 38] = [
+    "prepare_shipment_reversal",
+    "approve_shipment_reversal",
+    "prepare_goods_receipt_reversal",
+    "approve_goods_receipt_reversal",
+    "prepare_inventory_opening_reversal",
+    "approve_inventory_opening_reversal",
     "prepare_sales_order_cancellation",
     "prepare_purchase_order_cancellation",
     "approve_sales_order_cancellation",
@@ -758,6 +768,12 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_shipment_reversal" => Some("shipment_reversal_intent:create"),
+        "approve_shipment_reversal" => Some("shipment_reversal_intent:approve"),
+        "prepare_goods_receipt_reversal" => Some("goods_receipt_reversal_intent:create"),
+        "approve_goods_receipt_reversal" => Some("goods_receipt_reversal_intent:approve"),
+        "prepare_inventory_opening_reversal" => Some("inventory_opening_reversal_intent:create"),
+        "approve_inventory_opening_reversal" => Some("inventory_opening_reversal_intent:approve"),
         "prepare_sales_order_cancellation" => Some("sales_order_cancellation_intent:create"),
         "prepare_purchase_order_cancellation" => Some("purchase_order_cancellation_intent:create"),
         "approve_sales_order_cancellation" => Some("sales_order_cancellation_intent:approve"),
@@ -778,6 +794,9 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         }
         "approve_payable_allocation_reversal" => Some("payable_allocation_reversal_intent:approve"),
 
+        "search_shipments" => Some("shipment:read"),
+        "search_goods_receipts" => Some("goods_receipt:read"),
+        "search_inventory_openings" => Some("inventory:read"),
         "search_customer_receipts" => Some("customer_receipt:read"),
         "search_supplier_payments" => Some("supplier_payment:read"),
         "search_receivables" => Some("receivable:read"),
@@ -1279,6 +1298,15 @@ async fn core_read_result(
             context,
         )
         .await;
+    }
+    let stock_kind = match tool {
+        "search_shipments" => Some("shipment"),
+        "search_goods_receipts" => Some("goods_receipt"),
+        "search_inventory_openings" => Some("inventory_opening"),
+        _ => None,
+    };
+    if let Some(kind) = stock_kind {
+        return stock_documents::search(core, kind, input, scope, context).await;
     }
     let financial_kind = match tool {
         "search_customer_receipts" => Some("customer_receipt"),

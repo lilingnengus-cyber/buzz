@@ -22,6 +22,9 @@ pub(super) async fn write_tool(
             | "approve_supplier_payment_reversal"
             | "approve_receivable_allocation_reversal"
             | "approve_payable_allocation_reversal"
+            | "approve_shipment_reversal"
+            | "approve_goods_receipt_reversal"
+            | "approve_inventory_opening_reversal"
             | "approve_sales_order_cancellation"
             | "approve_purchase_order_cancellation"
             | "approve_inventory_opening"
@@ -72,6 +75,9 @@ pub(super) async fn write_tool(
             | "prepare_supplier_payment_reversal"
             | "prepare_receivable_allocation_reversal"
             | "prepare_payable_allocation_reversal"
+            | "prepare_shipment_reversal"
+            | "prepare_goods_receipt_reversal"
+            | "prepare_inventory_opening_reversal"
             | "prepare_sales_order_cancellation"
             | "prepare_purchase_order_cancellation"
     ) {
@@ -89,6 +95,12 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "prepare_shipment_reversal"
+        | "prepare_goods_receipt_reversal"
+        | "prepare_inventory_opening_reversal" => serde_json::from_value::<
+            business_core::document_approval::stock_reversal::PrepareStockReversal,
+        >(input.clone())
+        .is_ok(),
         "prepare_sales_order_cancellation" | "prepare_purchase_order_cancellation" => {
             serde_json::from_value::<
                 business_core::document_approval::order_cancellation::PrepareOrderCancellation,
@@ -152,6 +164,9 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
         | "approve_supplier_payment_reversal"
         | "approve_receivable_allocation_reversal"
         | "approve_payable_allocation_reversal"
+        | "approve_shipment_reversal"
+        | "approve_goods_receipt_reversal"
+        | "approve_inventory_opening_reversal"
         | "approve_sales_order_cancellation"
         | "approve_purchase_order_cancellation"
         | "approve_inventory_opening" => {
@@ -180,6 +195,18 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_shipment_reversal" => format!(
+            "v1/agent-approvals/stock-reversals/shipment_reversal_intent/{}",
+            input.document_id
+        ),
+        "approve_goods_receipt_reversal" => format!(
+            "v1/agent-approvals/stock-reversals/goods_receipt_reversal_intent/{}",
+            input.document_id
+        ),
+        "approve_inventory_opening_reversal" => format!(
+            "v1/agent-approvals/stock-reversals/inventory_opening_reversal_intent/{}",
+            input.document_id
+        ),
         "approve_sales_order_cancellation" => format!(
             "v1/agent-approvals/order-cancellations/sales_order_cancellation_intent/{}",
             input.document_id
@@ -417,6 +444,9 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "approve_shipment_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/shipment_reversal_intent/{id}")),
+        "approve_goods_receipt_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/goods_receipt_reversal_intent/{id}")),
+        "approve_inventory_opening_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/inventory_opening_reversal_intent/{id}")),
         "approve_sales_order_cancellation"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/order-cancellations/sales_order_cancellation_intent/{id}")),
         "approve_purchase_order_cancellation"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/order-cancellations/purchase_order_cancellation_intent/{id}")),
 
@@ -580,6 +610,17 @@ async fn forward_intent_prepare(
     grant: &EffectiveGrant,
 ) -> Response {
     let (kind, category, source_kind) = match tool {
+        "prepare_shipment_reversal" => ("shipment_reversal_intent", "stock-reversal", "shipment"),
+        "prepare_goods_receipt_reversal" => (
+            "goods_receipt_reversal_intent",
+            "stock-reversal",
+            "goods_receipt",
+        ),
+        "prepare_inventory_opening_reversal" => (
+            "inventory_opening_reversal_intent",
+            "stock-reversal",
+            "inventory_opening",
+        ),
         "prepare_sales_order_cancellation" => (
             "sales_order_cancellation_intent",
             "order-cancellation",
@@ -714,6 +755,21 @@ mod allocation_tests {
     async fn target_scope_is_checked_before_persisting_allocation_intent() {
         for allowed in [false, true] {
             for (tool, kind, category) in [
+                (
+                    "prepare_shipment_reversal",
+                    "shipment_reversal_intent",
+                    "stock-reversal",
+                ),
+                (
+                    "prepare_goods_receipt_reversal",
+                    "goods_receipt_reversal_intent",
+                    "stock-reversal",
+                ),
+                (
+                    "prepare_inventory_opening_reversal",
+                    "inventory_opening_reversal_intent",
+                    "stock-reversal",
+                ),
                 (
                     "prepare_sales_order_cancellation",
                     "sales_order_cancellation_intent",

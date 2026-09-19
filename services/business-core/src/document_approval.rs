@@ -9,6 +9,7 @@ pub mod reversal;
 mod settlement;
 mod snapshot;
 pub(crate) mod stock;
+mod stock_documents;
 /// Immutable stock reversal preparation and signed execution.
 pub mod stock_reversal;
 
@@ -81,6 +82,10 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(reversal::routes())
         .merge(order_cancellation::routes())
         .merge(stock_reversal::routes())
+        .route(
+            "/v1/agent-stock-documents/{kind}",
+            get(stock_documents::search),
+        )
         .route(
             "/v1/agent-allocation-history/{kind}",
             get(allocation_history::search),

@@ -12,7 +12,13 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 45] = [
+const AGENT_SCOPES: [&str; 51] = [
+    "shipment_reversal_intent:create",
+    "shipment_reversal_intent:approve",
+    "goods_receipt_reversal_intent:create",
+    "goods_receipt_reversal_intent:approve",
+    "inventory_opening_reversal_intent:create",
+    "inventory_opening_reversal_intent:approve",
     "sales_order_cancellation_intent:create",
     "sales_order_cancellation_intent:approve",
     "purchase_order_cancellation_intent:create",
@@ -100,6 +106,18 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         "payable-allocation-reversal-intent" => (
             "payable_allocation_reversal_intent",
             "payable_allocation_reversal_intent:approve",
+        ),
+        "shipment-reversal-intent" => (
+            "shipment_reversal_intent",
+            "shipment_reversal_intent:approve",
+        ),
+        "goods-receipt-reversal-intent" => (
+            "goods_receipt_reversal_intent",
+            "goods_receipt_reversal_intent:approve",
+        ),
+        "inventory-opening-reversal-intent" => (
+            "inventory_opening_reversal_intent",
+            "inventory_opening_reversal_intent:approve",
         ),
         "sales-order-cancellation-intent" => (
             "sales_order_cancellation_intent",
@@ -363,7 +381,7 @@ impl Store {
                 <= 300;
         let valid_scopes = fresh_confirmation
             && !request.scopes.is_empty()
-            && request.scopes.len() <= AGENT_SCOPES.len()
+            && request.scopes.len() <= AGENT_SCOPES.len().min(48)
             && request.scopes.iter().all(|scope| {
                 scope_is_allowed(
                     scope,
@@ -874,6 +892,9 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "shipment-reversal-intent",
+            "goods-receipt-reversal-intent",
+            "inventory-opening-reversal-intent",
             "sales-order-cancellation-intent",
             "purchase-order-cancellation-intent",
             "customer-receipt-reversal-intent",

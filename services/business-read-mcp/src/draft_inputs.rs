@@ -110,3 +110,14 @@ pub(super) struct PrepareOrderCancellationInput {
     expected_source_version: i64,
     reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareStockReversalInput {
+    /// ID of the selected fulfillment document from an authorized read.
+    source_document_id: Uuid,
+    /// Current source version, never guessed.
+    expected_source_version: i64,
+    /// User-provided reason, at most 500 characters.
+    reason: String,
+}

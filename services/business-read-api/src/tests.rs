@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 32);
+    assert_eq!(WRITE_TOOLS.len(), 38);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -462,4 +462,33 @@ fn settlement_confirmation_tools_are_typed_and_not_payment_execution() {
         ));
     }
     assert!(!WRITE_TOOLS.contains(&"execute_bank_payment"));
+}
+
+#[test]
+fn stock_reversal_inputs_bind_only_explicit_source_version_and_reason() {
+    for kind in ["shipment", "goods_receipt", "inventory_opening"] {
+        let prepare = format!("prepare_{kind}_reversal");
+        let capability = format!("{kind}_reversal_intent:create");
+        assert_eq!(required_capability(&prepare), Some(capability.as_str()));
+        let input = json!({"sourceDocumentId":Uuid::new_v4(),"expectedSourceVersion":2,"reason":"用户明确要求逆转错误记录"});
+        assert!(valid_write_input(&prepare, &input));
+        for field in [
+            "quantity",
+            "amount",
+            "allocationId",
+            "url",
+            "sourceBuzzEventId",
+        ] {
+            let mut invalid = input.clone();
+            invalid[field] = json!("injected");
+            assert!(!valid_write_input(&prepare, &invalid));
+        }
+        let approval = format!("approve_{kind}_reversal");
+        let capability = format!("{kind}_reversal_intent:approve");
+        assert_eq!(required_capability(&approval), Some(capability.as_str()));
+        let mut input = json!({"documentId":Uuid::new_v4(),"expectedVersion":1,"previewHash":"a".repeat(64),"decision":"approve"});
+        assert!(valid_write_input(&approval, &input));
+        input["reason"] = json!("replace reason");
+        assert!(!valid_write_input(&approval, &input));
+    }
 }

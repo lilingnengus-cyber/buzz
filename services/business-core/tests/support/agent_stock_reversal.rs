@@ -85,6 +85,60 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
             confirm(app, f.actor, &format!("stock/{kind}"), id).await;
             id.to_owned()
         };
+        let lookup = format!("/v1/agent-stock-documents/{kind}?documentId={id}&limit=1");
+        let (status, found) = call(app, f.actor, "GET", &lookup, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{found}");
+        assert_eq!(found["items"].as_array().unwrap().len(), 1);
+        assert_eq!(found["items"][0]["id"], id);
+        assert_eq!(found["items"][0]["version"], 2);
+        let number = found["items"][0]["number"].as_str().unwrap();
+        let (status, by_number) = call(
+            app,
+            f.actor,
+            "GET",
+            &format!(
+                "{lookup}&query={number}&status={}",
+                if kind == "inventory_opening" {
+                    "posted"
+                } else {
+                    "confirmed"
+                }
+            ),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{by_number}");
+        assert_eq!(by_number["items"], found["items"]);
+        let (_, past) = call(
+            app,
+            f.actor,
+            "GET",
+            &format!("{lookup}&offset=1"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(past["items"], json!([]));
+        let (_, wrong_party) = call(
+            app,
+            f.actor,
+            "GET",
+            &format!("{lookup}&partyId={}", Uuid::new_v4()),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(wrong_party["items"], json!([]));
+        assert_eq!(
+            call(
+                app,
+                f.actor,
+                "GET",
+                &format!("{lookup}&sql=bad"),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
         let path = format!("/v1/agent-stock-reversal-intents/{kind}_reversal_intent");
         let reason = format!("核实并撤销错误履约 {kind}");
         let input = json!({"sourceDocumentId":id,"expectedSourceVersion":2,"reason":reason});
@@ -122,6 +176,8 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                 .0,
             StatusCode::NOT_FOUND
         );
+        let (_, hidden) = call(app, f.actor, "GET", &lookup, Value::Null).await;
+        assert_eq!(hidden["items"], json!([]));
         sqlx::query("INSERT INTO business_warehouse_scopes(enterprise_user_id,warehouse_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.warehouse).execute(store.pool()).await.unwrap();
         let expired = Uuid::new_v4();
         sqlx::query("INSERT INTO business_agent_stock_reversal_intents(id,kind,source_document_id,input,snapshot,created_by_user_id,idempotency_key,trace_id,expires_at) SELECT $1,kind,source_document_id,input,snapshot,created_by_user_id,$2,trace_id,now()-interval '1 second' FROM business_agent_stock_reversal_intents WHERE id=$3")

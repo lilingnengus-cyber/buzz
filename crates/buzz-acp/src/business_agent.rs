@@ -16,7 +16,10 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 30] = [
+const AGENT_SCOPES: [&str; 33] = [
+    "shipment_reversal_intent:create",
+    "goods_receipt_reversal_intent:create",
+    "inventory_opening_reversal_intent:create",
     "sales_order_cancellation_intent:create",
     "purchase_order_cancellation_intent:create",
     "customer_receipt_reversal_intent:create",
@@ -59,6 +62,9 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         "supplier-payment-reversal-intent" => "supplier_payment_reversal_intent:approve",
         "receivable-allocation-reversal-intent" => "receivable_allocation_reversal_intent:approve",
         "payable-allocation-reversal-intent" => "payable_allocation_reversal_intent:approve",
+        "shipment-reversal-intent" => "shipment_reversal_intent:approve",
+        "goods-receipt-reversal-intent" => "goods_receipt_reversal_intent:approve",
+        "inventory-opening-reversal-intent" => "inventory_opening_reversal_intent:approve",
         "sales-order-cancellation-intent" => "sales_order_cancellation_intent:approve",
         "purchase-order-cancellation-intent" => "purchase_order_cancellation_intent:approve",
         "sales-order" => "sales_order:approve",
@@ -856,7 +862,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 30);
+        assert_eq!(AGENT_SCOPES.len(), 33);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -1006,6 +1012,18 @@ mod tests {
             Some("inventory_opening:approve")
         );
         for (kind, scope) in [
+            (
+                "shipment-reversal-intent",
+                "shipment_reversal_intent:approve",
+            ),
+            (
+                "goods-receipt-reversal-intent",
+                "goods_receipt_reversal_intent:approve",
+            ),
+            (
+                "inventory-opening-reversal-intent",
+                "inventory_opening_reversal_intent:approve",
+            ),
             (
                 "sales-order-cancellation-intent",
                 "sales_order_cancellation_intent:approve",
