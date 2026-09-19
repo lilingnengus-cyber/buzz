@@ -59,3 +59,13 @@ Core 候选以副本连接启动并通过健康检查。销售/采购退货读�
 ## 发布配置已准备
 
 版本固定覆盖文件为 `deploy/business-agent/releases/inventory-counts-e7c54b8c1.yml`，暂停覆盖为同目录 `inventory-counts-paused-e7c54b8c1.yml`。已用服务器当前实际 Compose 文件链分别合并验证，六个服务/迁移任务引用的镜像均存在，Gateway 预算均为 64/900；暂停覆盖只替换 Core 镜像。仅执行 `config` 和镜像检查，未执行 `up`。后续切换须使用 `--no-build`，并先核对镜像 ID，不能因标签丢失而从旧工作目录临时构建。
+
+## 限定授权与审批策略副本验证
+
+新增一次性事务脚本 `deploy/business-agent/releases/inventory-counts-e7c54b8c1-authority.sql`。脚本要求迁移 ≥53、目标 Human 激活且两项父库存授权均在有效期内并限定已审阅法人；复制父授权的数据范围、obligations、起止时间到 8 项固定盘点能力。审批权限仍保留 permission 目录中的 fresh_signed_chat_command。已有任一盘点授权或创建策略时拒绝覆盖，数量不足 8 时整笔回滚。
+
+创建/录入使用的 `inventory_opening:create` 策略复制当前 active 的 `inventory_opening:post` 策略，只调整 action/required_permission；保留角色、人数、自我审批、跨业务单元与额外认证阈值。事务写入部署审计，包含来源策略和每项实际授权范围/条件。副本首次执行审计 Trace `89c33e70-0a18-4f2d-8833-92dcd249e7d7`（首次版本后补强了审计授权快照，最终脚本在回滚事务中再次验证）。
+
+重复执行被拒绝，仍为 8 项授权和 1 条部署审计。在可回滚测试事务中把来源策略设为 2 人、禁止自我审批、要求跨单位、额外认证阈值 12345，并为父授权增加附加条件和 1 小时截止时间；派生策略与 8 项授权逐项保留这些限制。测试最终回滚，未改变原副本配置。日志（服务器）`/tmp/business-counts-authority-check.log`。
+
+候选发布镜像在副本完成创建 → 录入 → 过账，以及第二张盘点创建 → 取消；没有遗留冻结，零差异合成测试的库存数量/价值保持一致。过账盘点 `b34d3e5e-42d1-4c57-aecb-cfc9098fe132`，取消盘点 `06b1de80-c121-4083-8dfe-603a24d7926c`，Trace `ff240da1-58ca-4635-b3a6-af45ff55c6b7`。这是服务凭据下的 Core 组件验收，审批来源事件是隔离测试值，不是真实签名聊天；Gateway 签名链另有前述独立测试。日志（服务器）`/tmp/business-counts-core-workflow.log`。
