@@ -1,3 +1,4 @@
+mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
@@ -236,7 +237,7 @@ impl CoreMasterDataService {
     ) -> Result<CoreMasterCommandResult, DomainError> {
         let kind = CoreMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
-        let snapshot = self.snapshot(actor, "business_master_data:manage").await?;
+        let mut snapshot = self.snapshot(actor, "business_master_data:manage").await?;
         let hash = request_hash(&(id, input))?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CoreMasterCommandResult>(
@@ -248,6 +249,8 @@ impl CoreMasterDataService {
         )
         .await?
         {
+            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+                .await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -258,6 +261,9 @@ impl CoreMasterDataService {
             .execute(&mut *tx)
             .await?;
         if let Some(existing_id) = id {
+            snapshot = self
+                .existing_write_authority(&mut tx, actor, kind, existing_id)
+                .await?;
             let current=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(existing_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
             if current.get::<i64, _>("version") != input.expected_version.unwrap_or(0) {
                 return Err(DomainError::VersionConflict);
@@ -285,7 +291,23 @@ impl CoreMasterDataService {
             }
             ensure_parents(&mut tx, kind, input).await?;
             insert_record(&mut tx, kind, target_id, input).await?;
-            grant_creator_scope(&mut tx, kind, target_id, input, actor).await?;
+            snapshot = crate::master_write_authority::snapshot(
+                &mut tx,
+                actor,
+                "business_master_data:manage",
+                true,
+            )
+            .await?;
+            if input
+                .legal_entity_id
+                .is_some_and(|v| !snapshot.scopes.legal_entity_ids.contains(&v))
+                || input
+                    .business_unit_id
+                    .is_some_and(|v| !snapshot.scopes.business_unit_ids.contains(&v))
+            {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
+            grant_creator_scope(&mut tx, kind, target_id, actor).await?;
         }
         let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(target_id).fetch_one(&mut *tx).await?;
         if id.is_some() {
@@ -356,7 +378,7 @@ impl CoreMasterDataService {
                 "status must be active or disabled".into(),
             ));
         }
-        let snapshot = self.snapshot(actor, "business_master_data:manage").await?;
+        self.snapshot(actor, "business_master_data:manage").await?;
         let hash = request_hash(&(kind.as_str(), id, input))?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CoreMasterCommandResult>(
@@ -368,6 +390,8 @@ impl CoreMasterDataService {
         )
         .await?
         {
+            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+                .await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -375,6 +399,9 @@ impl CoreMasterDataService {
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(format!("{}:{id}", kind.as_str()))
             .execute(&mut *tx)
+            .await?;
+        let snapshot = self
+            .existing_write_authority(&mut tx, actor, kind, id)
             .await?;
         let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         self.ensure_scope(
@@ -620,38 +647,25 @@ async fn grant_creator_scope(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     k: CoreMasterType,
     id: Uuid,
-    i: &SaveCoreMasterData,
     actor: Uuid,
 ) -> Result<(), DomainError> {
-    if let Some(le) = if k == CoreMasterType::LegalEntity {
-        Some(id)
-    } else {
-        i.legal_entity_id
-    } {
-        sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(le).execute(&mut **tx).await?;
-    }
-    if let Some(bu) = if k == CoreMasterType::BusinessUnit {
-        Some(id)
-    } else {
-        i.business_unit_id
-    } {
-        sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(bu).execute(&mut **tx).await?;
-    }
+    // Parent scopes were checked under the revision lock. Only grant the newly
+    // created object; never try to recreate or lock an existing parent grant.
     let table = match k {
-        CoreMasterType::Warehouse => Some("business_warehouse_scopes"),
-        CoreMasterType::Customer => Some("business_customer_scopes"),
-        CoreMasterType::Supplier => Some("business_supplier_scopes"),
-        _ => None,
+        CoreMasterType::LegalEntity => "business_legal_entity_scopes",
+        CoreMasterType::BusinessUnit => "business_unit_scopes",
+        CoreMasterType::Warehouse => "business_warehouse_scopes",
+        CoreMasterType::Customer => "business_customer_scopes",
+        CoreMasterType::Supplier => "business_supplier_scopes",
     };
-    if let Some(table) = table {
-        let column = format!("{}_id", k.as_str());
-        let sql=format!("INSERT INTO {table}(enterprise_user_id,{column},granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING");
-        sqlx::query(AssertSqlSafe(sql))
-            .bind(actor)
-            .bind(id)
-            .execute(&mut **tx)
-            .await?;
-    }
+    let column = format!("{}_id", k.as_str());
+    let sql =
+        format!("INSERT INTO {table}(enterprise_user_id,{column},granted_by) VALUES($1,$2,$1)");
+    sqlx::query(AssertSqlSafe(sql))
+        .bind(actor)
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 

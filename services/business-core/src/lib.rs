@@ -10,6 +10,7 @@ pub mod crm;
 pub mod document_approval;
 pub mod master_data;
 pub mod master_data_api;
+mod master_write_authority;
 pub mod model;
 pub mod numbering;
 pub mod numbering_api;

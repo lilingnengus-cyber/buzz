@@ -1,3 +1,4 @@
+mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
@@ -226,7 +227,7 @@ impl ProductMasterService {
     ) -> Result<ProductMasterCommandResult, DomainError> {
         let kind = ProductMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
-        let snapshot = self
+        let mut snapshot = self
             .snapshot(actor, "business_product_master:manage")
             .await?;
         let hash = request_hash(&(id, input))?;
@@ -240,6 +241,8 @@ impl ProductMasterService {
         )
         .await?
         {
+            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+                .await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -250,6 +253,9 @@ impl ProductMasterService {
             .execute(&mut *tx)
             .await?;
         if id.is_some() {
+            snapshot = self
+                .existing_write_authority(&mut tx, actor, kind, target_id)
+                .await?;
             let row = load_record(&mut tx, kind, target_id)
                 .await?
                 .ok_or(DomainError::NotFoundOrForbidden)?;
@@ -264,6 +270,14 @@ impl ProductMasterService {
             }
             ensure_inputs_accessible(&mut tx, &snapshot, kind, input).await?;
             insert_record(&mut tx, kind, target_id, input).await?;
+            snapshot = crate::master_write_authority::snapshot(
+                &mut tx,
+                actor,
+                "business_product_master:manage",
+                true,
+            )
+            .await?;
+            ensure_inputs_accessible(&mut tx, &snapshot, kind, input).await?;
             if kind == ProductMasterType::Brand {
                 sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(target_id).execute(&mut *tx).await?;
             }
@@ -333,8 +347,7 @@ impl ProductMasterService {
                 "status must be active or disabled".into(),
             ));
         }
-        let snapshot = self
-            .snapshot(actor, "business_product_master:manage")
+        self.snapshot(actor, "business_product_master:manage")
             .await?;
         let hash = request_hash(&(kind.as_str(), id, input))?;
         let mut tx = self.store.pool().begin().await?;
@@ -347,6 +360,8 @@ impl ProductMasterService {
         )
         .await?
         {
+            self.existing_write_authority(&mut tx, actor, kind, replay.id)
+                .await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -354,6 +369,9 @@ impl ProductMasterService {
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(format!("{}:{id}", kind.as_str()))
             .execute(&mut *tx)
+            .await?;
+        let snapshot = self
+            .existing_write_authority(&mut tx, actor, kind, id)
             .await?;
         let row = load_record(&mut tx, kind, id)
             .await?
