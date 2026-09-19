@@ -175,3 +175,7 @@ Read API 在核验 Core 返回的完整快照一致性、数据范围、摘要�
 隔离 PostgreSQL 测试 `inventory_count_budget_profile` 使用真实 Nostr 签名、Gateway Store 签发/消费/独立验证，依次执行 25 次详情读取授权、1 次录入准备授权和 24 次后续预览授权。50 次均成功且 used_calls 单调递增，普通委托尝试批准被拒绝。随后 20 个并发消费者仅 14 个成功，总使用次数严格为 64、状态 exhausted；两次重试仍拒绝，绝对 expires_at 没有延长。既有身份绑定、签名字段替换、撤权和并发测试继续通过。这是授权层测试，工具名不代表这份测试同时调用了 Core 业务操作；Core/Read API 500 行闭环和原生传输证据见上一节。
 
 日志 `/tmp/count-call-budget-profile.log`、`/tmp/count-call-budget-clippy.log`，源码 `services/business-auth-gateway/tests/support/inventory_count_budget.rs`。发布配置已具体化，尚未激活：下一步准备候选镜像、包含迁移 50–53 且保留盘点权限修复的兼容回退，完成演练后配套部署。实际模型耗时与上下文接续、客户端重载和真实聊天仍待验收，完整业务目标保持未完成。
+
+## 2026-09-20 盘点配套发布完成，运行验收待续
+
+四服务 e7c54b8c1、迁移 53、8 项限定授权、创建/录入审批策略和盘点详情网页已上线；Mac 应用文件与两条企业助手 MCP 121 配置已更新并验证签名，尚未重载运行中客户端。线上只读探测及数据库复核通过：盘点 0、销售订单 5，原 200 元草稿仍 v1。未发送聊天或创建生产盘点。真实聊天、实际模型分页与 Windows 覆盖仍待验收；其余业务域与已过账纠错保持未完成。证据、备份和回退位置见 [发布记录](reports/2026-09-20-inventory-count-release-preparation.md) 的实际发布章节。

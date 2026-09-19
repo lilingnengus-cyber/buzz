@@ -1,5 +1,7 @@
 # 盘点代理发布准备（尚未切换生产）
 
+> 最新状态：四服务、迁移 53、限定授权和网页已上线，Mac 应用文件及配置已替换；客户端重载、真实聊天和 Windows 验收尚未完成。以下发布前描述保留为过程记录，以文末实际发布结果为准。
+
 候选源码 `e7c54b8c1`。本记录对应四类盘点意图、121 工具、分页预览与 64 次/900 秒委托配置；不代表全业务目标已完成。
 
 ## 构建与环境
@@ -69,3 +71,15 @@ Core 候选以副本连接启动并通过健康检查。销售/采购退货读�
 重复执行被拒绝，仍为 8 项授权和 1 条部署审计。在可回滚测试事务中把来源策略设为 2 人、禁止自我审批、要求跨单位、额外认证阈值 12345，并为父授权增加附加条件和 1 小时截止时间；派生策略与 8 项授权逐项保留这些限制。测试最终回滚，未改变原副本配置。日志（服务器）`/tmp/business-counts-authority-check.log`。
 
 候选发布镜像在副本完成创建 → 录入 → 过账，以及第二张盘点创建 → 取消；没有遗留冻结，零差异合成测试的库存数量/价值保持一致。过账盘点 `b34d3e5e-42d1-4c57-aecb-cfc9098fe132`，取消盘点 `06b1de80-c121-4083-8dfe-603a24d7926c`，Trace `ff240da1-58ca-4635-b3a6-af45ff55c6b7`。这是服务凭据下的 Core 组件验收，审批来源事件是隔离测试值，不是真实签名聊天；Gateway 签名链另有前述独立测试。日志（服务器）`/tmp/business-counts-core-workflow.log`。
+
+## 2026-09-20 实际配套发布与复核
+
+四个生产服务已切换至上述 e7c54b8c1 候选镜像，健康检查全部通过；Gateway 新委托配置为 64 次/900 秒。生产备份位于服务器 /opt/business-platform/shared/before-counts-e7c54b8c1.dump（0600，794935 字节）。迁移实际到达 53，限定授权事务成功创建 8 项权限及创建/录入策略。部署审计 Trace 为 1c75753d-9098-48f5-84b9-6704540db147，包含 8 项实际授权快照。创建策略与当前过账来源策略均为 1 人、允许本人、不要求跨业务单元，无额外金额阈值；脚本未放宽来源配置。发布日志服务器 /tmp/business-counts-deploy.log。
+
+网页静态发布目录 /opt/business-platform/shared/business-web-00064baca-791e5004e4b5；回退指针 /opt/business-platform/shared/business-web.rollback-business-web-00064baca-791e5004e4b5。资产 assets/index-Codnnp6B.js，SHA-256 c43156b771eaf8e60951d6c080b7fe55880b9619d255ff0d26d86ff185908a5e。盘点独立及嵌入详情路由包含在本次发布中，尚无登录态页面操作验收。
+
+Mac /Applications/Pacioli.app 已替换为重新签名的候选，安装后 codesign --verify --deep --strict 再次通过。两条企业助手配置均指向 counts-e7c54b8c1 的 MCP 121 工具，并保留 gpt-5.5 模型；未重启应用或助手。原应用和配置保存在 ~/Library/Application Support/com.shiyueshizi.pacioli/backups/counts-121-e7c54b8c1，另保留 /Applications/Pacioli-before-counts.app。安装日志 /tmp/business-counts-install-client.log。锁屏状态下未进行界面/钥匙串操作。
+
+线上只读 Core 探测通过，Trace d7a39ca3-1794-4ae2-a59c-af3271c92392：销售与采购退货均为 0，既有订单预览可读，盘点和可盘点库存列表为空。数据库只读事务复核：迁移 53、部署授权 8、审计快照 8、盘点 0、销售订单 5；原订单 7706b2ff-395f-422c-8794-73619618c304 仍为 draft、v1、gross_amount 200。证据 /tmp/business-counts-production-proof.log。未创建生产盘点或发送聊天。
+
+剩余验收：运行中客户端重载、获准的真实只读聊天、实际模型分页流程，以及 Windows 客户端覆盖。服务端只读探测与 Mac 文件安装不替代上述验收。主数据、CRM、费用、报表、行动及已过账盘点纠错等完整业务写入目标仍未完成。
