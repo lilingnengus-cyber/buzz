@@ -217,3 +217,11 @@ master_order_refs_after 中五类停用先提交场景均在真实行锁等待�
 postgres_b3 中新增九类实际锁等待用例：停用先提交后草稿拒绝且采购订单数保持 0，随后恢复测试资料状态并继续原采购/收货/成本/应付及并发闭环。master_purchase_status_final 全部通过，严格 Clippy、格式及差异检查通过。日志 `/tmp/master-purchase-status-{before,after,final,clippy}.log`。
 
 本批未部署。采购反向停用业务阻塞、确认及后续库存引用仍需覆盖；不等于助手启停已可用。Windows 同一运行 35471308524 已成功完成 Build sidecars，进入 Build Windows NSIS installer (unsigned)。
+
+## 采购确认引用与预览一致性
+
+新回归在原实现确认阶段复现：供应商处于未提交停用事务时，确认不等待便完成（master_purchase_confirm_before）。确认现在锁住实际法人、供应商、业务单元及明细 SKU/产品/仓库/单位/分类/可选品牌，等待后判断当前状态与原数量金额约束，持锁到确认事务结束。
+
+master_purchase_confirm_final 的真实 B3 流程包含九类创建及九类确认等待：确认被拒绝后仍为 draft/v1，恢复全部资料后正常确认并通过取消清理测试单；原采购/收货/成本/应付并发回归继续通过。确认预览同步检查法人、分类、品牌，九类停用均显示不可确认。严格 Clippy、格式和 diff 检查通过，日志 `/tmp/master-purchase-confirm-{before,after,final,clippy-final}.log`。
+
+尚未部署。库存及收货/出库入口、更多归属覆盖与启停意图接入仍未完成。Windows 运行 35471308524 继续处于 NSIS 构建，未重启；持续观察命令会话 82809。

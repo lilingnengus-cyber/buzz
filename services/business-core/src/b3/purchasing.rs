@@ -508,7 +508,7 @@ impl PurchasingService {
         )
         .await?;
         let order = sqlx::query(
-            "SELECT o.purchase_order_number,o.currency::text currency,o.order_date,o.expected_delivery_date,o.payment_terms_days,o.lifecycle_status,o.version,o.subtotal_amount,o.discount_amount,o.net_amount,o.tax_amount,o.gross_amount,s.code supplier_code,s.name supplier_name,s.status supplier_status,bu.status business_unit_status FROM purchase_orders o JOIN business_suppliers s ON s.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND o.legal_entity_id=ANY($2) AND o.supplier_id=ANY($3) AND o.business_unit_id=ANY($4)",
+            "SELECT o.purchase_order_number,o.currency::text currency,o.order_date,o.expected_delivery_date,o.payment_terms_days,o.lifecycle_status,o.version,o.subtotal_amount,o.discount_amount,o.net_amount,o.tax_amount,o.gross_amount,s.code supplier_code,s.name supplier_name,s.status supplier_status,bu.status business_unit_status,e.status legal_entity_status FROM purchase_orders o JOIN business_legal_entities e ON e.id=o.legal_entity_id JOIN business_suppliers s ON s.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND o.legal_entity_id=ANY($2) AND o.supplier_id=ANY($3) AND o.business_unit_id=ANY($4)",
         )
         .bind(order_id)
         .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
@@ -518,7 +518,7 @@ impl PurchasingService {
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
         let line_rows = sqlx::query(
-            "SELECT l.line_number,sku.code sku_code,sku.name sku_name,w.code warehouse_code,w.name warehouse_name,u.code unit_code,u.name unit_name,l.ordered_quantity,l.unit_price,l.discount_amount,l.net_amount,l.tax_rate,l.tax_amount,l.gross_amount,(sku.status='active' AND p.status='active' AND w.status='active' AND u.status='active' AND w.legal_entity_id=o.legal_entity_id AND p.base_uom_id=l.unit_of_measure_id AND l.ordered_quantity>0 AND l.unit_price>=0 AND l.discount_amount>=0 AND l.discount_amount<=l.ordered_quantity*l.unit_price AND l.tax_rate>=0 AND l.tax_rate<=1) ready FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 ORDER BY l.line_number",
+            "SELECT l.line_number,sku.code sku_code,sku.name sku_name,w.code warehouse_code,w.name warehouse_name,u.code unit_code,u.name unit_name,l.ordered_quantity,l.unit_price,l.discount_amount,l.net_amount,l.tax_rate,l.tax_amount,l.gross_amount,(sku.status='active' AND p.status='active' AND w.status='active' AND u.status='active' AND c.status='active' AND (p.brand_id IS NULL OR EXISTS(SELECT 1 FROM business_brands b WHERE b.id=p.brand_id AND b.status='active')) AND w.legal_entity_id=o.legal_entity_id AND p.base_uom_id=l.unit_of_measure_id AND l.ordered_quantity>0 AND l.unit_price>=0 AND l.discount_amount>=0 AND l.discount_amount<=l.ordered_quantity*l.unit_price AND l.tax_rate>=0 AND l.tax_rate<=1) ready FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id JOIN business_product_categories c ON c.id=p.category_id WHERE l.purchase_order_id=$1 ORDER BY l.line_number",
         )
         .bind(order_id)
         .fetch_all(self.store.pool())
@@ -566,7 +566,10 @@ impl PurchasingService {
             "order_not_draft"
         } else if !supplier_active {
             "supplier_inactive"
-        } else if !business_unit_active || !lines_ready {
+        } else if order.get::<String, _>("legal_entity_status") != "active"
+            || !business_unit_active
+            || !lines_ready
+        {
             "line_incomplete"
         } else if !has_permission {
             "permission_required"
@@ -756,12 +759,25 @@ async fn validate_confirmation_master_data(
     tx: &mut Transaction<'_, Postgres>,
     order_id: Uuid,
 ) -> Result<(), DomainError> {
-    let ready: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM purchase_orders o JOIN business_suppliers sup ON sup.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND sup.status='active' AND bu.status='active') AND EXISTS(SELECT 1 FROM purchase_order_lines WHERE purchase_order_id=$1) AND NOT EXISTS(SELECT 1 FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 AND (sku.status<>'active' OR p.status<>'active' OR w.status<>'active' OR u.status<>'active' OR w.legal_entity_id<>o.legal_entity_id OR p.base_uom_id<>l.unit_of_measure_id OR l.ordered_quantity<=0 OR l.unit_price<0 OR l.discount_amount<0 OR l.discount_amount>l.ordered_quantity*l.unit_price OR l.tax_rate<0 OR l.tax_rate>1))",
-    )
-    .bind(order_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    // Lock actual reference rows, not aggregate EXISTS results. Status and parent
+    // changes must serialize with the confirmation transaction.
+    let header: Option<bool> = sqlx::query_scalar("SELECT (e.status='active' AND sup.status='active' AND bu.status='active') FROM purchase_orders o JOIN business_legal_entities e ON e.id=o.legal_entity_id JOIN business_suppliers sup ON sup.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 FOR SHARE OF e,sup,bu")
+        .bind(order_id).fetch_optional(&mut **tx).await?;
+    let lines=sqlx::query("SELECT p.brand_id,(sku.status='active' AND p.status='active' AND w.status='active' AND u.status='active' AND c.status='active' AND w.legal_entity_id=o.legal_entity_id AND p.base_uom_id=l.unit_of_measure_id AND l.ordered_quantity>0 AND l.unit_price>=0 AND l.discount_amount>=0 AND l.discount_amount<=l.ordered_quantity*l.unit_price AND l.tax_rate>=0 AND l.tax_rate<=1) ready FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id JOIN business_product_categories c ON c.id=p.category_id WHERE l.purchase_order_id=$1 ORDER BY l.id FOR SHARE OF sku,p,w,u,c")
+        .bind(order_id).fetch_all(&mut **tx).await?;
+    let mut ready = header == Some(true) && !lines.is_empty();
+    for line in lines {
+        ready &= line.get::<bool, _>("ready");
+        if let Some(brand) = line.get::<Option<Uuid>, _>("brand_id") {
+            let active: Option<bool> = sqlx::query_scalar(
+                "SELECT status='active' FROM business_brands WHERE id=$1 FOR SHARE",
+            )
+            .bind(brand)
+            .fetch_optional(&mut **tx)
+            .await?;
+            ready &= active == Some(true);
+        }
+    }
     if !ready {
         return Err(DomainError::Invalid(
             "purchase order supplier, business unit, warehouse, SKU or line data is not ready for confirmation".into(),
