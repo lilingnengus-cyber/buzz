@@ -9,7 +9,7 @@ use crate::{
 use chrono::{Datelike, Utc};
 use rust_decimal::Decimal;
 use serde_json::json;
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{Acquire, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 const CONSUMER: &str = "profit_projection_v1";
@@ -46,7 +46,7 @@ impl ProfitProjectionService {
         let mut failures = 0_i64;
         for event in &retry_events {
             retried += 1;
-            match project_event(&mut tx, event, actor, trace_id).await {
+            match project_isolated(&mut tx, event, actor, trace_id).await {
                 Ok(count) => projected += count,
                 Err(error) => {
                     failures += 1;
@@ -63,12 +63,12 @@ impl ProfitProjectionService {
             .bind(CONSUMER).fetch_one(&mut *tx).await?;
         let last_created = offset.get::<Option<chrono::DateTime<Utc>>, _>("last_outbox_created_at");
         let last_id = offset.get::<Option<Uuid>, _>("last_outbox_event_id");
-        let events=sqlx::query("SELECT id,topic,aggregate_id,payload,created_at FROM business_core_outbox WHERE topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed') AND ($2::timestamptz IS NULL OR (created_at,id)>($2,$3)) ORDER BY created_at,id LIMIT $1")
+        let events=sqlx::query("SELECT id,topic,aggregate_id,payload,created_at FROM business_core_outbox WHERE topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed','sales_return_reversed') AND ($2::timestamptz IS NULL OR (created_at,id)>($2,$3)) ORDER BY created_at,id LIMIT $1")
             .bind(limit.clamp(1,1000)).bind(last_created).bind(last_id)
             .fetch_all(&mut *tx)
             .await?;
         for event in &events {
-            match project_event(&mut tx, event, actor, trace_id).await {
+            match project_isolated(&mut tx, event, actor, trace_id).await {
                 Ok(count) => projected += count,
                 Err(error) => {
                     failures += 1;
@@ -150,6 +150,27 @@ impl ProfitProjectionService {
     }
 }
 
+// A database error aborts its transaction; isolate each event so failure tracking
+// and other events can still commit, without retaining partial facts for this event.
+async fn project_isolated(
+    tx: &mut Transaction<'_, Postgres>,
+    event: &sqlx::postgres::PgRow,
+    actor: Uuid,
+    trace: Uuid,
+) -> Result<i64, DomainError> {
+    let mut savepoint = tx.begin().await?;
+    match project_event(&mut savepoint, event, actor, trace).await {
+        Ok(count) => {
+            savepoint.commit().await?;
+            Ok(count)
+        }
+        Err(error) => {
+            savepoint.rollback().await?;
+            Err(error)
+        }
+    }
+}
+
 async fn project_event(
     tx: &mut Transaction<'_, Postgres>,
     event: &sqlx::postgres::PgRow,
@@ -158,7 +179,10 @@ async fn project_event(
 ) -> Result<i64, DomainError> {
     let outbox_id: Uuid = event.get("id");
     let topic: String = event.get("topic");
-    if topic == "sales_return_confirmed" {
+    if matches!(
+        topic.as_str(),
+        "sales_return_confirmed" | "sales_return_reversed"
+    ) {
         return project_sales_return(tx, event, actor, trace_id).await;
     }
     let shipment_id = Uuid::parse_str(event.get::<String, _>("aggregate_id").as_str())
@@ -239,27 +263,43 @@ async fn project_sales_return(
     let return_id = Uuid::parse_str(event.get::<String, _>("aggregate_id").as_str())
         .map_err(|_| DomainError::Invalid("sales return aggregate is invalid".into()))?;
     let payload: serde_json::Value = event.get("payload");
-    let version = payload["version"].as_i64().unwrap_or(2);
-    let attribution = sqlx::query("SELECT actor_user_id,trace_id FROM sales_return_events WHERE sales_return_id=$1 AND event_type='confirmed' AND return_version=$2 ORDER BY created_at DESC LIMIT 1")
-        .bind(return_id).bind(version).fetch_optional(&mut **tx).await?;
+    let reversing = event.get::<String, _>("topic") == "sales_return_reversed";
+    let direction = if reversing { "normal" } else { "reversal" };
+    let version = if reversing {
+        payload["version"]
+            .as_i64()
+            .ok_or_else(|| DomainError::Invalid("return reversal version missing".into()))?
+    } else {
+        payload["version"].as_i64().unwrap_or(2)
+    };
+    let reversal_date = if reversing {
+        Some(
+            serde_json::from_value::<chrono::NaiveDate>(payload["reversalDate"].clone())
+                .map_err(|_| DomainError::Invalid("return reversal date missing".into()))?,
+        )
+    } else {
+        None
+    };
+    let attribution = sqlx::query("SELECT actor_user_id,trace_id FROM sales_return_events WHERE sales_return_id=$1 AND event_type=$3 AND return_version=$2 ORDER BY created_at DESC LIMIT 1")
+        .bind(return_id).bind(version).bind(if reversing {"reversed"} else {"confirmed"}).fetch_optional(&mut **tx).await?;
     let (effective_actor, effective_trace) = attribution
         .map(|row| (row.get("actor_user_id"), row.get("trace_id")))
         .unwrap_or((actor, trace_id));
-    let lines=sqlx::query("SELECT r.sales_order_id,r.legal_entity_id,r.customer_id,r.warehouse_id,r.return_date,r.currency::text,l.shipment_line_id,l.sales_amount,l.total_cost,l.quantity,sl.sales_order_line_id,sl.shipment_id,l.sku_id,o.salesperson_user_id,sol.business_unit_id,sol.department_id,COALESCE(sol.brand_id,p.brand_id) brand_id,p.category_id product_category_id FROM sales_returns r JOIN sales_return_lines l ON l.sales_return_id=r.id JOIN shipment_lines sl ON sl.id=l.shipment_line_id JOIN sales_orders o ON o.id=r.sales_order_id JOIN sales_order_lines sol ON sol.id=sl.sales_order_line_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE r.id=$1 AND r.status='confirmed' ORDER BY l.id")
+    let lines=sqlx::query("SELECT r.sales_order_id,r.legal_entity_id,r.customer_id,r.warehouse_id,r.return_date,r.currency::text,l.shipment_line_id,l.sales_amount,l.total_cost,l.quantity,sl.sales_order_line_id,sl.shipment_id,l.sku_id,o.salesperson_user_id,sol.business_unit_id,sol.department_id,COALESCE(sol.brand_id,p.brand_id) brand_id,p.category_id product_category_id FROM sales_returns r JOIN sales_return_lines l ON l.sales_return_id=r.id JOIN shipment_lines sl ON sl.id=l.shipment_line_id JOIN sales_orders o ON o.id=r.sales_order_id JOIN sales_order_lines sol ON sol.id=sl.sales_order_line_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE r.id=$1 AND r.status IN ('confirmed','reversed') ORDER BY l.id")
         .bind(return_id).fetch_all(&mut **tx).await?;
     if lines.is_empty() {
         return Err(DomainError::NotFoundOrForbidden);
     }
     let mut inserted = 0_i64;
     for line in lines {
-        let date: chrono::NaiveDate = line.get("return_date");
+        let date: chrono::NaiveDate = reversal_date.unwrap_or_else(|| line.get("return_date"));
         let period = format!("{:04}-{:02}", date.year(), date.month());
         for (metric, amount) in [
             ("net_revenue", line.get::<Decimal, _>("sales_amount")),
             ("product_cost", line.get::<Decimal, _>("total_cost")),
         ] {
-            let result=sqlx::query("INSERT INTO profit_facts(id,metric_type,direction,amount,currency,quantity,legal_entity_id,sales_order_id,sales_order_line_id,shipment_id,shipment_line_id,customer_id,sku_id,product_category_id,brand_id,salesperson_user_id,business_unit_id,department_id,warehouse_id,business_date,management_period,source_system,source_type,source_id,source_line_id,source_event_id,source_event_version,data_as_of,trace_id) VALUES($1,$2,'reversal',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'business_core_returns','sales_return',$21,$22,$23,$24,$25,$26) ON CONFLICT(source_event_id,metric_type,source_line_id,direction) DO NOTHING")
-                .bind(Uuid::new_v4()).bind(metric).bind(money(amount)).bind(line.get::<String,_>("currency")).bind(line.get::<Decimal,_>("quantity")).bind(line.get::<Uuid,_>("legal_entity_id")).bind(line.get::<Uuid,_>("sales_order_id")).bind(line.get::<Uuid,_>("sales_order_line_id")).bind(line.get::<Uuid,_>("shipment_id")).bind(line.get::<Uuid,_>("shipment_line_id")).bind(line.get::<Uuid,_>("customer_id")).bind(line.get::<Uuid,_>("sku_id")).bind(line.get::<Uuid,_>("product_category_id")).bind(line.get::<Option<Uuid>,_>("brand_id")).bind(line.get::<Uuid,_>("salesperson_user_id")).bind(line.get::<Uuid,_>("business_unit_id")).bind(line.get::<Option<Uuid>,_>("department_id")).bind(line.get::<Uuid,_>("warehouse_id")).bind(date).bind(period.clone()).bind(return_id).bind(line.get::<Uuid,_>("shipment_line_id")).bind(outbox_id).bind(version).bind(event.get::<chrono::DateTime<Utc>,_>("created_at")).bind(effective_trace).execute(&mut **tx).await?;
+            let result=sqlx::query("INSERT INTO profit_facts(id,metric_type,direction,amount,currency,quantity,legal_entity_id,sales_order_id,sales_order_line_id,shipment_id,shipment_line_id,customer_id,sku_id,product_category_id,brand_id,salesperson_user_id,business_unit_id,department_id,warehouse_id,business_date,management_period,source_system,source_type,source_id,source_line_id,source_event_id,source_event_version,data_as_of,trace_id) VALUES($1,$2,$27,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'business_core_returns','sales_return',$21,$22,$23,$24,$25,$26) ON CONFLICT(source_event_id,metric_type,source_line_id,direction) DO NOTHING")
+                .bind(Uuid::new_v4()).bind(metric).bind(money(amount)).bind(line.get::<String,_>("currency")).bind(line.get::<Decimal,_>("quantity")).bind(line.get::<Uuid,_>("legal_entity_id")).bind(line.get::<Uuid,_>("sales_order_id")).bind(line.get::<Uuid,_>("sales_order_line_id")).bind(line.get::<Uuid,_>("shipment_id")).bind(line.get::<Uuid,_>("shipment_line_id")).bind(line.get::<Uuid,_>("customer_id")).bind(line.get::<Uuid,_>("sku_id")).bind(line.get::<Uuid,_>("product_category_id")).bind(line.get::<Option<Uuid>,_>("brand_id")).bind(line.get::<Uuid,_>("salesperson_user_id")).bind(line.get::<Uuid,_>("business_unit_id")).bind(line.get::<Option<Uuid>,_>("department_id")).bind(line.get::<Uuid,_>("warehouse_id")).bind(date).bind(period.clone()).bind(return_id).bind(line.get::<Uuid,_>("shipment_line_id")).bind(outbox_id).bind(version).bind(event.get::<chrono::DateTime<Utc>,_>("created_at")).bind(effective_trace).bind(direction).execute(&mut **tx).await?;
             inserted += i64::try_from(result.rows_affected()).unwrap_or_default();
         }
     }
@@ -272,7 +312,7 @@ async fn project_sales_return(
             "profit_fact_projected",
             "sales_return",
             return_id,
-            json!({"sourceEventId":outbox_id,"direction":"reversal","factCount":inserted}),
+            json!({"sourceEventId":outbox_id,"direction":direction,"factCount":inserted}),
         )
         .await?;
     }

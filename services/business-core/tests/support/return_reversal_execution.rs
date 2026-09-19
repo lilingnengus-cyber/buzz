@@ -12,7 +12,7 @@ pub(super) async fn check(
     let service = business_core::b2::ReturnService::new(store.clone(), "SR".into(), "PR".into());
     let input = business_core::b2::ReverseReturn {
         expected_version: version,
-        reversal_date: NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
+        reversal_date: NaiveDate::from_ymd_opt(2026, 10, 21).unwrap(),
         reason: "登记错误，保留原流水".into(),
     };
     let preview = service
@@ -125,6 +125,12 @@ pub(super) async fn check(
     .execute(store.pool())
     .await
     .unwrap();
+    if sales && version == 3 {
+        business_core::b4::ProfitProjectionService::new(store.clone())
+            .project_pending(f.actor, Uuid::new_v4(), 1000)
+            .await
+            .unwrap();
+    }
     let execution_key = return_disposition_checks::execute(
         app,
         store,
@@ -220,6 +226,9 @@ pub(super) async fn check(
     .unwrap();
     assert_eq!(event["reason"], input.reason);
     assert_eq!(event["effects"], approved);
+    if sales {
+        check_projection(store, f, id, version).await;
+    }
     sqlx::query("DELETE FROM business_brand_scopes WHERE enterprise_user_id=$1 AND brand_id=$2")
         .bind(f.actor)
         .bind(f.brand)
@@ -240,4 +249,78 @@ pub(super) async fn check(
         Err(DomainError::NotFoundOrForbidden)
     ));
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
+}
+
+async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) {
+    let service = business_core::b4::ProfitProjectionService::new(store.clone());
+    if version == 2 {
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE OR REPLACE FUNCTION test_return_fact_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_id='{id}'::uuid AND NEW.direction='normal' AND NEW.metric_type='product_cost' THEN RAISE EXCEPTION 'test partial projection rollback'; END IF; RETURN NEW; END $$"))).execute(store.pool()).await.unwrap();
+        sqlx::query("CREATE TRIGGER test_return_fact_failure BEFORE INSERT ON profit_facts FOR EACH ROW EXECUTE FUNCTION test_return_fact_failure()").execute(store.pool()).await.unwrap();
+        let outcome = service
+            .project_pending(f.actor, Uuid::new_v4(), 1000)
+            .await
+            .unwrap();
+        assert!(outcome["failures"].as_i64().unwrap() > 0);
+        let partial: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM profit_facts WHERE source_id=$1 AND direction='normal'",
+        )
+        .bind(id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            partial, 0,
+            "first metric must roll back when the second metric fails"
+        );
+        let pending:i64=sqlx::query_scalar("SELECT count(*) FROM profit_projection_failures WHERE aggregate_id=$1 AND status='pending'").bind(id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(
+            pending, 1,
+            "database failures remain retryable without aborting the batch"
+        );
+        sqlx::query("DROP TRIGGER test_return_fact_failure ON profit_facts")
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+
+    service
+        .project_pending(f.actor, Uuid::new_v4(), 1000)
+        .await
+        .unwrap();
+    let failures:i64=sqlx::query_scalar("SELECT count(*) FROM profit_projection_failures WHERE aggregate_id=$1 AND status='pending'").bind(id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(failures, 0);
+    let facts:Value=sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(f) ORDER BY fact_sequence) FROM profit_facts f WHERE source_type='sales_return' AND source_id=$1").bind(id).fetch_one(store.pool()).await.unwrap();
+    let rows = facts.as_array().unwrap();
+    assert_eq!(
+        rows.len(),
+        4,
+        "confirmation and correction each produce two facts"
+    );
+    for row in rows {
+        let correction = row["direction"] == "normal";
+        assert_eq!(
+            row["business_date"],
+            if correction {
+                "2026-10-21"
+            } else {
+                "2026-09-19"
+            }
+        );
+        assert_eq!(
+            row["management_period"],
+            if correction { "2026-10" } else { "2026-09" }
+        );
+        assert_eq!(
+            row["source_event_version"],
+            if correction { version + 1 } else { 2 }
+        );
+    }
+    let mismatch:i64=sqlx::query_scalar("SELECT count(*) FROM profit_projection_reconciliation WHERE shipment_line_id IN (SELECT shipment_line_id FROM sales_return_lines WHERE sales_return_id=$1) AND (revenue_difference<>0 OR cost_difference<>0)").bind(id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(mismatch, 0);
+    service.rebuild(f.actor, Uuid::new_v4()).await.unwrap();
+    let again:Value=sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(f) ORDER BY fact_sequence) FROM profit_facts f WHERE source_type='sales_return' AND source_id=$1").bind(id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        facts, again,
+        "rebuild must neither duplicate nor rewrite original facts"
+    );
 }

@@ -109,7 +109,7 @@ impl ReturnService {
         sqlx::query(AssertSqlSafe(format!("UPDATE {balances} SET original_amount=$2,open_amount=$3,status=$4,trace_id=$5 WHERE id=$1")))
             .bind(financial_id).bind(original).bind(field::<Decimal>(financial,"openAmountAfter")?)
             .bind(field::<String>(financial,"statusAfter")?).bind(trace).execute(&mut *tx).await?;
-        let payload = json!({"returnId":id,"reason":input.reason,"reversalDate":input.reversal_date,"effects":plan});
+        let payload = json!({"version":input.expected_version+1,"returnId":id,"reason":input.reason,"reversalDate":input.reversal_date,"effects":plan});
         sqlx::query(AssertSqlSafe(format!("INSERT INTO {events}(id,{fk},event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7)")))
             .bind(Uuid::new_v4()).bind(financial_id).bind(format!("{kind}_restored")).bind(original-before)
             .bind(&payload).bind(actor).bind(trace).execute(&mut *tx).await?;

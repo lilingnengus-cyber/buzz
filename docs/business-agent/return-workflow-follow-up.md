@@ -137,3 +137,13 @@ Gateway 8、Read API 28、MCP 13、Host 10 项相关测试通过；两类取消�
 候选二进制 `/tmp/business-read-mcp-return-candidate109`，原 83 工具回退二进制已恢复。日志 `/tmp/business-return109-{gateway,api,mcp,host,clippy,size,runtime,core}.log`。配套迁移在隔离数据库 `return_tools109_verified` 的完整 B2 流程验证；线上服务、已安装客户端和生产记录未改变。
 
 发布阻塞：检查发现利润投影只读取 sales_return_confirmed、不读取 sales_return_reversed，且确认投影查询限定当前 confirmed 状态；因此快速冲销可能使延迟确认事件失败，已投影的退货也缺少抵消事实。下一步必须补齐投影和延迟消费/幂等/跨期日期测试，再完成详情/报表验收与配套发布。此次工具接入不代表报表闭环或完整业务目标完成。
+
+## 退货冲销利润投影与失败恢复（未部署）
+
+利润投影及运营积压统计纳入 sales_return_reversed。确认事件允许在原单已冲销后投影，保留原退货日期的收入/成本扣减事实；冲销事件按明确的冲销日期追加收入/成本恢复事实，携带实际退货版本和冲销事件归属，不删除原事实。冲销 outbox payload 明确记录版本。
+
+隔离验证发现既有退货投影还被 profit_facts 的来源约束拒绝，迁移 48 补充 business_core_returns / sales_return。投影每个事件使用保存点，数据库错误只回滚该事件的全部事实，外层仍能保存可重试失败记录并处理其他事件；防止某项指标已写入而第二项失败留下部分结果。
+
+`return_projection_verified` 完整 B2 流程通过：分别覆盖原退货已投影再冲销，以及冲销后才延迟消费确认/冲销事件；9 月退货、10 月冲销各保留正确日期和管理期间，累计收入/成本与业务对账一致。测试在冲销第二项指标写入时注入数据库错误，验证第一项也回滚、失败记录保留、解除故障后重试完成；全量重建不重复或改写四条退货相关事实。`return_projection_b4_verified` 的利润投影/调整/管理报表/并发及运营报告既有全流程通过。Core 严格 Clippy、格式和文件大小门禁通过，日志 `/tmp/business-return-projection-{core-verified,b4-verified,clippy,size}.log`。
+
+上述修复解决前节列出的投影事件缺失与延迟消费阻塞，尚未部署。下一步仍需核对跨期运营指标、冻结业务维度与退货详情展示，完成配套权限/服务/客户端发布和真实聊天验收；不能将累计对账通过视为所有报表口径均已验收。其他业务域和历史/后续库存纠错方案仍待推进。

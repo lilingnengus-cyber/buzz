@@ -129,7 +129,7 @@ impl OperationsService {
         record_stage(&mut stages, "projectionFailures", stage_started);
         let stage_started = Instant::now();
         let projection = sqlx::query(
-            "SELECT o.last_outbox_created_at,o.last_fact_sequence,o.updated_at,COALESCE((SELECT count(*) FROM business_core_outbox e WHERE e.topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed') AND (o.last_outbox_created_at IS NULL OR (e.created_at,e.id)>(o.last_outbox_created_at,o.last_outbox_event_id))),0) pending_events FROM profit_projection_offsets o WHERE o.consumer_name='profit_projection_v1'",
+            "SELECT o.last_outbox_created_at,o.last_fact_sequence,o.updated_at,COALESCE((SELECT count(*) FROM business_core_outbox e WHERE e.topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed','sales_return_reversed') AND (o.last_outbox_created_at IS NULL OR (e.created_at,e.id)>(o.last_outbox_created_at,o.last_outbox_event_id))),0) pending_events FROM profit_projection_offsets o WHERE o.consumer_name='profit_projection_v1'",
         )
         .fetch_optional(self.store.pool())
         .await?;
@@ -291,7 +291,7 @@ impl OperationsService {
         record_stage(&mut stages, "profitFacts", stage_started);
         let stage_started = Instant::now();
         let projection = sqlx::query(
-            "SELECT o.updated_at,COALESCE((SELECT count(*) FROM business_core_outbox e WHERE e.topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed') AND (o.last_outbox_created_at IS NULL OR (e.created_at,e.id)>(o.last_outbox_created_at,o.last_outbox_event_id))),0) pending_events,(SELECT count(*) FROM profit_projection_failures f WHERE f.status='pending' AND (EXISTS(SELECT 1 FROM shipments s JOIN sales_orders so ON so.id=s.sales_order_id WHERE s.id=f.aggregate_id AND s.legal_entity_id=ANY($1) AND s.customer_id=ANY($2) AND s.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)) OR EXISTS(SELECT 1 FROM sales_returns r JOIN sales_orders so ON so.id=r.sales_order_id WHERE r.id=f.aggregate_id AND r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND r.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)))) pending_failures FROM profit_projection_offsets o WHERE o.consumer_name='profit_projection_v1'",
+            "SELECT o.updated_at,COALESCE((SELECT count(*) FROM business_core_outbox e WHERE e.topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed','sales_return_reversed') AND (o.last_outbox_created_at IS NULL OR (e.created_at,e.id)>(o.last_outbox_created_at,o.last_outbox_event_id))),0) pending_events,(SELECT count(*) FROM profit_projection_failures f WHERE f.status='pending' AND (EXISTS(SELECT 1 FROM shipments s JOIN sales_orders so ON so.id=s.sales_order_id WHERE s.id=f.aggregate_id AND s.legal_entity_id=ANY($1) AND s.customer_id=ANY($2) AND s.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)) OR EXISTS(SELECT 1 FROM sales_returns r JOIN sales_orders so ON so.id=r.sales_order_id WHERE r.id=f.aggregate_id AND r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND r.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)))) pending_failures FROM profit_projection_offsets o WHERE o.consumer_name='profit_projection_v1'",
         )
         .bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu)
         .fetch_optional(self.store.pool()).await?;
