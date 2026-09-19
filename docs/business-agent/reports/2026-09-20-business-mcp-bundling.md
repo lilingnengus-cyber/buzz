@@ -15,3 +15,11 @@
 提交 `6c8ad6492` 为 Windows Canary 增加精确仓库 `lilingnengus-cyber/buzz` 与精确集成分支 `codex/life-write-intent-compiler` 的来源校验；仍保留原 main 入口。非 main 分支不保存 Cargo/pnpm 发布缓存。产物只上传短期 Actions artifact，不创建发布标签、Release 或自动更新。
 
 已触发运行 `35471308524`，对应源码 `6c8ad6492ce10079d7365fe35dbfa1b8a000ec0f`。实际 job `105972663733` 已进入 in_progress，来源校验成功、checkout 进行中。须继续检查同一运行，不能因观察超时重启。原生编译、安装包生成及 Windows 客户端验收仍未证明完成。
+
+## Windows 候选构建完成
+
+同一运行 35471308524 已 completed/success，Build sidecars、Build Windows NSIS installer (unsigned)、Upload Windows canary installer 均成功。Artifact 10594095609，名称 buzz-windows-canary-6c8ad6492ce10079d7365fe35dbfa1b8a000ec0f，归档大小 60,611,486 字节。
+
+已下载 Pacioli_0.5.19-test.2_x64-setup.exe，文件识别为 Windows NSIS 自解压安装程序，SHA-256 为 bd00dbacb9fdcd6ac5227428ad2403e647ed1d922161e26eea5b87827be6087e。本地路径 /tmp/pacioli-windows-master-35471308524/Pacioli_0.5.19-test.2_x64-setup.exe。该候选不签名、不自动更新。
+
+源码固定为 6c8ad6492，之后新增的原生 Agent/MCP 101/60 探针步骤不在本次运行中。当前仅完成构建、下载及文件类型/校验值核对；没有在 Windows 安装、检查安装后文件或完成真实会话验收。后续 Core 收货状态修复也未部署，不能把本安装包成功视为完整业务目标完成。
