@@ -7,6 +7,8 @@ use crate::turn_observer::TurnExtension;
 
 #[path = "business_agent.rs"]
 mod business_agent;
+#[path = "business_credential.rs"]
+mod business_credential;
 #[path = "business_response.rs"]
 mod business_response;
 #[path = "life_agent.rs"]

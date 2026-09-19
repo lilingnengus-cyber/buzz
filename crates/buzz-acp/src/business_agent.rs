@@ -119,6 +119,10 @@ impl TurnExtension for BusinessAgentHostConfig {
         "business"
     }
 
+    fn begin_error_message(&self, error: &str) -> Option<&'static str> {
+        Some(business_begin_error_message(error))
+    }
+
     fn classify_turn(
         &self,
         context: &VerifiedTurnContext<'_>,
@@ -166,6 +170,18 @@ impl TurnExtension for BusinessAgentHostConfig {
                 .await?;
             Ok(Some(Box::new(access) as Box<dyn TurnExtensionAccess>))
         })
+    }
+}
+
+fn business_begin_error_message(error: &str) -> &'static str {
+    match error {
+        "Business Agent turn was not authorized for this user or device" =>
+            "本次企业工作台授权未通过，尚未执行查询或写入。下一步：打开企业工作台检查聊天身份绑定与账号权限；已登录不代表已完成绑定。",
+        "Business Agent query rate limit exceeded" =>
+            "企业助手请求过于频繁，本次尚未执行查询或写入。下一步：稍后重试。",
+        "This Buzz event has already started a Business Agent turn" =>
+            "这条消息已经处理过，本次没有重复执行。下一步：查看原请求的结果。",
+        _ => "企业助手暂时无法完成授权，本次尚未执行查询或写入。下一步：稍后重试，若持续失败请联系管理员。",
     }
 }
 
@@ -479,10 +495,10 @@ impl BusinessAgentHostConfig {
         } else {
             None
         };
-        let credential = required("BUSINESS_READ_SERVICE_CREDENTIAL")?;
-        if credential.len() < 32 {
-            return Err("BUSINESS_READ_SERVICE_CREDENTIAL must be at least 32 bytes".into());
-        }
+        let credential = super::business_credential::load(
+            std::env::var("BUSINESS_READ_SERVICE_CREDENTIAL").ok(),
+            std::env::var("BUSINESS_READ_SERVICE_CREDENTIAL_FILE").ok(),
+        )?;
         let tool_timeout_seconds = bounded_number("BUSINESS_TOOL_TIMEOUT_SECONDS", 10, 1, 30)?;
         let turn_timeout_seconds = bounded_number("AGENT_TURN_TIMEOUT_SECONDS", 120, 30, 900)?;
         let max_payload_bytes = bounded_number(
@@ -708,6 +724,18 @@ fn bounded_number(name: &str, default: u64, min: u64, max: u64) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejected_turn_feedback_is_safe_and_actionable() {
+        let denied = business_begin_error_message(
+            "Business Agent turn was not authorized for this user or device",
+        );
+        assert!(denied.contains("聊天身份绑定"));
+        assert!(denied.contains("尚未执行"));
+        let unknown = business_begin_error_message("secret=must-not-appear");
+        assert!(!unknown.contains("must-not-appear"));
+        assert!(unknown.contains("下一步"));
+    }
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn revocation_test_config(gateway_base_url: Url) -> Arc<BusinessAgentHostConfig> {

@@ -62,6 +62,25 @@ before the per-turn Business MCP server is attached, so the server can report
 compatibility constraint, not a reason to switch the dedicated host back to a
 hard-coded `buzz-agent` runtime.
 
+The 2026-09-19 installed-client acceptance also found `gpt-5.6-terra` returning
+“no available business tools” without a Business tool call. In the same client,
+`gpt-5.5` completed `search_sales_orders` against production successfully. Keep
+the verified model for this deployment until a newer runtime/model combination
+passes the same real query and draft-write acceptance.
+
+The desktop connects the current chat identity to the signed-in Workbench
+account through the authenticated identity-binding challenge and native event
+signature. It validates the challenge's account, issuer, public key, audience,
+and expiry before signing. An existing active binding is reused; a revoked
+binding is never restored by token renewal. Resolve revoked bindings through
+the account administrator. Do not insert binding rows directly to bypass proof
+of key ownership. A local macOS rebuild may require the user to allow access
+to the existing Keychain item before the desktop can start.
+
+If turn authorization fails, the Business extension publishes a fixed,
+actionable failure response without exposing raw gateway errors or credentials.
+An online presence alone does not prove that an authorized query completed.
+
 With `BUSINESS_AGENT_READ_ENABLED=false` or missing real integration, ordinary
 Buzz agents continue unchanged. Enabling with a missing credential/API URL
 fails startup instead of using fixtures.
@@ -96,3 +115,15 @@ warns that production is disabled.
 
 Monitor denial/rate/timeout counts and audit continuity. Cleanup runs with the
 Gateway sweep. Revoking a binding also revokes associated Delegations.
+
+## Desktop-managed Agent service credential
+
+A managed Agent may set `BUSINESS_READ_SERVICE_CREDENTIAL_FILE` to an absolute
+path containing the Business service credential instead of storing the value
+in its environment-variable configuration. Configure exactly one of this path
+or `BUSINESS_READ_SERVICE_CREDENTIAL`. The host reads a regular file containing
+32–4096 bytes (an optional final newline is accepted); Unix files must have no
+group/other permission bits (use mode 0600). On Windows, restrict the file ACL to
+the service account before use. Do not put Agent identity keys in this file.
+The host continues to pass the credential privately to the per-turn MCP process.
+This option requires an updated buzz-acp binary; older builds cannot use it.

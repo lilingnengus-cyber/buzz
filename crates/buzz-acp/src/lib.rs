@@ -2170,6 +2170,10 @@ async fn tokio_main() -> Result<()> {
     let mut queue =
         EventQueue::new(dedup_mode).with_in_flight_deadline(config.max_turn_duration_secs);
 
+    // Validate product credentials before advertising readiness.
+    let turn_extensions = product_extensions::load_from_env(&config.agent_command)
+        .map_err(|error| anyhow::anyhow!("turn extension configuration error: {error}"))?;
+
     // Online means the harness can receive work, not merely that its socket is
     // connected. Publishing after channel subscriptions gives desktop callers
     // a durable readiness boundary before they send a startup mention.
@@ -2193,8 +2197,6 @@ async fn tokio_main() -> Result<()> {
 
     let base_prompt_content = config.base_prompt_content.take();
     let cwd = current_working_directory()?;
-    let turn_extensions = product_extensions::load_from_env(&config.agent_command)
-        .map_err(|error| anyhow::anyhow!("turn extension configuration error: {error}"))?;
     let ctx = Arc::new(PromptContext {
         mcp_servers: build_mcp_servers(&config),
         turn_extensions,

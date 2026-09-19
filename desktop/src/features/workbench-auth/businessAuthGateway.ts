@@ -78,8 +78,93 @@ async function gatewayFetch<T>(
 export async function readGatewayState(
   gateway: string,
   token: string,
+  proof?: {
+    pubkey: string;
+    issuer: string;
+    subject: string;
+    isCurrent: () => boolean;
+    sign: (input: {
+      kind: number;
+      content: string;
+      tags: string[][];
+    }) => Promise<{ pubkey: string; content: string }>;
+  },
 ): Promise<WorkbenchAuthState> {
   const me = await gatewayFetch<GatewayMe>(gateway, token, "/api/me");
+  if (proof) {
+    const assertCurrent = () => {
+      if (!proof.isCurrent()) throw new Error("Workbench session changed.");
+    };
+    assertCurrent();
+    if (me.user.status !== "active")
+      throw new Error("Enterprise account is disabled.");
+    const bindings = me.bindings.filter((b) => b.buzzPubkey === proof.pubkey);
+    if (!bindings.some((b) => b.status === "active")) {
+      // A refresh must never silently undo an administrator's revocation.
+      if (bindings.length > 0)
+        throw new Error(
+          "Chat identity binding was revoked. Contact your administrator.",
+        );
+      if (!/^[0-9a-f]{64}$/.test(proof.pubkey))
+        throw new Error("Chat identity is unavailable.");
+      const challenge = await gatewayFetch<{
+        id: string;
+        audience: string;
+        payload: string;
+        expiresAt: string;
+      }>(gateway, token, "/api/identity-bindings/challenges", {
+        method: "POST",
+        body: JSON.stringify({ pubkey: proof.pubkey }),
+      });
+      assertCurrent();
+      const lines = challenge.payload.split("\n");
+      const issuedAt = Number(lines[7]?.slice("issued_at=".length));
+      const expiresAt = Number(lines[8]?.slice("expires_at=".length));
+      if (
+        challenge.audience !== "bizfin-workbench-identity-binding" ||
+        lines.length !== 9 ||
+        lines[0] !== "bizfin-identity-binding-v1" ||
+        lines[1] !== `challenge_id=${challenge.id}` ||
+        !/^nonce=[A-Za-z0-9_-]+$/.test(lines[2] ?? "") ||
+        lines[3] !== `audience=${challenge.audience}` ||
+        lines[4] !== `oidc_issuer=${proof.issuer}` ||
+        lines[5] !== `oidc_subject=${proof.subject}` ||
+        lines[6] !== `buzz_pubkey=${proof.pubkey}` ||
+        !/^issued_at=\d+$/.test(lines[7] ?? "") ||
+        !/^expires_at=\d+$/.test(lines[8] ?? "") ||
+        !Number.isSafeInteger(issuedAt) ||
+        !Number.isSafeInteger(expiresAt) ||
+        issuedAt > Date.now() / 1000 + 60 ||
+        issuedAt >= expiresAt ||
+        expiresAt <= Date.now() / 1000 ||
+        Math.floor(Date.parse(challenge.expiresAt) / 1000) !== expiresAt
+      )
+        throw new Error("Invalid enterprise identity challenge.");
+      const signedEvent = await proof.sign({
+        kind: 24243,
+        content: challenge.payload,
+        tags: [],
+      });
+      assertCurrent();
+      if (
+        signedEvent.pubkey !== proof.pubkey ||
+        signedEvent.content !== challenge.payload
+      )
+        throw new Error("Chat identity changed during binding.");
+      const binding = await gatewayFetch<BuzzIdentityBinding>(
+        gateway,
+        token,
+        "/api/identity-bindings/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({ challengeId: challenge.id, signedEvent }),
+        },
+      );
+      assertCurrent();
+      if (binding.status !== "active" || binding.buzzPubkey !== proof.pubkey)
+        throw new Error("Enterprise identity binding was not verified.");
+    }
+  }
   return {
     status: "authenticated",
     user: me.user,

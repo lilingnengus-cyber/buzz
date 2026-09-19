@@ -19,6 +19,8 @@ import {
   type WorkbenchAuthConfig,
 } from "@/features/workbench-auth/workbenchAuthConfig";
 import { Button } from "@/shared/ui/button";
+import { signRelayEvent } from "@/shared/api/tauri";
+import { getIdentity } from "@/shared/api/tauriIdentity";
 
 type AuthPhase =
   | "unconnected"
@@ -98,26 +100,80 @@ export function WorkbenchAuthProvider({
   const callbackReplayGuard = React.useRef(
     createWorkbenchCallbackReplayGuard(),
   );
+  const gatewayGeneration = React.useRef(0);
+  const gatewaySync = React.useRef<{
+    token: string;
+    promise: Promise<void>;
+  } | null>(null);
+
+  const invalidateGateway = React.useCallback(() => {
+    gatewayGeneration.current += 1;
+    gatewaySync.current = null;
+    setGatewayState({ status: "unauthenticated" });
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      gatewayGeneration.current += 1;
+      gatewaySync.current = null;
+    },
+    [],
+  );
 
   const syncGateway = React.useCallback(
     async (accessToken: string | undefined) => {
       if (!gatewayUrl || !accessToken) {
-        setGatewayState({ status: "unauthenticated" });
+        invalidateGateway();
         return;
       }
-      try {
-        setGatewayState(await readGatewayState(gatewayUrl, accessToken));
-      } catch (cause) {
-        setGatewayState({
-          status: "error",
-          error:
-            cause instanceof Error
-              ? cause.message
-              : "Business identity check failed.",
-        });
-      }
+      if (gatewaySync.current?.token === accessToken)
+        return gatewaySync.current.promise;
+      const generation = ++gatewayGeneration.current;
+      const isCurrent = () => gatewayGeneration.current === generation;
+      const promise = (async () => {
+        try {
+          const user = await manager?.getUser();
+          if (
+            !isCurrent() ||
+            !user ||
+            user.expired ||
+            user.access_token !== accessToken
+          )
+            return;
+          const chatIdentity = await getIdentity();
+          if (
+            chatIdentity.lost ||
+            chatIdentity.locked ||
+            chatIdentity.resetFailed
+          )
+            throw new Error(
+              "Unlock your chat identity to connect the enterprise assistant.",
+            );
+          const state = await readGatewayState(gatewayUrl, accessToken, {
+            pubkey: chatIdentity.pubkey,
+            issuer: user.profile.iss,
+            subject: user.profile.sub,
+            isCurrent,
+            sign: signRelayEvent,
+          });
+          if (isCurrent()) setGatewayState(state);
+        } catch (cause) {
+          if (isCurrent())
+            setGatewayState({
+              status: "error",
+              error:
+                cause instanceof Error
+                  ? cause.message
+                  : "Business identity check failed.",
+            });
+        } finally {
+          if (isCurrent()) gatewaySync.current = null;
+        }
+      })();
+      gatewaySync.current = { token: accessToken, promise };
+      await promise;
     },
-    [gatewayUrl],
+    [gatewayUrl, invalidateGateway, manager],
   );
 
   const consumeCallback = React.useCallback(
@@ -216,7 +272,7 @@ export function WorkbenchAuthProvider({
         if (!user || user.expired) {
           setIdentity(null);
           setGroupClaimStatus(null);
-          setGatewayState({ status: "unauthenticated" });
+          invalidateGateway();
           setPhase("expired");
         }
       });
@@ -227,7 +283,7 @@ export function WorkbenchAuthProvider({
       manager.events.removeUserLoaded(userLoaded);
       manager.events.removeSilentRenewError(silentRenewError);
     };
-  }, [manager, syncGateway]);
+  }, [invalidateGateway, manager, syncGateway]);
 
   const getAccessToken = React.useCallback(async () => {
     if (import.meta.env.MODE === "e2e") {
@@ -239,7 +295,7 @@ export function WorkbenchAuthProvider({
     if (!user) {
       setIdentity(null);
       setGroupClaimStatus(null);
-      setGatewayState({ status: "unauthenticated" });
+      invalidateGateway();
       setPhase("expired");
       return null;
     }
@@ -248,7 +304,7 @@ export function WorkbenchAuthProvider({
     setPhase("authenticated");
     await syncGateway(user.access_token);
     return user.access_token;
-  }, [manager, syncGateway]);
+  }, [invalidateGateway, manager, syncGateway]);
 
   const value = React.useMemo<WorkbenchAuthContextValue>(
     () => ({
@@ -273,6 +329,7 @@ export function WorkbenchAuthProvider({
       },
       signOut: async () => {
         if (!manager) return;
+        invalidateGateway();
         setError(null);
         try {
           const user = await manager.getUser();
@@ -287,6 +344,7 @@ export function WorkbenchAuthProvider({
       },
       signOutWorkbench: async () => {
         if (!manager) return;
+        invalidateGateway();
         setError(null);
         try {
           const user = await manager.getUser();
@@ -295,7 +353,7 @@ export function WorkbenchAuthProvider({
           await manager.removeUser();
           setIdentity(null);
           setGroupClaimStatus(null);
-          setGatewayState({ status: "unauthenticated" });
+          invalidateGateway();
           setPhase("unconnected");
         } catch (cause) {
           setPhase("failed");
@@ -314,6 +372,7 @@ export function WorkbenchAuthProvider({
       getAccessToken,
       groupClaimStatus,
       identity,
+      invalidateGateway,
       manager,
       phase,
       result.config,
