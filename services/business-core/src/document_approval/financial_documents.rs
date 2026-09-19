@@ -21,7 +21,7 @@ pub(super) async fn search(
     }
 }
 
-async fn rows(
+pub(super) async fn rows(
     state: &AppState,
     actor: Uuid,
     kind: &str,

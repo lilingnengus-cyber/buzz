@@ -338,6 +338,19 @@ impl SettlementService {
         key: &str,
         input: &ReverseAllocation,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_allocation_with_reason(actor, trace_id, allocation_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn reverse_allocation_with_reason(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        allocation_id: Uuid,
+        key: &str,
+        input: &ReverseAllocation,
+        reason: Option<&str>,
+    ) -> Result<CommandResult, DomainError> {
         let pre=sqlx::query("SELECT r.legal_entity_id,r.customer_id FROM receivable_allocations a JOIN trade_receivables r ON r.id=a.receivable_id WHERE a.id=$1").bind(allocation_id).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         authorize(
             &self.store,
@@ -350,7 +363,11 @@ impl SettlementService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = if let Some(reason) = reason {
+            request_hash(&json!({"input":input,"reason":reason}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -424,7 +441,7 @@ impl SettlementService {
             "receivable_allocation_reversed",
             "receivable_allocation",
             reversal,
-            json!({"reversesAllocationId":allocation_id,"amount":amount.to_string()}),
+            json!({"reversesAllocationId":allocation_id,"amount":amount.to_string(),"reason":reason}),
         )
         .await?;
         let version = input.expected_receipt_version + 1;
@@ -456,6 +473,19 @@ impl SettlementService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_receipt_with_reason(actor, trace_id, receipt_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn reverse_receipt_with_reason(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        receipt_id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        reason: Option<&str>,
+    ) -> Result<CommandResult, DomainError> {
         let scope = self.receipt_scope(receipt_id).await?;
         authorize(
             &self.store,
@@ -468,7 +498,11 @@ impl SettlementService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = if let Some(reason) = reason {
+            request_hash(&json!({"input":input,"reason":reason}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -509,7 +543,7 @@ impl SettlementService {
             "customer_receipt_reversed",
             "customer_receipt",
             receipt_id,
-            json!({"version":version}),
+            json!({"version":version,"reason":reason}),
         )
         .await?;
         let result = CommandResult {

@@ -18,6 +18,10 @@ pub(super) async fn write_tool(
             | "approve_supplier_payment"
             | "approve_receivable_allocation"
             | "approve_payable_allocation"
+            | "approve_customer_receipt_reversal"
+            | "approve_supplier_payment_reversal"
+            | "approve_receivable_allocation_reversal"
+            | "approve_payable_allocation_reversal"
             | "approve_inventory_opening"
     );
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
@@ -60,9 +64,14 @@ pub(super) async fn write_tool(
     };
     if matches!(
         tool.as_str(),
-        "prepare_receivable_allocation" | "prepare_payable_allocation"
+        "prepare_receivable_allocation"
+            | "prepare_payable_allocation"
+            | "prepare_customer_receipt_reversal"
+            | "prepare_supplier_payment_reversal"
+            | "prepare_receivable_allocation_reversal"
+            | "prepare_payable_allocation_reversal"
     ) {
-        return forward_allocation_prepare(core, &tool, input, &context, &grant).await;
+        return forward_intent_prepare(core, &tool, input, &context, &grant).await;
     }
     if !scope_allows_write(core, &tool, &input, &context, &grant).await {
         return StatusCode::FORBIDDEN.into_response();
@@ -76,6 +85,13 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "prepare_customer_receipt_reversal"
+        | "prepare_supplier_payment_reversal"
+        | "prepare_receivable_allocation_reversal"
+        | "prepare_payable_allocation_reversal" => serde_json::from_value::<
+            business_core::document_approval::reversal::PrepareReversal,
+        >(input.clone())
+        .is_ok(),
         "prepare_receivable_allocation" | "prepare_payable_allocation" => serde_json::from_value::<
             business_core::document_approval::allocation::PrepareAllocation,
         >(input.clone())
@@ -122,6 +138,10 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
         | "approve_supplier_payment"
         | "approve_receivable_allocation"
         | "approve_payable_allocation"
+        | "approve_customer_receipt_reversal"
+        | "approve_supplier_payment_reversal"
+        | "approve_receivable_allocation_reversal"
+        | "approve_payable_allocation_reversal"
         | "approve_inventory_opening" => {
             serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
         }
@@ -148,6 +168,23 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_customer_receipt_reversal" => format!(
+            "v1/agent-approvals/reversals/customer_receipt_reversal_intent/{}",
+            input.document_id
+        ),
+        "approve_supplier_payment_reversal" => format!(
+            "v1/agent-approvals/reversals/supplier_payment_reversal_intent/{}",
+            input.document_id
+        ),
+        "approve_receivable_allocation_reversal" => format!(
+            "v1/agent-approvals/reversals/receivable_allocation_reversal_intent/{}",
+            input.document_id
+        ),
+        "approve_payable_allocation_reversal" => format!(
+            "v1/agent-approvals/reversals/payable_allocation_reversal_intent/{}",
+            input.document_id
+        ),
+
         "approve_customer_receipt" => format!(
             "v1/agent-approvals/settlement/customer_receipt/{}",
             input.document_id
@@ -359,6 +396,21 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "approve_customer_receipt_reversal" => input["documentId"].as_str().map(|id| {
+            format!("v1/agent-approval-previews/reversals/customer_receipt_reversal_intent/{id}")
+        }),
+        "approve_supplier_payment_reversal" => input["documentId"].as_str().map(|id| {
+            format!("v1/agent-approval-previews/reversals/supplier_payment_reversal_intent/{id}")
+        }),
+        "approve_receivable_allocation_reversal" => input["documentId"].as_str().map(|id| {
+            format!(
+                "v1/agent-approval-previews/reversals/receivable_allocation_reversal_intent/{id}"
+            )
+        }),
+        "approve_payable_allocation_reversal" => input["documentId"].as_str().map(|id| {
+            format!("v1/agent-approval-previews/reversals/payable_allocation_reversal_intent/{id}")
+        }),
+
         "update_sales_order_draft" => input["documentId"]
             .as_str()
             .map(|id| format!("v1/agent-documents/sales-orders/{id}")),
@@ -496,23 +548,54 @@ pub(super) fn permits_document(value: &Value, scope: &AuthorizationScope) -> boo
     })
 }
 
-async fn forward_allocation_prepare(
+async fn forward_intent_prepare(
     core: &CoreClient,
     tool: &str,
     input: Value,
     context: &RequestContext,
     grant: &EffectiveGrant,
 ) -> Response {
-    let kind = if tool == "prepare_receivable_allocation" {
-        "receivable_allocation_intent"
-    } else {
-        "payable_allocation_intent"
+    let (kind, category, source_kind) = match tool {
+        "prepare_receivable_allocation" => (
+            "receivable_allocation_intent",
+            "allocation",
+            "customer_receipt",
+        ),
+        "prepare_payable_allocation" => (
+            "payable_allocation_intent",
+            "allocation",
+            "supplier_payment",
+        ),
+        "prepare_customer_receipt_reversal" => (
+            "customer_receipt_reversal_intent",
+            "reversal",
+            "customer_receipt",
+        ),
+        "prepare_supplier_payment_reversal" => (
+            "supplier_payment_reversal_intent",
+            "reversal",
+            "supplier_payment",
+        ),
+        "prepare_receivable_allocation_reversal" => (
+            "receivable_allocation_reversal_intent",
+            "reversal",
+            "customer_receipt",
+        ),
+        "prepare_payable_allocation_reversal" => (
+            "payable_allocation_reversal_intent",
+            "reversal",
+            "supplier_payment",
+        ),
+        _ => return StatusCode::NOT_FOUND.into_response(),
     };
     let Some(scope) = iam_authorization_scope(grant, &context.required_scope) else {
         return StatusCode::FORBIDDEN.into_response();
     };
     let mut prepared = Value::Null;
-    for phase in ["agent-allocation-previews", "agent-allocation-intents"] {
+    for phase in [
+        format!("agent-{category}-previews"),
+        format!("agent-{category}-intents"),
+    ] {
         let Ok(url) = core.base_url.join(&format!("v1/{phase}/{kind}")) else {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         };
@@ -548,11 +631,6 @@ async fn forward_allocation_prepare(
         }
         prepared = value;
     }
-    let source_kind = if kind == "receivable_allocation_intent" {
-        "customer_receipt"
-    } else {
-        "supplier_payment"
-    };
     let Some(source_id) = input["sourceDocumentId"].as_str() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
@@ -600,77 +678,105 @@ mod allocation_tests {
     #[tokio::test]
     async fn target_scope_is_checked_before_persisting_allocation_intent() {
         for allowed in [false, true] {
-            let writes = Arc::new(AtomicUsize::new(0));
-            let snapshot = json!({"document":{"source":{"legalEntityId":"cn"},"allocations":[{"warehouseId":if allowed {"allowed"} else {"outside"}}]},"item":{"id":Uuid::new_v4(),"version":1}});
-            let read = snapshot.clone();
-            let counter = writes.clone();
-            let server = Router::new()
-                .route(
-                    "/v1/agent-allocation-previews/receivable_allocation_intent",
-                    axum::routing::post(move || {
-                        let value = read.clone();
-                        async move { Json(value) }
-                    }),
+            for (tool, kind, category) in [
+                (
+                    "prepare_receivable_allocation",
+                    "receivable_allocation_intent",
+                    "allocation",
+                ),
+                (
+                    "prepare_customer_receipt_reversal",
+                    "customer_receipt_reversal_intent",
+                    "reversal",
+                ),
+                (
+                    "prepare_supplier_payment_reversal",
+                    "supplier_payment_reversal_intent",
+                    "reversal",
+                ),
+                (
+                    "prepare_receivable_allocation_reversal",
+                    "receivable_allocation_reversal_intent",
+                    "reversal",
+                ),
+                (
+                    "prepare_payable_allocation_reversal",
+                    "payable_allocation_reversal_intent",
+                    "reversal",
+                ),
+            ] {
+                let writes = Arc::new(AtomicUsize::new(0));
+                let snapshot = json!({"document":{"source":{"legalEntityId":"cn"},"allocations":[{"warehouseId":if allowed {"allowed"} else {"outside"}}]},"item":{"id":Uuid::new_v4(),"version":1}});
+                let read = snapshot.clone();
+                let counter = writes.clone();
+                let server = Router::new()
+                    .route(
+                        &format!("/v1/agent-{category}-previews/{kind}"),
+                        axum::routing::post(move || {
+                            let value = read.clone();
+                            async move { Json(value) }
+                        }),
+                    )
+                    .route(
+                        &format!("/v1/agent-{category}-intents/{kind}"),
+                        axum::routing::post(move || {
+                            let value = snapshot.clone();
+                            let writes = counter.clone();
+                            async move {
+                                writes.fetch_add(1, Ordering::SeqCst);
+                                Json(value)
+                            }
+                        }),
+                    );
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let address = listener.local_addr().unwrap();
+                let task = tokio::spawn(async move {
+                    axum::serve(listener, server).await.unwrap();
+                });
+                let core = CoreClient {
+                    client: reqwest::Client::new(),
+                    base_url: Url::parse(&format!("http://{address}/")).unwrap(),
+                    credential: "c".repeat(32),
+                };
+                let context = RequestContext {
+                    enterprise_user_id: Uuid::new_v4(),
+                    identity_binding_id: Uuid::new_v4(),
+                    delegation_id: Uuid::new_v4(),
+                    agent_id: "test".into(),
+                    agent_turn_id: "test".into(),
+                    trace_id: Uuid::new_v4(),
+                    used_calls: 1,
+                    required_scope: format!("{kind}:create"),
+                    source_buzz_event_id: "a".repeat(64),
+                    source_channel_id: "test".into(),
+                };
+                let grant = EffectiveGrant {
+                    capability: business_iam::Capability::parse(&context.required_scope).unwrap(),
+                    data_scope: DataScope::Restricted(BTreeMap::from([
+                        ("legal_entity".into(), ["cn".into()].into()),
+                        ("warehouse".into(), ["allowed".into()].into()),
+                    ])),
+                    obligations: Default::default(),
+                };
+                let response = forward_intent_prepare(
+                    &core,
+                    tool,
+                    json!({"sourceDocumentId":Uuid::new_v4()}),
+                    &context,
+                    &grant,
                 )
-                .route(
-                    "/v1/agent-allocation-intents/receivable_allocation_intent",
-                    axum::routing::post(move || {
-                        let value = snapshot.clone();
-                        let writes = counter.clone();
-                        async move {
-                            writes.fetch_add(1, Ordering::SeqCst);
-                            Json(value)
-                        }
-                    }),
+                .await;
+                assert_eq!(
+                    response.status(),
+                    if allowed {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::FORBIDDEN
+                    }
                 );
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let address = listener.local_addr().unwrap();
-            let task = tokio::spawn(async move {
-                axum::serve(listener, server).await.unwrap();
-            });
-            let core = CoreClient {
-                client: reqwest::Client::new(),
-                base_url: Url::parse(&format!("http://{address}/")).unwrap(),
-                credential: "c".repeat(32),
-            };
-            let context = RequestContext {
-                enterprise_user_id: Uuid::new_v4(),
-                identity_binding_id: Uuid::new_v4(),
-                delegation_id: Uuid::new_v4(),
-                agent_id: "test".into(),
-                agent_turn_id: "test".into(),
-                trace_id: Uuid::new_v4(),
-                used_calls: 1,
-                required_scope: "receivable_allocation_intent:create".into(),
-                source_buzz_event_id: "a".repeat(64),
-                source_channel_id: "test".into(),
-            };
-            let grant = EffectiveGrant {
-                capability: business_iam::Capability::parse(&context.required_scope).unwrap(),
-                data_scope: DataScope::Restricted(BTreeMap::from([
-                    ("legal_entity".into(), ["cn".into()].into()),
-                    ("warehouse".into(), ["allowed".into()].into()),
-                ])),
-                obligations: Default::default(),
-            };
-            let response = forward_allocation_prepare(
-                &core,
-                "prepare_receivable_allocation",
-                json!({"sourceDocumentId":Uuid::new_v4()}),
-                &context,
-                &grant,
-            )
-            .await;
-            assert_eq!(
-                response.status(),
-                if allowed {
-                    StatusCode::OK
-                } else {
-                    StatusCode::FORBIDDEN
-                }
-            );
-            assert_eq!(writes.load(Ordering::SeqCst), usize::from(allowed));
-            task.abort();
+                assert_eq!(writes.load(Ordering::SeqCst), usize::from(allowed));
+                task.abort();
+            }
         }
     }
 }

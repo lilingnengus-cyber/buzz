@@ -351,6 +351,19 @@ impl PayablesService {
         key: &str,
         input: &ReversePayableAllocation,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_allocation_with_reason(actor, trace_id, allocation_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn reverse_allocation_with_reason(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        allocation_id: Uuid,
+        key: &str,
+        input: &ReversePayableAllocation,
+        reason: Option<&str>,
+    ) -> Result<CommandResult, DomainError> {
         let pre=sqlx::query("SELECT p.legal_entity_id,p.supplier_id FROM payable_allocations a JOIN trade_payables p ON p.id=a.payable_id WHERE a.id=$1").bind(allocation_id).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         authorize(
             &self.store,
@@ -363,7 +376,11 @@ impl PayablesService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = if let Some(reason) = reason {
+            request_hash(&json!({"input":input,"reason":reason}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -435,7 +452,7 @@ impl PayablesService {
             "payable_allocation_reversed",
             "payable_allocation",
             reversal,
-            json!({"reversesAllocationId":allocation_id,"amount":amount.to_string()}),
+            json!({"reversesAllocationId":allocation_id,"amount":amount.to_string(),"reason":reason}),
         )
         .await?;
         let version = input.expected_payment_version + 1;
@@ -460,6 +477,19 @@ impl PayablesService {
         key: &str,
         input: &VersionCommand,
     ) -> Result<CommandResult, DomainError> {
+        self.reverse_payment_with_reason(actor, trace_id, payment_id, key, input, None)
+            .await
+    }
+
+    pub(crate) async fn reverse_payment_with_reason(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        payment_id: Uuid,
+        key: &str,
+        input: &VersionCommand,
+        reason: Option<&str>,
+    ) -> Result<CommandResult, DomainError> {
         let scope = self.payment_scope(payment_id).await?;
         authorize(
             &self.store,
@@ -472,7 +502,11 @@ impl PayablesService {
             None,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let hash = if let Some(reason) = reason {
+            request_hash(&json!({"input":input,"reason":reason}))?
+        } else {
+            request_hash(input)?
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
@@ -524,7 +558,7 @@ impl PayablesService {
             "supplier_payment_reversed",
             "supplier_payment",
             payment_id,
-            json!({"version":version}),
+            json!({"version":version,"reason":reason}),
         )
         .await?;
         let result = CommandResult {

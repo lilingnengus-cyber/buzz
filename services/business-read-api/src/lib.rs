@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod allocation_history;
 mod config;
 mod financial_documents;
 mod master_data;
@@ -39,7 +40,9 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 26] = [
+const READ_TOOLS: [&str; 28] = [
+    "get_customer_receipt_allocations",
+    "get_supplier_payment_allocations",
     "search_business_master_data",
     "search_customer_receipts",
     "search_supplier_payments",
@@ -77,7 +80,15 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 20] = [
+const WRITE_TOOLS: [&str; 28] = [
+    "prepare_customer_receipt_reversal",
+    "prepare_supplier_payment_reversal",
+    "prepare_receivable_allocation_reversal",
+    "prepare_payable_allocation_reversal",
+    "approve_customer_receipt_reversal",
+    "approve_supplier_payment_reversal",
+    "approve_receivable_allocation_reversal",
+    "approve_payable_allocation_reversal",
     "prepare_receivable_allocation",
     "approve_receivable_allocation",
     "prepare_payable_allocation",
@@ -334,7 +345,9 @@ async fn read_tool(
         } else if tool == "search_business_master_data"
             || matches!(
                 tool.as_str(),
-                "search_customer_receipts"
+                "get_customer_receipt_allocations"
+                    | "get_supplier_payment_allocations"
+                    | "search_customer_receipts"
                     | "search_supplier_payments"
                     | "search_receivables"
                     | "search_payables"
@@ -741,6 +754,21 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "get_customer_receipt_allocations" => Some("customer_receipt:read"),
+        "get_supplier_payment_allocations" => Some("supplier_payment:read"),
+        "prepare_customer_receipt_reversal" => Some("customer_receipt_reversal_intent:create"),
+        "prepare_supplier_payment_reversal" => Some("supplier_payment_reversal_intent:create"),
+        "prepare_receivable_allocation_reversal" => {
+            Some("receivable_allocation_reversal_intent:create")
+        }
+        "prepare_payable_allocation_reversal" => Some("payable_allocation_reversal_intent:create"),
+        "approve_customer_receipt_reversal" => Some("customer_receipt_reversal_intent:approve"),
+        "approve_supplier_payment_reversal" => Some("supplier_payment_reversal_intent:approve"),
+        "approve_receivable_allocation_reversal" => {
+            Some("receivable_allocation_reversal_intent:approve")
+        }
+        "approve_payable_allocation_reversal" => Some("payable_allocation_reversal_intent:approve"),
+
         "search_customer_receipts" => Some("customer_receipt:read"),
         "search_supplier_payments" => Some("supplier_payment:read"),
         "search_receivables" => Some("receivable:read"),
@@ -1226,6 +1254,23 @@ async fn core_read_result(
     scope: &AuthorizationScope,
     context: &RequestContext,
 ) -> Response {
+    if matches!(
+        tool,
+        "get_customer_receipt_allocations" | "get_supplier_payment_allocations"
+    ) {
+        return allocation_history::search(
+            core,
+            if tool == "get_customer_receipt_allocations" {
+                "customer_receipt"
+            } else {
+                "supplier_payment"
+            },
+            input,
+            scope,
+            context,
+        )
+        .await;
+    }
     let financial_kind = match tool {
         "search_customer_receipts" => Some("customer_receipt"),
         "search_supplier_payments" => Some("supplier_payment"),

@@ -18,8 +18,9 @@ use business_query_contracts::{
     ManagementReportSnapshotInput, OperatingDashboardInput, OrderProfitInput, PayablesInput,
     ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput, ResourceRef, ScopeSummary,
     SearchFinancialDocumentsInput, SearchMasterDataInput, SearchPurchaseOrdersInput,
-    SearchSalesOrdersInput, ValidateInput, INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ,
-    PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ, SALES_ORDER_READ,
+    SearchSalesOrdersInput, SettlementAllocationsInput, ValidateInput, INVENTORY_READ,
+    MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ,
+    SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -728,6 +729,122 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "prepare_customer_receipt_reversal",
+        description = "Prepare an immutable reversal intent for an explicitly selected record and a human-provided reason. Does not reverse balances. Bind current source and, for allocation reversals, target versions. Present the returned effects and exact confirmation command. Never initiate a bank transfer or refund."
+    )]
+    async fn prepare_customer_receipt_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_customer_receipt_reversal",
+                "customer_receipt_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_customer_receipt_reversal",
+        description = "Approve or reject only the reversal intent bound to this turn's exact signed human command. No model-controlled reason, IDs, versions or amounts. Report success only for executed=true."
+    )]
+    async fn approve_customer_receipt_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_customer_receipt_reversal",
+                "customer_receipt_reversal_intent:approve",
+                "customer_receipt_reversal_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_supplier_payment_reversal",
+        description = "Prepare an immutable reversal intent for an explicitly selected record and a human-provided reason. Does not reverse balances. Bind current source and, for allocation reversals, target versions. Present the returned effects and exact confirmation command. Never initiate a bank transfer or refund."
+    )]
+    async fn prepare_supplier_payment_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_supplier_payment_reversal",
+                "supplier_payment_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_supplier_payment_reversal",
+        description = "Approve or reject only the reversal intent bound to this turn's exact signed human command. No model-controlled reason, IDs, versions or amounts. Report success only for executed=true."
+    )]
+    async fn approve_supplier_payment_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_supplier_payment_reversal",
+                "supplier_payment_reversal_intent:approve",
+                "supplier_payment_reversal_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_receivable_allocation_reversal",
+        description = "Prepare an immutable reversal intent for an explicitly selected record and a human-provided reason. Does not reverse balances. Bind current source and, for allocation reversals, target versions. Present the returned effects and exact confirmation command. Never initiate a bank transfer or refund."
+    )]
+    async fn prepare_receivable_allocation_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_receivable_allocation_reversal",
+                "receivable_allocation_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_receivable_allocation_reversal",
+        description = "Approve or reject only the reversal intent bound to this turn's exact signed human command. No model-controlled reason, IDs, versions or amounts. Report success only for executed=true."
+    )]
+    async fn approve_receivable_allocation_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_receivable_allocation_reversal",
+                "receivable_allocation_reversal_intent:approve",
+                "receivable_allocation_reversal_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_payable_allocation_reversal",
+        description = "Prepare an immutable reversal intent for an explicitly selected record and a human-provided reason. Does not reverse balances. Bind current source and, for allocation reversals, target versions. Present the returned effects and exact confirmation command. Never initiate a bank transfer or refund."
+    )]
+    async fn prepare_payable_allocation_reversal(
+        &self,
+        Parameters(input): Parameters<PrepareReversalInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_payable_allocation_reversal",
+                "payable_allocation_reversal_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_payable_allocation_reversal",
+        description = "Approve or reject only the reversal intent bound to this turn's exact signed human command. No model-controlled reason, IDs, versions or amounts. Report success only for executed=true."
+    )]
+    async fn approve_payable_allocation_reversal(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_payable_allocation_reversal",
+                "payable_allocation_reversal_intent:approve",
+                "payable_allocation_reversal_intent",
+            )
+            .await)
+    }
+    #[tool(
         name = "prepare_receivable_allocation",
         description = "Prepare one immutable allocation intent using user-selected amounts and exact source and target versions. Source is a confirmed receipt/payment; targets are receivable records. Does not allocate balances. Present the returned snapshot and exact confirmation command; never send confirmation on the user's behalf."
     )]
@@ -833,6 +950,38 @@ impl BusinessReadMcp {
             .await)
     }
 
+    #[tool(
+        name = "get_customer_receipt_allocations",
+        description = "Read allocation history for one accessible source. Returns allocation IDs, reversal status, current source and target versions and exact amounts. Follow nextOffset across all pages. Use this before preparing an allocation reversal; do not guess IDs or versions."
+    )]
+    async fn get_customer_receipt_allocations(
+        &self,
+        Parameters(input): Parameters<SettlementAllocationsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_customer_receipt_allocations",
+                "customer_receipt:read",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "get_supplier_payment_allocations",
+        description = "Read allocation history for one accessible source. Returns allocation IDs, reversal status, current source and target versions and exact amounts. Follow nextOffset across all pages. Use this before preparing an allocation reversal; do not guess IDs or versions."
+    )]
+    async fn get_supplier_payment_allocations(
+        &self,
+        Parameters(input): Parameters<SettlementAllocationsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_supplier_payment_allocations",
+                "supplier_payment:read",
+                input,
+            )
+            .await)
+    }
     #[tool(
         name = "search_customer_receipts",
         description = "Read accessible customer_receipts by exact document ID, literal number substring, party ID or status. Returns current versions and exact decimal balances for allocation preparation. Read every page using nextOffset before assuming a unique match. Never infer a payment from an outstanding balance."
@@ -2875,7 +3024,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 60);
+        assert_eq!(registered.len(), 70);
         assert!(registered
             .iter()
             .any(|tool| tool.name.as_ref() == "search_business_master_data"));

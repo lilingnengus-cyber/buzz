@@ -12,7 +12,15 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 33] = [
+const AGENT_SCOPES: [&str; 41] = [
+    "customer_receipt_reversal_intent:create",
+    "customer_receipt_reversal_intent:approve",
+    "supplier_payment_reversal_intent:create",
+    "supplier_payment_reversal_intent:approve",
+    "receivable_allocation_reversal_intent:create",
+    "receivable_allocation_reversal_intent:approve",
+    "payable_allocation_reversal_intent:create",
+    "payable_allocation_reversal_intent:approve",
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
@@ -73,6 +81,22 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "customer-receipt-reversal-intent" => (
+            "customer_receipt_reversal_intent",
+            "customer_receipt_reversal_intent:approve",
+        ),
+        "supplier-payment-reversal-intent" => (
+            "supplier_payment_reversal_intent",
+            "supplier_payment_reversal_intent:approve",
+        ),
+        "receivable-allocation-reversal-intent" => (
+            "receivable_allocation_reversal_intent",
+            "receivable_allocation_reversal_intent:approve",
+        ),
+        "payable-allocation-reversal-intent" => (
+            "payable_allocation_reversal_intent",
+            "payable_allocation_reversal_intent:approve",
+        ),
         "sales-order" => ("sales_order", "sales_order:approve"),
         "purchase-order" => ("purchase_order", "purchase_order:approve"),
         "shipment" => ("shipment", "shipment:approve"),
@@ -838,6 +862,10 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "customer-receipt-reversal-intent",
+            "supplier-payment-reversal-intent",
+            "receivable-allocation-reversal-intent",
+            "payable-allocation-reversal-intent",
             "customer-receipt",
             "supplier-payment",
             "receivable-allocation-intent",

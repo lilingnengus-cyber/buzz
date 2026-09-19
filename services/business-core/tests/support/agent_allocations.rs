@@ -1,3 +1,5 @@
+#[path = "agent_reversals.rs"]
+mod reversals;
 use super::*;
 use sqlx::{AssertSqlSafe, Row};
 // Dynamic identifiers below are selected solely from the two literal fixture families.
@@ -183,4 +185,5 @@ pub(super) async fn check(
     .await
     .unwrap();
     assert_eq!(balance, open - Decimal::from(50));
+    reversals::check(app, store, f, source_kind, source_id, target, open).await;
 }

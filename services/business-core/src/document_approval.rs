@@ -1,6 +1,9 @@
 /// Immutable, scoped allocation preparation and signed execution.
 pub mod allocation;
+mod allocation_history;
 mod financial_documents;
+/// Immutable reversal preparation and signed execution.
+pub mod reversal;
 mod settlement;
 mod snapshot;
 pub(crate) mod stock;
@@ -71,6 +74,11 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(stock::routes())
         .merge(settlement::routes())
         .merge(allocation::routes())
+        .merge(reversal::routes())
+        .route(
+            "/v1/agent-allocation-history/{kind}",
+            get(allocation_history::search),
+        )
         .route(
             "/v1/agent-financial-documents/{kind}",
             get(financial_documents::search),
@@ -406,6 +414,7 @@ async fn cast_vote(
         .await?,
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
+        "customer_receipt_reversal_intent" | "supplier_payment_reversal_intent" | "receivable_allocation_reversal_intent" | "payable_allocation_reversal_intent" => Some(reversal::authority_row(store, document_type, document_id).await?),
         "receivable_allocation_intent" | "payable_allocation_intent" => Some(allocation::authority_row(store, document_type, document_id).await?),
         _ => return Err(StoreError::Invalid("document type".into())),
     }
@@ -415,7 +424,12 @@ async fn cast_vote(
         false
     } else if matches!(
         document_type,
-        "sales_order" | "shipment" | "customer_receipt" | "receivable_allocation_intent"
+        "sales_order"
+            | "shipment"
+            | "customer_receipt"
+            | "receivable_allocation_intent"
+            | "customer_receipt_reversal_intent"
+            | "receivable_allocation_reversal_intent"
     ) {
         !snapshot
             .scopes

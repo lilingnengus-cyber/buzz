@@ -38,6 +38,31 @@ fn default_limit() -> u32 {
     DEFAULT_LIMIT
 }
 
+/// Read the allocation history of one explicitly identified receipt or payment.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettlementAllocationsInput {
+    /// Current authorized source receipt/payment ID.
+    pub source_document_id: Uuid,
+    /// Offset in source allocation history, including records hidden by narrower target scope.
+    #[serde(default)]
+    pub offset: u32,
+    /// Maximum source allocation records examined per page.
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+impl ValidateInput for SettlementAllocationsInput {
+    fn validate_and_normalize(&mut self, _today: NaiveDate) -> Result<(), ValidationError> {
+        if self.offset > 100_000 {
+            return Err(ValidationError::InvalidCursor);
+        }
+        if self.limit == 0 || self.limit > MAX_LIMIT {
+            return Err(ValidationError::LimitExceeded);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

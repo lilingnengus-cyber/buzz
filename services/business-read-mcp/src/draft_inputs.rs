@@ -92,3 +92,13 @@ struct AllocationTargetInput {
     expected_version: i64,
     amount: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReversalInput {
+    source_document_id: Uuid,
+    expected_source_version: i64,
+    allocation_id: Option<Uuid>,
+    expected_target_version: Option<i64>,
+    reason: String,
+}

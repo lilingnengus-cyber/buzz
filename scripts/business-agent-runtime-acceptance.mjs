@@ -12,6 +12,17 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "get_customer_receipt_allocations",
+  "get_supplier_payment_allocations",
+  "prepare_customer_receipt_reversal",
+  "prepare_supplier_payment_reversal",
+  "prepare_receivable_allocation_reversal",
+  "prepare_payable_allocation_reversal",
+  "approve_customer_receipt_reversal",
+  "approve_supplier_payment_reversal",
+  "approve_receivable_allocation_reversal",
+  "approve_payable_allocation_reversal",
+
   "analyze_cross_domain_risks",
   "analyze_inventory_risks",
   "analyze_order_profit_risks",

@@ -1,3 +1,4 @@
+// Migration 0038 includes immutable reversal intents.
 use crate::{
     auth::Claims,
     config::Config,
