@@ -9,6 +9,26 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
     let service = PurchasingService::new(store.clone(), "PO".into(), 30);
     for (table, id) in [("business_suppliers", f.supplier), ("business_skus", f.sku)] {
         let sku = table == "business_skus";
+        let product = ProductMasterService::new(store.clone());
+        let saved = if sku {
+            let v: i64 = sqlx::query_scalar("SELECT version FROM business_skus WHERE id=$1")
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .unwrap();
+            let command = business_core::product_master::ProductMasterCommand::ChangeStatus {
+                resource_type: "sku".into(),
+                document_id: id,
+                command: ChangeProductMasterStatus {
+                    status: "disabled".into(),
+                    expected_version: v,
+                },
+            };
+            let preview = product.command_preview(f.actor, &command).await.unwrap();
+            Some((command, preview))
+        } else {
+            None
+        };
         let mut gate = pool.begin().await.unwrap();
         sqlx::query("LOCK TABLE purchase_orders IN SHARE MODE")
             .execute(&mut *gate)
@@ -57,6 +77,21 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
         gate.commit().await.unwrap();
         let order = creation.await.unwrap();
         let result = disable.await.unwrap();
+        if let Some((command, preview)) = &saved {
+            assert!(matches!(
+                product
+                    .save_guarded(
+                        f.actor,
+                        Uuid::new_v4(),
+                        "sku-stale-status",
+                        command,
+                        preview
+                    )
+                    .await,
+                Err(DomainError::StalePreview)
+            ));
+        }
+
         assert!(
             matches!(&result,Err(DomainError::Invalid(message)) if message.contains("blocking operational impacts")),
             "{table}: {result:?}"
@@ -100,6 +135,70 @@ pub(super) async fn check(pool: &sqlx::PgPool, store: &PgStore, f: &Fixture) {
             )
             .await
             .unwrap();
+        if let Some((command, _)) = &saved {
+            let preview = product.command_preview(f.actor, command).await.unwrap();
+            let mut tampered = preview.clone();
+            tampered["canExecute"] = false.into();
+            assert!(matches!(
+                product
+                    .save_guarded(
+                        f.actor,
+                        Uuid::new_v4(),
+                        "sku-tampered-status",
+                        command,
+                        &tampered
+                    )
+                    .await,
+                Err(DomainError::StalePreview)
+            ));
+            let result = product
+                .save_guarded(
+                    f.actor,
+                    Uuid::new_v4(),
+                    "sku-guarded-status",
+                    command,
+                    &preview,
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.status, "disabled");
+            let replay = product
+                .save_guarded(
+                    f.actor,
+                    Uuid::new_v4(),
+                    "sku-guarded-status",
+                    command,
+                    &preview,
+                )
+                .await
+                .unwrap();
+            assert!(replay.idempotent_replay);
+            assert_eq!(replay.version, result.version);
+            assert!(matches!(
+                product
+                    .save_guarded(
+                        f.actor,
+                        Uuid::new_v4(),
+                        "sku-guarded-status",
+                        command,
+                        &tampered
+                    )
+                    .await,
+                Err(DomainError::IdempotencyConflict)
+            ));
+            change(
+                store,
+                f.actor,
+                true,
+                id,
+                result.version,
+                "active",
+                "sku-guarded-restore",
+            )
+            .await
+            .unwrap();
+            continue;
+        }
         let version = change(
             store,
             f.actor,

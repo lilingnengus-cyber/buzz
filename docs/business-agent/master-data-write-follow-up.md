@@ -305,3 +305,11 @@ Core change_status 抽出 change_status_on，可在调用方事务中执行；�
 core_guarded_status_final 的完整 B3 回归验证：预览后采购草稿先提交导致旧快照 StalePreview；篡改快照拒绝；无阻塞时受保护停用成功；相同请求幂等返回同版本；同键不同快照冲突；测试后真实启用恢复。原仓库/供应商/SKU 反向并发与采购收货闭环继续通过。严格 Clippy、格式及 diff 检查通过，日志 /tmp/core-guarded-status-final.log、/tmp/core-guarded-status-clippy-final.log，隔离数据库端口 55439。
 
 本批未部署，也未开放聊天端 status 工具。Product 对应事务方法、持久化启停意图、审批事务集成、委托能力、Gateway/MCP/Host 和真实验收仍待完成；其他业务域保持完整目标范围。
+
+## 商品资料启停的事务内快照执行
+
+ProductMasterService.change_status 抽出调用方事务可用的 change_status_on，保留普通调用原幂等摘要、停用影响与启用依赖检查。save_guarded 的 ChangeStatus 在同一事务中重读/比较预览，带快照摘要采用 guarded-product-status-v1；旧快照不能绕过最新引用检查，重放继续校验当前权限。
+
+product_guarded_status 完整 B3 回归验证 SKU 预览后新增采购草稿导致 StalePreview、篡改快照拒绝、取消阻塞订单后执行成功、重复请求返回相同版本，以及相同键不同快照 IdempotencyConflict。最后真实启用恢复。已有 Core guarded status、采购/收货和反向交错继续通过。严格 Clippy、格式与差异检查通过；日志 /tmp/product-guarded-status.log、/tmp/product-guarded-status-clippy.log，独立数据库端口 55439。
+
+本批未部署，未开放聊天端启停工具；这里的领域快照保护不替代审批授权。持久化启停意图、审批事务调用、委托能力、Gateway/MCP/Host 和端到端验收仍须完成，全部业务目标保持不变。

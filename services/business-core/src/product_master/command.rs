@@ -42,9 +42,8 @@ impl ProductMasterService {
         tx.rollback().await?;
         Ok(result)
     }
-    /// Save a create/update command only if its preview still matches in the write transaction.
-    /// This is a domain consistency guard, not approval authorization. Status execution
-    /// remains unavailable until concurrent operational impacts are protected.
+    /// Execute a command only if its preview still matches in the write transaction.
+    /// This is a domain consistency guard, not approval authorization.
     pub async fn save_guarded(
         &self,
         actor: Uuid,
@@ -71,9 +70,26 @@ impl ProductMasterService {
                 )
                 .await
             }
-            MasterCommand::ChangeStatus { .. } => Err(DomainError::Invalid(
-                "guarded status execution is not available".into(),
-            )),
+            MasterCommand::ChangeStatus {
+                resource_type,
+                document_id,
+                command,
+            } => {
+                let kind = ProductMasterType::from_str(resource_type)?;
+                let mut tx = self.store.pool().begin().await?;
+                let result = self
+                    .change_status_on(
+                        &mut tx,
+                        (actor, trace),
+                        (kind, *document_id),
+                        key,
+                        command,
+                        Some(snapshot),
+                    )
+                    .await?;
+                tx.commit().await?;
+                Ok(result)
+            }
         }
     }
 
