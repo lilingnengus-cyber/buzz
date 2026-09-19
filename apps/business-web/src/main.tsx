@@ -55,6 +55,7 @@ import {
   PurchaseOrderWorkflowPage,
   SalesOrderWorkflowPage,
 } from "./OrderWorkflowPages";
+import { CrmRegisters } from "./CrmRegisters";
 import { CrmPage } from "./CrmPage";
 import "./styles.css";
 
@@ -106,6 +107,8 @@ function route(): { section: Section; id?: string; embed: boolean } {
       id: decodeURIComponent(agentQuery[1]),
       embed,
     };
+  if (clean === "/crm/followups") return { section: "crmFollowups", embed };
+  if (clean === "/crm/contacts") return { section: "crmContacts", embed };
   if (clean === "/crm") return { section: "crm", embed };
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
@@ -132,7 +135,16 @@ function route(): { section: Section; id?: string; embed: boolean } {
     const match = clean.match(pattern);
     if (match) return { section, id: decodeURIComponent(match[1]), embed };
   }
-  const fromHash = window.location.hash.slice(1) as Section;
+  const [hashSection, hashQuery = ""] = window.location.hash
+    .slice(1)
+    .split("?");
+  if (hashSection === "crm")
+    return {
+      section: "crm",
+      id: new URLSearchParams(hashQuery).get("opportunity") ?? undefined,
+      embed,
+    };
+  const fromHash = hashSection as Section;
   return {
     section: WORKFLOW_NAV_ALIASES[fromHash]
       ? WORKFLOW_NAV_ALIASES[fromHash]
@@ -362,7 +374,14 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
   if (section === "trends") return <OperatingTrendsView />;
-  if (section === "crm") return <CrmPage />;
+  if (section === "crm") return <CrmPage key={id} initialId={id} />;
+  if (section === "crmFollowups" || section === "crmContacts")
+    return (
+      <CrmRegisters
+        key={section}
+        view={section === "crmFollowups" ? "followups" : "contacts"}
+      />
+    );
   if (section === "coreData") return <CoreMasterDataCenter />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;

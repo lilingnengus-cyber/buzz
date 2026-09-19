@@ -76,6 +76,33 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
         json: { id: "opp-1", version: records[0].version },
       });
     }
+    if (path === "/api/v1/crm/followups")
+      return route.fulfill({
+        json: {
+          items: notes.map((n) => ({
+            ...n,
+            opportunityId: "opp-1",
+            opportunityTitle: records[0].title,
+            companyName: records[0].companyName,
+            contactName: records[0].contactName,
+          })),
+          hasMore: false,
+        },
+      });
+    if (path === "/api/v1/crm/contacts")
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              companyName: records[0].companyName,
+              contactName: records[0].contactName,
+              contactDetails: "",
+              opportunities: [{ id: "opp-1", title: records[0].title }],
+            },
+          ],
+          hasMore: false,
+        },
+      });
     if (path === "/api/v1/crm/opportunities")
       return route.fulfill({
         json: {
@@ -97,7 +124,9 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto("/#crm");
-  await expect(page.getByRole("heading", { name: "售前 CRM" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "商机", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "新建商机", exact: true }).click();
   const form = page.getByRole("complementary", { name: "新建商机" });
   await form.getByLabel("商机名称").fill("企业年度采购");
@@ -137,6 +166,30 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+  await page.goto("/#crmFollowups");
+  await expect(
+    page.getByRole("heading", { name: "跟进记录", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("客户确认需求，准备报价。", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "企业年度采购", exact: true }).click();
+  await expect(
+    detail.getByRole("heading", { name: "企业年度采购" }),
+  ).toBeVisible();
+  await page.goto("/#crmContacts");
+  await expect(
+    page.getByRole("heading", { name: "客户联系人", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "陈经理" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "陈经理" })).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-contacts.png" });
+  await page.getByRole("link", { name: "企业年度采购", exact: true }).click();
+  await expect(
+    detail.getByRole("heading", { name: "企业年度采购" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "收起详情" }).click();
   await page
     .getByRole("combobox", { name: "阶段", exact: true })
