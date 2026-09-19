@@ -1,5 +1,7 @@
 # CRM 配套发布准备（6239a7224）
 
+> 最新状态：四服务、迁移 54、限定授权、网页及 Mac 配套文件已更新；客户端重载、真实聊天和 Windows 验收未完成。下面的发布前状态保留为过程记录，以文末实际结果为准。
+
 状态：候选四服务构建、副本迁移与授权演练、CRM Core 闭环、Mac 候选打包已完成。暂停版正在构建，尚未演练；未切换生产、安装客户端或发送聊天。完整业务写入目标未完成。
 
 ## 服务端候选
@@ -40,3 +42,19 @@ crm:manage 审批策略复制 sales_order:confirm 的角色、审批人数、自
 兼容工作树 /Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23 仅应用 Host、提示词和资源解析器 CRM 增量，保留原有修改，修改前四文件备份 /tmp/business-crm-compat-before-6239a7224。Host 10 项、链接 25 项测试通过，Host release 与 Mac 应用构建通过。候选 /tmp/Pacioli-crm-6239a7224.app 已应用本地 ad-hoc 签名并严格验证；打包的 buzz-acp SHA-256 1a377b8ece1624320c28839a0797eef673d867a013a7edc9c955d34f97677f21。不是正式签名公证安装包，未安装或启动。日志 /tmp/business-crm-{release-runtime-ordinary,release-runtime-approval,host-compat-test,host-compat-build,links-compat-test,mac-app-build}.log。
 
 下一步：完成暂停版演练、Compose 核对、生产新备份及迁移/限定授权、四服务与网页及客户端配套切换，再做获准真实聊天和 Windows 验收。主数据、费用、报表、行动、履约细节与纠错范围仍未完成。
+
+## 实际发布与生产核对
+
+暂停镜像 shiyue-business-crm-paused-business-core:6239a7224 构建完成，镜像 ID sha256:ee11c470e33f310126a3154ee6abc7bb675bdb8399144129af8164e1ec2de5f5。副本验证 12 个 CRM Agent 路由均返回 503，既有订单预览、销售/采购退货读取正常，Trace e6a06ecf-4600-48f1-9670-51122b6530fd。服务器日志 /tmp/business-crm-paused-canary.log。实际 Compose 文件链追加候选/暂停覆盖合并检查通过，迁移任务及四服务镜像均与上述固定 ID 对应，委托预算 64 次/900 秒。
+
+生产备份 /opt/business-platform/shared/before-crm-6239a7224.dump，0600，808645 字节。迁移成功到 54；限定授权事务创建 7 项授权与 CRM 审批策略，生产审计 Trace 309ab844-752b-4e67-8aff-7ce6fab34d54。策略与来源 sales_order:confirm 一致：business_admin、1 人、允许本人、不要求跨单位、无额外认证阈值。随后 --no-build 切换四服务至 6239a7224，全部健康。覆盖文件 /opt/business-platform/app/compose.crm-6239a7224.yml；回退覆盖同目录 compose.crm-paused-6239a7224.yml。服务器发布日志 /tmp/business-crm-deploy.log。
+
+生产只读验证 Trace 15d6c308-2567-43a6-bbb9-b2421f51ca4e：现有商机列表 1 条，盘点及盘点选项 0，销售/采购退货 0，原订单预览正常。SQL 核对迁移 54、7 项授权及审计中 7 个授权快照；CRM 意图 0、商机 1、隔离测试标题商机 0、销售订单仍为 5；原订单 7706b2ff-395f-422c-8794-73619618c304 保持 draft、v1、gross_amount 200。服务器 /tmp/business-crm-live-reads.log、本地 /tmp/business-crm-production-proof.log。未创建生产业务记录。
+
+网页已原子切换为 /opt/business-platform/shared/business-web-154f02bfd-e95318bf8c91，之前的静态目录和回退指针保留。入口 assets/index-Cb_7VJm3.js，SHA-256 f497884e963702722f884bc18b40cc9f00fb8e314c5085430aa492886acf0ab0，公开资源哈希及 Core/IAM 健康检查通过。日志 /tmp/business-crm-web-release.log。详情路由的两项 Playwright 功能验证见 CRM 读取批次证据。
+
+/Applications/Pacioli.app 已替换并验证签名，两个企业助手配置仍使用 gpt-5.5，新 MCP 固定在 ~/Library/Application Support/com.shiyueshizi.pacioli/tools/business-agent/crm-6239a7224/business-read-mcp。配置/完整应用备份位于同一应用数据目录 backups/crm-6239a7224，/Applications/Pacioli-before-crm.app 也保留。新安装 Host/MCP 哈希与候选一致，CRM 提示词已追加；没有重启应用。安装日志 /tmp/business-crm-install-client.log。
+
+验收脚本增加 BUSINESS_AGENT_TEST_BINARY，以实际已安装 buzz-agent 和 MCP（不是工作树 debug agent）分别加载普通 95/确认 58 个工具，模拟模型回合通过。日志 /tmp/business-crm-installed-runtime-{ordinary,approval}.log；不代表真实聊天或 Host 会话重载。系统会话状态仍为 CGSSessionScreenIsLocked=true，未绕过锁屏或读取密钥。已请求手动解锁及代发精确只读 CRM 验收消息的授权；未收到前不发送。
+
+剩余：客户端重载及真实只读/获准写入聊天、Windows 配套版本与验收；完整业务目标其余域继续保留。

@@ -243,7 +243,7 @@ await new Promise((resolve, reject) => {
 
 const address = modelServer.address();
 assert(address && typeof address !== "string");
-const agent = spawn(path.join(repoRoot, "target/debug/buzz-agent"), [], {
+const agent = spawn(process.env.BUSINESS_AGENT_TEST_BINARY ?? path.join(repoRoot, "target/debug/buzz-agent"), [], {
   cwd: repoRoot,
   env: {
     ...process.env,
