@@ -1540,7 +1540,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "search_inventory_counts",
-        description = "Search authorized inventory counts by exact ID, number, warehouse, SKU and status. Returns all line IDs, quantities, costs and current version. Follow nextOffset even for empty filtered pages; disambiguate multiple matches."
+        description = "Search authorized inventory counts by exact ID, number, warehouse, SKU and status. Returns count summaries, variance totals and current version. Use get_inventory_count for all line IDs and quantities. Follow nextOffset even for empty filtered pages; disambiguate multiple matches."
     )]
     async fn search_inventory_counts(
         &self,

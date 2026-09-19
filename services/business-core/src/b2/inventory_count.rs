@@ -836,7 +836,7 @@ fn validate_create(input: &CreateInventoryCount) -> Result<(), DomainError> {
     if input
         .business_note
         .as_ref()
-        .is_some_and(|note| note.len() > 1000)
+        .is_some_and(|note| note.chars().count() > 1000)
     {
         return Err(DomainError::Invalid("businessNote is too long".into()));
     }
@@ -899,6 +899,21 @@ async fn count_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn note_limit_matches_database_character_limit() {
+        let mut input = CreateInventoryCount {
+            legal_entity_id: Uuid::new_v4(),
+            warehouse_id: Uuid::new_v4(),
+            count_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+            currency: "CNY".into(),
+            business_note: Some("备".repeat(1000)),
+            sku_ids: vec![Uuid::new_v4()],
+        };
+        assert!(validate_create(&input).is_ok());
+        input.business_note = Some("备".repeat(1001));
+        assert!(validate_create(&input).is_err());
+    }
+
     #[test]
     fn duplicate_skus_are_rejected() {
         let id = Uuid::new_v4();

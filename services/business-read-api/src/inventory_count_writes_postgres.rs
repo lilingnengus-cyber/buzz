@@ -222,3 +222,6 @@ async fn real_core_preparation_and_approval_complete_count_lifecycle() {
     assert_eq!(freezes, 0);
     task.abort();
 }
+
+#[path = "inventory_count_capacity.rs"]
+mod capacity;

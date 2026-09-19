@@ -129,3 +129,17 @@ Gateway 固定能力数为 81，Host 普通请求能力为 50，普通请求不�
 - 四包 all-targets 严格 Clippy、Rust 格式、差异检查、文件大小门禁通过。日志 `/tmp/count-write-{unit-final,delegation,host,core-workflow-final,b2,clippy-final,size-final}.log`。
 
 本批未部署、未更新已安装客户端。后续需对大盘点/多行查询的返回体和默认 128 KiB MCP 限制做实际容量验证（现有配置允许至 1 MiB），完成候选二进制、兼容回退、限定授权核对、服务端/前端/客户端配套发布，再进行获明确授权的真实聊天验收。已过账盘点纠错和其余业务域继续保持在完整目标中。
+
+## 2026-09-20 大盘点容量实测与发布限制
+
+隔离 PostgreSQL 500 行盘点的创建、录入、过账闭环通过，零账面库存录入每行 1 件、成本 7 元，最终数量 500、价值 3500。创建备注改用字符数校验，与数据库的 1000 字符限制一致；覆盖 1000/1001 个中文字符边界。
+
+搜索不再重复返回每张盘点全部明细：Core 保留去重的当前/冻结品牌组合供 Read API 二次范围验证，验证后移除该内部字段；对模型返回行数、差异行数、差异金额、版本等摘要，精确详情仍返回全部行。20 张各 500 行的搜索响应从 11,102,512 字节降至约 15,872 字节；后续页和 hasMore 已验证。当前及冻结范围的 SQL 授权仍在分页前执行。
+
+实际响应：创建准备 292,319 字节，详情约 543,545 字节，录入准备 706,956 字节，过账准备 656,957 字节。完整 B2 PostgreSQL 回归通过；三服务单元测试共 76 项通过（默认跳过的数据库用例另行设置连接实际执行），容量闭环日志 `/tmp/count-capacity-fixture.log`，B2 日志 `/tmp/count-capacity-b2.log`。
+
+原生 buzz-agent + 120 工具 MCP 的本机模拟服务验收发现，返回上限和模型上下文是不同约束。MCP 与 Agent 工具文本上限均设 1 MiB 后，默认 200,000 上下文预算仍触发 handoff，完整录入预览未作为工具结果抵达后续模型请求。仅在隔离传输测试中显式使用 2,000,000 上下文预算时，706,956 字节原始 JSON 的 SHA-256 完整一致，且只执行一次模拟写请求。该虚拟模型预算不是生产模型能力，不得据此直接提高生产配置或宣称真实模型验收通过。
+
+复现脚本 `scripts/business-agent-runtime-acceptance.mjs` 支持 BUSINESS_MCP_CAPACITY_FIXTURE、BUSINESS_CAPACITY_PAYLOAD_BYTES、BUSINESS_CAPACITY_TEXT_BYTES、BUSINESS_CAPACITY_CONTEXT_TOKENS，输出实际预算。日志 `/tmp/count-capacity-runtime.log` 保留默认上下文失败证据，`/tmp/count-capacity-runtime-transport.log` 是显式大预算的隔离传输通过证据。无真实聊天和生产写入。
+
+发布仍未执行：下一步需让模型侧预览只返回必要业务摘要/可分页明细，服务端继续保存完整不可变快照与签名摘要；再以实际支持的上下文预算验证，完成兼容回退和配套发布。不能只把两个字节上限提高至 1 MiB 就放行。

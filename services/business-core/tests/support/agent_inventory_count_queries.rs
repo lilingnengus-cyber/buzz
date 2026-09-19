@@ -67,9 +67,9 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture) {
         let items = page["items"].as_array().unwrap();
         assert_eq!(items.len(), if offset == 2 { 1 } else { 2 });
         assert!(seen.insert(items[0]["id"].as_str().unwrap().to_string()));
-        assert_eq!(items[0]["lines"][0]["skuId"], json!(sku));
-        assert!(items[0]["lines"][0]["id"].is_string());
-        assert!(items[0]["lines"][0]["actualOnHandQuantity"].is_null());
+        assert_eq!(items[0]["lineCount"], 1);
+        assert_eq!(items[0]["lines"][0]["brandId"], json!(f.brand));
+        assert!(items[0]["lines"][0].get("actualOnHandQuantity").is_none());
     }
     assert_eq!(seen, ids.iter().map(ToString::to_string).collect());
     let exact = format!("/v1/agent-inventory-counts/{}", ids[2]);

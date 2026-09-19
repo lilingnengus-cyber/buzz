@@ -15,7 +15,16 @@ use uuid::Uuid;
 pub(super) async fn search(
     State(state): State<Arc<AppState>>,
     Extension(c): Extension<RequestContext>,
-    Query(mut input): Query<SearchInventoryCountsInput>,
+    Query(input): Query<SearchInventoryCountsInput>,
+) -> Result<Json<Value>, B2ApiError> {
+    query(state, c, input, false).await
+}
+
+async fn query(
+    state: Arc<AppState>,
+    c: RequestContext,
+    mut input: SearchInventoryCountsInput,
+    include_lines: bool,
 ) -> Result<Json<Value>, B2ApiError> {
     input
         .validate_and_normalize(chrono::Utc::now().date_naive())
@@ -46,7 +55,10 @@ SELECT jsonb_build_object(
  'scopeSnapshotCaptured',t.scope_snapshot_captured,'businessDate',t.count_date,
  'currency',t.currency::text,'status',t.status,'version',t.version,
  'retainsFreeze',t.status IN ('counting','counted'),'updatedAt',t.updated_at,
- 'lines',(SELECT jsonb_agg(jsonb_build_object(
+ 'lineCount',(SELECT count(*) FROM inventory_count_lines l WHERE l.inventory_count_id=t.id),
+ 'varianceLineCount',(SELECT count(*) FROM inventory_count_lines l WHERE l.inventory_count_id=t.id AND COALESCE(l.variance_quantity,0)<>0),
+ 'varianceValue',(SELECT COALESCE(sum(l.variance_value),0)::text FROM inventory_count_lines l WHERE l.inventory_count_id=t.id),
+ 'lines',CASE WHEN $13::boolean THEN (SELECT jsonb_agg(jsonb_build_object(
   'id',l.id,'skuId',l.sku_id,'skuCode',sku.code,'skuName',sku.name,
   'brandId',p.brand_id,'snapshotBrandId',l.snapshot_brand_id,
   'snapshotOnHandQuantity',l.snapshot_on_hand_quantity::text,
@@ -58,7 +70,10 @@ SELECT jsonb_build_object(
   'varianceQuantity',l.variance_quantity::text,'varianceValue',l.variance_value::text
  ) ORDER BY sku.code,l.id) FROM inventory_count_lines l
  JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id
- WHERE l.inventory_count_id=t.id))
+ WHERE l.inventory_count_id=t.id)
+ ELSE (SELECT jsonb_agg(brands) FROM (SELECT DISTINCT jsonb_build_object('brandId',p.brand_id,'snapshotBrandId',l.snapshot_brand_id) AS brands
+ FROM inventory_count_lines l JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id
+ WHERE l.inventory_count_id=t.id) scoped) END)
 FROM inventory_count_tasks t JOIN business_warehouses w ON w.id=t.warehouse_id
 WHERE t.legal_entity_id=ANY($1) AND t.warehouse_id=ANY($2) AND w.business_unit_id=ANY($3)
  AND (t.snapshot_business_unit_id IS NULL OR t.snapshot_business_unit_id=ANY($3))
@@ -79,7 +94,7 @@ ORDER BY t.count_date DESC,t.count_number DESC,t.id LIMIT $11 OFFSET $12
     .bind(scope.business_unit_ids.into_iter().collect::<Vec<_>>())
     .bind(scope.brand_ids.into_iter().collect::<Vec<_>>())
     .bind(input.document_id).bind(input.query).bind(input.legal_entity_id).bind(input.warehouse_id)
-    .bind(input.sku_id).bind(input.status).bind(i64::from(input.limit)+1).bind(i64::from(input.offset))
+    .bind(input.sku_id).bind(input.status).bind(i64::from(input.limit)+1).bind(i64::from(input.offset)).bind(include_lines)
     .fetch_all(state.store.pool()).await.map_err(|e| B2ApiError::domain(e.into(),c.trace_id))?;
     Ok(Json(json!({"items":items,"traceId":c.trace_id})))
 }
@@ -90,10 +105,10 @@ pub(super) async fn detail(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, B2ApiError> {
     let trace = context.trace_id;
-    let Json(result) = search(
-        state,
-        context,
-        Query(SearchInventoryCountsInput {
+    let Json(result) = query(
+        state.0,
+        context.0,
+        SearchInventoryCountsInput {
             document_id: Some(id),
             query: None,
             legal_entity_id: None,
@@ -102,7 +117,8 @@ pub(super) async fn detail(
             status: None,
             offset: 0,
             limit: 1,
-        }),
+        },
+        true,
     )
     .await?;
     let item = result["items"]

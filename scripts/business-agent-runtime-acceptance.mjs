@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -12,6 +14,18 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_inventory_counts",
+  "get_inventory_count",
+  "search_inventory_count_options",
+  "prepare_inventory_count_creation",
+  "approve_inventory_count_creation",
+  "prepare_inventory_count_submission",
+  "approve_inventory_count_submission",
+  "prepare_inventory_count_posting",
+  "approve_inventory_count_posting",
+  "prepare_inventory_count_cancellation",
+  "approve_inventory_count_cancellation",
+
   "prepare_sales_return_reversal",
   "approve_sales_return_reversal",
   "prepare_purchase_return_reversal",
@@ -136,6 +150,43 @@ function jsonResponse(response, body) {
   response.end(JSON.stringify(body));
 }
 
+const capacityFixture = process.env.BUSINESS_MCP_CAPACITY_FIXTURE
+  ? JSON.parse(await readFile(process.env.BUSINESS_MCP_CAPACITY_FIXTURE, "utf8")) : null;
+const probeId = "00000000-0000-4000-8000-000000000001";
+const traceId = capacityFixture?.traceId ?? probeId;
+const capacityInput = capacityFixture ? {
+  inventoryCountId: capacityFixture.document.source.id,
+  command: capacityFixture.document.operation.command,
+} : null;
+const capacityCalls = [];
+const capacityServer = http.createServer((request, response) => {
+  let raw = "";
+  request.setEncoding("utf8");
+  request.on("data", chunk => { raw += chunk; });
+  request.on("end", () => {
+    const input = raw ? JSON.parse(raw) : {};
+    capacityCalls.push({ path: request.url, input });
+    if (request.url === "/internal/agent-delegations/consume") {
+      jsonResponse(response, {
+        delegationId: probeId, enterpriseUserId: probeId, identityBindingId: probeId,
+        sourceBuzzEventId: "a".repeat(64), sourceBuzzPubkey: "b".repeat(64), sourceChannelId: "capacity-probe",
+        agentId: "acceptance-agent", agentTurnId: "acceptance-turn", traceId,
+        usedCalls: 1, maxCalls: 20, requiredScope: "inventory_count_submission_intent:create",
+        effectiveGrant: { capability: "inventory_count_submission_intent:create", dataScope: { mode: "unrestricted" }, obligations: [] },
+      });
+    } else if (request.url === "/v1/write/prepare_inventory_count_submission") {
+      jsonResponse(response, capacityFixture);
+    } else if (request.url === "/internal/agent-audit") {
+      response.writeHead(204); response.end();
+    } else { response.writeHead(404); response.end(); }
+  });
+});
+await new Promise((resolve, reject) => { capacityServer.once("error", reject); capacityServer.listen(0, "127.0.0.1", resolve); });
+const capacityAddress = capacityServer.address();
+const capacityUrl = `http://127.0.0.1:${capacityAddress.port}/`;
+const payloadLimit = process.env.BUSINESS_CAPACITY_PAYLOAD_BYTES ?? "1048576";
+const textLimit = process.env.BUSINESS_CAPACITY_TEXT_BYTES ?? "1048576";
+const contextLimit = process.env.BUSINESS_CAPACITY_CONTEXT_TOKENS ?? "200000";
 const observedRequests = [];
 const modelServer = http.createServer((request, response) => {
   let raw = "";
@@ -154,8 +205,10 @@ const modelServer = http.createServer((request, response) => {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: "probe complete" },
-          finish_reason: "stop",
+          message: capacityFixture && observedRequests.length === 1
+            ? { role: "assistant", content: null, tool_calls: [{ id: "capacity-call", type: "function", function: { name: "business-read-mcp__prepare_inventory_count_submission", arguments: JSON.stringify(capacityInput) } }] }
+            : { role: "assistant", content: "probe complete" },
+          finish_reason: capacityFixture && observedRequests.length === 1 ? "tool_calls" : "stop",
         },
       ],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -180,6 +233,7 @@ const agent = spawn(path.join(repoRoot, "target/debug/buzz-agent"), [], {
     OPENAI_COMPAT_API: "chat",
     OPENAI_COMPAT_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
     BUZZ_AGENT_NO_HINTS: "1",
+    ...(capacityFixture ? { BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES: textLimit, BUZZ_AGENT_MAX_CONTEXT_TOKENS: contextLimit } : {}),
   },
   stdio: ["pipe", "pipe", "inherit"],
 });
@@ -209,7 +263,7 @@ function request(method, params) {
 
 const timeout = setTimeout(() => {
   agent.kill("SIGKILL");
-}, 20_000);
+}, 60_000);
 
 try {
   const initialized = await request("initialize", {
@@ -231,7 +285,9 @@ try {
         command: process.env.BUSINESS_MCP_TEST_BINARY ?? path.join(repoRoot, "target/debug/business-read-mcp"),
         args: [],
         env: [
-          { name: "BUSINESS_READ_ADAPTER", value: "mock" },
+          { name: "BUSINESS_READ_ADAPTER", value: capacityFixture ? "production" : "mock" },
+          { name: "BUSINESS_READ_API_BASE_URL", value: capacityUrl },
+          { name: "BUSINESS_TOOL_MAX_PAYLOAD_BYTES", value: payloadLimit },
           {
             name: "BUSINESS_READ_MOCK_ACKNOWLEDGE",
             value: "Mock Only - Production Disabled",
@@ -248,11 +304,11 @@ try {
           { name: "BUSINESS_AGENT_TURN_ID", value: "acceptance-turn" },
           {
             name: "BUSINESS_AGENT_TRACE_ID",
-            value: "00000000-0000-4000-8000-000000000001",
+            value: traceId,
           },
           {
             name: "BUSINESS_AUTH_GATEWAY_BASE_URL",
-            value: "http://127.0.0.1:9/",
+            value: capacityFixture ? capacityUrl : "http://127.0.0.1:9/",
           },
           { name: "BUSINESS_READ_SERVICE_AUTH_MODE", value: "shared_secret" },
           {
@@ -272,12 +328,22 @@ try {
     prompt: [
       {
         type: "text",
-        text: "Reply with probe complete without calling a tool.",
+        text: capacityFixture ? "Run the supplied capacity probe and reply probe complete." : "Reply with probe complete without calling a tool.",
       },
     ],
   });
   assert.equal(prompt.stopReason, "end_turn");
-  assert.equal(observedRequests.length, 1);
+  if (capacityFixture) {
+    assert(observedRequests.length >= 2);
+    const toolMessage = observedRequests.flatMap(body => body.messages ?? []).find(message => message.role === "tool");
+    assert(toolMessage, `model must receive the count result: ${JSON.stringify(observedRequests.map(body => ({keys:Object.keys(body), messages:(body.messages??[]).map(m=>({role:m.role,length:JSON.stringify(m.content).length})), calls:capacityCalls.map(c=>c.path)})))}`);
+    assert(!toolMessage.content.includes("elided from tool result"), "count result must not be truncated by the agent text budget");
+    const digest = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    assert.equal(digest(JSON.parse(toolMessage.content)), digest(capacityFixture), "all count lines, effects and the confirmation hash must survive transport");
+    const write = capacityCalls.find(call => call.path === "/v1/write/prepare_inventory_count_submission");
+    assert.deepEqual(write?.input, capacityInput);
+    assert.equal(capacityCalls.filter(call => call.path === "/v1/write/prepare_inventory_count_submission").length, 1);
+  } else { assert.equal(observedRequests.length, 1); }
 
   const modelTools = observedRequests[0].tools
     .map((tool) => tool.function?.name ?? tool.name)
@@ -292,11 +358,12 @@ try {
       modelVisibleTools: modelTools.length,
       onlyFixedBusinessTools: true,
       promptCompleted: true,
+      ...(capacityFixture ? { capacityPayloadBytes: Buffer.byteLength(JSON.stringify(capacityFixture)), completeCountResultReachedModel: true, mockedLocalServices: true, contextTokenLimit: Number(contextLimit), payloadByteLimit: Number(payloadLimit), toolTextByteLimit: Number(textLimit) } : {}),
     }),
   );
 } finally {
   clearTimeout(timeout);
   lines.close();
   agent.kill("SIGTERM");
-  await new Promise((resolve) => modelServer.close(resolve));
+  await Promise.all([new Promise((resolve) => modelServer.close(resolve)), new Promise(resolve => capacityServer.close(resolve))]);
 }

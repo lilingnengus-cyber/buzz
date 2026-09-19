@@ -144,6 +144,13 @@ pub(super) async fn read(
         )
     };
     items.retain(|item| permits(item, scope, options));
+    if !detail && !options {
+        for item in &mut items {
+            if let Some(fields) = item.as_object_mut() {
+                fields.remove("lines");
+            }
+        }
+    }
     if detail && items.is_empty() {
         return StatusCode::NOT_FOUND.into_response();
     }
