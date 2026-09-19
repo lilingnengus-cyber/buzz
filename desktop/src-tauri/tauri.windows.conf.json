@@ -5,6 +5,7 @@
       "binaries/buzz-agent",
       "binaries/buzz-dev-mcp",
       "binaries/life-workbench-mcp",
+      "binaries/business-read-mcp",
       "binaries/git-credential-nostr",
       "binaries/buzz"
     ]

@@ -43,6 +43,7 @@ cargo_args=(
   -p buzz-agent
   -p buzz-backend-kubernetes
   -p buzz-dev-mcp
+  -p business-read-mcp
   -p life-workbench-mcp
   -p buzz-cli
   -p git-credential-nostr

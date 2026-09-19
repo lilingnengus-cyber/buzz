@@ -559,6 +559,12 @@ fn tauri_platform_configs_bundle_kubernetes_only_on_supported_hosts() {
                 .any(|value| value == "binaries/life-workbench-mcp"),
             "Life Workbench MCP must be bundled for {target}; merged {paths:?}"
         );
+        assert!(
+            external_bins
+                .iter()
+                .any(|value| value == "binaries/business-read-mcp"),
+            "Business MCP must be bundled for {target}; merged {paths:?}"
+        );
         let has_kubernetes = external_bins
             .iter()
             .any(|value| value == "binaries/buzz-backend-kubernetes");

@@ -22,6 +22,7 @@ for plan in "$dev_plan" "$production_plan"; do
 done
 
 for plan in "$dev_plan" "$production_plan"; do
+  grep -Fq -- '-p business-read-mcp' <<<"$plan"
   grep -Fq -- '-p life-workbench-mcp' <<<"$plan"
 done
 
