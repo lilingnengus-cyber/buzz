@@ -249,3 +249,13 @@ opening_master_preview_final 在真实 Core HTTP 路由验证八类资料停用�
 receiving_master_preview_final 的完整 postgres_b3 回归通过，包含九类资料（仓库、SKU、产品、法人、业务单元、基础单位、分类、供应商、品牌）的 18 个创建/确认真实行锁等待场景。停用后拒绝且库存流水不增加；确认预览不可确认，草稿保持 draft/v1；全部恢复后预览和实际确认成功。共享函数移动后的期初库存并发及 HTTP 预览回归在 receiving_opening_regression 通过。严格 Clippy、格式和 diff 检查通过。日志 /tmp/receiving-master-preview-final.log、/tmp/receiving-master-clippy-final.log、/tmp/receiving-opening-regression.log；数据库均为独立 55439 测试库。
 
 本批尚未部署。销售确认/出库、其他归属、反向停用业务影响及助手启停意图仍需继续完成，完整业务目标保持未完成。Windows 同一运行 35471308524 已成功完成原生 sidecars 和 NSIS 构建，实机安装及真实会话尚未验证。
+
+## 销售确认资料保护与预览
+
+销售确认原先直接锁定库存并预留，未重查草稿引用资料。现在先锁定实际客户、订单业务单元及各行库存资料（法人、仓库所属业务单元、仓库、SKU、产品、基础单位、分类、可选品牌），检查 active 和法人归属，并重查行单位是否仍为产品基础单位，持锁至确认事务结束。确认预览同步返回 master_data_not_ready，保留库存短缺计算。
+
+sales_confirmation_master_final 及拆分后的 sales_confirmation_split 通过真实 PostgreSQL 回归：九类资料分别在确认等待期间停用，确认拒绝，订单仍 draft/v1，预留记录与余额预留量均为 0，预览不可确认；恢复后预览与实际确认成功。原九类创建等待和客户反向交错仍通过。首轮 sales_confirmation_master_status 因预览 SQL 括号错误失败，修复后在全新库验证，不计首次通过。
+
+为遵循 1000 行上限，将原销售文件中的草稿校验/插入及确认预览拆到 sales/draft.rs 与 sales/confirmation_preview.rs，sales.rs 为 954 行。完整 B2 闭环与并发在 sales_confirmation_b2 通过；严格 Clippy、格式与 diff 检查通过。日志 /tmp/sales-confirmation-{master-final,split,b2,clippy-final}.log。所有数据库均在独立 55439。
+
+本批未部署。出库创建/确认、额外业务归属字段、反向停用影响及助手启停意图、Windows 实机和真实聊天验收仍未完成，完整业务目标继续保持。
