@@ -171,10 +171,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
     if let Ok(config) = business_core::Config::from_env() {
-        let state = std::sync::Arc::new(business_core::AppState::new(
-            PgStore::new(pool.clone()),
-            &config,
-        ));
+        let state = business_core::AppState::new(PgStore::new(pool.clone()), &config);
         let router = business_core::router(state);
         for (method, path) in [
             ("GET", "/api/v1/crm/options".to_string()),
