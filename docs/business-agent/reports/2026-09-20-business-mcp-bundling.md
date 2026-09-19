@@ -9,3 +9,9 @@
 本地验证通过：三平台暂存测试、Pacioli dev/production 构建计划检查、Shell 语法、全部 workflow YAML 解析和 diff 检查。Tauri Rust 配置测试尚未本地执行，原生 Windows 编译、NSIS 安装和真实会话验收仍未完成；暂存夹具测试不能替代这些验证。
 
 运行时已核对：managed-agent 启动在 PATH 中加入当前应用目录，Business Host 默认命令为 `business-read-mcp`，现有显式命令配置继续保留。Windows Canary 当前仅允许 block/buzz 仓库 main，不能把本分支推送视为 Windows 安装包已生成。下一步应通过适用的 Windows 构建路径生成包含最新 Host/MCP 的安装包并验收；完整业务目标其余工作继续保留。
+
+## 原生 Windows 候选已启动
+
+提交 `6c8ad6492` 为 Windows Canary 增加精确仓库 `lilingnengus-cyber/buzz` 与精确集成分支 `codex/life-write-intent-compiler` 的来源校验；仍保留原 main 入口。非 main 分支不保存 Cargo/pnpm 发布缓存。产物只上传短期 Actions artifact，不创建发布标签、Release 或自动更新。
+
+已触发运行 `35471308524`，对应源码 `6c8ad6492ce10079d7365fe35dbfa1b8a000ec0f`。实际 job `105972663733` 已进入 in_progress，来源校验成功、checkout 进行中。须继续检查同一运行，不能因观察超时重启。原生编译、安装包生成及 Windows 客户端验收仍未证明完成。
