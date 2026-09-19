@@ -264,6 +264,11 @@ pub(super) async fn forward(
         if !bound_preview(&prepared, kind, context.trace_id) {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
+        // The complete hash-bound document is already returned once below.
+        // Keep the Core snapshot for verification, not a duplicate model payload.
+        if let Some(item) = prepared["item"].as_object_mut() {
+            item.remove("snapshot");
+        }
         prepared["item"]["status"] = json!("draft");
         prepared["schemaVersion"] = json!(1);
         prepared["status"] = json!("ok");

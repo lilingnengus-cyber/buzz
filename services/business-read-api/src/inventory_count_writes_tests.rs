@@ -128,6 +128,8 @@ async fn preparations_bind_full_preview_scope_and_link_only_existing_counts() {
             let trace = ctx.trace_id;
             let actor = ctx.enterprise_user_id;
             let prepared = envelope(kind, intent, &snapshot, trace);
+            let expected_document = snapshot.clone();
+            let expected_hash = prepared["previewHash"].clone();
             let posts = Arc::new(AtomicUsize::new(0));
             let observed = posts.clone();
             let key = format!("agent:{}:{tool}", ctx.delegation_id);
@@ -186,6 +188,9 @@ async fn preparations_bind_full_preview_scope_and_link_only_existing_counts() {
                 assert_eq!(body["item"]["id"], json!(intent));
                 assert_eq!(body["documentType"], kind);
                 assert_eq!(body["item"]["status"], "draft");
+                assert!(body["item"].get("snapshot").is_none());
+                assert_eq!(body["document"], expected_document);
+                assert_eq!(body["previewHash"], expected_hash);
                 if family_name == "creation" {
                     assert_eq!(body["resourceRefs"], json!([]));
                 } else {

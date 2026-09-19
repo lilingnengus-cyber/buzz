@@ -143,3 +143,11 @@ Gateway 固定能力数为 81，Host 普通请求能力为 50，普通请求不�
 复现脚本 `scripts/business-agent-runtime-acceptance.mjs` 支持 BUSINESS_MCP_CAPACITY_FIXTURE、BUSINESS_CAPACITY_PAYLOAD_BYTES、BUSINESS_CAPACITY_TEXT_BYTES、BUSINESS_CAPACITY_CONTEXT_TOKENS，输出实际预算。日志 `/tmp/count-capacity-runtime.log` 保留默认上下文失败证据，`/tmp/count-capacity-runtime-transport.log` 是显式大预算的隔离传输通过证据。无真实聊天和生产写入。
 
 发布仍未执行：下一步需让模型侧预览只返回必要业务摘要/可分页明细，服务端继续保存完整不可变快照与签名摘要；再以实际支持的上下文预算验证，完成兼容回退和配套发布。不能只把两个字节上限提高至 1 MiB 就放行。
+
+## 2026-09-20 去除重复审批快照
+
+Read API 在核验 Core 返回的完整快照一致性、数据范围、摘要和确认指令后，移除对模型响应中的 `item.snapshot` 重复副本；完整 `document`、预览摘要与确认/拒绝指令保持原值。审批执行路径仍重新从 Core 获取原始双份绑定结构并校验，不使用对模型的投影代替权限或摘要验证。
+
+500 行创建/录入/过账准备响应分别降至 146,480 / 353,886 / 328,882 字节；容量闭环及 9 项盘点定向测试通过。新增断言覆盖四种准备类型的重复字段移除、完整 document 和 previewHash 不变。证据 `/tmp/count-single-snapshot.log`。
+
+原生 Agent 以默认 200,000 上下文预算重新验证后仍触发 handoff（估计输入 406,069），因此本次不宣称解决上下文限制、不部署。记录 `/tmp/count-single-snapshot-runtime.log`。下一步仍需受授权约束的分页审批预览或明确的业务投影，并保证逐行实盘/成本/差异可核对；仅去重不足以放行发布。
