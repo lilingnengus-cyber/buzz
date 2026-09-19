@@ -7,21 +7,7 @@ impl CoreMasterDataService {
         kind: CoreMasterType,
         id: Uuid,
     ) -> Result<AuthorizationSnapshot, DomainError> {
-        let table = match kind {
-            CoreMasterType::LegalEntity => "business_legal_entities",
-            CoreMasterType::BusinessUnit => "business_units",
-            CoreMasterType::Customer => "business_customers",
-            CoreMasterType::Supplier => "business_suppliers",
-            CoreMasterType::Warehouse => "business_warehouses",
-        };
-        // The maintenance view is a UNION: lock its fixed underlying table first.
-        sqlx::query(AssertSqlSafe(format!(
-            "SELECT id FROM {table} WHERE id=$1 FOR UPDATE"
-        )))
-        .bind(id)
-        .fetch_optional(&mut **tx)
-        .await?
-        .ok_or(DomainError::NotFoundOrForbidden)?;
+        lock_record(tx, kind, id).await?;
         let current = crate::master_write_authority::snapshot(
             tx,
             actor,
@@ -39,5 +25,33 @@ impl CoreMasterDataService {
             id,
         )?;
         Ok(current)
+    }
+}
+
+pub(super) async fn lock_record(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    kind: CoreMasterType,
+    id: Uuid,
+) -> Result<(), DomainError> {
+    let table = table(kind);
+    // The maintenance view is a UNION: lock its fixed underlying table first.
+    sqlx::query(AssertSqlSafe(format!(
+        "SELECT id FROM {table} WHERE id=$1 FOR UPDATE"
+    )))
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(DomainError::NotFoundOrForbidden)?;
+
+    Ok(())
+}
+
+pub(super) fn table(kind: CoreMasterType) -> &'static str {
+    match kind {
+        CoreMasterType::LegalEntity => "business_legal_entities",
+        CoreMasterType::BusinessUnit => "business_units",
+        CoreMasterType::Customer => "business_customers",
+        CoreMasterType::Supplier => "business_suppliers",
+        CoreMasterType::Warehouse => "business_warehouses",
     }
 }

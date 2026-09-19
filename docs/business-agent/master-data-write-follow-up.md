@@ -30,3 +30,17 @@
 - 接入 Gateway 委托、Read API 范围交集、MCP、Host、名称定位、补问与详情链接，再完成权限策略配置、部署及真实客户端验收。
 
 线上仍为 CRM 6239a7224 配套版本；本批修复未部署。CRM 的真实聊天/Windows 验收及其余完整业务域仍未完成。
+
+## 2026-09-20 全部基础资料命令预览
+
+新增闭合的 Create / Update / ChangeStatus 命令及两类只读服务入口：POST /v1/agent-core-master-previews、POST /v1/agent-product-master-previews。复用现有 Core 服务认证与用户上下文，不增加 Relay HTTP 面；尚未登记 Gateway/Read API/MCP 写入能力。覆盖法人、业务单元、客户、供应商、仓库，以及计量单位、分类、品牌、商品、SKU、单位换算，共 11 类。
+
+预览锁定实际底表记录与依赖的父级，再复查当前权限/范围。返回完整当前记录、父级状态/版本/更新时间、原命令、实际生效字段、停用影响与 canExecute。没有创建对象 ID 的预览保持 documentId/current 为 null。重复编码/换算、旧版本、额外字段、对当前业务接口实际上不可变字段的修改均拒绝。类型不适用的字段不会被静默忽略；省略客户额度/账期等值产生的 0/30 默认值以及 null 清空在 effectiveFields 明示。换算系数精确返回字符串，拒绝超出 NUMERIC(24,8) 或需要舍入的输入，允许仅多余尾零的等值表示。
+
+停用影响查询改为调用事务的同一连接，并把所有影响计数合并为一条 SQL，以单条语句快照汇总；工作台既有启停操作也复用该实现。预览的 canExecute 只说明当次检查结果，不是执行授权或保证；后续确认仍须在执行事务内重算并绑定快照，处理影响对象并发变化。当前没有持久化意图、审批投票或 Agent 实际写入入口。
+
+真实隔离 PostgreSQL/HTTP 验证：11 类资料分别预览创建、修改、停用；重复预览稳定，父级版本/更新时间变化在子项当前记录完全不变时仍改变父级快照；停用父级出现真实活动子项阻塞。越权范围、旧版本、不可变编号、类型不适用字段、重复编码/换算均拒绝。父级真实行锁等待期间撤销品牌范围，预览在释放后拒绝。HTTP 无凭据 401、范围越权 404、额外外层字段 422，正常结果保持 trace；0.33333333 换算系数按精确字符串返回。预览没有新增业务记录/业务审计或改变 Core 资料版本。
+
+负向控制移除父级 FOR SHARE，真实锁等待断言失败；恢复后完整数据库及 HTTP 场景通过。前批事务权限回归通过、Core 单元测试 25 项、严格 Clippy、格式、差异及文件大小门禁通过。日志 /tmp/master-previews-{restored,negative-lock,authority-regression,unit-final,clippy-complete,size-final}.log。数据库在独立 55439 实例的新库，未调用生产业务写入。运行预览集成测试需同时提供 BUSINESS_CORE_MASTER_PREVIEW_TEST_DATABASE_URL 与 BUSINESS_CORE_DATABASE_URL 指向同一隔离新库、至少 32 字符的 BUSINESS_CORE_SERVICE_CREDENTIAL 及 BUSINESS_WEB_ORIGIN；未配置而跳过不算验收。
+
+本批未部署。下一步把确定的命令/当前记录/父级及影响快照保存为不可变意图，接入执行事务中的快照复核、审批与幂等结果，再实现固定助手工具和详情链接。其他完整业务域、CRM 真实聊天与 Windows 验收保持未完成。

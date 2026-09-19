@@ -1,3 +1,4 @@
+mod command;
 mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
@@ -5,6 +6,7 @@ use crate::{
     store::PgStore,
 };
 use chrono::Utc;
+pub use command::CoreMasterCommand;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{AssertSqlSafe, Row};
@@ -415,7 +417,7 @@ impl CoreMasterDataService {
             return Err(DomainError::VersionConflict);
         }
         if input.status == "disabled" {
-            let impacts = load_impacts(self.store.pool(), kind, id).await?;
+            let impacts = load_impacts_on(&mut tx, kind, id).await?;
             if impacts.iter().any(|item| item.blocking && item.count > 0) {
                 return Err(DomainError::Invalid(
                     "master data has blocking operational impacts".into(),
@@ -671,6 +673,15 @@ async fn grant_creator_scope(
 
 async fn load_impacts(
     pool: &sqlx::PgPool,
+    kind: CoreMasterType,
+    id: Uuid,
+) -> Result<Vec<ImpactItem>, DomainError> {
+    let mut connection = pool.acquire().await?;
+    load_impacts_on(&mut connection, kind, id).await
+}
+
+async fn load_impacts_on(
+    connection: &mut sqlx::PgConnection,
     k: CoreMasterType,
     id: Uuid,
 ) -> Result<Vec<ImpactItem>, DomainError> {
@@ -680,16 +691,29 @@ CoreMasterType::BusinessUnit=>&[("active_warehouses","启用中的仓库","SELEC
 CoreMasterType::Customer=>&[("open_orders","未完成销售订单","SELECT count(*) FROM sales_orders WHERE customer_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("open_receivables","未结经营应收","SELECT count(*) FROM trade_receivables WHERE customer_id=$1 AND status IN ('open','partially_settled')",false)],
 CoreMasterType::Supplier=>&[("open_orders","未完成采购订单","SELECT count(*) FROM purchase_orders WHERE supplier_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("open_payables","未结经营应付","SELECT count(*) FROM trade_payables WHERE supplier_id=$1 AND status IN ('open','partially_settled')",false),("inbound_lines","仍有在途数量的采购行","SELECT count(*) FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE o.supplier_id=$1 AND o.lifecycle_status='confirmed' AND l.ordered_quantity>l.received_quantity+l.cancelled_quantity",true)],
 CoreMasterType::Warehouse=>&[("stock","存在余额的库存记录","SELECT count(*) FROM inventory_balances WHERE warehouse_id=$1 AND (on_hand_quantity<>0 OR reserved_quantity<>0 OR quarantined_quantity<>0)",true),("sales_demand","未完成销售订单行","SELECT count(*) FROM sales_order_lines l JOIN sales_orders o ON o.id=l.sales_order_id WHERE l.warehouse_id=$1 AND o.lifecycle_status IN ('draft','confirmed') AND l.ordered_quantity>l.shipped_quantity+l.cancelled_quantity",true),("purchase_inbound","未完成采购订单行","SELECT count(*) FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE l.warehouse_id=$1 AND o.lifecycle_status='confirmed' AND l.ordered_quantity>l.received_quantity+l.cancelled_quantity",true),("inventory_counts","进行中的盘点任务","SELECT count(*) FROM inventory_count_tasks WHERE warehouse_id=$1 AND status IN ('counting','counted')",true)]};
-    let mut out = Vec::with_capacity(queries.len());
-    for (code, label, sql, blocking) in queries {
-        let count: i64 = sqlx::query_scalar(*sql).bind(id).fetch_one(pool).await?;
-        out.push(ImpactItem {
+    // All impact counts use one statement snapshot on the caller's transaction.
+    let sql = format!(
+        "SELECT ARRAY[{}]",
+        queries
+            .iter()
+            .map(|(_, _, sql, _)| format!("({sql})"))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let counts: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(sql))
+        .bind(id)
+        .fetch_one(&mut *connection)
+        .await?;
+    let out = queries
+        .iter()
+        .zip(counts)
+        .map(|((code, label, _, blocking), count)| ImpactItem {
             code: (*code).into(),
             label: (*label).into(),
             count,
             blocking: *blocking,
-        });
-    }
+        })
+        .collect();
     Ok(out)
 }
 

@@ -1,3 +1,4 @@
+mod command;
 mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
@@ -5,6 +6,7 @@ use crate::{
     store::PgStore,
 };
 use chrono::Utc;
+pub use command::ProductMasterCommand;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -381,7 +383,7 @@ impl ProductMasterService {
             return Err(DomainError::VersionConflict);
         }
         if input.status == "disabled" {
-            let impacts = load_impacts(self.store.pool(), kind, id).await?;
+            let impacts = load_impacts_on(&mut tx, kind, id).await?;
             if impacts.iter().any(|item| item.blocking && item.count > 0) {
                 return Err(DomainError::Invalid(
                     "product master data has blocking operational impacts".into(),
@@ -670,6 +672,15 @@ async fn load_impacts(
     kind: ProductMasterType,
     id: Uuid,
 ) -> Result<Vec<ProductImpactItem>, DomainError> {
+    let mut connection = pool.acquire().await?;
+    load_impacts_on(&mut connection, kind, id).await
+}
+
+async fn load_impacts_on(
+    connection: &mut sqlx::PgConnection,
+    kind: ProductMasterType,
+    id: Uuid,
+) -> Result<Vec<ProductImpactItem>, DomainError> {
     let queries:&[(&str,&str,&str,bool)]=match kind{
         ProductMasterType::UnitOfMeasure=>&[("active_products","使用该基础单位的启用商品","SELECT count(*) FROM business_products WHERE base_uom_id=$1 AND status='active'",true),("active_conversions","使用该单位的启用换算","SELECT count(*) FROM business_product_uom_conversions WHERE unit_of_measure_id=$1 AND status='active'",true)],
         ProductMasterType::ProductCategory=>&[("active_children","启用中的子分类","SELECT count(*) FROM business_product_categories WHERE parent_id=$1 AND status='active'",true),("active_products","分类下的启用商品","SELECT count(*) FROM business_products WHERE category_id=$1 AND status='active'",true)],
@@ -678,16 +689,29 @@ async fn load_impacts(
         ProductMasterType::Sku=>&[("stock","存在库存余额","SELECT count(*) FROM inventory_balances WHERE sku_id=$1 AND (on_hand_quantity<>0 OR reserved_quantity<>0 OR quarantined_quantity<>0)",true),("sales_demand","未完成销售订单行","SELECT count(*) FROM sales_order_lines l JOIN sales_orders o ON o.id=l.sales_order_id WHERE l.sku_id=$1 AND o.lifecycle_status IN ('draft','confirmed')",true),("purchase_inbound","未完成采购订单行","SELECT count(*) FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE l.sku_id=$1 AND o.lifecycle_status IN ('draft','confirmed')",true)],
         ProductMasterType::UomConversion=>&[("open_sales","使用该换算单位的未完成销售行","SELECT count(*) FROM business_product_uom_conversions x JOIN business_skus s ON s.product_id=x.product_id JOIN sales_order_lines l ON l.sku_id=s.id AND l.unit_of_measure_id=x.unit_of_measure_id JOIN sales_orders o ON o.id=l.sales_order_id WHERE x.id=$1 AND o.lifecycle_status IN ('draft','confirmed')",true),("open_purchase","使用该换算单位的未完成采购行","SELECT count(*) FROM business_product_uom_conversions x JOIN business_skus s ON s.product_id=x.product_id JOIN purchase_order_lines l ON l.sku_id=s.id AND l.unit_of_measure_id=x.unit_of_measure_id JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE x.id=$1 AND o.lifecycle_status IN ('draft','confirmed')",true)],
     };
-    let mut out = Vec::with_capacity(queries.len());
-    for (code, label, sql, blocking) in queries {
-        let count: i64 = sqlx::query_scalar(*sql).bind(id).fetch_one(pool).await?;
-        out.push(ProductImpactItem {
+    // All impact counts use one statement snapshot on the caller's transaction.
+    let sql = format!(
+        "SELECT ARRAY[{}]",
+        queries
+            .iter()
+            .map(|(_, _, sql, _)| format!("({sql})"))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let counts: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(sql))
+        .bind(id)
+        .fetch_one(&mut *connection)
+        .await?;
+    let out = queries
+        .iter()
+        .zip(counts)
+        .map(|((code, label, _, blocking), count)| ProductImpactItem {
             code: (*code).into(),
             label: (*label).into(),
             count,
             blocking: *blocking,
-        });
-    }
+        })
+        .collect();
     Ok(out)
 }
 

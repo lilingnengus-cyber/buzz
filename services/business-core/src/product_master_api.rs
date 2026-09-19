@@ -1,3 +1,4 @@
+use crate::product_master::ProductMasterCommand;
 use crate::{
     api::AppState,
     b2::common::DomainError,
@@ -95,7 +96,9 @@ fn default_limit() -> i64 {
 }
 
 pub fn service_routes() -> Router<Arc<AppState>> {
-    Router::new().route("/v1/product-master-data", get(list))
+    Router::new()
+        .route("/v1/product-master-data", get(list))
+        .route("/v1/agent-product-master-previews", post(agent_preview))
 }
 
 pub fn browser_routes() -> Router<Arc<AppState>> {
@@ -225,4 +228,19 @@ fn key(headers: &HeaderMap, trace_id: Uuid) -> Result<&str, ProductMasterApiErro
         .get("idempotency-key")
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| ProductMasterApiError::invalid("Idempotency-Key is required", trace_id))
+}
+
+async fn agent_preview(
+    State(state): State<Arc<AppState>>,
+    Extension(context): Extension<RequestContext>,
+    Json(command): Json<ProductMasterCommand>,
+) -> Result<Json<impl serde::Serialize>, ProductMasterApiError> {
+    let document = state
+        .product_master
+        .command_preview(context.actor_user_id, &command)
+        .await
+        .map_err(|error| ProductMasterApiError::domain(error, context.trace_id))?;
+    Ok(Json(
+        json!({"document":document,"traceId":context.trace_id}),
+    ))
 }
