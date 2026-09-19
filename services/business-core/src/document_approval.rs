@@ -2,6 +2,7 @@
 pub mod allocation;
 mod allocation_history;
 mod financial_documents;
+mod inventory_count_creation;
 /// Bound cancellation of remaining order quantities.
 pub mod order_cancellation;
 /// Immutable return inspection and logistics intents.
@@ -82,6 +83,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(stock::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
+        .merge(inventory_count_creation::routes())
         .merge(settlement::routes())
         .merge(allocation::routes())
         .merge(reversal::routes())
@@ -429,6 +431,7 @@ async fn cast_vote(
         .fetch_optional(store.pool())
         .await?,
         "sales_return_inspection_intent" | "purchase_return_dispatch_intent" | "purchase_return_acknowledgment_intent" | "sales_return_cancellation_intent" | "purchase_return_cancellation_intent" | "sales_return_reversal_intent" | "purchase_return_reversal_intent" => Some(return_disposition::authority_row(store,document_type,document_id).await?),
+        "inventory_count_creation_intent" => Some(inventory_count_creation::authority_row(store,document_type,document_id).await?),
         "sales_return" | "purchase_return" => Some(returns::authority_row(store,document_type,document_id).await?),
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
@@ -442,7 +445,9 @@ async fn cast_vote(
     let creator: Uuid = row.get("created_by_user_id");
     let wrong_party_scope = if matches!(
         document_type,
-        "inventory_opening" | "inventory_opening_reversal_intent"
+        "inventory_opening"
+            | "inventory_opening_reversal_intent"
+            | "inventory_count_creation_intent"
     ) {
         false
     } else if matches!(

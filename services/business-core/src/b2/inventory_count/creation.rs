@@ -139,7 +139,7 @@ impl InventoryCountService {
         input: &CreateInventoryCount,
         approved: &Value,
     ) -> Result<CommandResult, DomainError> {
-        self.create_inner(actor, trace_id, key, input, Some(approved))
+        self.create_inner(actor, trace_id, key, input, Some(approved), None)
             .await
     }
 }
@@ -168,4 +168,27 @@ pub(super) async fn authorize_creation(
         return Err(DomainError::NotFoundOrForbidden);
     }
     Ok(scope)
+}
+
+impl InventoryCountService {
+    /// Commit the inventory freeze and successful approval outcome together.
+    pub(crate) async fn create_approved(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        input: &CreateInventoryCount,
+        approved: &Value,
+        request_id: Uuid,
+    ) -> Result<CommandResult, DomainError> {
+        let key = format!("agent-count-creation:{request_id}");
+        self.create_inner(
+            actor,
+            trace_id,
+            &key,
+            input,
+            Some(approved),
+            Some(request_id),
+        )
+        .await
+    }
 }

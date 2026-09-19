@@ -2,6 +2,8 @@
 mod agent_return_checks;
 #[path = "agent_order_cancellation.rs"]
 mod cancellation_checks;
+#[path = "agent_inventory_count_creation.rs"]
+mod inventory_count_creation;
 #[path = "return_concurrency.rs"]
 mod return_concurrency_checks;
 #[path = "agent_return_confirmation.rs"]
@@ -99,6 +101,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
         store.clone(),
         &config("test".into(), CREDENTIAL.into()),
     ));
+    inventory_count_creation::check(&app, store, f).await;
     let sku = Uuid::new_v4();
     sqlx::query("INSERT INTO business_skus(id,product_id,code,name) SELECT $1,product_id,'AGENT-FULFILLMENT','Agent fulfillment' FROM business_skus WHERE id=$2").bind(sku).bind(f.sku).execute(store.pool()).await.unwrap();
     let opening = json!({"legalEntityId":f.legal_entity,"businessDate":"2026-09-19","currency":"CNY","lines":[{"warehouseId":f.warehouse,"skuId":sku,"quantity":"2","unitCost":"50"}]});

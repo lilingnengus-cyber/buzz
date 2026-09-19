@@ -199,7 +199,8 @@ impl InventoryCountService {
         key: &str,
         input: &CreateInventoryCount,
     ) -> Result<CommandResult, DomainError> {
-        self.create_inner(actor, trace_id, key, input, None).await
+        self.create_inner(actor, trace_id, key, input, None, None)
+            .await
     }
 
     async fn create_inner(
@@ -209,6 +210,7 @@ impl InventoryCountService {
         key: &str,
         input: &CreateInventoryCount,
         approved: Option<&Value>,
+        approval_request: Option<Uuid>,
     ) -> Result<CommandResult, DomainError> {
         validate_currency(&input.currency)?;
         validate_create(input)?;
@@ -292,6 +294,14 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
+        if let Some(request_id) = approval_request {
+            let approved = approved.ok_or(DomainError::StalePreview)?;
+            let updated=sqlx::query("UPDATE business_document_approval_requests SET status='executed',executed_at=now(),version=version+1 WHERE id=$1 AND document_type='inventory_count_creation_intent' AND status='executing' AND preview_hash=$2 AND EXISTS(SELECT 1 FROM business_agent_inventory_count_creation_intents i WHERE i.id=business_document_approval_requests.document_id AND i.expires_at>clock_timestamp())")
+                .bind(request_id).bind(request_hash(approved)?).execute(&mut *tx).await?.rows_affected();
+            if updated != 1 {
+                return Err(DomainError::StalePreview);
+            }
+        }
         finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)

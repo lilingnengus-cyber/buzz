@@ -56,3 +56,15 @@
 权限读取重构另经 `inventory_count_auth_b1` 的 B1 PostgreSQL 授权流程验证；Core all-targets 严格 Clippy、格式与文件大小门禁通过。日志 `/tmp/business-count-auth-b1.log`、`/tmp/business-count-creation-complete-{clippy,size}.log`。
 
 本批没有新的 HTTP 执行入口，也没有把批准快照开放为普通客户端覆盖参数。仍需服务端不可变冻结意图、审批预览与签名确认入口，再连接 Gateway/Read API/MCP/Host。实盘录入、差异过账、取消的审批绑定、详情和发布验收尚未完成。本批未部署，线上仍为退货版本；不能把 Core 绑定执行视为聊天端已可操作盘点。
+
+## 2026-09-20 冻结创建意图与 Core 审批
+
+新增 `inventory_count_creation_intent`：Core 提供不持久化的影响预览、准备 30 分钟不可变意图、重读审批预览和确认/拒绝入口。输入直接复用封闭的 CreateInventoryCount DTO。准备仅保存完整命令、持锁快照和审计，不创建盘点或冻结库存；同键变参/变快照/已过期均拒绝，数据库禁止修改或删除意图。
+
+确认要求意图 v1 和完整快照摘要一致，使用 `inventory_opening:create` 的显式审批策略；缺策略拒绝。执行只读取服务端保存的命令和快照，调用既有锁内绑定创建。盘点创建、明细、事件、审计、业务幂等结果及审批 executed 状态同一事务提交；写入最终审批结果失败会回滚整个冻结创建。提交时再次检查意图实际时钟有效期。成功响应返回实际创建单据的 ID、编号和状态；准备/拒绝不返回虚构盘点结果。
+
+迁移 51 新建意图表、扩展审批与委托类型并登记两项固定 create/approve 能力，不自动授权或添加策略。独立盘点详情链接仍未接入，因此本批不生成尚不能打开的 biz 链接。Core 仍依赖上游受验证的审批上下文；Gateway/Host 的该类型签名识别及 MCP 工具尚未实现，不代表真实聊天已能审批盘点。
+
+隔离数据库 `inventory_count_intents_verified` 完整 B2 流程通过：只读预览、严格未知字段拒绝、重复准备相同 ID、同键变参冲突、不可变意图、过期读取拒绝、缺策略拒绝、错误摘要/夹带参数拒绝、品牌撤权拒绝、拒绝不创建、确认成功且审批同时 executed、重复确认不重复创建。测试在审批 executed 更新时注入数据库错误，验证实际盘点与冻结一并回滚，解除故障后新确认成功。既有库存锁等待、权限撤销/用户角色停用、单连接池、退货及全部 B2 闭环继续通过。
+
+Core/Gateway all-targets 严格 Clippy、格式及文件大小门禁通过。日志 `/tmp/business-count-intents-verified.log`、`/tmp/business-count-intents-{clippy,size}.log`。本批尚未部署，未发送实际聊天或操作生产盘点。下一步继续实盘录入、差异过账与取消的影响绑定和审批，再整合完整助手工具链及发布验收；不会只上线冻结创建而留下无法由助手完成或取消的盘点。
