@@ -170,7 +170,7 @@ impl InventoryCountService {
             None,
         )
         .await?;
-        sqlx::query_as::<_,InventoryCountSummary>("SELECT t.id,t.count_number,t.legal_entity_id,t.warehouse_id,t.count_date,t.currency::text currency,t.status,count(l.id) line_count,count(l.id) FILTER(WHERE COALESCE(l.variance_quantity,0)<>0) variance_line_count,COALESCE(sum(l.variance_value),0) variance_value,t.version,t.updated_at FROM inventory_count_tasks t JOIN business_warehouses w ON w.id=t.warehouse_id JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.legal_entity_id=ANY($1) AND t.warehouse_id=ANY($2) AND w.business_unit_id=ANY($3) AND NOT EXISTS(SELECT 1 FROM inventory_count_lines forbidden JOIN business_skus sku ON sku.id=forbidden.sku_id JOIN business_products product ON product.id=sku.product_id WHERE forbidden.inventory_count_id=t.id AND product.brand_id IS NOT NULL AND NOT(product.brand_id=ANY($4))) GROUP BY t.id ORDER BY t.count_date DESC,t.count_number DESC LIMIT $5").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.brand_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
+        sqlx::query_as::<_,InventoryCountSummary>("SELECT t.id,t.count_number,t.legal_entity_id,t.warehouse_id,t.count_date,t.currency::text currency,t.status,count(l.id) line_count,count(l.id) FILTER(WHERE COALESCE(l.variance_quantity,0)<>0) variance_line_count,COALESCE(sum(l.variance_value),0) variance_value,t.version,t.updated_at FROM inventory_count_tasks t JOIN business_warehouses w ON w.id=t.warehouse_id JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.legal_entity_id=ANY($1) AND t.warehouse_id=ANY($2) AND w.business_unit_id=ANY($3) AND (t.snapshot_business_unit_id IS NULL OR t.snapshot_business_unit_id=ANY($3)) AND NOT EXISTS(SELECT 1 FROM inventory_count_lines forbidden JOIN business_skus sku ON sku.id=forbidden.sku_id JOIN business_products product ON product.id=sku.product_id WHERE forbidden.inventory_count_id=t.id AND ((product.brand_id IS NOT NULL AND NOT(product.brand_id=ANY($4))) OR (forbidden.snapshot_brand_id IS NOT NULL AND NOT(forbidden.snapshot_brand_id=ANY($4))))) GROUP BY t.id ORDER BY t.count_date DESC,t.count_number DESC LIMIT $5").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.brand_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
     }
 
     pub async fn detail(&self, actor: Uuid, id: Uuid) -> Result<InventoryCountDetail, DomainError> {
@@ -226,6 +226,7 @@ impl InventoryCountService {
             begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:create", key, &hash)
                 .await?
         {
+            super::inventory_count_scope::check_frozen(&self.store, &scope, replay.id).await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -246,13 +247,31 @@ impl InventoryCountService {
             ));
         }
         let business_unit_id: Uuid = sqlx::query_scalar(
-            "SELECT business_unit_id FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active'",
+            "SELECT business_unit_id FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE",
         )
         .bind(input.warehouse_id)
         .bind(input.legal_entity_id)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
+        if !scope.scopes.business_unit_ids.contains(&business_unit_id) {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        let brand_rows = sqlx::query(
+            "SELECT s.id,p.brand_id FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=ANY($1) ORDER BY p.id,s.id FOR SHARE OF s,p",
+        ).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
+        let brands: BTreeMap<Uuid, Option<Uuid>> = brand_rows
+            .iter()
+            .map(|row| (row.get("id"), row.get("brand_id")))
+            .collect();
+        if brands.len() != input.sku_ids.len()
+            || brands
+                .values()
+                .flatten()
+                .any(|brand| !scope.scopes.brand_ids.contains(brand))
+        {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
         let balances=sqlx::query("SELECT sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=ANY($3) ORDER BY sku_id FOR UPDATE").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
         if balances.len() != input.sku_ids.len() {
             return Err(DomainError::NotFoundOrForbidden);
@@ -272,9 +291,9 @@ impl InventoryCountService {
             crate::numbering::NumberingContext::new(input.legal_entity_id, Some(business_unit_id)),
         )
         .await?;
-        sqlx::query("INSERT INTO inventory_count_tasks(id,count_number,legal_entity_id,warehouse_id,count_date,currency,business_note,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(id).bind(&number).bind(input.legal_entity_id).bind(input.warehouse_id).bind(input.count_date).bind(&input.currency).bind(&input.business_note).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO inventory_count_tasks(id,count_number,legal_entity_id,warehouse_id,count_date,currency,business_note,created_by_user_id,trace_id,scope_snapshot_captured,snapshot_business_unit_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)").bind(id).bind(&number).bind(input.legal_entity_id).bind(input.warehouse_id).bind(input.count_date).bind(&input.currency).bind(&input.business_note).bind(actor).bind(trace_id).bind(business_unit_id).execute(&mut *tx).await?;
         for balance in &balances {
-            sqlx::query("INSERT INTO inventory_count_lines(id,inventory_count_id,sku_id,snapshot_on_hand_quantity,snapshot_reserved_quantity,snapshot_quarantined_quantity,snapshot_inventory_value,snapshot_average_unit_cost) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(Uuid::new_v4()).bind(id).bind(balance.get::<Uuid,_>("sku_id")).bind(balance.get::<Decimal,_>("on_hand_quantity")).bind(balance.get::<Decimal,_>("reserved_quantity")).bind(balance.get::<Decimal,_>("quarantined_quantity")).bind(balance.get::<Decimal,_>("inventory_value")).bind(balance.get::<Option<Decimal>,_>("average_unit_cost")).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO inventory_count_lines(id,inventory_count_id,sku_id,snapshot_on_hand_quantity,snapshot_reserved_quantity,snapshot_quarantined_quantity,snapshot_inventory_value,snapshot_average_unit_cost,snapshot_brand_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(Uuid::new_v4()).bind(id).bind(balance.get::<Uuid,_>("sku_id")).bind(balance.get::<Decimal,_>("on_hand_quantity")).bind(balance.get::<Decimal,_>("reserved_quantity")).bind(balance.get::<Decimal,_>("quarantined_quantity")).bind(balance.get::<Decimal,_>("inventory_value")).bind(balance.get::<Option<Decimal>,_>("average_unit_cost")).bind(brands.get(&balance.get::<Uuid,_>("sku_id")).copied().flatten()).execute(&mut *tx).await?;
         }
         count_event(
             &mut tx,
@@ -704,6 +723,7 @@ impl InventoryCountService {
         .await?;
         super::inventory_count_scope::check(&self.store, &scope, row.get("warehouse_id"), &skus)
             .await?;
+        super::inventory_count_scope::check_frozen(&self.store, &scope, id).await?;
         Ok(())
     }
 }

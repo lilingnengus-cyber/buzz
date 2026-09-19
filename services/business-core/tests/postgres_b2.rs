@@ -1,5 +1,7 @@
 #[path = "support/b2_seed.rs"]
 mod b2_seed;
+#[path = "support/inventory_count_frozen_scopes.rs"]
+mod inventory_count_frozen_scopes;
 #[path = "support/inventory_count_scopes.rs"]
 mod inventory_count_scopes;
 use b2_seed::seed;
