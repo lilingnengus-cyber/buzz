@@ -329,3 +329,11 @@ Gateway 增加四项启停 prepare/approve 固定能力，并解析绑定类型�
 真实隔离 Core + PostgreSQL status_adapter_real 验证客户和 SKU 各自停用/启用：越权 prepare 返回 403 且意图数不增加；越权 approve 返回 403；合法委托返回准确对象、状态和新版本。Read API 47 项测试通过（本次配置了真实适配器数据库）；Gateway 四项定向测试覆盖新增确认命令及普通会话不能取得 approve 权限。两服务严格 Clippy、格式与 diff 检查通过。日志 /tmp/status-gateway-tests.log、/tmp/status-adapter-real.log、/tmp/status-adapter-clippy-final.log。
 
 Gateway 固定能力清单和测试拆到 agent/scopes.rs、agent/tests.rs，使 agent.rs 保持 912 行。初次 Read API 单元回归因旧工具总数断言仍为 80 失败，更新为实际 84 后通过。本批未部署，MCP、Host 与实际聊天尚未接入/验收；不能据此宣称完整启停链路上线。
+
+## MCP 与 Host 启停指令接入
+
+MCP 新增 Core/Product 各一对 prepare/approve status 工具，准备参数使用资料族枚举、UUID、正版本 schema 和 active/disabled 枚举；确认工具无模型可控业务参数，仅消费人类签名消息中的意图绑定。普通会话只展示准备工具，确认会话只展示匹配确认工具，所有配置继续受 128 工具上限保护。Host 增加两项准备能力和两类精确签名确认解析，提示要求展示目标状态/阻塞项、不得把保存意图说成已启停，也不得绕过阻塞。
+
+MCP 状态响应校验新增独立 envelope、目标/版本、状态字段及 effectiveFields 一致性，canExecute 必须与阻塞影响和目标状态一致；现有摘要、确认命令、trace 与资源引用校验保留。status_mcp_corpus 的真实 Core/Read API 响应集共 61 条，其中四种新工具各两条启用/停用响应，共 8 条；全部通过 MCP 校验及既有篡改检查。MCP 23 项单元测试、Host 10 项定向测试、两 crate 严格 Clippy、格式和 diff 检查通过。日志 /tmp/status-mcp-tests.log、/tmp/status-host-tests-final.log、/tmp/status-mcp-corpus-validation.log、/tmp/status-mcp-host-clippy.log；语料 /tmp/status-master-mcp-corpus.jsonl。
+
+Host 测试拆到 business_agent/tests.rs，主体 825 行；首次构建因拆分后 include_str 相对路径未调整失败，修正后通过。本批未部署，尚需原生 Agent/MCP 运行时、配套发布和真实客户端验收；完整业务覆盖中的其他业务域仍未完成。

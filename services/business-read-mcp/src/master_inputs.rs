@@ -236,3 +236,19 @@ impl ValidateInput for ProductRecordInput {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum MasterStatus {
+    Active,
+    Disabled,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct MasterStatusChange<K> {
+    resource_type: K,
+    document_id: Uuid,
+    #[schemars(range(min = 1))]
+    expected_version: i64,
+    status: MasterStatus,
+}

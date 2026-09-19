@@ -9,7 +9,9 @@ pub(super) fn family(tool: &str) -> Option<String> {
         if let Some(name) = tool.strip_prefix(prefix) {
             if matches!(
                 name,
-                "core_master_creation"
+                "core_master_status"
+                    | "product_master_status"
+                    | "core_master_creation"
                     | "core_master_update"
                     | "product_master_creation"
                     | "product_master_update"
@@ -146,7 +148,8 @@ fn preview(v: &Value, expected: &str) -> Result<(), String> {
     let resource = kind(&v["resourceType"])?;
     if v["documentType"] != expected
         || core(resource) != expected.starts_with("core_")
-        || v["canExecute"] != true
+        || (!expected.ends_with("status_intent") && v["canExecute"] != true)
+        || !v["canExecute"].is_boolean()
     {
         return Err("Master preview family mismatch".into());
     }
@@ -156,26 +159,49 @@ fn preview(v: &Value, expected: &str) -> Result<(), String> {
         }
     }
     let creation = expected.ends_with("creation_intent");
+    let status = expected.ends_with("status_intent");
     let command = &v["command"];
     object(
         command,
         if creation {
             &["operation", "command"]
+        } else if status {
+            &["operation", "resourceType", "documentId", "command"]
         } else {
             &["operation", "documentId", "command"]
         },
     )?;
     let fields = &command["command"];
-    if fields["resourceType"] != resource
-        || command["operation"] != if creation { "create" } else { "update" }
+    if (if status {
+        &command["resourceType"]
+    } else {
+        &fields["resourceType"]
+    }) != resource
+        || command["operation"]
+            != if creation {
+                "create"
+            } else if status {
+                "change_status"
+            } else {
+                "update"
+            }
     {
         return Err("Master preview operation mismatch".into());
     }
-    flat(
-        fields,
-        if core(resource) { CORE } else { PRODUCT },
-        resource,
-    )?;
+    if status {
+        object(fields, &["status", "expectedVersion"])?;
+        if !matches!(fields["status"].as_str(), Some("active" | "disabled"))
+            || fields["expectedVersion"].as_i64().is_none_or(|v| v < 1)
+        {
+            return Err("Invalid status command".into());
+        }
+    } else {
+        flat(
+            fields,
+            if core(resource) { CORE } else { PRODUCT },
+            resource,
+        )?;
+    }
     if creation {
         if !v["current"].is_null()
             || !v["documentId"].is_null()
@@ -194,11 +220,18 @@ fn preview(v: &Value, expected: &str) -> Result<(), String> {
         }
     }
     parents(&v["parents"])?;
-    flat(
-        &v["effectiveFields"],
-        if core(resource) { CORE } else { PRODUCT },
-        resource,
-    )?;
+    if status {
+        object(&v["effectiveFields"], &["status"])?;
+        if v["effectiveFields"]["status"] != fields["status"] {
+            return Err("Status effect mismatch".into());
+        }
+    } else {
+        flat(
+            &v["effectiveFields"],
+            if core(resource) { CORE } else { PRODUCT },
+            resource,
+        )?;
+    }
     let impacts = v["disableImpacts"]
         .as_array()
         .ok_or("Missing master impact list")?;
@@ -210,6 +243,14 @@ fn preview(v: &Value, expected: &str) -> Result<(), String> {
             || !impact["blocking"].is_boolean()
         {
             return Err("Invalid master impact".into());
+        }
+    }
+    if status {
+        let blocked = impacts
+            .iter()
+            .any(|i| i["blocking"] == true && i["count"].as_i64().is_some_and(|v| v > 0));
+        if v["canExecute"] != json!(fields["status"] != "disabled" || !blocked) {
+            return Err("Status readiness mismatch".into());
         }
     }
     Ok(())

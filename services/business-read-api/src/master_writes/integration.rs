@@ -414,6 +414,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
             assert_eq!(intents(&pool).await, before);
             let prepared =
                 value(forward(&core, &tool, input, &c, &grant(&c, dimensions)).await).await;
+            export(&tool, c.trace_id, &prepared);
             let tool = format!("approve_{family}_master_status");
             let c = context(actor, &tool);
             let approval = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
@@ -437,6 +438,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
             let result =
                 value(forward(&core, &tool, approval, &c, &grant(&c, dimensions)).await).await;
             assert_eq!(result["createdDocument"]["id"], id.to_string());
+            export(&tool, c.trace_id, &result);
             assert_eq!(result["createdDocument"]["status"], status);
             assert_eq!(result["createdDocument"]["version"], version + 1);
         }

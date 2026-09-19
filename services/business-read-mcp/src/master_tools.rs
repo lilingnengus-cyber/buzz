@@ -3,6 +3,66 @@ use master_inputs::*;
 #[tool_router(router = master_router)]
 impl BusinessReadMcp {
     #[tool(
+        name = "prepare_core_master_status",
+        description = "Prepare the human-requested enable or disable of an existing master record using its exact UUID and current version. This saves only an intent. Show blocking impacts and the returned signed confirmation command; never bypass blockers or confirm for the human."
+    )]
+    async fn prepare_core_master_status(
+        &self,
+        Parameters(input): Parameters<MasterStatusChange<CoreKind>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_core_master_status",
+                "core_master_status_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_core_master_status",
+        description = "Approve or reject only the status intent bound to the human signed source message. Takes no model-controlled business arguments. Never confirm for the human."
+    )]
+    async fn approve_core_master_status(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_core_master_status",
+                "core_master_status_intent:approve",
+                "core_master_status_intent",
+            )
+            .await)
+    }
+
+    #[tool(
+        name = "prepare_product_master_status",
+        description = "Prepare the human-requested enable or disable of an existing master record using its exact UUID and current version. This saves only an intent. Show blocking impacts and the returned signed confirmation command; never bypass blockers or confirm for the human."
+    )]
+    async fn prepare_product_master_status(
+        &self,
+        Parameters(input): Parameters<MasterStatusChange<ProductKind>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_product_master_status",
+                "product_master_status_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_product_master_status",
+        description = "Approve or reject only the status intent bound to the human signed source message. Takes no model-controlled business arguments. Never confirm for the human."
+    )]
+    async fn approve_product_master_status(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_product_master_status",
+                "product_master_status_intent:approve",
+                "product_master_status_intent",
+            )
+            .await)
+    }
+
+    #[tool(
         name = "get_business_product_master_record",
         description = "Read an authorized product, SKU, brand, product category, unit or conversion and its current version using the dedicated product-master read permission. Use this for product-family changes; do not use a legal-entity grant for global product records. UUIDs must come from authorized lookup. Does not write or change authority."
     )]
