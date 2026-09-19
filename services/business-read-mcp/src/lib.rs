@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
+mod crm_inputs;
 mod crm_result;
+mod tool_visibility;
+use crm_inputs::*;
 mod inventory_count_inputs;
 use inventory_count_inputs::*;
 mod draft_inputs;
@@ -64,6 +67,7 @@ struct Config {
     adapter: AdapterKind,
     draft_write_enabled: bool,
     chat_approval_enabled: bool,
+    approval_scope: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -212,6 +216,9 @@ impl Config {
             adapter,
             draft_write_enabled,
             chat_approval_enabled,
+            approval_scope: std::env::var("BUSINESS_AGENT_APPROVAL_SCOPE")
+                .ok()
+                .filter(|v| !v.is_empty()),
         })
     }
 }
@@ -434,10 +441,11 @@ impl BusinessReadMcp {
             .timeout(config.tool_timeout)
             .build()
             .map_err(|_| "failed to build HTTP client")?;
+        let tool_router = tool_visibility::router(&config)?;
         Ok(Self {
             config: Arc::new(config),
             client,
-            tool_router: Self::tool_router(),
+            tool_router,
         })
     }
 
@@ -1422,6 +1430,81 @@ impl BusinessReadMcp {
                 "get_supplier_payment_allocations",
                 "supplier_payment:read",
                 input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_crm_creation",
+        description = "Prepare a CRM opportunity creation using exact authorized legal entity, business unit and optional customer. Ask for missing title, company, stage, currency or amount/date intent. expectedAmountMinor is integer minor currency units. No opportunity exists until signed confirmation; show the exact returned confirmation command."
+    )]
+    async fn prepare_crm_creation(
+        &self,
+        Parameters(input): Parameters<CrmFields>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write("prepare_crm_creation", "crm_creation_intent:create", input)
+            .await)
+    }
+    #[tool(
+        name = "approve_crm_creation",
+        description = "Approve or reject only the exact CRM intent and hash bound to the human signed source message. No document arguments are accepted. Never call from an ordinary preparation or read request."
+    )]
+    async fn approve_crm_creation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_crm_creation",
+                "crm_creation_intent:approve",
+                "crm_creation_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_crm_update",
+        description = "Prepare full replacement of editable CRM opportunity fields and stage. First read get_crm_opportunity to bind the current version and preserve fields the human did not ask to change; omitted optional fields clear their values. Legal entity and business unit cannot change. Show the exact preview and confirmation command."
+    )]
+    async fn prepare_crm_update(
+        &self,
+        Parameters(input): Parameters<CrmTarget<CrmFields>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write("prepare_crm_update", "crm_update_intent:create", input)
+            .await)
+    }
+    #[tool(
+        name = "approve_crm_update",
+        description = "Approve or reject only the exact CRM intent and hash bound to the human signed source message. No document arguments are accepted. Never call from an ordinary preparation or read request."
+    )]
+    async fn approve_crm_update(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_crm_update",
+                "crm_update_intent:approve",
+                "crm_update_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_crm_followup",
+        description = "Prepare an immutable CRM follow-up note and resulting stage, next action and date at the current opportunity version. Use human-provided contact facts only. Recording won does not create a sales order. Present the exact returned confirmation command; preparation makes no business change."
+    )]
+    async fn prepare_crm_followup(
+        &self,
+        Parameters(input): Parameters<CrmTarget<CrmFollowup>>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write("prepare_crm_followup", "crm_followup_intent:create", input)
+            .await)
+    }
+    #[tool(
+        name = "approve_crm_followup",
+        description = "Approve or reject only the exact CRM intent and hash bound to the human signed source message. No document arguments are accepted. Never call from an ordinary preparation or read request."
+    )]
+    async fn approve_crm_followup(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_crm_followup",
+                "crm_followup_intent:approve",
+                "crm_followup_intent",
             )
             .await)
     }
@@ -3208,8 +3291,9 @@ fn validate_write_result(
         .get("resourceRefs")
         .and_then(Value::as_array)
         .ok_or_else(|| "Business draft response omitted its resource link".to_string())?;
-    let unlinked_count_intent = tool == "prepare_inventory_count_creation"
-        && result["documentType"] == "inventory_count_creation_intent"
+    let unlinked_count_intent = ((tool == "prepare_inventory_count_creation"
+        && result["documentType"] == "inventory_count_creation_intent")
+        || (tool == "prepare_crm_creation" && result["documentType"] == "crm_creation_intent"))
         && refs.is_empty()
         && result["item"]["id"]
             .as_str()
@@ -3239,6 +3323,7 @@ fn validate_write_result(
                     | "supplier-payment"
                     | "inventory-opening"
                     | "inventory-count"
+                    | "crm-opportunity"
             )
         ) || !valid_biz_uri(uri)
             || parsed.query().is_some()
@@ -3718,7 +3803,7 @@ mod tests {
         }
     }
 
-    fn production_config(base_url: Url, trace_id: Uuid) -> Config {
+    pub(super) fn production_config(base_url: Url, trace_id: Uuid) -> Config {
         Config {
             gateway_base_url: Url::parse("https://gateway.invalid/").expect("gateway"),
             business_api_base_url: Some(base_url),
@@ -3738,6 +3823,7 @@ mod tests {
             adapter: AdapterKind::Production,
             draft_write_enabled: true,
             chat_approval_enabled: true,
+            approval_scope: None,
         }
     }
 
@@ -3832,6 +3918,36 @@ mod tests {
     }
 
     #[test]
+    fn crm_tools_keep_signed_confirmation_arguments_out_of_model_control() {
+        let registered = BusinessReadMcp::tool_router().list_all();
+        for name in ["creation", "update", "followup"] {
+            let prepare = format!("prepare_crm_{name}");
+            let tool = registered
+                .iter()
+                .find(|t| t.name.as_ref() == prepare)
+                .unwrap();
+            assert_eq!(
+                tool.input_schema.get("additionalProperties"),
+                Some(&json!(false))
+            );
+            let approve = format!("approve_crm_{name}");
+            let tool = registered
+                .iter()
+                .find(|t| t.name.as_ref() == approve)
+                .unwrap();
+            assert!(tool
+                .input_schema
+                .get("properties")
+                .is_none_or(|v| v.as_object().is_some_and(|v| v.is_empty())));
+        }
+        let ctx = context();
+        let value = json!({"schemaVersion":1,"status":"ok","traceId":ctx.trace_id,"documentType":"crm_creation_intent","item":{"id":Uuid::new_v4(),"status":"draft"},"previewHash":"a".repeat(64),"resourceRefs":[]});
+        assert!(validate_write_result("prepare_crm_creation", &value, &ctx, 65536).is_ok());
+        assert!(validate_write_result("prepare_crm_update", &value, &ctx, 65536).is_err());
+        assert!(validate_write_result("prepare_crm_creation", &value, &ctx, 10).is_err());
+    }
+
+    #[test]
     fn count_tools_keep_confirmation_arguments_out_of_model_control() {
         let registered = BusinessReadMcp::tool_router().list_all();
         for name in ["creation", "submission", "posting", "cancellation"] {
@@ -3877,7 +3993,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 123);
+        assert_eq!(registered.len(), 129);
         for name in [
             "search_inventory_counts",
             "get_inventory_count",

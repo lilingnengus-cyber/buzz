@@ -1,5 +1,9 @@
 use super::*;
-const ORDINARY_SCOPES: [&str; 50] = [
+const ORDINARY_SCOPES: [&str; 54] = [
+    "crm:read",
+    "crm_creation_intent:create",
+    "crm_update_intent:create",
+    "crm_followup_intent:create",
     "inventory_count_creation_intent:create",
     "inventory_count_submission_intent:create",
     "inventory_count_posting_intent:create",
@@ -95,23 +99,31 @@ pub(super) async fn check(
             .fetch_one(pool)
             .await
             .unwrap();
-    assert_eq!(stored, 50);
+    assert_eq!(stored, 54);
     assert!(sqlx::query("UPDATE agent_read_delegations SET scopes=array_fill('inventory:read'::text,ARRAY[129]) WHERE id=$1").bind(issued.id).execute(pool).await.is_err());
     super::inventory_count_budget::check(pool, keys, user, binding).await;
     sqlx::query("DELETE FROM business_iam.principal_permissions WHERE principal_id=$1 AND permission_id=ANY($2)").bind(human).bind(inserted).execute(pool).await.unwrap();
-    for name in ["creation", "submission", "posting", "cancellation"] {
-        let scope = format!("inventory_count_{name}_intent:approve");
-        let kind = format!("inventory_count_{name}_intent");
+    for (family, name) in [
+        ("inventory_count", "creation"),
+        ("inventory_count", "submission"),
+        ("inventory_count", "posting"),
+        ("inventory_count", "cancellation"),
+        ("crm", "creation"),
+        ("crm", "update"),
+        ("crm", "followup"),
+    ] {
+        let scope = format!("{family}_{name}_intent:approve");
+        let kind = format!("{family}_{name}_intent");
         let permission:Uuid=sqlx::query_scalar("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability=$2 RETURNING permission_id").bind(human).bind(&scope).fetch_one(pool).await.unwrap();
         for (word, decision) in [("确认", "approve"), ("拒绝", "reject")] {
             let id = Uuid::new_v4();
             let trace = Uuid::new_v4();
             let channel = Uuid::new_v4().to_string();
-            let turn = format!("count-{name}-{decision}");
+            let turn = format!("{family}-{name}-{decision}");
             let hash = "c".repeat(64);
             let event = EventBuilder::new(
                 Kind::TextNote,
-                format!("{word} inventory-count-{name}-intent {id} v1 {hash}"),
+                format!("{word} {} {id} v1 {hash}", kind.replace('_', "-")),
             )
             .tags([Tag::custom(TagKind::Custom("h".into()), [channel.clone()])])
             .sign_with_keys(keys)
@@ -135,7 +147,7 @@ pub(super) async fn check(
                 .consume_agent_delegation(
                     &issued.token,
                     ConsumeAgentDelegationRequest {
-                        tool_name: format!("approve_inventory_count_{name}"),
+                        tool_name: format!("approve_{family}_{name}"),
                         required_scope: scope.clone(),
                         agent_id: "business-query-agent".into(),
                         agent_turn_id: turn.clone(),

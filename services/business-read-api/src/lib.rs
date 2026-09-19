@@ -3,6 +3,7 @@
 mod allocation_history;
 mod config;
 mod crm;
+mod crm_writes;
 mod financial_documents;
 mod inventory_count_previews;
 mod inventory_count_writes;
@@ -101,7 +102,13 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 66] = [
+const WRITE_TOOLS: [&str; 72] = [
+    "prepare_crm_creation",
+    "approve_crm_creation",
+    "prepare_crm_update",
+    "approve_crm_update",
+    "prepare_crm_followup",
+    "approve_crm_followup",
     "prepare_inventory_count_creation",
     "approve_inventory_count_creation",
     "prepare_inventory_count_submission",
@@ -816,6 +823,12 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_crm_creation" => Some("crm_creation_intent:create"),
+        "approve_crm_creation" => Some("crm_creation_intent:approve"),
+        "prepare_crm_update" => Some("crm_update_intent:create"),
+        "approve_crm_update" => Some("crm_update_intent:approve"),
+        "prepare_crm_followup" => Some("crm_followup_intent:create"),
+        "approve_crm_followup" => Some("crm_followup_intent:approve"),
         "prepare_inventory_count_creation" => Some("inventory_count_creation_intent:create"),
         "approve_inventory_count_creation" => Some("inventory_count_creation_intent:approve"),
         "prepare_inventory_count_submission" => Some("inventory_count_submission_intent:create"),

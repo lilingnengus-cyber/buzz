@@ -13,7 +13,13 @@ use sqlx::Row;
 use uuid::Uuid;
 
 const MAX_AGENT_SCOPES: usize = 128;
-const AGENT_SCOPES: [&str; 82] = [
+const AGENT_SCOPES: [&str; 88] = [
+    "crm_creation_intent:create",
+    "crm_creation_intent:approve",
+    "crm_update_intent:create",
+    "crm_update_intent:approve",
+    "crm_followup_intent:create",
+    "crm_followup_intent:approve",
     "crm:read",
     "inventory_count_creation_intent:create",
     "inventory_count_creation_intent:approve",
@@ -123,6 +129,9 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "crm-creation-intent" => ("crm_creation_intent", "crm_creation_intent:approve"),
+        "crm-update-intent" => ("crm_update_intent", "crm_update_intent:approve"),
+        "crm-followup-intent" => ("crm_followup_intent", "crm_followup_intent:approve"),
         "inventory-count-creation-intent" => (
             "inventory_count_creation_intent",
             "inventory_count_creation_intent:approve",
@@ -971,6 +980,9 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "crm-creation-intent",
+            "crm-update-intent",
+            "crm-followup-intent",
             "inventory-count-creation-intent",
             "inventory-count-submission-intent",
             "inventory-count-posting-intent",

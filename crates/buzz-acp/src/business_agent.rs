@@ -16,7 +16,10 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 51] = [
+const AGENT_SCOPES: [&str; 54] = [
+    "crm_creation_intent:create",
+    "crm_update_intent:create",
+    "crm_followup_intent:create",
     "crm:read",
     "inventory_count_creation_intent:create",
     "inventory_count_submission_intent:create",
@@ -76,6 +79,9 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "crm-creation-intent" => "crm_creation_intent:approve",
+        "crm-update-intent" => "crm_update_intent:approve",
+        "crm-followup-intent" => "crm_followup_intent:approve",
         "inventory-count-creation-intent" => "inventory_count_creation_intent:approve",
         "inventory-count-submission-intent" => "inventory_count_submission_intent:approve",
         "inventory-count-posting-intent" => "inventory_count_posting_intent:approve",
@@ -702,6 +708,15 @@ impl BusinessAgentHostConfig {
         }
         let mut mcp_env = vec![
             env("BUSINESS_AGENT_DELEGATION_TOKEN", issued.token),
+            env(
+                "BUSINESS_AGENT_APPROVAL_SCOPE",
+                issued
+                    .scopes
+                    .iter()
+                    .find(|scope| scope.ends_with(":approve"))
+                    .map(String::as_str)
+                    .unwrap_or(""),
+            ),
             env("BUSINESS_AGENT_ID", agent_id),
             env("BUSINESS_AGENT_TURN_ID", agent_turn_id),
             env("BUSINESS_AGENT_TRACE_ID", trace_id.to_string()),
@@ -894,7 +909,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 51);
+        assert_eq!(AGENT_SCOPES.len(), 54);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -1044,6 +1059,9 @@ mod tests {
             Some("inventory_opening:approve")
         );
         for (kind, scope) in [
+            ("crm-creation-intent", "crm_creation_intent:approve"),
+            ("crm-update-intent", "crm_update_intent:approve"),
+            ("crm-followup-intent", "crm_followup_intent:approve"),
             (
                 "inventory-count-creation-intent",
                 "inventory_count_creation_intent:approve",

@@ -14,6 +14,13 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "prepare_crm_creation",
+  "approve_crm_creation",
+  "prepare_crm_update",
+  "approve_crm_update",
+  "prepare_crm_followup",
+  "approve_crm_followup",
+
   "search_crm_opportunities",
   "get_crm_opportunity",
   "get_inventory_count_approval_preview",
@@ -327,6 +334,7 @@ try {
           { name: "BUSINESS_ANOMALY_ENABLED", value: "true" },
           { name: "BUSINESS_AGENT_DRAFT_WRITE_ENABLED", value: "true" },
           { name: "BUSINESS_CHAT_APPROVAL_ENABLED", value: "true" },
+          { name: "BUSINESS_AGENT_APPROVAL_SCOPE", value: process.env.BUSINESS_RUNTIME_APPROVAL_SCOPE ?? "" },
         ],
       },
     ],
@@ -373,7 +381,16 @@ try {
     .map((tool) => tool.function?.name ?? tool.name)
     .filter(Boolean)
     .sort();
-  assert.deepEqual(modelTools, expectedTools.sort());
+  const approvalScope = process.env.BUSINESS_RUNTIME_APPROVAL_SCOPE;
+  const approvalTool = approvalScope ? "approve_" + approvalScope.replace(/:approve$/, "").replace(/_intent$/, "") : null;
+  const expectedVisible = expectedTools.filter(qualifiedName => {
+    const name = qualifiedName.replace(/^business-read-mcp__/, "");
+    return approvalTool
+      ? name === approvalTool || !/^(approve|prepare|create|update)_/.test(name)
+      : !name.startsWith("approve_");
+  });
+  assert.deepEqual(modelTools, expectedVisible.sort());
+  assert(modelTools.length <= 128);
 
   console.log(
     JSON.stringify({
