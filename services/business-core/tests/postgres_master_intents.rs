@@ -14,6 +14,8 @@ mod iam;
 mod policies;
 #[path = "support/master_requester_access.rs"]
 mod requester;
+#[path = "support/master_status_intents.rs"]
+mod status_intents;
 #[path = "support/master_intent_waits.rs"]
 mod waits;
 
@@ -47,7 +49,11 @@ async fn call(
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 1000000).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap())
+    (
+        status,
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| json!({"body":String::from_utf8_lossy(&bytes)})),
+    )
 }
 fn vote(prepared: &Value) -> Value {
     json!({"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve","sourceBuzzEventId":Uuid::new_v4().simple().to_string().repeat(2),"sourceChannelId":"isolated-master-test"})
@@ -249,4 +255,5 @@ async fn master_intents_execute_atomically_under_current_policy() {
     requester::check(&pool, &app, actor, role, &entries).await;
     waits::check(&pool, &app, actor, &entries).await;
     iam::check(&pool, &app).await;
+    status_intents::check(&pool, &app, actor, &entries).await;
 }

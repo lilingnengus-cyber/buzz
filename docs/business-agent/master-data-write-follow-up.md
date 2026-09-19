@@ -313,3 +313,11 @@ ProductMasterService.change_status 抽出调用方事务可用的 change_status_
 product_guarded_status 完整 B3 回归验证 SKU 预览后新增采购草稿导致 StalePreview、篡改快照拒绝、取消阻塞订单后执行成功、重复请求返回相同版本，以及相同键不同快照 IdempotencyConflict。最后真实启用恢复。已有 Core guarded status、采购/收货和反向交错继续通过。严格 Clippy、格式与差异检查通过；日志 /tmp/product-guarded-status.log、/tmp/product-guarded-status-clippy.log，独立数据库端口 55439。
 
 本批未部署，未开放聊天端启停工具；这里的领域快照保护不替代审批授权。持久化启停意图、审批事务调用、委托能力、Gateway/MCP/Host 和端到端验收仍须完成，全部业务目标保持不变。
+
+## 持久化启停意图与 Core 审批事务接入
+
+新增 0058_master_status_intents：将 core_master_status_intent/product_master_status_intent 纳入不可变意图、审批请求及委托类型约束，登记四项 create/approve 能力，不自动授予权限或新增审批策略。Core 意图解析严格匹配 change_status 与 status 类型；审批按与普通状态变更一致的目标 advisory 锁顺序，再调用同一事务中的 change_status_on，沿用当前策略、创建者/审批者权限、快照、有效期与版本检查。
+
+master_status_intents_atomic 通过真实 Core HTTP 路由验证客户和 SKU 各自禁用/启用，确认只能使用已保存指令，夹带 command 返回 422，重复确认被拒绝，数据库状态正确。有启用商品的品牌停用失败，品牌保持 active，审批请求和投票计数均不增加。原创建/更新、策略、撤权、跨人审批、锁等待及单连接事务回归继续通过。首次测试因测试客户端将 Axum 文本错误体强制解析 JSON 而失败；客户端现保留文本错误体，最终新库全部通过。严格 Clippy、格式与 diff 检查通过，日志 /tmp/master-status-intents-{final,atomic,clippy-final}.log，隔离 PostgreSQL 55439。
+
+本批未部署。Gateway/Read API 的签名委托、MCP 与 Host 启停指令仍未接入，不能把 Core HTTP 通过等同真实聊天可用；完整业务域覆盖及 Windows 实机验收继续未完成。

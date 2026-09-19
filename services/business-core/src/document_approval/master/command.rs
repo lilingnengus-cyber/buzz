@@ -12,11 +12,15 @@ pub(super) enum Command {
 impl Command {
     pub(super) fn parse(kind: &str, value: Value) -> Result<Self, StoreError> {
         let command = match kind {
-            "core_master_creation_intent" | "core_master_update_intent" => Self::Core(
+            "core_master_creation_intent"
+            | "core_master_update_intent"
+            | "core_master_status_intent" => Self::Core(
                 serde_json::from_value(value)
                     .map_err(|_| StoreError::Invalid("core master command".into()))?,
             ),
-            "product_master_creation_intent" | "product_master_update_intent" => Self::Product(
+            "product_master_creation_intent"
+            | "product_master_update_intent"
+            | "product_master_status_intent" => Self::Product(
                 serde_json::from_value(value)
                     .map_err(|_| StoreError::Invalid("product master command".into()))?,
             ),
@@ -53,6 +57,16 @@ impl Command {
                 document_id,
                 command,
             }) => Some((&command.resource_type, document_id)),
+            Self::Core(MasterCommand::ChangeStatus {
+                resource_type,
+                document_id,
+                ..
+            })
+            | Self::Product(MasterCommand::ChangeStatus {
+                resource_type,
+                document_id,
+                ..
+            }) => Some((resource_type, document_id)),
             _ => None,
         };
         if let Some((kind, id)) = target {
@@ -140,6 +154,47 @@ impl Command {
     ) -> Result<Value, StoreError> {
         let key = format!("agent-master:{request}");
         match self {
+            Self::Core(MasterCommand::ChangeStatus {
+                resource_type,
+                document_id,
+                command,
+            }) => {
+                let kind = resource_type.parse().map_err(domain_error)?;
+                serde_json::to_value(
+                    CoreMasterDataService::new(store.clone())
+                        .change_status_on(
+                            tx,
+                            context,
+                            (kind, *document_id),
+                            &key,
+                            command,
+                            Some(snapshot),
+                        )
+                        .await
+                        .map_err(domain_error)?,
+                )
+            }
+            Self::Product(MasterCommand::ChangeStatus {
+                resource_type,
+                document_id,
+                command,
+            }) => {
+                let kind = resource_type.parse().map_err(domain_error)?;
+                serde_json::to_value(
+                    ProductMasterService::new(store.clone())
+                        .change_status_on(
+                            tx,
+                            context,
+                            (kind, *document_id),
+                            &key,
+                            command,
+                            Some(snapshot),
+                        )
+                        .await
+                        .map_err(domain_error)?,
+                )
+            }
+
             Self::Core(c) => {
                 let (id, command) = match c {
                     MasterCommand::Create { command } => (None, command),
