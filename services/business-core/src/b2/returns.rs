@@ -248,6 +248,7 @@ impl ReturnService {
             None,
         )
         .await?;
+        super::return_scope::check_source(&self.store, actor, true, input.source_id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -258,7 +259,7 @@ impl ReturnService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let shipment=sqlx::query("SELECT shipment_number,sales_order_id,legal_entity_id,warehouse_id,customer_id,currency::text,status FROM shipments WHERE id=$1 FOR SHARE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        let shipment=sqlx::query("SELECT shipment_number,sales_order_id,legal_entity_id,warehouse_id,customer_id,currency::text,status FROM shipments WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
         if shipment.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "sales return requires a confirmed shipment".into(),
@@ -369,6 +370,7 @@ impl ReturnService {
             None,
         )
         .await?;
+        super::return_scope::check_source(&self.store, actor, false, input.source_id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -379,7 +381,7 @@ impl ReturnService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let receipt=sqlx::query("SELECT purchase_order_id,legal_entity_id,warehouse_id,supplier_id,currency::text,status FROM goods_receipts WHERE id=$1 FOR SHARE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        let receipt=sqlx::query("SELECT purchase_order_id,legal_entity_id,warehouse_id,supplier_id,currency::text,status FROM goods_receipts WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
         if receipt.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "purchase return requires a confirmed goods receipt".into(),
@@ -485,6 +487,7 @@ impl ReturnService {
             None,
         )
         .await?;
+        super::return_scope::check_return(&self.store, actor, true, id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -547,7 +550,7 @@ impl ReturnService {
         let status = balance_status(receivable.get("settled_amount"), new_open);
         sqlx::query("UPDATE trade_receivables SET original_amount=$2,open_amount=$3,status=$4,trace_id=$5 WHERE id=$1").bind(ret.get::<Uuid,_>("receivable_id")).bind(new_original).bind(new_open).bind(status).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO trade_receivable_events(id,receivable_id,event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,'sales_return_reduced',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(ret.get::<Uuid,_>("receivable_id")).bind(sales_total).bind(json!({"salesReturnId":id})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE sales_returns SET status='confirmed',inspection_status='pending',sales_amount=$2,cost_amount=$3,confirmed_by_user_id=$4,confirmed_at=now(),trace_id=$5 WHERE id=$1").bind(id).bind(money(sales_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_returns SET version=version+1,updated_at=now(),status='confirmed',inspection_status='pending',sales_amount=$2,cost_amount=$3,confirmed_by_user_id=$4,confirmed_at=now(),trace_id=$5 WHERE id=$1").bind(id).bind(money(sales_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
         return_event(&mut tx,"sales",id,"confirmed",version,(actor,trace_id),json!({"salesAmount":money(sales_total).to_string(),"costAmount":money(cost_total).to_string()})).await?;
         record(
@@ -600,6 +603,7 @@ impl ReturnService {
             None,
         )
         .await?;
+        super::return_scope::check_return(&self.store, actor, false, id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -692,7 +696,7 @@ impl ReturnService {
         let status = balance_status(payable.get("settled_amount"), new_open);
         sqlx::query("UPDATE trade_payables SET original_amount=$2,open_amount=$3,status=$4,trace_id=$5 WHERE id=$1").bind(ret.get::<Uuid,_>("payable_id")).bind(new_original).bind(new_open).bind(status).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO trade_payable_events(id,payable_id,event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,'purchase_return_reduced',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(ret.get::<Uuid,_>("payable_id")).bind(gross_total).bind(json!({"purchaseReturnId":id})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE purchase_returns SET status='confirmed',net_amount=$2,tax_amount=$3,gross_amount=$4,inventory_cost_amount=$5,confirmed_by_user_id=$6,confirmed_at=now(),trace_id=$7 WHERE id=$1").bind(id).bind(money(net_total)).bind(money(tax_total)).bind(money(gross_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE purchase_returns SET version=version+1,updated_at=now(),status='confirmed',net_amount=$2,tax_amount=$3,gross_amount=$4,inventory_cost_amount=$5,confirmed_by_user_id=$6,confirmed_at=now(),trace_id=$7 WHERE id=$1").bind(id).bind(money(net_total)).bind(money(tax_total)).bind(money(gross_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
         return_event(&mut tx,"purchase",id,"confirmed",version,(actor,trace_id),json!({"grossAmount":money(gross_total).to_string(),"inventoryCostAmount":money(cost_total).to_string()})).await?;
         record(
@@ -757,7 +761,7 @@ impl ReturnService {
                 (
                 "SELECT legal_entity_id,warehouse_id,customer_id partner_id FROM sales_returns WHERE id=$1",
                 "SELECT return_number,status,version FROM sales_returns WHERE id=$1 FOR UPDATE",
-                "UPDATE sales_returns SET status='cancelled',version=$2,trace_id=$3 WHERE id=$1",
+                "UPDATE sales_returns SET status='cancelled',version=$2,updated_at=now(),trace_id=$3 WHERE id=$1",
                 "shipment:reverse",
                 "sales_return:cancel",
                 "sales_return_cancelled",
@@ -768,7 +772,7 @@ impl ReturnService {
                 (
                 "SELECT legal_entity_id,warehouse_id,supplier_id partner_id FROM purchase_returns WHERE id=$1",
                 "SELECT return_number,status,version FROM purchase_returns WHERE id=$1 FOR UPDATE",
-                "UPDATE purchase_returns SET status='cancelled',version=$2,trace_id=$3 WHERE id=$1",
+                "UPDATE purchase_returns SET status='cancelled',version=$2,updated_at=now(),trace_id=$3 WHERE id=$1",
                 "goods_receipt:reverse",
                 "purchase_return:cancel",
                 "purchase_return_cancelled",
@@ -801,6 +805,7 @@ impl ReturnService {
         if !allowed {
             return Err(DomainError::NotFoundOrForbidden);
         }
+        super::return_scope::check_return(&self.store, actor, side == "sales", id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =

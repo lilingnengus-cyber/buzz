@@ -99,6 +99,7 @@ impl ReturnDispositionService {
             None,
         )
         .await?;
+        super::return_scope::check_return(&self.store, actor, true, id).await?;
         if ret.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "only confirmed sales returns can be inspected".into(),
@@ -141,6 +142,7 @@ impl ReturnDispositionService {
             None,
         )
         .await?;
+        super::return_scope::check_return(&self.store, actor, true, id).await?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
@@ -233,7 +235,7 @@ impl ReturnDispositionService {
             scrap_total += scrap_cost;
         }
         let version = input.expected_version + 1;
-        sqlx::query("UPDATE sales_returns SET inspection_status='completed',inspection_date=$2,inspection_note=$3,scrap_cost_amount=$4,inspected_by_user_id=$5,inspected_at=now(),version=$6,trace_id=$7 WHERE id=$1").bind(id).bind(input.inspection_date).bind(&input.inspection_note).bind(money(scrap_total)).bind(actor).bind(version).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_returns SET updated_at=now(),inspection_status='completed',inspection_date=$2,inspection_note=$3,scrap_cost_amount=$4,inspected_by_user_id=$5,inspected_at=now(),version=$6,trace_id=$7 WHERE id=$1").bind(id).bind(input.inspection_date).bind(&input.inspection_note).bind(money(scrap_total)).bind(actor).bind(version).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO sales_return_events(id,sales_return_id,event_type,return_version,payload,actor_user_id,trace_id) VALUES($1,$2,'inspected',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(id).bind(version).bind(json!({"scrapCostAmount":money(scrap_total).to_string()})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         record(
             &mut tx,
@@ -341,7 +343,7 @@ impl ReturnDispositionService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        crate::b3::common::authorize(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -352,6 +354,7 @@ impl ReturnDispositionService {
             None,
         )
         .await?;
+        super::return_scope::check_return(&self.store, actor, false, id).await?;
         let command = if action == "dispatch" {
             "purchase_return:dispatch"
         } else {
@@ -384,7 +387,7 @@ impl ReturnDispositionService {
                     "purchase return is not ready for dispatch".into(),
                 ));
             }
-            sqlx::query("UPDATE purchase_returns SET logistics_status='dispatched',dispatch_date=$2,carrier=$3,tracking_number=$4,dispatched_by_user_id=$5,dispatched_at=now(),version=$6,trace_id=$7 WHERE id=$1").bind(id).bind(date).bind(carrier.trim()).bind(tracking.trim()).bind(actor).bind(expected+1).bind(trace_id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE purchase_returns SET updated_at=now(),logistics_status='dispatched',dispatch_date=$2,carrier=$3,tracking_number=$4,dispatched_by_user_id=$5,dispatched_at=now(),version=$6,trace_id=$7 WHERE id=$1").bind(id).bind(date).bind(carrier.trim()).bind(tracking.trim()).bind(actor).bind(expected+1).bind(trace_id).execute(&mut *tx).await?;
             (
                 "dispatched",
                 "dispatched",
@@ -399,7 +402,7 @@ impl ReturnDispositionService {
                     "supplier acknowledgment cannot precede dispatch".into(),
                 ));
             }
-            sqlx::query("UPDATE purchase_returns SET logistics_status='supplier_acknowledged',supplier_acknowledged_date=$2,supplier_acknowledgment_note=$3,supplier_acknowledged_by_user_id=$4,supplier_acknowledged_at=now(),version=$5,trace_id=$6 WHERE id=$1").bind(id).bind(date).bind(note).bind(actor).bind(expected+1).bind(trace_id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE purchase_returns SET updated_at=now(),logistics_status='supplier_acknowledged',supplier_acknowledged_date=$2,supplier_acknowledgment_note=$3,supplier_acknowledged_by_user_id=$4,supplier_acknowledged_at=now(),version=$5,trace_id=$6 WHERE id=$1").bind(id).bind(date).bind(note).bind(actor).bind(expected+1).bind(trace_id).execute(&mut *tx).await?;
             (
                 "supplier_acknowledged",
                 "supplier_acknowledged",

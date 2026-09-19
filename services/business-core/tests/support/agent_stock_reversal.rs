@@ -1,7 +1,7 @@
 use super::*;
 use sqlx::Row;
 
-async fn confirm(app: &Router, actor: Uuid, kind: &str, id: &str) {
+pub(super) async fn confirm(app: &Router, actor: Uuid, kind: &str, id: &str) {
     let (_, preview) = call(
         app,
         actor,
@@ -272,6 +272,13 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                     .await
             }
             .unwrap();
+            super::return_concurrency_checks::check(
+                store,
+                f,
+                kind == "shipment",
+                &input_for_race(&id, &preview),
+            )
+            .await;
             Some(returned.id)
         } else {
             None
@@ -390,4 +397,8 @@ async fn race_balance_change(
         .unwrap();
     assert_eq!(status, StatusCode::CONFLICT, "{result}");
     assert_ne!(result["executed"], true);
+}
+
+fn input_for_race(id: &str, preview: &Value) -> business_core::b2::CreateReturn {
+    serde_json::from_value(json!({"sourceId":id,"returnDate":"2026-09-19","reasonCode":"concurrency test","lines":[{"sourceLineId":preview["document"]["lines"][0]["id"],"quantity":"1"}]})).unwrap()
 }

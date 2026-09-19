@@ -8,6 +8,7 @@ mod inventory_count_api;
 pub mod model;
 mod return_disposition;
 mod return_disposition_api;
+mod return_scope;
 mod returns;
 mod sales;
 mod settlement;
