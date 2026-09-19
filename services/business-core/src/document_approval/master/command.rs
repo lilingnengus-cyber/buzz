@@ -90,6 +90,46 @@ impl Command {
         }
         .map_err(domain_error)
     }
+    pub(super) fn creation(&self) -> bool {
+        matches!(
+            self,
+            Self::Core(MasterCommand::Create { .. }) | Self::Product(MasterCommand::Create { .. })
+        )
+    }
+    pub(super) async fn grant_requester(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        requester: Uuid,
+        approver: Uuid,
+        result: &Value,
+    ) -> Result<(), StoreError> {
+        let kind = result["resourceType"]
+            .as_str()
+            .ok_or(StoreError::Conflict)?;
+        let (table, column) = match kind {
+            "legal_entity" => ("business_legal_entity_scopes", "legal_entity_id"),
+            "business_unit" => ("business_unit_scopes", "business_unit_id"),
+            "customer" => ("business_customer_scopes", "customer_id"),
+            "supplier" => ("business_supplier_scopes", "supplier_id"),
+            "warehouse" => ("business_warehouse_scopes", "warehouse_id"),
+            "brand" => ("business_brand_scopes", "brand_id"),
+            _ => return Ok(()),
+        };
+        let id = result["id"]
+            .as_str()
+            .and_then(|v| Uuid::parse_str(v).ok())
+            .ok_or(StoreError::Conflict)?;
+        // Only the newly created object: existing parent permissions are never restored.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "INSERT INTO {table}(enterprise_user_id,{column},granted_by) VALUES($1,$2,$3)"
+        )))
+        .bind(requester)
+        .bind(id)
+        .bind(approver)
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
+    }
     pub(super) async fn save_on(
         &self,
         store: &PgStore,

@@ -45,6 +45,39 @@ pub async fn check(
     let (status, result) = submit(app, other, &prepared).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["executed"], true);
+    let brand_id = Uuid::parse_str(result["createdDocument"]["id"].as_str().unwrap()).unwrap();
+    for reader in [actor, other] {
+        let scopes = PgStore::new(pool.clone()).snapshot(reader).await.unwrap();
+        assert!(scopes.scopes.brand_ids.contains(&brand_id));
+        let (status, detail) = call(
+            app,
+            reader,
+            "GET",
+            &format!("/v1/agent-product-master-records/brand/{brand_id}"),
+            Value::Null,
+            "",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{detail}");
+    }
+    let revoked = brand(app, actor).await;
+    sqlx::query("DELETE FROM business_user_roles WHERE enterprise_user_id=$1 AND role_id=$2")
+        .bind(actor)
+        .bind(role)
+        .execute(pool)
+        .await
+        .unwrap();
+    let before = totals(pool).await;
+    assert_eq!(submit(app, other, &revoked).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(totals(pool).await, before);
+    sqlx::query(
+        "INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by) VALUES($1,$2,$1)",
+    )
+    .bind(actor)
+    .bind(role)
+    .execute(pool)
+    .await
+    .unwrap();
 
     // Original thresholds are retained; strengthened current thresholds take effect.
     sqlx::query("UPDATE business_approval_policies SET allow_self_approval=true,min_approvers=2 WHERE action_code='business_product_master:manage'").execute(pool).await.unwrap();

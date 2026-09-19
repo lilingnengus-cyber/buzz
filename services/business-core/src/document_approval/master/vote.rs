@@ -125,11 +125,25 @@ pub(super) async fn execute(
     let count = prior.len() as i64 + i64::from(input.decision == ApprovalDecision::Approve);
     let execute = input.decision == ApprovalDecision::Approve && count >= i64::from(minimum);
     let created = if execute {
-        Some(
+        let grant_requester = creator != actor && command.creation();
+        if grant_requester {
+            deadlines.push(authority::permission(&mut tx, creator, command.action()).await?);
+            if command.preview_on(store, &mut tx, creator).await? != snapshot {
+                return Err(StoreError::Conflict);
+            }
+        }
+        let result = command
+            .save_on(store, &mut tx, context, request, &snapshot)
+            .await?;
+        if grant_requester {
             command
-                .save_on(store, &mut tx, context, request, &snapshot)
-                .await?,
-        )
+                .grant_requester(&mut tx, creator, actor, &result)
+                .await?;
+            sqlx::query("INSERT INTO business_core_audit_events(trace_id,actor_user_id,operation,target_type,target_id,details) VALUES($1,$2,'agent_master_requester_access',$3,$4,$5)")
+                .bind(trace).bind(actor).bind(result["resourceType"].as_str()).bind(result["id"].as_str())
+                .bind(json!({"requesterUserId":creator,"requestId":request})).execute(&mut *tx).await?;
+        }
+        Some(result)
     } else {
         None
     };

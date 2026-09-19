@@ -12,6 +12,8 @@ use uuid::Uuid;
 mod iam;
 #[path = "support/master_intent_policies.rs"]
 mod policies;
+#[path = "support/master_requester_access.rs"]
+mod requester;
 #[path = "support/master_intent_waits.rs"]
 mod waits;
 
@@ -244,6 +246,7 @@ async fn master_intents_execute_atomically_under_current_policy() {
         .await;
     assert!(delete.is_err());
     policies::check(&pool, &app, actor, role, &entries).await;
+    requester::check(&pool, &app, actor, role, &entries).await;
     waits::check(&pool, &app, actor, &entries).await;
     iam::check(&pool, &app).await;
 }
