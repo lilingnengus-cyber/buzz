@@ -733,13 +733,20 @@ async fn validate_master_data(
     tx: &mut Transaction<'_, Postgres>,
     input: &CreatePurchaseOrder,
 ) -> Result<Option<i32>, DomainError> {
-    let supplier=sqlx::query("SELECT payment_terms_days FROM business_suppliers WHERE id=$1 AND legal_entity_id=$2 AND business_unit_id=$3 AND status='active'").bind(input.supplier_id).bind(input.legal_entity_id).bind(input.business_unit_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    // Hold status checks through draft insertion/replacement and recheck after waits.
+    sqlx::query("SELECT e.id FROM business_legal_entities e JOIN business_units u ON u.legal_entity_id=e.id WHERE e.id=$1 AND u.id=$2 AND e.status='active' AND u.status='active' FOR SHARE OF e,u")
+        .bind(input.legal_entity_id).bind(input.business_unit_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    let supplier=sqlx::query("SELECT payment_terms_days FROM business_suppliers WHERE id=$1 AND legal_entity_id=$2 AND business_unit_id=$3 AND status='active' FOR SHARE").bind(input.supplier_id).bind(input.legal_entity_id).bind(input.business_unit_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     for line in &input.lines {
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_warehouses w ON w.id=$2 WHERE s.id=$1 AND s.status='active' AND p.status='active' AND p.base_uom_id=$3 AND w.status='active' AND w.legal_entity_id=$4)").bind(line.sku_id).bind(line.warehouse_id).bind(line.unit_of_measure_id).bind(input.legal_entity_id).fetch_one(&mut **tx).await?;
-        if !valid {
-            return Err(DomainError::Invalid(
-                "UOM_CONVERSION_NOT_SUPPORTED or inactive SKU/warehouse".into(),
-            ));
+        let record=sqlx::query("SELECT p.brand_id FROM business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_warehouses w ON w.id=$2 JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories c ON c.id=p.category_id WHERE s.id=$1 AND s.status='active' AND p.status='active' AND p.base_uom_id=$3 AND w.status='active' AND w.legal_entity_id=$4 AND u.status='active' AND c.status='active' FOR SHARE OF s,p,w,u,c")
+            .bind(line.sku_id).bind(line.warehouse_id).bind(line.unit_of_measure_id).bind(input.legal_entity_id).fetch_optional(&mut **tx).await?
+            .ok_or_else(|| DomainError::Invalid("UOM_CONVERSION_NOT_SUPPORTED or inactive SKU/warehouse/parent".into()))?;
+        if let Some(brand) = record.get::<Option<Uuid>, _>("brand_id") {
+            sqlx::query("SELECT id FROM business_brands WHERE id=$1 AND status='active' FOR SHARE")
+                .bind(brand)
+                .fetch_optional(&mut **tx)
+                .await?
+                .ok_or(DomainError::NotFoundOrForbidden)?;
         }
     }
     Ok(supplier.get("payment_terms_days"))

@@ -209,3 +209,11 @@ master_order_refs_after 中五类停用先提交场景均在真实行锁等待�
 新库 master_order_parents_after 中九类资料（客户、业务单元、仓库、SKU、产品、法人、计量单位、分类、品牌）的停用等待场景全部拒绝且无订单残留，客户反向交错继续通过。master_order_parents_b2 的完整 B2 回归和严格 Clippy 通过，日志 `/tmp/master-order-parents-{before,after,b2,clippy}.log`。
 
 尚未部署。销售明细覆盖字段的额外归属、采购/库存等入口和状态意图仍需继续核对，不能用本次九类创建引用测试代替所有业务操作验证。Windows 运行 35471308524 最后检查仍在原生 sidecar 编译。
+
+## 采购草稿引用保护
+
+真实 PostgreSQL 回归 master_purchase_status_before 复现供应商在等待期间停用后仍创建采购草稿。采购创建/草稿替换共用校验现已对法人、业务单元、供应商、仓库、SKU、产品、基础计量单位、分类及可选品牌持共享锁并检查 active；联查改为实际行锁，等待后重新判定状态。无品牌的产品保留支持。
+
+postgres_b3 中新增九类实际锁等待用例：停用先提交后草稿拒绝且采购订单数保持 0，随后恢复测试资料状态并继续原采购/收货/成本/应付及并发闭环。master_purchase_status_final 全部通过，严格 Clippy、格式及差异检查通过。日志 `/tmp/master-purchase-status-{before,after,final,clippy}.log`。
+
+本批未部署。采购反向停用业务阻塞、确认及后续库存引用仍需覆盖；不等于助手启停已可用。Windows 同一运行 35471308524 已成功完成 Build sidecars，进入 Build Windows NSIS installer (unsigned)。

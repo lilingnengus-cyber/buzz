@@ -1,3 +1,5 @@
+#[path = "postgres_b3/master_status.rs"]
+mod master_status;
 use business_core::{
     b2::{
         model::{
@@ -28,6 +30,7 @@ mod concurrency;
 mod stock_reversal;
 use stock_reversal::{concurrent_inventory_receipts, concurrent_over_receipt, reversible_receipt};
 
+#[derive(Clone)]
 struct Fixture {
     actor: Uuid,
     legal_entity: Uuid,
@@ -52,6 +55,7 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
     let store = PgStore::new(pool.clone());
     store.migrate().await.unwrap();
     let fixture = seed(&pool).await;
+    master_status::check(&pool, &store, &fixture).await;
     let date = NaiveDate::from_ymd_opt(2026, 8, 21).unwrap();
     let purchasing = PurchasingService::new(store.clone(), "PO".into(), 30);
     let receiving =
