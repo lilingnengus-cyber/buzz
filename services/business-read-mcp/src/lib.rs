@@ -1869,7 +1869,7 @@ impl BusinessReadMcp {
 
     #[tool(
         name = "search_business_master_data",
-        description = "Read accessible active customers, suppliers, SKUs, warehouses, units, legal entities, business units or brands by literal name/code. Read only. Use returned IDs for drafts; never invent IDs. Read all pages before assuming a unique match. Ask the user to resolve multiple matches or missing warehouse/unit choices."
+        description = "Read accessible active customers, suppliers, products, product categories, SKUs, product-specific unit conversions, warehouses, units, legal entities, business units or brands by literal name/code. Read only. Use returned IDs for drafts; never invent IDs. Read all pages before assuming a unique match. Ask the user to resolve multiple matches or missing warehouse/unit choices."
     )]
     async fn search_business_master_data(
         &self,

@@ -67,6 +67,7 @@ pub(super) struct ProductCreation {
     product_id: Option<Uuid>,
     unit_of_measure_id: Option<Uuid>,
     barcode: Option<String>,
+    /// Required for unit_of_measure: integer 0 through 6. Ask the human when absent.
     precision_scale: Option<i16>,
     allow_zero_cost: Option<bool>,
     /// Exact positive decimal string, at most eight fractional digits; never a floating-point number.

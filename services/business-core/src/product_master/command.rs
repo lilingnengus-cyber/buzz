@@ -389,6 +389,24 @@ fn effective_fields(v: &SaveProductMasterData, kind: ProductMasterType) -> Value
 mod tests {
     use super::*;
     #[test]
+    fn unit_precision_must_be_explicit_and_bounded() {
+        for (precision, valid) in [
+            (None, false),
+            (Some(-1), false),
+            (Some(0), true),
+            (Some(6), true),
+            (Some(7), false),
+        ] {
+            let input: SaveProductMasterData = serde_json::from_value(json!({
+                "resourceType":"unit_of_measure","code":"EA","name":"Each","precisionScale":precision
+            })).unwrap();
+            assert_eq!(
+                validate(&input, ProductMasterType::UnitOfMeasure, false).is_ok(),
+                valid
+            );
+        }
+    }
+    #[test]
     fn conversion_preview_rejects_silent_rounding_and_overflow() {
         for (factor, valid) in [
             ("0.33333333", true),

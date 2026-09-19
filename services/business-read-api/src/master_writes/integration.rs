@@ -1,4 +1,6 @@
 use super::*;
+#[path = "lookup_test.rs"]
+mod lookup_test;
 // Optional isolated-test response corpus for the downstream MCP validator.
 fn export(tool: &str, trace: Uuid, result: &Value) {
     use std::io::Write;
@@ -29,6 +31,9 @@ async fn create(
     let prepared = value(forward(core, &tool, fields.clone(), &c, &authorized).await).await;
     export(&tool, c.trace_id, &prepared);
     assert!(prepared["document"]["current"].is_null());
+    if fields["resourceType"] == "unit_of_measure" {
+        assert_eq!(prepared["document"]["effectiveFields"]["precisionScale"], 0);
+    }
     let replay = value(forward(core, &tool, fields, &c, &authorized).await).await;
     assert_eq!(prepared["item"]["id"], replay["item"]["id"]);
     let tool = format!("approve_{family}_master_creation");
@@ -79,7 +84,7 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
     .execute(&pool)
     .await
     .unwrap();
-    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage'),($1,'business_product_master:manage')").bind(role).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage'),($1,'business_product_master:manage'),($1,'business_master_data:read')").bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_approval_policies(action_code,required_permission,eligible_role_keys,min_approvers,allow_self_approval) VALUES('business_master_data:manage','business_master_data:manage',ARRAY['master_adapter'],1,true),('business_product_master:manage','business_product_master:manage',ARRAY['master_adapter'],1,true)").execute(&pool).await.unwrap();
     let config = business_core::Config::from_env().unwrap();
     let router = business_core::router(business_core::AppState::new(store, &config));
@@ -322,5 +327,6 @@ async fn real_core_master_adapter_preserves_fields_and_enforces_intersections() 
     assert!(zero_cost);
     let completed: (i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM business_document_approval_requests WHERE status='executed'),(SELECT count(*) FROM business_document_approval_votes),(SELECT count(*) FROM business_core_audit_events WHERE operation IN ('CORE_MASTER_DATA_SAVED','PRODUCT_MASTER_DATA_SAVED'))").fetch_one(&pool).await.unwrap();
     assert_eq!(completed, (24, 24, 24));
+    lookup_test::check(&core, &pool, actor, brand).await;
     server.abort();
 }

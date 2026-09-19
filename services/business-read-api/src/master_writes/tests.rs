@@ -38,6 +38,7 @@ async fn value(response: Response) -> Value {
     let body = axum::body::to_bytes(response.into_body(), 131072)
         .await
         .unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     let value: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status, StatusCode::OK, "{value}");
     value

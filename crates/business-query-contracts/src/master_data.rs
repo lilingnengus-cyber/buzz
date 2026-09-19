@@ -16,6 +16,9 @@ pub enum MasterDataKind {
     Warehouse,
     UnitOfMeasure,
     Brand,
+    Product,
+    ProductCategory,
+    UomConversion,
 }
 
 impl MasterDataKind {
@@ -30,6 +33,9 @@ impl MasterDataKind {
             Self::Warehouse => "warehouse",
             Self::UnitOfMeasure => "unit_of_measure",
             Self::Brand => "brand",
+            Self::Product => "product",
+            Self::ProductCategory => "product_category",
+            Self::UomConversion => "uom_conversion",
         }
     }
 }
@@ -58,7 +64,19 @@ fn default_master_limit() -> u32 {
 }
 impl ValidateInput for SearchMasterDataInput {
     fn validate_and_normalize(&mut self, _today: NaiveDate) -> Result<(), ValidationError> {
-        normalize_optional(&mut self.query)?;
+        // Names are literal data, not identifiers: conversion labels contain '/',
+        // and real business names may contain parentheses or wildcard characters.
+        // Core uses bound strpos operands, so these never become SQL patterns.
+        if let Some(query) = &mut self.query {
+            let trimmed = query.trim();
+            if trimmed.is_empty()
+                || trimmed.chars().count() > MAX_TEXT_CHARS
+                || trimmed.chars().any(char::is_control)
+            {
+                return Err(ValidationError::UnsafeText);
+            }
+            *query = trimmed.to_owned();
+        }
         if self.offset > 100_000 {
             return Err(ValidationError::InvalidCursor);
         }
@@ -72,6 +90,28 @@ impl ValidateInput for SearchMasterDataInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn names_are_bounded_literals_including_conversion_labels() {
+        for query in ["产品 / 箱", "客户（杭州）", "%", "O'Reilly", "_", "a\nb"] {
+            let mut input: SearchMasterDataInput =
+                serde_json::from_value(serde_json::json!({"resourceType":"product","query":query}))
+                    .unwrap();
+            assert_eq!(
+                input
+                    .validate_and_normalize(Utc::now().date_naive())
+                    .is_ok(),
+                !query.contains('\n')
+            );
+        }
+    }
+    #[test]
+    fn product_catalog_kinds_have_fixed_core_paths() {
+        for kind in ["product", "product_category", "uom_conversion"] {
+            let input: SearchMasterDataInput =
+                serde_json::from_value(serde_json::json!({"resourceType":kind})).unwrap();
+            assert_eq!(input.resource_type.as_str(), kind);
+        }
+    }
     #[test]
     fn rejects_arbitrary_resources_and_unbounded_searches() {
         assert!(serde_json::from_value::<SearchMasterDataInput>(

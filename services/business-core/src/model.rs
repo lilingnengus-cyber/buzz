@@ -18,6 +18,7 @@ pub enum ResourceType {
     Customer,
     Supplier,
     Product,
+    UomConversion,
     Sku,
     Salesperson,
 }
@@ -36,6 +37,7 @@ impl ResourceType {
             Self::Customer => "customer",
             Self::Supplier => "supplier",
             Self::Product => "product",
+            Self::UomConversion => "uom_conversion",
             Self::Sku => "sku",
             Self::Salesperson => "salesperson",
         }
@@ -58,6 +60,7 @@ impl FromStr for ResourceType {
             "customer" => Ok(Self::Customer),
             "supplier" => Ok(Self::Supplier),
             "product" => Ok(Self::Product),
+            "uom_conversion" => Ok(Self::UomConversion),
             "sku" => Ok(Self::Sku),
             "salesperson" => Ok(Self::Salesperson),
             _ => Err("unsupported resourceType".into()),
