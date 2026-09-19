@@ -16,7 +16,14 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 33] = [
+const AGENT_SCOPES: [&str; 40] = [
+    "sales_return:create",
+    "purchase_return:create",
+    "sales_return_inspection_intent:create",
+    "purchase_return_dispatch_intent:create",
+    "purchase_return_acknowledgment_intent:create",
+    "sales_return:read",
+    "purchase_return:read",
     "shipment_reversal_intent:create",
     "goods_receipt_reversal_intent:create",
     "inventory_opening_reversal_intent:create",
@@ -58,6 +65,11 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "sales-return" => "sales_return:approve",
+        "purchase-return" => "purchase_return:approve",
+        "sales-return-inspection-intent" => "sales_return_inspection_intent:approve",
+        "purchase-return-dispatch-intent" => "purchase_return_dispatch_intent:approve",
+        "purchase-return-acknowledgment-intent" => "purchase_return_acknowledgment_intent:approve",
         "customer-receipt-reversal-intent" => "customer_receipt_reversal_intent:approve",
         "supplier-payment-reversal-intent" => "supplier_payment_reversal_intent:approve",
         "receivable-allocation-reversal-intent" => "receivable_allocation_reversal_intent:approve",
@@ -862,7 +874,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 33);
+        assert_eq!(AGENT_SCOPES.len(), 40);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -877,7 +889,7 @@ mod tests {
             .copied()
             .filter(|scope| !(scope.ends_with(":create") || scope.ends_with(":update_draft")))
             .collect::<Vec<_>>();
-        assert_eq!(read_only.len(), 13);
+        assert_eq!(read_only.len(), 15);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
     }
 
@@ -1015,6 +1027,20 @@ mod tests {
             (
                 "shipment-reversal-intent",
                 "shipment_reversal_intent:approve",
+            ),
+            ("sales-return", "sales_return:approve"),
+            ("purchase-return", "purchase_return:approve"),
+            (
+                "sales-return-inspection-intent",
+                "sales_return_inspection_intent:approve",
+            ),
+            (
+                "purchase-return-dispatch-intent",
+                "purchase_return_dispatch_intent:approve",
+            ),
+            (
+                "purchase-return-acknowledgment-intent",
+                "purchase_return_acknowledgment_intent:approve",
             ),
             (
                 "goods-receipt-reversal-intent",

@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 38);
+    assert_eq!(WRITE_TOOLS.len(), 48);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -490,5 +490,52 @@ fn stock_reversal_inputs_bind_only_explicit_source_version_and_reason() {
         assert!(valid_write_input(&approval, &input));
         input["reason"] = json!("replace reason");
         assert!(!valid_write_input(&approval, &input));
+    }
+}
+
+#[test]
+fn return_write_inputs_bind_versions_and_reject_unexpected_fields() {
+    for tool in ["create_sales_return_draft", "create_purchase_return_draft"] {
+        let draft = json!({"sourceId":Uuid::new_v4(),"expectedSourceVersion":2,"returnDate":"2026-09-19","reasonCode":"quality","lines":[{"sourceLineId":Uuid::new_v4(),"quantity":"1.25"}]});
+        assert!(valid_write_input(tool, &draft));
+        for version in [Value::Null, json!(0), json!(-1)] {
+            let mut invalid = draft.clone();
+            invalid["expectedSourceVersion"] = version;
+            assert!(!valid_write_input(tool, &invalid));
+        }
+        for (field, value) in [("quantity", json!(1.25)), ("amount", json!("100"))] {
+            let mut invalid = draft.clone();
+            invalid["lines"][0][field] = value;
+            assert!(!valid_write_input(tool, &invalid));
+        }
+    }
+    for (tool, command) in [
+        (
+            "prepare_sales_return_inspection",
+            json!({"expectedVersion":2,"inspectionDate":"2026-09-19","lines":[{"returnLineId":Uuid::new_v4(),"acceptedQuantity":"1","scrapQuantity":"0"}]}),
+        ),
+        (
+            "prepare_purchase_return_dispatch",
+            json!({"expectedVersion":2,"dispatchDate":"2026-09-19","carrier":"test","trackingNumber":"test-1"}),
+        ),
+        (
+            "prepare_purchase_return_acknowledgment",
+            json!({"expectedVersion":3,"acknowledgedDate":"2026-09-19"}),
+        ),
+    ] {
+        let input = json!({"sourceDocumentId":Uuid::new_v4(),"command":command});
+        assert!(valid_write_input(tool, &input));
+        let mut invalid = input.clone();
+        invalid["command"]["amount"] = json!("100");
+        assert!(!valid_write_input(tool, &invalid));
+        let mut invalid = input.clone();
+        invalid["command"]
+            .as_object_mut()
+            .unwrap()
+            .remove("expectedVersion");
+        assert!(!valid_write_input(tool, &invalid));
+        let mut invalid = input;
+        invalid["url"] = json!("https://example.invalid/write");
+        assert!(!valid_write_input(tool, &invalid));
     }
 }

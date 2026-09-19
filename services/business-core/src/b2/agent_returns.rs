@@ -18,6 +18,10 @@ use uuid::Uuid;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route(
+            "/v1/agent-return-documents/{kind}",
+            get(super::agent_return_search::search),
+        )
         .route("/v1/agent-return-sources/{kind}/{id}", get(source))
         .route("/v1/agent-drafts/returns/{kind}", post(create))
 }

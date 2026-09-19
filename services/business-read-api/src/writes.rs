@@ -11,6 +11,11 @@ pub(super) async fn write_tool(
     let is_approval = matches!(
         tool.as_str(),
         "approve_sales_order"
+            | "approve_sales_return"
+            | "approve_purchase_return"
+            | "approve_sales_return_inspection"
+            | "approve_purchase_return_dispatch"
+            | "approve_purchase_return_acknowledgment"
             | "approve_purchase_order"
             | "approve_shipment"
             | "approve_goods_receipt"
@@ -70,6 +75,9 @@ pub(super) async fn write_tool(
     if matches!(
         tool.as_str(),
         "prepare_receivable_allocation"
+            | "prepare_sales_return_inspection"
+            | "prepare_purchase_return_dispatch"
+            | "prepare_purchase_return_acknowledgment"
             | "prepare_payable_allocation"
             | "prepare_customer_receipt_reversal"
             | "prepare_supplier_payment_reversal"
@@ -95,6 +103,33 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "create_sales_return_draft" => {
+            serde_json::from_value::<business_core::b2::CreateReturn>(input.clone())
+                .is_ok_and(|v| v.expected_source_version.is_some_and(|v| v > 0))
+        }
+        "create_purchase_return_draft" => {
+            serde_json::from_value::<business_core::b2::CreateReturn>(input.clone())
+                .is_ok_and(|v| v.expected_source_version.is_some_and(|v| v > 0))
+        }
+        "prepare_sales_return_inspection" => serde_json::from_value::<
+            business_core::document_approval::return_disposition::PrepareReturnDisposition,
+        >(input.clone())
+        .is_ok_and(|v| {
+            serde_json::from_value::<business_core::b2::InspectSalesReturn>(v.command).is_ok()
+        }),
+        "prepare_purchase_return_dispatch" => serde_json::from_value::<
+            business_core::document_approval::return_disposition::PrepareReturnDisposition,
+        >(input.clone())
+        .is_ok_and(|v| {
+            serde_json::from_value::<business_core::b2::DispatchPurchaseReturn>(v.command).is_ok()
+        }),
+        "prepare_purchase_return_acknowledgment" => serde_json::from_value::<
+            business_core::document_approval::return_disposition::PrepareReturnDisposition,
+        >(input.clone())
+        .is_ok_and(|v| {
+            serde_json::from_value::<business_core::b2::AcknowledgePurchaseReturn>(v.command)
+                .is_ok()
+        }),
         "prepare_shipment_reversal"
         | "prepare_goods_receipt_reversal"
         | "prepare_inventory_opening_reversal" => serde_json::from_value::<
@@ -153,6 +188,11 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
                 .is_ok()
         }
         "approve_sales_order"
+        | "approve_sales_return"
+        | "approve_purchase_return"
+        | "approve_sales_return_inspection"
+        | "approve_purchase_return_dispatch"
+        | "approve_purchase_return_acknowledgment"
         | "approve_purchase_order"
         | "approve_shipment"
         | "approve_goods_receipt"
@@ -195,6 +235,26 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_sales_return" => format!(
+            "v1/agent-approvals/returns/sales_return/{}",
+            input.document_id
+        ),
+        "approve_purchase_return" => format!(
+            "v1/agent-approvals/returns/purchase_return/{}",
+            input.document_id
+        ),
+        "approve_sales_return_inspection" => format!(
+            "v1/agent-approvals/return-dispositions/sales_return_inspection_intent/{}",
+            input.document_id
+        ),
+        "approve_purchase_return_dispatch" => format!(
+            "v1/agent-approvals/return-dispositions/purchase_return_dispatch_intent/{}",
+            input.document_id
+        ),
+        "approve_purchase_return_acknowledgment" => format!(
+            "v1/agent-approvals/return-dispositions/purchase_return_acknowledgment_intent/{}",
+            input.document_id
+        ),
         "approve_shipment_reversal" => format!(
             "v1/agent-approvals/stock-reversals/shipment_reversal_intent/{}",
             input.document_id
@@ -307,6 +367,16 @@ pub(super) async fn forward_draft_write(
     context: &RequestContext,
 ) -> Response {
     let (endpoint, resource_type, uri_type) = match tool {
+        "create_sales_return_draft" => (
+            "v1/agent-drafts/returns/sales_return",
+            "sales_return",
+            "sales-return",
+        ),
+        "create_purchase_return_draft" => (
+            "v1/agent-drafts/returns/purchase_return",
+            "purchase_return",
+            "purchase-return",
+        ),
         "update_sales_order_draft" => {
             ("v1/agent-drafts/sales-orders", "sales_order", "sales-order")
         }
@@ -345,6 +415,23 @@ pub(super) async fn forward_draft_write(
             "supplier-payment",
         ),
         _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let related_return_source = if matches!(
+        tool,
+        "create_sales_return_draft" | "create_purchase_return_draft"
+    ) {
+        input["sourceId"].as_str().map(|id| {
+            (
+                if tool == "create_sales_return_draft" {
+                    "shipment"
+                } else {
+                    "goods-receipt"
+                },
+                id.to_owned(),
+            )
+        })
+    } else {
+        None
     };
     let (endpoint, input, method) = if tool.starts_with("update_") {
         let Some(id) = input
@@ -401,15 +488,19 @@ pub(super) async fn forward_draft_write(
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
+    let (link_type, link_id, title) = related_return_source
+        .as_ref()
+        .map(|(kind, id)| (*kind, id.as_str(), "查看关联履约单据"))
+        .unwrap_or((uri_type, id, "打开业务草稿"));
     Json(json!({
         "schemaVersion": 1,
         "status": "ok",
         "item": value,
         "resourceRefs": [{
-            "type": resource_type,
-            "id": id,
-            "title": "打开业务草稿",
-            "bizUri": format!("biz://{uri_type}/{id}")
+            "type": if related_return_source.is_some(){link_type.replace('-',"_")}else{resource_type.to_owned()},
+            "id": link_id,
+            "title": title,
+            "bizUri": format!("biz://{link_type}/{link_id}")
         }],
         "traceId": context.trace_id
     }))
@@ -444,6 +535,13 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "create_sales_return_draft"=>input["sourceId"].as_str().map(|id|format!("v1/agent-return-sources/sales_return/{id}")),
+        "create_purchase_return_draft"=>input["sourceId"].as_str().map(|id|format!("v1/agent-return-sources/purchase_return/{id}")),
+        "approve_sales_return"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/returns/sales_return/{id}")),
+        "approve_purchase_return"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/returns/purchase_return/{id}")),
+        "approve_sales_return_inspection"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/sales_return_inspection_intent/{id}")),
+        "approve_purchase_return_dispatch"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/purchase_return_dispatch_intent/{id}")),
+        "approve_purchase_return_acknowledgment"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/return-dispositions/purchase_return_acknowledgment_intent/{id}")),
         "approve_shipment_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/shipment_reversal_intent/{id}")),
         "approve_goods_receipt_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/goods_receipt_reversal_intent/{id}")),
         "approve_inventory_opening_reversal"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/stock-reversals/inventory_opening_reversal_intent/{id}")),
@@ -534,6 +632,11 @@ async fn scope_allows_write(
         };
         target = if tool.starts_with("approve_") {
             value["document"].clone()
+        } else if matches!(
+            tool,
+            "create_sales_return_draft" | "create_purchase_return_draft"
+        ) {
+            value["item"].clone()
         } else {
             value
         };
@@ -560,6 +663,13 @@ async fn scope_allows_write(
         if desired.get(key).is_none() && target.get(key).is_some() {
             desired[key] = target[key].clone();
         }
+    }
+    if matches!(
+        tool,
+        "create_sales_return_draft" | "create_purchase_return_draft"
+    ) {
+        // The authoritative source was checked above, including every source line.
+        return true;
     }
     permits_document(&desired, &scope)
 }
@@ -598,6 +708,9 @@ pub(super) fn permits_document(value: &Value, scope: &AuthorizationScope) -> boo
         }
         let mut ids = Vec::new();
         collect(value, key, &mut ids);
+        if key == "brandId" {
+            collect(value, "currentBrandId", &mut ids);
+        }
         !ids.is_empty() && ids.iter().all(|id| allowed.contains(*id))
     })
 }
@@ -610,6 +723,21 @@ async fn forward_intent_prepare(
     grant: &EffectiveGrant,
 ) -> Response {
     let (kind, category, source_kind) = match tool {
+        "prepare_sales_return_inspection" => (
+            "sales_return_inspection_intent",
+            "return-disposition",
+            "sales_return",
+        ),
+        "prepare_purchase_return_dispatch" => (
+            "purchase_return_dispatch_intent",
+            "return-disposition",
+            "purchase_return",
+        ),
+        "prepare_purchase_return_acknowledgment" => (
+            "purchase_return_acknowledgment_intent",
+            "return-disposition",
+            "purchase_return",
+        ),
         "prepare_shipment_reversal" => ("shipment_reversal_intent", "stock-reversal", "shipment"),
         "prepare_goods_receipt_reversal" => (
             "goods_receipt_reversal_intent",
@@ -713,7 +841,23 @@ async fn forward_intent_prepare(
     prepared["item"]["status"] = json!("draft");
     prepared["schemaVersion"] = json!(1);
     prepared["status"] = json!("ok");
-    prepared["resourceRefs"] = json!([{"type":source_kind,"id":source_id,"title":"查看来源单据","bizUri":format!("biz://{}/{source_id}",source_kind.replace('_',"-"))}]);
+    let (link_kind, link_id, title) = if category == "return-disposition" {
+        let Some(id) = prepared["document"]["source"]["fulfillmentId"].as_str() else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        (
+            if source_kind == "sales_return" {
+                "shipment"
+            } else {
+                "goods-receipt"
+            },
+            id,
+            "查看关联履约单据",
+        )
+    } else {
+        (source_kind, source_id, "查看来源单据")
+    };
+    prepared["resourceRefs"] = json!([{"type":link_kind.replace('-',"_"),"id":link_id,"title":title,"bizUri":format!("biz://{}/{link_id}",link_kind.replace('_',"-"))}]);
     Json(prepared).into_response()
 }
 
@@ -744,140 +888,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod allocation_tests {
-    use super::*;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
-
-    #[tokio::test]
-    async fn target_scope_is_checked_before_persisting_allocation_intent() {
-        for allowed in [false, true] {
-            for (tool, kind, category) in [
-                (
-                    "prepare_shipment_reversal",
-                    "shipment_reversal_intent",
-                    "stock-reversal",
-                ),
-                (
-                    "prepare_goods_receipt_reversal",
-                    "goods_receipt_reversal_intent",
-                    "stock-reversal",
-                ),
-                (
-                    "prepare_inventory_opening_reversal",
-                    "inventory_opening_reversal_intent",
-                    "stock-reversal",
-                ),
-                (
-                    "prepare_sales_order_cancellation",
-                    "sales_order_cancellation_intent",
-                    "order-cancellation",
-                ),
-                (
-                    "prepare_purchase_order_cancellation",
-                    "purchase_order_cancellation_intent",
-                    "order-cancellation",
-                ),
-                (
-                    "prepare_receivable_allocation",
-                    "receivable_allocation_intent",
-                    "allocation",
-                ),
-                (
-                    "prepare_customer_receipt_reversal",
-                    "customer_receipt_reversal_intent",
-                    "reversal",
-                ),
-                (
-                    "prepare_supplier_payment_reversal",
-                    "supplier_payment_reversal_intent",
-                    "reversal",
-                ),
-                (
-                    "prepare_receivable_allocation_reversal",
-                    "receivable_allocation_reversal_intent",
-                    "reversal",
-                ),
-                (
-                    "prepare_payable_allocation_reversal",
-                    "payable_allocation_reversal_intent",
-                    "reversal",
-                ),
-            ] {
-                let writes = Arc::new(AtomicUsize::new(0));
-                let snapshot = json!({"document":{"source":{"legalEntityId":"cn"},"allocations":[{"warehouseId":if allowed {"allowed"} else {"outside"}}]},"item":{"id":Uuid::new_v4(),"version":1}});
-                let read = snapshot.clone();
-                let counter = writes.clone();
-                let server = Router::new()
-                    .route(
-                        &format!("/v1/agent-{category}-previews/{kind}"),
-                        axum::routing::post(move || {
-                            let value = read.clone();
-                            async move { Json(value) }
-                        }),
-                    )
-                    .route(
-                        &format!("/v1/agent-{category}-intents/{kind}"),
-                        axum::routing::post(move || {
-                            let value = snapshot.clone();
-                            let writes = counter.clone();
-                            async move {
-                                writes.fetch_add(1, Ordering::SeqCst);
-                                Json(value)
-                            }
-                        }),
-                    );
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let address = listener.local_addr().unwrap();
-                let task = tokio::spawn(async move {
-                    axum::serve(listener, server).await.unwrap();
-                });
-                let core = CoreClient {
-                    client: reqwest::Client::new(),
-                    base_url: Url::parse(&format!("http://{address}/")).unwrap(),
-                    credential: "c".repeat(32),
-                };
-                let context = RequestContext {
-                    enterprise_user_id: Uuid::new_v4(),
-                    identity_binding_id: Uuid::new_v4(),
-                    delegation_id: Uuid::new_v4(),
-                    agent_id: "test".into(),
-                    agent_turn_id: "test".into(),
-                    trace_id: Uuid::new_v4(),
-                    used_calls: 1,
-                    required_scope: format!("{kind}:create"),
-                    source_buzz_event_id: "a".repeat(64),
-                    source_channel_id: "test".into(),
-                };
-                let grant = EffectiveGrant {
-                    capability: business_iam::Capability::parse(&context.required_scope).unwrap(),
-                    data_scope: DataScope::Restricted(BTreeMap::from([
-                        ("legal_entity".into(), ["cn".into()].into()),
-                        ("warehouse".into(), ["allowed".into()].into()),
-                    ])),
-                    obligations: Default::default(),
-                };
-                let response = forward_intent_prepare(
-                    &core,
-                    tool,
-                    json!({"sourceDocumentId":Uuid::new_v4()}),
-                    &context,
-                    &grant,
-                )
-                .await;
-                assert_eq!(
-                    response.status(),
-                    if allowed {
-                        StatusCode::OK
-                    } else {
-                        StatusCode::FORBIDDEN
-                    }
-                );
-                assert_eq!(writes.load(Ordering::SeqCst), usize::from(allowed));
-                task.abort();
-            }
-        }
-    }
-}
+mod allocation_tests;
+#[cfg(test)]
+mod return_tests;

@@ -14,13 +14,13 @@ use business_anomaly_contracts::{
 };
 use business_query_contracts::{
     valid_biz_uri, BusinessToolResult, BusinessToolStatus, DataQualityInput, Evidence,
-    GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput, ManagementProfitReportInput,
-    ManagementReportSnapshotInput, OperatingDashboardInput, OrderProfitInput, PayablesInput,
-    ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput, ResourceRef, ScopeSummary,
-    SearchFinancialDocumentsInput, SearchMasterDataInput, SearchPurchaseOrdersInput,
-    SearchSalesOrdersInput, SearchStockDocumentsInput, SettlementAllocationsInput, ValidateInput,
-    INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ,
-    RECEIVABLE_READ, SALES_ORDER_READ,
+    GetBusinessDocumentInput, GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput,
+    ManagementProfitReportInput, ManagementReportSnapshotInput, OperatingDashboardInput,
+    OrderProfitInput, PayablesInput, ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput,
+    ResourceRef, ScopeSummary, SearchFinancialDocumentsInput, SearchMasterDataInput,
+    SearchPurchaseOrdersInput, SearchSalesOrdersInput, SearchStockDocumentsInput,
+    SettlementAllocationsInput, ValidateInput, INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ,
+    PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ, SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -729,6 +729,147 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "create_sales_return_draft",
+        description = "Create a return draft only after the human selects an authorized source, date, reason and exact line quantities. Read source line IDs, returnable quantities and current version first. Does not confirm the return or change inventory or balances. Read the return approval preview before asking for confirmation."
+    )]
+    async fn create_sales_return_draft(
+        &self,
+        Parameters(input): Parameters<CreateReturnDraftInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write("create_sales_return_draft", "sales_return:create", input)
+            .await)
+    }
+    #[tool(
+        name = "create_purchase_return_draft",
+        description = "Create a return draft only after the human selects an authorized source, date, reason and exact line quantities. Read source line IDs, returnable quantities and current version first. Does not confirm the return or change inventory or balances. Read the return approval preview before asking for confirmation."
+    )]
+    async fn create_purchase_return_draft(
+        &self,
+        Parameters(input): Parameters<CreateReturnDraftInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "create_purchase_return_draft",
+                "purchase_return:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_sales_return_inspection",
+        description = "Prepare a 30-minute immutable return disposition from explicit human input and current return version. Inspection must specify accepted and scrapped quantities for every return line; logistics dates and carrier evidence must reflect actual events. Show server effects and exact confirmation/rejection commands. Preparation does not execute the operation."
+    )]
+    async fn prepare_sales_return_inspection(
+        &self,
+        Parameters(input): Parameters<PrepareReturnInspectionInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_sales_return_inspection",
+                "sales_return_inspection_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_purchase_return_dispatch",
+        description = "Prepare a 30-minute immutable return disposition from explicit human input and current return version. Inspection must specify accepted and scrapped quantities for every return line; logistics dates and carrier evidence must reflect actual events. Show server effects and exact confirmation/rejection commands. Preparation does not execute the operation."
+    )]
+    async fn prepare_purchase_return_dispatch(
+        &self,
+        Parameters(input): Parameters<PrepareReturnDispatchInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_purchase_return_dispatch",
+                "purchase_return_dispatch_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_purchase_return_acknowledgment",
+        description = "Prepare a 30-minute immutable return disposition from explicit human input and current return version. Inspection must specify accepted and scrapped quantities for every return line; logistics dates and carrier evidence must reflect actual events. Show server effects and exact confirmation/rejection commands. Preparation does not execute the operation."
+    )]
+    async fn prepare_purchase_return_acknowledgment(
+        &self,
+        Parameters(input): Parameters<PrepareReturnAcknowledgmentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_purchase_return_acknowledgment",
+                "purchase_return_acknowledgment_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_sales_return",
+        description = "Approve or reject only the return operation bound to the current exact signed human command. No model-controlled arguments. Report execution only when executed=true; changed state requires a new preview and human confirmation."
+    )]
+    async fn approve_sales_return(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_sales_return",
+                "sales_return:approve",
+                "sales_return",
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_return",
+        description = "Approve or reject only the return operation bound to the current exact signed human command. No model-controlled arguments. Report execution only when executed=true; changed state requires a new preview and human confirmation."
+    )]
+    async fn approve_purchase_return(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_return",
+                "purchase_return:approve",
+                "purchase_return",
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_sales_return_inspection",
+        description = "Approve or reject only the return operation bound to the current exact signed human command. No model-controlled arguments. Report execution only when executed=true; changed state requires a new preview and human confirmation."
+    )]
+    async fn approve_sales_return_inspection(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_sales_return_inspection",
+                "sales_return_inspection_intent:approve",
+                "sales_return_inspection_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_return_dispatch",
+        description = "Approve or reject only the return operation bound to the current exact signed human command. No model-controlled arguments. Report execution only when executed=true; changed state requires a new preview and human confirmation."
+    )]
+    async fn approve_purchase_return_dispatch(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_return_dispatch",
+                "purchase_return_dispatch_intent:approve",
+                "purchase_return_dispatch_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_return_acknowledgment",
+        description = "Approve or reject only the return operation bound to the current exact signed human command. No model-controlled arguments. Report execution only when executed=true; changed state requires a new preview and human confirmation."
+    )]
+    async fn approve_purchase_return_acknowledgment(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_return_acknowledgment",
+                "purchase_return_acknowledgment_intent:approve",
+                "purchase_return_acknowledgment_intent",
+            )
+            .await)
+    }
+    #[tool(
         name = "prepare_shipment_reversal",
         description = "Prepare an immutable reversal intent for an explicitly selected shipment and human-provided reason. Bind current source, order, financial and inventory state. Present all returned stock/cost/reservation and receivable/payable effects and exact server-generated confirmation command. Does not reverse, refund or delete anything. Resolve blockers before preparing again."
     )]
@@ -1123,6 +1264,86 @@ impl BusinessReadMcp {
             .invoke(
                 "get_supplier_payment_allocations",
                 "supplier_payment:read",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "search_sales_returns",
+        description = "Search scoped return documents by exact UUID or literal number, party and status. Includes line IDs, current version and workflow state. Follow all pages, including empty filtered pages, before choosing a unique match."
+    )]
+    async fn search_sales_returns(
+        &self,
+        Parameters(input): Parameters<SearchStockDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_sales_returns", "sales_return:read", input)
+            .await)
+    }
+    #[tool(
+        name = "search_purchase_returns",
+        description = "Search scoped return documents by exact UUID or literal number, party and status. Includes line IDs, current version and workflow state. Follow all pages, including empty filtered pages, before choosing a unique match."
+    )]
+    async fn search_purchase_returns(
+        &self,
+        Parameters(input): Parameters<SearchStockDocumentsInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("search_purchase_returns", "purchase_return:read", input)
+            .await)
+    }
+    #[tool(
+        name = "get_sales_return_source",
+        description = "Read the selected shipment or goods receipt as a return source, including source version, line IDs, quantities already reserved by returns and remaining returnable quantities. Source costs are historical, not the final purchase-return moving-average cost."
+    )]
+    async fn get_sales_return_source(
+        &self,
+        Parameters(input): Parameters<GetBusinessDocumentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("get_sales_return_source", "sales_return:read", input)
+            .await)
+    }
+    #[tool(
+        name = "get_purchase_return_source",
+        description = "Read the selected shipment or goods receipt as a return source, including source version, line IDs, quantities already reserved by returns and remaining returnable quantities. Source costs are historical, not the final purchase-return moving-average cost."
+    )]
+    async fn get_purchase_return_source(
+        &self,
+        Parameters(input): Parameters<GetBusinessDocumentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke("get_purchase_return_source", "purchase_return:read", input)
+            .await)
+    }
+    #[tool(
+        name = "get_sales_return_approval_preview",
+        description = "Read current return confirmation effects and the exact server approval and rejection commands. Show inventory, quarantine, cost and operational balance effects. This is a read only preview; never send the confirmation for the human."
+    )]
+    async fn get_sales_return_approval_preview(
+        &self,
+        Parameters(input): Parameters<GetBusinessDocumentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_sales_return_approval_preview",
+                "sales_return:read",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "get_purchase_return_approval_preview",
+        description = "Read current return confirmation effects and the exact server approval and rejection commands. Show inventory, quarantine, cost and operational balance effects. This is a read only preview; never send the confirmation for the human."
+    )]
+    async fn get_purchase_return_approval_preview(
+        &self,
+        Parameters(input): Parameters<GetBusinessDocumentInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_purchase_return_approval_preview",
+                "purchase_return:read",
                 input,
             )
             .await)
@@ -3241,7 +3462,43 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 83);
+        assert_eq!(registered.len(), 99);
+        for name in [
+            "search_sales_returns",
+            "search_purchase_returns",
+            "get_sales_return_source",
+            "get_purchase_return_source",
+            "get_sales_return_approval_preview",
+            "get_purchase_return_approval_preview",
+        ] {
+            let tool = registered
+                .iter()
+                .find(|tool| tool.name.as_ref() == name)
+                .expect("fixed return read");
+            assert_eq!(
+                tool.input_schema.get("additionalProperties"),
+                Some(&json!(false))
+            );
+        }
+
+        for name in [
+            "approve_sales_return",
+            "approve_purchase_return",
+            "approve_sales_return_inspection",
+            "approve_purchase_return_dispatch",
+            "approve_purchase_return_acknowledgment",
+        ] {
+            let tool = registered
+                .iter()
+                .find(|tool| tool.name.as_ref() == name)
+                .expect("bound return approval");
+            assert!(tool
+                .input_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .is_none_or(|properties| properties.is_empty()));
+        }
+
         for kind in ["shipment", "goods_receipt", "inventory_opening"] {
             let name = format!("approve_{kind}_reversal");
             let tool = registered

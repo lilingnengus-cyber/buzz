@@ -12,6 +12,23 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_sales_returns",
+  "search_purchase_returns",
+  "get_sales_return_source",
+  "get_purchase_return_source",
+  "get_sales_return_approval_preview",
+  "get_purchase_return_approval_preview",
+  "create_sales_return_draft",
+  "create_purchase_return_draft",
+  "approve_sales_return",
+  "approve_purchase_return",
+  "prepare_sales_return_inspection",
+  "approve_sales_return_inspection",
+  "prepare_purchase_return_dispatch",
+  "approve_purchase_return_dispatch",
+  "prepare_purchase_return_acknowledgment",
+  "approve_purchase_return_acknowledgment",
+
   "search_shipments",
   "search_goods_receipts",
   "search_inventory_openings",
@@ -200,7 +217,7 @@ try {
     mcpServers: [
       {
         name: "business-read-mcp",
-        command: path.join(repoRoot, "target/debug/business-read-mcp"),
+        command: process.env.BUSINESS_MCP_TEST_BINARY ?? path.join(repoRoot, "target/debug/business-read-mcp"),
         args: [],
         env: [
           { name: "BUSINESS_READ_ADAPTER", value: "mock" },

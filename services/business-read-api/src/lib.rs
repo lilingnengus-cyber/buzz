@@ -4,6 +4,7 @@ mod allocation_history;
 mod config;
 mod financial_documents;
 mod master_data;
+mod return_documents;
 mod stock_documents;
 mod writes;
 use writes::*;
@@ -41,7 +42,13 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 31] = [
+const READ_TOOLS: [&str; 37] = [
+    "search_sales_returns",
+    "search_purchase_returns",
+    "get_sales_return_source",
+    "get_purchase_return_source",
+    "get_sales_return_approval_preview",
+    "get_purchase_return_approval_preview",
     "search_shipments",
     "search_goods_receipts",
     "search_inventory_openings",
@@ -84,7 +91,17 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 38] = [
+const WRITE_TOOLS: [&str; 48] = [
+    "create_sales_return_draft",
+    "create_purchase_return_draft",
+    "prepare_sales_return_inspection",
+    "prepare_purchase_return_dispatch",
+    "prepare_purchase_return_acknowledgment",
+    "approve_sales_return",
+    "approve_purchase_return",
+    "approve_sales_return_inspection",
+    "approve_purchase_return_dispatch",
+    "approve_purchase_return_acknowledgment",
     "prepare_shipment_reversal",
     "approve_shipment_reversal",
     "prepare_goods_receipt_reversal",
@@ -768,6 +785,20 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "create_sales_return_draft" => Some("sales_return:create"),
+        "create_purchase_return_draft" => Some("purchase_return:create"),
+        "prepare_sales_return_inspection" => Some("sales_return_inspection_intent:create"),
+        "prepare_purchase_return_dispatch" => Some("purchase_return_dispatch_intent:create"),
+        "prepare_purchase_return_acknowledgment" => {
+            Some("purchase_return_acknowledgment_intent:create")
+        }
+        "approve_sales_return" => Some("sales_return:approve"),
+        "approve_purchase_return" => Some("purchase_return:approve"),
+        "approve_sales_return_inspection" => Some("sales_return_inspection_intent:approve"),
+        "approve_purchase_return_dispatch" => Some("purchase_return_dispatch_intent:approve"),
+        "approve_purchase_return_acknowledgment" => {
+            Some("purchase_return_acknowledgment_intent:approve")
+        }
         "prepare_shipment_reversal" => Some("shipment_reversal_intent:create"),
         "approve_shipment_reversal" => Some("shipment_reversal_intent:approve"),
         "prepare_goods_receipt_reversal" => Some("goods_receipt_reversal_intent:create"),
@@ -794,6 +825,12 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         }
         "approve_payable_allocation_reversal" => Some("payable_allocation_reversal_intent:approve"),
 
+        "search_sales_returns" => Some("sales_return:read"),
+        "search_purchase_returns" => Some("purchase_return:read"),
+        "get_sales_return_source" => Some("sales_return:read"),
+        "get_purchase_return_source" => Some("purchase_return:read"),
+        "get_sales_return_approval_preview" => Some("sales_return:read"),
+        "get_purchase_return_approval_preview" => Some("purchase_return:read"),
         "search_shipments" => Some("shipment:read"),
         "search_goods_receipts" => Some("goods_receipt:read"),
         "search_inventory_openings" => Some("inventory:read"),
@@ -1298,6 +1335,9 @@ async fn core_read_result(
             context,
         )
         .await;
+    }
+    if let Some((kind, mode)) = return_documents::family(tool) {
+        return return_documents::read(core, kind, mode, input, scope, context).await;
     }
     let stock_kind = match tool {
         "search_shipments" => Some("shipment"),

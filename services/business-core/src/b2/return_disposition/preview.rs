@@ -60,9 +60,9 @@ impl ReturnDispositionService {
             .map_err(|_| DomainError::NotFoundOrForbidden)?;
         let mut tx = self.store.pool().begin().await?;
         let sql = if sales {
-            "SELECT r.id,r.return_number,r.legal_entity_id,r.warehouse_id,r.customer_id party_id,r.return_date,r.currency::text currency,r.status,r.version,r.inspection_status workflow_status,NULL::date dispatch_date,NULL::text carrier,NULL::text tracking_number,o.business_unit_id,o.brand_id FROM sales_returns r JOIN sales_orders o ON o.id=r.sales_order_id WHERE r.id=$1 FOR SHARE OF r,o"
+            "SELECT r.id,r.shipment_id fulfillment_id,r.return_number,r.legal_entity_id,r.warehouse_id,r.customer_id party_id,r.return_date,r.currency::text currency,r.status,r.version,r.inspection_status workflow_status,NULL::date dispatch_date,NULL::text carrier,NULL::text tracking_number,o.business_unit_id,o.brand_id FROM sales_returns r JOIN sales_orders o ON o.id=r.sales_order_id WHERE r.id=$1 FOR SHARE OF r,o"
         } else {
-            "SELECT r.id,r.return_number,r.legal_entity_id,r.warehouse_id,r.supplier_id party_id,r.return_date,r.currency::text currency,r.status,r.version,r.logistics_status workflow_status,r.dispatch_date,r.carrier,r.tracking_number,o.business_unit_id,o.brand_id FROM purchase_returns r JOIN purchase_orders o ON o.id=r.purchase_order_id WHERE r.id=$1 FOR SHARE OF r,o"
+            "SELECT r.id,r.goods_receipt_id fulfillment_id,r.return_number,r.legal_entity_id,r.warehouse_id,r.supplier_id party_id,r.return_date,r.currency::text currency,r.status,r.version,r.logistics_status workflow_status,r.dispatch_date,r.carrier,r.tracking_number,o.business_unit_id,o.brand_id FROM purchase_returns r JOIN purchase_orders o ON o.id=r.purchase_order_id WHERE r.id=$1 FOR SHARE OF r,o"
         };
         let row = sqlx::query(sql)
             .bind(id)
@@ -213,7 +213,7 @@ impl ReturnDispositionService {
             .await?;
         tx.rollback().await?;
         Ok(
-            json!({"source":{"id":id,"lines":scope_lines,"number":row.get::<String,_>("return_number"),"version":version,"legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"businessUnitId":row.get::<Uuid,_>("business_unit_id"),"warehouseId":row.get::<Uuid,_>("warehouse_id"),"brandId":row.get::<Option<Uuid>,_>("brand_id"),"customerId":if sales{Some(row.get::<Uuid,_>("party_id"))}else{None},"supplierId":if sales{None}else{Some(row.get::<Uuid,_>("party_id"))},"status":"confirmed","workflowStatus":row.get::<String,_>("workflow_status"),"returnDate":row.get::<NaiveDate,_>("return_date"),"currency":row.get::<String,_>("currency"),"dispatchDate":row.get::<Option<NaiveDate>,_>("dispatch_date"),"carrier":row.get::<Option<String>,_>("carrier"),"trackingNumber":row.get::<Option<String>,_>("tracking_number")},"command":normalized,"lines":effects,"guard":guard,"changesInventory":sales,"changesReceivableOrPayable":false}),
+            json!({"source":{"id":id,"fulfillmentId":row.get::<Uuid,_>("fulfillment_id"),"lines":scope_lines,"number":row.get::<String,_>("return_number"),"version":version,"legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"businessUnitId":row.get::<Uuid,_>("business_unit_id"),"warehouseId":row.get::<Uuid,_>("warehouse_id"),"brandId":row.get::<Option<Uuid>,_>("brand_id"),"customerId":if sales{Some(row.get::<Uuid,_>("party_id"))}else{None},"supplierId":if sales{None}else{Some(row.get::<Uuid,_>("party_id"))},"status":"confirmed","workflowStatus":row.get::<String,_>("workflow_status"),"returnDate":row.get::<NaiveDate,_>("return_date"),"currency":row.get::<String,_>("currency"),"dispatchDate":row.get::<Option<NaiveDate>,_>("dispatch_date"),"carrier":row.get::<Option<String>,_>("carrier"),"trackingNumber":row.get::<Option<String>,_>("tracking_number")},"command":normalized,"lines":effects,"guard":guard,"changesInventory":sales,"changesReceivableOrPayable":false}),
         )
     }
 }

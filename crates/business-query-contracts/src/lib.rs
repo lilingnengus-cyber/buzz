@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod document_id;
 mod financial_documents;
+pub use document_id::GetBusinessDocumentInput;
 pub use financial_documents::{
     SearchFinancialDocumentsInput, SearchStockDocumentsInput, SettlementAllocationsInput,
 };

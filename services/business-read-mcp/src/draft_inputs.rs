@@ -121,3 +121,71 @@ pub(super) struct PrepareStockReversalInput {
     /// User-provided reason, at most 500 characters.
     reason: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct CreateReturnDraftInput {
+    source_id: Uuid,
+    expected_source_version: i64,
+    return_date: String,
+    reason_code: String,
+    #[serde(default)]
+    business_note: Option<String>,
+    lines: Vec<ReturnLineInput>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnLineInput {
+    source_line_id: Uuid,
+    quantity: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReturnInspectionInput {
+    source_document_id: Uuid,
+    command: ReturnInspectionInput,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnInspectionInput {
+    expected_version: i64,
+    inspection_date: String,
+    #[serde(default)]
+    inspection_note: Option<String>,
+    lines: Vec<ReturnInspectionLineInput>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnInspectionLineInput {
+    return_line_id: Uuid,
+    accepted_quantity: String,
+    scrap_quantity: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReturnDispatchInput {
+    source_document_id: Uuid,
+    command: ReturnDispatchInput,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnDispatchInput {
+    expected_version: i64,
+    dispatch_date: String,
+    carrier: String,
+    tracking_number: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareReturnAcknowledgmentInput {
+    source_document_id: Uuid,
+    command: ReturnAcknowledgmentInput,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReturnAcknowledgmentInput {
+    expected_version: i64,
+    acknowledged_date: String,
+    #[serde(default)]
+    acknowledgment_note: Option<String>,
+}

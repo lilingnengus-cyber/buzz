@@ -12,7 +12,19 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 51] = [
+const AGENT_SCOPES: [&str; 63] = [
+    "sales_return:create",
+    "purchase_return:create",
+    "sales_return_inspection_intent:create",
+    "purchase_return_dispatch_intent:create",
+    "purchase_return_acknowledgment_intent:create",
+    "sales_return:approve",
+    "purchase_return:approve",
+    "sales_return_inspection_intent:approve",
+    "purchase_return_dispatch_intent:approve",
+    "purchase_return_acknowledgment_intent:approve",
+    "sales_return:read",
+    "purchase_return:read",
     "shipment_reversal_intent:create",
     "shipment_reversal_intent:approve",
     "goods_receipt_reversal_intent:create",
@@ -91,6 +103,20 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "sales-return" => ("sales_return", "sales_return:approve"),
+        "purchase-return" => ("purchase_return", "purchase_return:approve"),
+        "sales-return-inspection-intent" => (
+            "sales_return_inspection_intent",
+            "sales_return_inspection_intent:approve",
+        ),
+        "purchase-return-dispatch-intent" => (
+            "purchase_return_dispatch_intent",
+            "purchase_return_dispatch_intent:approve",
+        ),
+        "purchase-return-acknowledgment-intent" => (
+            "purchase_return_acknowledgment_intent",
+            "purchase_return_acknowledgment_intent:approve",
+        ),
         "customer-receipt-reversal-intent" => (
             "customer_receipt_reversal_intent",
             "customer_receipt_reversal_intent:approve",
@@ -892,6 +918,11 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "sales-return",
+            "purchase-return",
+            "sales-return-inspection-intent",
+            "purchase-return-dispatch-intent",
+            "purchase-return-acknowledgment-intent",
             "shipment-reversal-intent",
             "goods-receipt-reversal-intent",
             "inventory-opening-reversal-intent",

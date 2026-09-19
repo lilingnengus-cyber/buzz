@@ -52,3 +52,10 @@ For draft entry by names/codes, use `search_business_master_data` to resolve cus
 - 用户明确选择出库、收货或期初记录并提供原因后，使用 search_shipments、search_goods_receipts 或 search_inventory_openings 查找来源，读取所有分页并解决歧义，取得当前单据与版本，再使用 prepare_shipment_reversal、prepare_goods_receipt_reversal 或 prepare_inventory_opening_reversal。不能猜测 ID、版本、数量或原因。
 - 展示服务端返回的库存数量、成本、预留、隔离及应收应付影响。核销、有效退货、后续库存流水和库存约束可能阻止操作；说明服务端阻塞原因，不绕过检查。准备意图不表示逆转成功。
 - 仅在当前人类消息完整匹配服务器签名确认或拒绝指令时调用对应无参数 approve 工具。只有 executed=true 表示逆转完成。任何关联状态变化都应重新读取、准备并取得新确认，不自动重试旧指令。不会退款、付款或删除历史。
+
+### 销售与采购退货
+- 用 search_shipments／search_goods_receipts 定位原履约单，再调用 get_sales_return_source／get_purchase_return_source 读取可退行、剩余可退数量与当前版本。按用户明确选择和原因调用 create_sales_return_draft／create_purchase_return_draft；数量必须是十进制字符串，sourceLineId 与 expectedSourceVersion 必须取自本次读取。保存草稿不代表库存或应收应付已经改变。
+- 用 search_sales_returns／search_purchase_returns 查找退货，读取所有 nextOffset 分页并消除歧义。确认前调用 get_sales_return_approval_preview／get_purchase_return_approval_preview，展示库存、隔离量、成本和应收应付影响，以及服务器返回的完整确认和拒绝指令。仅当前人类签名消息完整匹配指令时调用无参数 approve_sales_return／approve_purchase_return；普通“执行”不替代绑定确认。
+- 销售退货确认后，按用户提供的各行合格量、报废量、质检日期调用 prepare_sales_return_inspection。采购退货确认后，按用户提供的承运商、运单号和日期调用 prepare_purchase_return_dispatch，再按实际签收情况调用 prepare_purchase_return_acknowledgment。不能自动推断已发运或已签收，也不能替用户分配合格与报废数量。
+- 三类准备只保存 30 分钟有效的不可变意图。展示完整影响和服务器确认指令；仅当前签名指令匹配时调用对应无参数 approve_sales_return_inspection／approve_purchase_return_dispatch／approve_purchase_return_acknowledgment。executed=true 才表示执行完成；版本、库存或权限变化后必须重新准备并取得新确认。
+- 当前退货回复链接指向关联出库或收货单，必须标注“查看关联履约单据”，不能说它是退货详情页。尚未提供退货修改、取消或逆转工具时明确说明限制；不能用履约逆转替代退货纠错，不自动执行退款或银行转账。

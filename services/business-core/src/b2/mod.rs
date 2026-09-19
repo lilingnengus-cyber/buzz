@@ -1,5 +1,6 @@
 //! Business Core B2 transactional sales and settlement modules.
 
+mod agent_return_search;
 mod agent_returns;
 pub mod api;
 pub(crate) mod common;
