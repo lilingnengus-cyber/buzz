@@ -1,0 +1,5 @@
+# Append after the master candidate overlay. Retains migrations and master authority fixes.
+# This image must be built and its paused routes verified before use.
+services:
+  business-core:
+    image: shiyue-business-master-paused-business-core:e51a84b9c
