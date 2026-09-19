@@ -544,6 +544,8 @@ pub fn valid_biz_uri(value: &str) -> bool {
                 | "shipment"
                 | "inventory-opening"
                 | "goods-receipt"
+                | "sales-return"
+                | "purchase-return"
                 | "supplier-payment"
                 | "customer-receipt"
                 | "purchase-order"
@@ -746,6 +748,8 @@ mod tests {
         assert!(valid_biz_uri("biz://management-report/MGR-001"));
         assert!(valid_biz_uri("biz://profit-adjustment/ADJ-001"));
         assert!(valid_biz_uri("biz://shipment/SHP-001"));
+        assert!(valid_biz_uri("biz://sales-return/SRET-001"));
+        assert!(valid_biz_uri("biz://purchase-return/PRET-001"));
         assert!(valid_biz_uri("biz://customer-receipt/RCPT-001"));
         assert!(valid_biz_uri("biz://customer/CUST-001"));
         assert!(valid_biz_uri("biz://customer/CUST-001/receivables"));

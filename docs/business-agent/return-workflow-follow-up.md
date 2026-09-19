@@ -71,3 +71,13 @@ Gateway 固定能力集 63 项，Host 普通会话申请 40 项（15 项读取�
 验证：隔离 PostgreSQL 数据库 `return_tools99_final` 的完整 B2 流程通过；查询契约 8、Gateway 8、Read API 26、MCP 13、Host 10 项相关测试通过。新增证据覆盖退货查询权限、分页、错误 trace、严格输入、5 类完整审批命令、品牌变化拒绝、3 类准备的越权请求在保存前被拒绝。Core/Read API/MCP/Gateway 严格 Clippy、格式和文件大小门禁通过。日志：`/tmp/business-return99-{core,tools,clippy,runtime,size}.log`，Host 日志 `/tmp/business-return-all-host-tests.log`。
 
 链接目前明确标注“查看关联履约单据”，指向已存在的出库/收货详情；不能称为退货详情。独立退货详情页、草稿修改/取消、确认后的纠错补偿，以及配套部署和真实聊天验收仍待完成。此候选版不是完整业务覆盖的完成证明。
+
+## 独立退货详情与直接链接（源码完成，未部署）
+
+新增 `/embed/sales-returns/{id}` 和 `/embed/purchase-returns/{id}` 页面，读取对应 `/api/v1/.../{id}` 浏览器会话接口。接口复用退货搜索的全部权限过滤，包括法人、业务单元、往来方、仓库、冻结品牌与当前商品品牌；缺少会话返回 401，撤销范围后返回 404，不通过服务身份绕过浏览器会话。
+
+页面展示对应单号、日期、生命周期与处置状态、原因、备注、金额/成本和逐行商品数量成本，并提供关联出库/收货链接。退货搜索/确认预览、创建草稿、确认以及质检/物流准备和执行结果现在返回退货本身的 `biz://sales-return/{id}` 或 `biz://purchase-return/{id}`；来源查询仍返回原履约单据。Desktop 路由与 MCP 结果 URI 校验同步支持两种链接。
+
+验证：隔离数据库 `return_detail_verified` 完整 B2 闭环通过，使用真实测试浏览器会话验证详情读取与品牌撤权拒绝，并核对确认及处置结果链接指向退货 ID。Playwright 两类详情成功/无权限共 4 项通过（API 响应为测试夹具），桌面链接解析 23 项通过；Web 构建、类型及金额数量展示检查、Desktop 类型检查、相关 Rust 测试和严格 Clippy、格式与文件大小检查通过。日志 `/tmp/business-return-detail-{core,ui,links,tools,contracts,web-build,web-check,desktop-tsc,clippy,size}.log`。
+
+以上替代前节“仅关联履约链接”的候选行为。尚未配套部署或更新已安装客户端；旧 99 工具候选二进制也尚未重建到此详情链接版本。草稿修改/取消、退货纠错补偿及真实聊天验收继续推进。

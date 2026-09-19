@@ -88,6 +88,22 @@ pub(super) async fn create(
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(found["items"].as_array().unwrap().len(), 1);
     assert_eq!(found["items"][0]["version"], 1);
+    let detail_path = format!(
+        "/api/v1/{}-returns/{}",
+        if sales { "sales" } else { "purchase" },
+        result["id"].as_str().unwrap()
+    );
+    let browser_token = browser_session(store, f.actor).await;
+    assert_eq!(
+        call(app, f.actor, "GET", &detail_path, Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, detail) = browser_read(app, &detail_path, &browser_token).await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["id"], result["id"]);
+    assert_eq!(detail["lines"], found["items"][0]["lines"]);
+    assert_eq!(detail["sourceId"], input.source_id.to_string());
+
     assert_eq!(
         found["items"][0]["lines"][0]["sourceLineId"],
         input.lines[0].source_line_id.to_string()
@@ -144,6 +160,39 @@ pub(super) async fn create(
         .unwrap();
     let (_, hidden) = call(app, f.actor, "GET", &lookup, Value::Null).await;
     assert_eq!(hidden["items"], json!([]));
+    assert_eq!(
+        browser_read(app, &detail_path, &browser_token).await.0,
+        StatusCode::NOT_FOUND
+    );
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
     serde_json::from_value(result).unwrap()
+}
+
+async fn browser_session(store: &PgStore, actor: Uuid) -> String {
+    let workbench = Uuid::new_v4();
+    let embed = Uuid::new_v4();
+    let trace = Uuid::new_v4();
+    let token = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO workbench_sessions(id,enterprise_user_id,status,expires_at,trace_id) VALUES($1,$2,'active',now()+interval '1 hour',$3)")
+        .bind(workbench).bind(actor).bind(trace).execute(store.pool()).await.unwrap();
+    sqlx::query("INSERT INTO embed_sessions(id,code_hash,enterprise_user_id,identity_binding_id,workbench_session_id,audience,deployment_id,target_path,target_resource_type,target_resource_id,status,expires_at,trace_id) VALUES($1,$2,$3,NULL,$4,'business-dock','integration','/','business_home','home','consumed',now()+interval '1 hour',$5)")
+        .bind(embed).bind(business_auth_gateway::security::hash(&token)).bind(actor).bind(workbench).bind(trace).execute(store.pool()).await.unwrap();
+    sqlx::query("INSERT INTO business_sessions(id,session_token_hash,csrf_token_hash,enterprise_user_id,identity_binding_id,workbench_session_id,embed_session_id,status,expires_at,trace_id) VALUES($1,$2,$2,$3,NULL,$4,$5,'active',now()+interval '1 hour',$6)")
+        .bind(Uuid::new_v4()).bind(business_auth_gateway::security::hash(&token)).bind(actor).bind(workbench).bind(embed).bind(trace).execute(store.pool()).await.unwrap();
+    token
+}
+async fn browser_read(app: &Router, path: &str, token: &str) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get(path)
+                .header("cookie", format!("__Host-bizfin_business={token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&body).unwrap())
 }

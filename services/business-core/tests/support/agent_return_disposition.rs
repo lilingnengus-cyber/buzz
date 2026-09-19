@@ -144,6 +144,15 @@ pub(super) async fn execute(
     let (status, result) = call(app, f.actor, "POST", &approve, cmd.clone()).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["executed"], true, "{result}");
+    let family = if kind.starts_with("sales_") {
+        "sales-return"
+    } else {
+        "purchase-return"
+    };
+    assert_eq!(
+        result["resourceRefs"][0]["bizUri"],
+        format!("biz://{family}/{id}")
+    );
     assert!(!call(app, f.actor, "POST", &approve, cmd)
         .await
         .0

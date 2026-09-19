@@ -143,25 +143,25 @@ pub(super) async fn read(
             summary.insert(key.into(), value.clone());
         }
     }
-    // Link to the existing fulfillment detail page, explicitly named as related.
-    // Dedicated return detail-page links are not advertised until those routes exist.
     let refs = items
         .iter()
         .filter_map(|item| {
-            let id = if mode == "source" {
-                item["id"].as_str()?
-            } else {
-                item["sourceId"].as_str()?
-            };
-            let resource = if kind == "sales_return" {
-                "shipment"
-            } else {
-                "goods-receipt"
+            let id = item["id"].as_str()?;
+            let resource = match (kind, mode) {
+                ("sales_return", "source") => "shipment",
+                ("purchase_return", "source") => "goods-receipt",
+                ("sales_return", _) => "sales-return",
+                _ => "purchase-return",
             };
             Some(ResourceRef {
                 r#type: resource.replace('-', "_"),
                 id: Some(id.into()),
-                title: "查看关联履约单据".into(),
+                title: if mode == "source" {
+                    "查看来源履约单据"
+                } else {
+                    "查看退货单"
+                }
+                .into(),
                 biz_uri: format!("biz://{resource}/{id}"),
             })
         })

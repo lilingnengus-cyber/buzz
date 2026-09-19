@@ -2,6 +2,8 @@ import type { BusinessDockConfig } from "@/features/business-dock/businessDockCo
 
 export type BusinessResourceType =
   | "agent_query"
+  | "sales_return"
+  | "purchase_return"
   | "sales_order"
   | "shipment"
   | "purchase_order"
@@ -56,6 +58,20 @@ type RouteDefinition = {
 };
 
 const ROUTES: readonly RouteDefinition[] = [
+  {
+    type: "sales_return",
+    deepLink: "sales-return",
+    prefix: "/embed/sales-returns/",
+    entity: true,
+    label: "销售退货",
+  },
+  {
+    type: "purchase_return",
+    deepLink: "purchase-return",
+    prefix: "/embed/purchase-returns/",
+    entity: true,
+    label: "采购退货",
+  },
   {
     type: "agent_query",
     deepLink: "agent-query",

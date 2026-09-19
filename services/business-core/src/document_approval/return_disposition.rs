@@ -163,13 +163,6 @@ async fn approve(
         Ok(v) => v,
         Err(e) => return store_error(e, c.trace_id),
     };
-    let related_id = snapshot["source"]["fulfillmentId"]
-        .as_str()
-        .ok_or(StoreError::NotFoundOrForbidden);
-    let related_id = match related_id {
-        Ok(id) => id,
-        Err(e) => return store_error(e, c.trace_id),
-    };
     let outcome = match cast_vote(
         &state.store,
         &kind,
@@ -211,12 +204,7 @@ async fn approve(
         executed = true;
         status = "executed".into();
     }
-    let related_kind = if source_kind == "sales_return" {
-        "shipment"
-    } else {
-        "goods-receipt"
-    };
-    Json(json!({"documentId":id,"documentType":kind,"requestId":outcome.request_id,"status":status,"executed":executed,"approvalCount":outcome.approval_count,"minimumApprovers":outcome.minimum_approvers,"traceId":c.trace_id,"resourceRefs":[{"type":related_kind.replace('-',"_"),"id":related_id,"title":"查看关联履约单据","bizUri":format!("biz://{related_kind}/{}",related_id)}]})).into_response()
+    Json(json!({"documentId":id,"documentType":kind,"requestId":outcome.request_id,"status":status,"executed":executed,"approvalCount":outcome.approval_count,"minimumApprovers":outcome.minimum_approvers,"traceId":c.trace_id,"resourceRefs":[{"type":source_kind,"id":input.source_document_id,"title":"查看退货单","bizUri":format!("biz://{}/{}",source_kind.replace('_',"-"),input.source_document_id)}]})).into_response()
 }
 
 async fn dry_preview(

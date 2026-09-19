@@ -416,23 +416,6 @@ pub(super) async fn forward_draft_write(
         ),
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
-    let related_return_source = if matches!(
-        tool,
-        "create_sales_return_draft" | "create_purchase_return_draft"
-    ) {
-        input["sourceId"].as_str().map(|id| {
-            (
-                if tool == "create_sales_return_draft" {
-                    "shipment"
-                } else {
-                    "goods-receipt"
-                },
-                id.to_owned(),
-            )
-        })
-    } else {
-        None
-    };
     let (endpoint, input, method) = if tool.starts_with("update_") {
         let Some(id) = input
             .get("documentId")
@@ -488,19 +471,15 @@ pub(super) async fn forward_draft_write(
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let (link_type, link_id, title) = related_return_source
-        .as_ref()
-        .map(|(kind, id)| (*kind, id.as_str(), "查看关联履约单据"))
-        .unwrap_or((uri_type, id, "打开业务草稿"));
     Json(json!({
         "schemaVersion": 1,
         "status": "ok",
         "item": value,
         "resourceRefs": [{
-            "type": if related_return_source.is_some(){link_type.replace('-',"_")}else{resource_type.to_owned()},
-            "id": link_id,
-            "title": title,
-            "bizUri": format!("biz://{link_type}/{link_id}")
+            "type": resource_type,
+            "id": id,
+            "title": "打开业务草稿",
+            "bizUri": format!("biz://{uri_type}/{id}")
         }],
         "traceId": context.trace_id
     }))
@@ -841,22 +820,15 @@ async fn forward_intent_prepare(
     prepared["item"]["status"] = json!("draft");
     prepared["schemaVersion"] = json!(1);
     prepared["status"] = json!("ok");
-    let (link_kind, link_id, title) = if category == "return-disposition" {
-        let Some(id) = prepared["document"]["source"]["fulfillmentId"].as_str() else {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        };
-        (
-            if source_kind == "sales_return" {
-                "shipment"
-            } else {
-                "goods-receipt"
-            },
-            id,
-            "查看关联履约单据",
-        )
-    } else {
-        (source_kind, source_id, "查看来源单据")
-    };
+    let (link_kind, link_id, title) = (
+        source_kind,
+        source_id,
+        if category == "return-disposition" {
+            "查看退货单"
+        } else {
+            "查看来源单据"
+        },
+    );
     prepared["resourceRefs"] = json!([{"type":link_kind.replace('-',"_"),"id":link_id,"title":title,"bizUri":format!("biz://{}/{link_id}",link_kind.replace('_',"-"))}]);
     Json(prepared).into_response()
 }

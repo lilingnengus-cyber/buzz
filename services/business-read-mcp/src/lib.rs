@@ -2871,6 +2871,8 @@ fn validate_write_result(
                 | "shipment"
                 | "purchase-order"
                 | "goods-receipt"
+                | "sales-return"
+                | "purchase-return"
                 | "customer-receipt"
                 | "supplier-payment"
                 | "inventory-opening"

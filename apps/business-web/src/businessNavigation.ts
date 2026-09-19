@@ -10,6 +10,8 @@ export type Section =
   | "numbering"
   | "sales"
   | "shipments"
+  | "salesReturns"
+  | "purchaseReturns"
   | "inventoryOpening"
   | "inventory"
   | "receivables"

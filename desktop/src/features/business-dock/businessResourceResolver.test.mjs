@@ -323,3 +323,20 @@ test("opens an inventory opening at its exact system detail", () => {
   assert.equal(opening?.type, "inventory_opening");
   assert.equal(opening?.path, "/embed/inventory-openings/OPEN-001");
 });
+
+for (const kind of ["sales", "purchase"]) {
+  test(`${kind} return opens its own detail page`, () => {
+    const id = "54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
+    const resource = parseBusinessUrl(`biz://${kind}-return/${id}`, config);
+    assert.equal(resource?.type, `${kind}_return`);
+    assert.equal(resource?.path, `/embed/${kind}-returns/${id}`);
+    assert.equal(resource?.id, id);
+    assert.equal(
+      parseBusinessUrl(
+        `https://evil.example/embed/${kind}-returns/${id}`,
+        config,
+      ),
+      null,
+    );
+  });
+}

@@ -126,3 +126,49 @@ pub(super) async fn search(
         .map_err(|e| B2ApiError::domain(e.into(), c.trace_id))?;
     Ok(Json(json!({"items":items,"traceId":c.trace_id})))
 }
+
+pub(super) async fn sales_detail(
+    state: State<Arc<AppState>>,
+    context: Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, B2ApiError> {
+    detail(state, context, "sales_return", id).await
+}
+
+pub(super) async fn purchase_detail(
+    state: State<Arc<AppState>>,
+    context: Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, B2ApiError> {
+    detail(state, context, "purchase_return", id).await
+}
+
+async fn detail(
+    state: State<Arc<AppState>>,
+    context: Extension<RequestContext>,
+    kind: &str,
+    id: Uuid,
+) -> Result<Json<Value>, B2ApiError> {
+    let trace = context.trace_id;
+    let Json(result) = search(
+        state,
+        context,
+        Path(kind.into()),
+        Query(SearchStockDocumentsInput {
+            document_id: Some(id),
+            query: None,
+            party_id: None,
+            status: None,
+            offset: 0,
+            limit: 1,
+        }),
+    )
+    .await?;
+    let mut item = result["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .cloned()
+        .ok_or_else(|| B2ApiError::domain(super::DomainError::NotFoundOrForbidden, trace))?;
+    item["traceId"] = json!(trace);
+    Ok(Json(item))
+}

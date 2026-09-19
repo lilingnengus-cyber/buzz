@@ -58,4 +58,4 @@ For draft entry by names/codes, use `search_business_master_data` to resolve cus
 - 用 search_sales_returns／search_purchase_returns 查找退货，读取所有 nextOffset 分页并消除歧义。确认前调用 get_sales_return_approval_preview／get_purchase_return_approval_preview，展示库存、隔离量、成本和应收应付影响，以及服务器返回的完整确认和拒绝指令。仅当前人类签名消息完整匹配指令时调用无参数 approve_sales_return／approve_purchase_return；普通“执行”不替代绑定确认。
 - 销售退货确认后，按用户提供的各行合格量、报废量、质检日期调用 prepare_sales_return_inspection。采购退货确认后，按用户提供的承运商、运单号和日期调用 prepare_purchase_return_dispatch，再按实际签收情况调用 prepare_purchase_return_acknowledgment。不能自动推断已发运或已签收，也不能替用户分配合格与报废数量。
 - 三类准备只保存 30 分钟有效的不可变意图。展示完整影响和服务器确认指令；仅当前签名指令匹配时调用对应无参数 approve_sales_return_inspection／approve_purchase_return_dispatch／approve_purchase_return_acknowledgment。executed=true 才表示执行完成；版本、库存或权限变化后必须重新准备并取得新确认。
-- 当前退货回复链接指向关联出库或收货单，必须标注“查看关联履约单据”，不能说它是退货详情页。尚未提供退货修改、取消或逆转工具时明确说明限制；不能用履约逆转替代退货纠错，不自动执行退款或银行转账。
+- 退货查询、草稿和审批结果的回复链接打开对应退货详情页；来源查询链接打开原出库或收货单。仅使用工具返回的 resourceRefs，不自行拼接链接。尚未提供退货修改、取消或逆转工具时明确说明限制；不能用履约逆转替代退货纠错，不自动执行退款或银行转账。

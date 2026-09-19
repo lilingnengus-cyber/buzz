@@ -35,6 +35,7 @@ import {
 } from "./businessDockBridge";
 import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
 import { formatAmount, formatMoney } from "./formatters";
+import { LinkedReturnDetail } from "./LinkedReturnDetail";
 import { LinkedOpeningDetail } from "./LinkedOpeningDetail";
 import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
@@ -82,6 +83,8 @@ function savedNavigationCollapsed() {
 }
 
 const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
+  salesReturns: "sales",
+  purchaseReturns: "purchasing",
   shipments: "sales",
   inventoryOpening: "inventory",
   receivables: "sales",
@@ -111,6 +114,8 @@ function route(): { section: Section; id?: string; embed: boolean } {
   if (clean === "/product-data") return { section: "productData", embed };
   const patterns: Array<[Section, RegExp]> = [
     ["sales", /^\/(?:sales-orders|sales\/orders)\/([^/]+)$/],
+    ["salesReturns", /^\/sales-returns\/([^/]+)$/],
+    ["purchaseReturns", /^\/purchase-returns\/([^/]+)$/],
     ["shipments", /^\/shipments\/([^/]+)$/],
     ["inventoryOpening", /^\/inventory-openings\/([^/]+)$/],
     ["inventory", /^\/inventory\/([^/]+)$/],
@@ -371,7 +376,16 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "adjustments") return <ProfitAdjustments id={id} />;
   if (section === "reports") return <ManagementReports id={id} />;
   if (section === "sales") return <SalesOrderWorkflowPage id={id} />;
-  if (section === "inventoryOpening" && id) return <LinkedOpeningDetail id={id} />;
+  if ((section === "salesReturns" || section === "purchaseReturns") && id)
+    return (
+      <LinkedReturnDetail
+        key={`${section}:${id}`}
+        side={section === "salesReturns" ? "sales" : "purchase"}
+        id={id}
+      />
+    );
+  if (section === "inventoryOpening" && id)
+    return <LinkedOpeningDetail id={id} />;
   if (section === "inventory") return <InventoryLedger skuId={id} />;
   if (section === "receivables") return <Receivables customerId={id} />;
   if (section === "receipts") return <ReceiptView id={id} />;

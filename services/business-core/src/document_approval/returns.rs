@@ -174,5 +174,5 @@ async fn approve(
         executed = true;
         status = "executed".into();
     }
-    Json(json!({"requestId":outcome.request_id,"documentType":kind,"documentId":id,"decision":input.decision,"status":status,"approvalCount":outcome.approval_count,"minimumApprovers":outcome.minimum_approvers,"executed":executed,"traceId":c.trace_id})).into_response()
+    Json(json!({"requestId":outcome.request_id,"documentType":kind,"documentId":id,"decision":input.decision,"status":status,"approvalCount":outcome.approval_count,"minimumApprovers":outcome.minimum_approvers,"executed":executed,"traceId":c.trace_id,"resourceRefs":[{"type":kind,"id":id,"title":"查看退货单","bizUri":format!("biz://{}/{}",kind.replace('_',"-"),id)}]})).into_response()
 }

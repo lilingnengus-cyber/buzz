@@ -307,6 +307,14 @@ pub fn browser_routes(state: Arc<AppState>) -> Router {
             "/api/v1/sales-returns",
             get(list_sales_returns).post(create_sales_return),
         )
+        .route(
+            "/api/v1/sales-returns/{id}",
+            get(super::agent_return_search::sales_detail),
+        )
+        .route(
+            "/api/v1/purchase-returns/{id}",
+            get(super::agent_return_search::purchase_detail),
+        )
         .route("/api/v1/sales-returns/options", get(sales_return_options))
         .route(
             "/api/v1/sales-returns/{id}/confirm",

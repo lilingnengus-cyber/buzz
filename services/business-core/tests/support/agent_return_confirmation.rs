@@ -77,6 +77,10 @@ pub(super) async fn confirm(app: &Router, store: &PgStore, f: &Fixture, sales: b
     let (status, result) = call(app, f.actor, "POST", &approve, cmd.clone()).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["executed"], true, "{result}");
+    assert_eq!(
+        result["resourceRefs"][0]["bizUri"],
+        format!("biz://{}/{id}", kind.replace('_', "-"))
+    );
     assert!(!call(app, f.actor, "POST", &approve, cmd)
         .await
         .0
