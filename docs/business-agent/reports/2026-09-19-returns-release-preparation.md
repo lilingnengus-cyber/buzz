@@ -1,4 +1,4 @@
-# 退货整批发布准备（尚未切换）
+# 退货整批发布记录（含准备过程）
 
 线上只读核对仍为 `734400865` 四服务、迁移 40。退货候选基线 `f78e87f77` 包含迁移 41–49、109 个固定工具及退货详情/冲销报表修复。新增 22 个 Gateway 能力，授权脚本已准备为 `/tmp/business-returns-grants.sh`，限定既有法人；未执行授权。现有 shipment:reverse / goods_receipt:reverse 策略均为 1 人、自审允许，未修改策略。
 
@@ -35,3 +35,17 @@ CRM 任务的最新一轮已完成，线上 Core 已变为 `shiyue-business-core
 Mac 完整候选应用构建成功，路径 `/Users/aaronli/Projects/Paqiaoli-buzz-v0.5.23/desktop/src-tauri/target/release/bundle/macos/Pacioli.app`。已把新 Host `/tmp/business-host-return109` 写入候选包并重新进行 ad hoc 签名，`codesign --verify --deep --strict` 通过。兼容工程的 22 项资源链接测试通过。签名会改变嵌入二进制的文件哈希，不能直接用签名前后全文件哈希相等作为版本校验。已安装应用与助手配置尚未替换，尚无真实会话验收结果。
 
 已核对线上 Core 的 Compose 标签，最后一层为 `compose.crm-registers-20260919.yml`。候选与回退的四服务及两个迁移服务覆盖文件已准备在 `/tmp/compose.returns-{candidate,rollback}-7b5b8f49d.yml`；使用时必须追加到线上完整 Compose 栈末尾。限定授权脚本的审计 actor 已更新为 `deployment:returns-7b5b8f49d`。生产数据库仍未为此次退货版本迁移或授权。
+
+## 服务、前端与 Mac 配套发布完成
+
+最终四服务镜像 `shiyue-business-returns-{gateway,business-core,business-read-api,iam-admin-api}:7b5b8f49d` 已上线；生产迁移 49 全部成功，22 项新增能力限定既有法人授权，未更改审批策略。发布前数据库备份 `/opt/business-platform/shared/before-returns-7b5b8f49d.dump`。兼容回退四镜像使用 `shiyue-business-returns-rollback-*` 同标签，Gateway 迁移校验及 Core 原订单读取已在演练库验证，Trace ID `8d81526f-ae36-40bb-ab5c-bb7271bfaaa8`。
+
+发布脚本曾将 Gateway/IAM 健康接口的正常 HTTP 204 错判为失败，触发程序回退；随后修正为接受 2xx，停止错误检查进程，仅重新激活候选四服务，没有重复迁移或授权。最终健康状态依次为 Gateway 204、IAM 204、Core 200、Read API 200，四服务镜像与运行状态已核对。日志 `/tmp/business-returns-{deploy,activate,rollback-verified}.log`。初次普通账号写部署目录失败发生在迁移之前，后续使用已有 sudo 管理权限完成部署。
+
+最终线上只读验证两类退货查询和已有订单预览成功，Trace ID `ae77b2e8-f7e5-4887-a6ba-9fa2068c1800`。销售订单仍 5，两类退货、收付款、核销意图和审批投票仍 0，原订单 SO-202609-000005 仍是 v1、draft、200 元；没有通过此次发布创建或确认业务单据。日志 `/tmp/business-returns-after-reads-counts.log`。
+
+前端原子发布为 `/opt/business-platform/shared/business-web-c6397d5a3-4d5bf0e665b0`，原静态版本 `/opt/business-platform/shared/business-web-a0eba3276-139f448030c2` 保留在发布回退指针。其 CRM 路由提取与当前整合内容等价，当前版本额外保留退货详情路由。资源哈希及在线检查通过，日志 `/tmp/business-returns-web-release.log`。
+
+Mac `/Applications/Pacioli.app` 已替换为完整兼容候选，包含退货详情链接与 109 工具 Host，签名验证通过；两条企业助手配置已指向版本固定路径 `tools/business-agent/returns-7b5b8f49d/business-read-mcp`，保留 gpt-5.5 模型，追加退货操作说明。原应用留在 `/Applications/Pacioli-before-returns.app`，完整应用及配置备份在 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/returns-109-7b5b8f49d`。未强制退出或重启当前应用/助手，不能据此宣称运行中会话加载成功。安装日志 `/tmp/business-returns-install-client.log`。
+
+真实聊天只读验收另行请求具体消息授权，尚未发送。完整流程目标仍未完成；盘点、基础资料、CRM 助手写入、费用/管理报表/行动及此前列出的历史纠错等剩余能力继续保留。
