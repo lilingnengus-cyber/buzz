@@ -24,6 +24,9 @@ use uuid::Uuid;
 
 #[path = "postgres_b3/concurrency.rs"]
 mod concurrency;
+#[path = "postgres_b3/stock_reversal.rs"]
+mod stock_reversal;
+use stock_reversal::{concurrent_inventory_receipts, concurrent_over_receipt, reversible_receipt};
 
 struct Fixture {
     actor: Uuid,
@@ -637,6 +640,15 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
     )
     .await;
     reversible_receipt(&purchasing, &receiving, &fixture, date, &pool).await;
+    stock_reversal::reversal_after_inventory_lock(
+        &purchasing,
+        &receiving,
+        &inventory,
+        &fixture,
+        date,
+        &pool,
+    )
+    .await;
     let reconciliation = payables.reconcile(fixture.actor).await.unwrap();
     assert_eq!(reconciliation["consistent"], true);
     let movement_count: i64 = sqlx::query_scalar(
@@ -662,294 +674,6 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         .execute(&pool)
         .await;
     assert!(append_only.is_err());
-}
-
-async fn concurrent_inventory_receipts(
-    purchasing: &PurchasingService,
-    receiving: &ReceivingService,
-    f: &Fixture,
-    date: NaiveDate,
-    pool: &sqlx::PgPool,
-) {
-    let before = sqlx::query(
-        "SELECT on_hand_quantity,inventory_value FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3",
-    )
-    .bind(f.legal_entity)
-    .bind(f.warehouse)
-    .bind(f.sku)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    let a = create_order(
-        purchasing,
-        f,
-        date,
-        "b3-cost-race-order-create-0001",
-        "10",
-        "100",
-    )
-    .await;
-    let b = create_order(
-        purchasing,
-        f,
-        date,
-        "b3-cost-race-order-create-0002",
-        "20",
-        "120",
-    )
-    .await;
-    purchasing
-        .confirm_order(
-            f.actor,
-            Uuid::new_v4(),
-            a.id,
-            "b3-cost-race-order-confirm-0001",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    purchasing
-        .confirm_order(
-            f.actor,
-            Uuid::new_v4(),
-            b.id,
-            "b3-cost-race-order-confirm-0002",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    let line_a: Uuid =
-        sqlx::query_scalar("SELECT id FROM purchase_order_lines WHERE purchase_order_id=$1")
-            .bind(a.id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-    let line_b: Uuid =
-        sqlx::query_scalar("SELECT id FROM purchase_order_lines WHERE purchase_order_id=$1")
-            .bind(b.id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-    let receipt_a = create_receipt(
-        receiving,
-        f,
-        date,
-        a.id,
-        line_a,
-        "10",
-        "b3-cost-race-receipt-create-0001",
-    )
-    .await;
-    let receipt_b = create_receipt(
-        receiving,
-        f,
-        date,
-        b.id,
-        line_b,
-        "20",
-        "b3-cost-race-receipt-create-0002",
-    )
-    .await;
-    let left_version = version(1);
-    let right_version = version(1);
-    let left = receiving.confirm_receipt(
-        f.actor,
-        Uuid::new_v4(),
-        receipt_a.id,
-        "b3-cost-race-receipt-confirm-0001",
-        &left_version,
-    );
-    let right = receiving.confirm_receipt(
-        f.actor,
-        Uuid::new_v4(),
-        receipt_b.id,
-        "b3-cost-race-receipt-confirm-0002",
-        &right_version,
-    );
-    let (left, right) = tokio::join!(left, right);
-    assert!(left.is_ok() && right.is_ok());
-    let after = sqlx::query(
-        "SELECT on_hand_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3",
-    )
-    .bind(f.legal_entity)
-    .bind(f.warehouse)
-    .bind(f.sku)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    let expected_quantity = before.get::<Decimal, _>("on_hand_quantity") + decimal("30");
-    let expected_value = before.get::<Decimal, _>("inventory_value") + decimal("3400");
-    assert_eq!(
-        after.get::<Decimal, _>("on_hand_quantity"),
-        expected_quantity
-    );
-    assert_eq!(after.get::<Decimal, _>("inventory_value"), expected_value);
-    assert_eq!(
-        after.get::<Decimal, _>("average_unit_cost"),
-        (expected_value / expected_quantity).round_dp(6)
-    );
-}
-
-async fn reversible_receipt(
-    purchasing: &PurchasingService,
-    receiving: &ReceivingService,
-    f: &Fixture,
-    date: NaiveDate,
-    pool: &sqlx::PgPool,
-) {
-    let before: Decimal = sqlx::query_scalar(
-        "SELECT on_hand_quantity FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3",
-    )
-    .bind(f.legal_entity)
-    .bind(f.warehouse)
-    .bind(f.sku)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    let order = create_order(
-        purchasing,
-        f,
-        date,
-        "b3-reversible-order-create-0001",
-        "1",
-        "130",
-    )
-    .await;
-    purchasing
-        .confirm_order(
-            f.actor,
-            Uuid::new_v4(),
-            order.id,
-            "b3-reversible-order-confirm-0001",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    let line: Uuid =
-        sqlx::query_scalar("SELECT id FROM purchase_order_lines WHERE purchase_order_id=$1")
-            .bind(order.id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-    let receipt = create_receipt(
-        receiving,
-        f,
-        date,
-        order.id,
-        line,
-        "1",
-        "b3-reversible-receipt-create-0001",
-    )
-    .await;
-    receiving
-        .confirm_receipt(
-            f.actor,
-            Uuid::new_v4(),
-            receipt.id,
-            "b3-reversible-receipt-confirm-0001",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    receiving
-        .reverse_receipt(
-            f.actor,
-            Uuid::new_v4(),
-            receipt.id,
-            "b3-reversible-receipt-reverse-0001",
-            &version(2),
-        )
-        .await
-        .unwrap();
-    let after: Decimal = sqlx::query_scalar(
-        "SELECT on_hand_quantity FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3",
-    )
-    .bind(f.legal_entity)
-    .bind(f.warehouse)
-    .bind(f.sku)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    assert_eq!(before, after);
-}
-
-async fn concurrent_over_receipt(
-    purchasing: &PurchasingService,
-    receiving: &ReceivingService,
-    f: &Fixture,
-    date: NaiveDate,
-    pool: &sqlx::PgPool,
-) {
-    let order = create_order(
-        purchasing,
-        f,
-        date,
-        "b3-race-order-create-0001",
-        "10",
-        "120",
-    )
-    .await;
-    purchasing
-        .confirm_order(
-            f.actor,
-            Uuid::new_v4(),
-            order.id,
-            "b3-race-order-confirm-0001",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    let line: Uuid =
-        sqlx::query_scalar("SELECT id FROM purchase_order_lines WHERE purchase_order_id=$1")
-            .bind(order.id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-    let left_input = CreateGoodsReceipt {
-        purchase_order_id: order.id,
-        warehouse_id: f.warehouse,
-        receipt_date: date,
-        lines: vec![GoodsReceiptLineInput {
-            purchase_order_line_id: line,
-            quantity: dec("8"),
-        }],
-    };
-    let right_input = left_input.clone();
-    let left = receiving.create_receipt(
-        f.actor,
-        Uuid::new_v4(),
-        "b3-race-receipt-create-0001",
-        &left_input,
-    );
-    let right = receiving.create_receipt(
-        f.actor,
-        Uuid::new_v4(),
-        "b3-race-receipt-create-0002",
-        &right_input,
-    );
-    let (left, right) = tokio::join!(left, right);
-    let receipt = match (left, right) {
-        (Ok(receipt), Err(DomainError::OverReceipt))
-        | (Err(DomainError::OverReceipt), Ok(receipt)) => receipt,
-        outcome => panic!("expected one draft allocation to win: {outcome:?}"),
-    };
-    receiving
-        .confirm_receipt(
-            f.actor,
-            Uuid::new_v4(),
-            receipt.id,
-            "b3-race-receipt-confirm-0001",
-            &version(1),
-        )
-        .await
-        .unwrap();
-    let received: Decimal =
-        sqlx::query_scalar("SELECT received_quantity FROM purchase_order_lines WHERE id=$1")
-            .bind(line)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-    assert_eq!(received, decimal("8"));
 }
 
 async fn create_order(
@@ -1123,6 +847,7 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
         "inventory:read",
         "inventory_opening:create",
         "inventory_opening:post",
+        "inventory_opening:reverse",
         "payable:read",
         "supplier_payment:read",
         "supplier_payment:create",

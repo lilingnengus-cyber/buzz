@@ -285,18 +285,28 @@ impl InventoryService {
         }
         let movements=sqlx::query("SELECT m.id,m.warehouse_id,m.sku_id,m.quantity,m.unit_cost,m.total_cost,m.posted_at,l.id line_id FROM inventory_movements m JOIN inventory_opening_lines l ON l.id=m.source_line_id WHERE m.source_id=$1 AND m.movement_type='opening_balance' ORDER BY m.warehouse_id,m.sku_id,m.id").bind(batch_id).fetch_all(&mut *tx).await?;
         for movement in &movements {
+            let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,last_movement_id FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(movement.get::<Uuid,_>("warehouse_id")).bind(movement.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
             let later:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_movements WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 AND posted_at>$4)").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(movement.get::<Uuid,_>("warehouse_id")).bind(movement.get::<Uuid,_>("sku_id")).bind(movement.get::<chrono::DateTime<chrono::Utc>,_>("posted_at")).fetch_one(&mut *tx).await?;
-            if later {
+            // Transaction timestamps do not define commit order; the locked balance
+            // also identifies the last writer, including an earlier-started transaction.
+            let latest_source: Option<Uuid> =
+                sqlx::query_scalar("SELECT source_id FROM inventory_movements WHERE id=$1")
+                    .bind(balance.get::<Option<Uuid>, _>("last_movement_id"))
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if later || latest_source != Some(batch_id) {
                 return Err(DomainError::Invalid(
                     "opening has subsequent inventory movements".into(),
                 ));
             }
-            let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,inventory_value FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(batch.get::<Uuid,_>("legal_entity_id")).bind(movement.get::<Uuid,_>("warehouse_id")).bind(movement.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
             let new_qty = balance.get::<Decimal, _>("on_hand_quantity")
                 - movement.get::<Decimal, _>("quantity");
-            if new_qty < balance.get::<Decimal, _>("reserved_quantity") {
+            if new_qty
+                < balance.get::<Decimal, _>("reserved_quantity")
+                    + balance.get::<Decimal, _>("quarantined_quantity")
+            {
                 return Err(DomainError::Invalid(
-                    "opening reversal would invalidate reservations".into(),
+                    "opening reversal would invalidate reserved or quarantined stock".into(),
                 ));
             }
             let new_value = money(

@@ -385,20 +385,44 @@ impl ReceivingService {
             return Err(DomainError::PayableAlreadySettled);
         }
         let lines=sqlx::query("SELECT grl.id receipt_line_id,grl.purchase_order_line_id,grl.sku_id,grl.received_quantity,grl.net_amount,grl.tax_amount,grl.gross_amount,grl.provisional_total_cost,grl.inventory_movement_id,m.posted_at FROM goods_receipt_lines grl JOIN inventory_movements m ON m.id=grl.inventory_movement_id WHERE grl.goods_receipt_id=$1 ORDER BY grl.sku_id,grl.id FOR UPDATE OF grl").bind(receipt_id).fetch_all(&mut *tx).await?;
+        // Serialize against inventory writers before checking their committed movements.
+        for line in &lines {
+            sqlx::query("SELECT 1 FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE")
+                .bind(receipt.get::<Uuid, _>("legal_entity_id"))
+                .bind(receipt.get::<Uuid, _>("warehouse_id"))
+                .bind(line.get::<Uuid, _>("sku_id"))
+                .fetch_one(&mut *tx)
+                .await?;
+        }
         for line in &lines {
             let later:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_movements WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 AND posted_at>$4)").bind(receipt.get::<Uuid,_>("legal_entity_id")).bind(receipt.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).bind(line.get::<chrono::DateTime<chrono::Utc>,_>("posted_at")).fetch_one(&mut *tx).await?;
-            if later {
+            // Check the last committed writer as well as its transaction timestamp.
+            let latest_source: Option<Uuid> = sqlx::query_scalar("SELECT m.source_id FROM inventory_balances b JOIN inventory_movements m ON m.id=b.last_movement_id WHERE b.legal_entity_id=$1 AND b.warehouse_id=$2 AND b.sku_id=$3")
+                .bind(receipt.get::<Uuid, _>("legal_entity_id"))
+                .bind(receipt.get::<Uuid, _>("warehouse_id"))
+                .bind(line.get::<Uuid, _>("sku_id"))
+                .fetch_optional(&mut *tx)
+                .await?;
+            if later || latest_source != Some(receipt_id) {
                 return Err(DomainError::SubsequentInventoryMovementsExist);
             }
         }
         for line in &lines {
-            let balance=sqlx::query("SELECT on_hand_quantity,inventory_value FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(receipt.get::<Uuid,_>("legal_entity_id")).bind(receipt.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
+            let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(receipt.get::<Uuid,_>("legal_entity_id")).bind(receipt.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
             let quantity = line.get::<Decimal, _>("received_quantity");
             let cost = line.get::<Decimal, _>("provisional_total_cost");
             let new_quantity = balance.get::<Decimal, _>("on_hand_quantity") - quantity;
             let new_value = money(balance.get::<Decimal, _>("inventory_value") - cost);
             if new_quantity.is_sign_negative() || new_value.is_sign_negative() {
                 return Err(DomainError::SubsequentInventoryMovementsExist);
+            }
+            if new_quantity
+                < balance.get::<Decimal, _>("reserved_quantity")
+                    + balance.get::<Decimal, _>("quarantined_quantity")
+            {
+                return Err(DomainError::Invalid(
+                    "receipt reversal would invalidate reserved or quarantined stock".into(),
+                ));
             }
             let movement_id = Uuid::new_v4();
             let average = if new_quantity == Decimal::ZERO {
