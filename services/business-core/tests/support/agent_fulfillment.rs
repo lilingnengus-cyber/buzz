@@ -1,3 +1,5 @@
+#[path = "agent_returns.rs"]
+mod agent_return_checks;
 #[path = "agent_order_cancellation.rs"]
 mod cancellation_checks;
 #[path = "return_concurrency.rs"]

@@ -240,17 +240,8 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
                 ));
                 sqlx::query("INSERT INTO business_supplier_scopes(enterprise_user_id,supplier_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(supplier).execute(store.pool()).await.unwrap();
             }
-            let key = format!("stock-reversal-return-{kind}");
-            let returned = if kind == "shipment" {
-                returns
-                    .create_sales_return(f.actor, Uuid::new_v4(), &key, &input)
-                    .await
-            } else {
-                returns
-                    .create_purchase_return(f.actor, Uuid::new_v4(), &key, &input)
-                    .await
-            }
-            .unwrap();
+            let returned =
+                super::agent_return_checks::create(app, store, f, kind == "shipment", &input).await;
             assert_eq!(
                 call(app, f.actor, "POST", &approve, command.clone())
                     .await

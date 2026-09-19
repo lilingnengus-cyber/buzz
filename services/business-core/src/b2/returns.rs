@@ -24,6 +24,9 @@ pub struct ReturnLineInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateReturn {
+    /// Current source version; required by the agent draft route. Omitted by legacy browser clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_source_version: Option<i64>,
     pub source_id: Uuid,
     pub return_date: NaiveDate,
     pub reason_code: String,
@@ -259,7 +262,13 @@ impl ReturnService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let shipment=sqlx::query("SELECT shipment_number,sales_order_id,legal_entity_id,warehouse_id,customer_id,currency::text,status FROM shipments WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        let shipment=sqlx::query("SELECT shipment_number,sales_order_id,legal_entity_id,warehouse_id,customer_id,currency::text,status,version FROM shipments WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        if input
+            .expected_source_version
+            .is_some_and(|version| version != shipment.get::<i64, _>("version"))
+        {
+            return Err(DomainError::VersionConflict);
+        }
         if shipment.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "sales return requires a confirmed shipment".into(),
@@ -381,7 +390,13 @@ impl ReturnService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let receipt=sqlx::query("SELECT purchase_order_id,legal_entity_id,warehouse_id,supplier_id,currency::text,status FROM goods_receipts WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        let receipt=sqlx::query("SELECT purchase_order_id,legal_entity_id,warehouse_id,supplier_id,currency::text,status,version FROM goods_receipts WHERE id=$1 FOR UPDATE").bind(input.source_id).fetch_one(&mut *tx).await?;
+        if input
+            .expected_source_version
+            .is_some_and(|version| version != receipt.get::<i64, _>("version"))
+        {
+            return Err(DomainError::VersionConflict);
+        }
         if receipt.get::<String, _>("status") != "confirmed" {
             return Err(DomainError::Invalid(
                 "purchase return requires a confirmed goods receipt".into(),
