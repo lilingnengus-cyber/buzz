@@ -1,3 +1,4 @@
+mod settlement;
 mod snapshot;
 pub(crate) mod stock;
 
@@ -65,6 +66,7 @@ struct VoteOutcome {
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
         .merge(stock::routes())
+        .merge(settlement::routes())
         .route(
             "/v1/agent-documents/sales-orders/{id}",
             get(snapshot::sales),
@@ -395,13 +397,17 @@ async fn cast_vote(
         .fetch_optional(store.pool())
         .await?,
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
+        "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
         _ => return Err(StoreError::Invalid("document type".into())),
     }
     .ok_or(StoreError::NotFoundOrForbidden)?;
     let creator: Uuid = row.get("created_by_user_id");
     let wrong_party_scope = if document_type == "inventory_opening" {
         false
-    } else if matches!(document_type, "sales_order" | "shipment") {
+    } else if matches!(
+        document_type,
+        "sales_order" | "shipment" | "customer_receipt"
+    ) {
         !snapshot
             .scopes
             .customer_ids

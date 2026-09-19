@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 25] = [
+const AGENT_SCOPES: [&str; 29] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
@@ -36,6 +36,10 @@ const AGENT_SCOPES: [&str; 25] = [
     "shipment:approve",
     "goods_receipt:approve",
     "inventory_opening:approve",
+    "customer_receipt:read",
+    "customer_receipt:approve",
+    "supplier_payment:read",
+    "supplier_payment:approve",
     "sales_order:approve",
     "purchase_order:approve",
 ];
@@ -70,6 +74,9 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         "shipment" => ("shipment", "shipment:approve"),
         "goods-receipt" => ("goods_receipt", "goods_receipt:approve"),
         "inventory-opening" => ("inventory_opening", "inventory_opening:approve"),
+        "customer-receipt" => ("customer_receipt", "customer_receipt:approve"),
+        "supplier-payment" => ("supplier_payment", "supplier_payment:approve"),
+
         _ => return None,
     };
     let document_id = parts.next()?.parse().ok()?;
@@ -815,6 +822,18 @@ fn known_reason_code(value: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use nostr::{EventBuilder, Keys, Kind};
+
+    #[test]
+    fn settlement_commands_bind_exact_record_family() {
+        for kind in ["customer-receipt", "supplier-payment"] {
+            let command = format!("确认 {kind} {} v1 {}", Uuid::new_v4(), "a".repeat(64));
+            let parsed =
+                parse_chat_approval_command(&command).expect("valid signed command syntax");
+            assert_eq!(parsed.document_type, kind.replace('-', "_"));
+            assert!(!scope_is_allowed(parsed.required_scope, true, false));
+            assert!(scope_is_allowed(parsed.required_scope, true, true));
+        }
+    }
 
     #[test]
     fn source_event_must_carry_matching_channel() {

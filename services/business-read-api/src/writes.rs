@@ -14,6 +14,8 @@ pub(super) async fn write_tool(
             | "approve_purchase_order"
             | "approve_shipment"
             | "approve_goods_receipt"
+            | "approve_customer_receipt"
+            | "approve_supplier_payment"
             | "approve_inventory_opening"
     );
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
@@ -104,6 +106,8 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
         | "approve_purchase_order"
         | "approve_shipment"
         | "approve_goods_receipt"
+        | "approve_customer_receipt"
+        | "approve_supplier_payment"
         | "approve_inventory_opening" => {
             serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
         }
@@ -130,6 +134,14 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_customer_receipt" => format!(
+            "v1/agent-approvals/settlement/customer_receipt/{}",
+            input.document_id
+        ),
+        "approve_supplier_payment" => format!(
+            "v1/agent-approvals/settlement/supplier_payment/{}",
+            input.document_id
+        ),
         "approve_shipment" => format!("v1/agent-approvals/stock/shipment/{}", input.document_id),
         "approve_goods_receipt" => format!(
             "v1/agent-approvals/stock/goods_receipt/{}",
@@ -349,6 +361,12 @@ async fn scope_allows_write(
         "approve_goods_receipt" => input["documentId"]
             .as_str()
             .map(|id| format!("v1/agent-approval-previews/stock/goods_receipt/{id}")),
+        "approve_customer_receipt" => input["documentId"]
+            .as_str()
+            .map(|id| format!("v1/agent-approval-previews/settlement/customer_receipt/{id}")),
+        "approve_supplier_payment" => input["documentId"]
+            .as_str()
+            .map(|id| format!("v1/agent-approval-previews/settlement/supplier_payment/{id}")),
         "approve_inventory_opening" => input["documentId"]
             .as_str()
             .map(|id| format!("v1/agent-approval-previews/stock/inventory_opening/{id}")),

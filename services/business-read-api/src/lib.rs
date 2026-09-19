@@ -38,7 +38,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 20] = [
+const READ_TOOLS: [&str; 22] = [
     "search_business_master_data",
     "get_sales_order",
     "search_sales_orders",
@@ -57,6 +57,8 @@ const READ_TOOLS: [&str; 20] = [
     "get_shipment_approval_preview",
     "get_goods_receipt_approval_preview",
     "get_inventory_opening_approval_preview",
+    "get_customer_receipt_approval_preview",
+    "get_supplier_payment_approval_preview",
     "get_sales_order_approval_preview",
     "get_purchase_order_approval_preview",
 ];
@@ -70,7 +72,7 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 14] = [
+const WRITE_TOOLS: [&str; 16] = [
     "update_sales_order_draft",
     "update_purchase_order_draft",
     "create_inventory_opening_draft",
@@ -83,6 +85,8 @@ const WRITE_TOOLS: [&str; 14] = [
     "approve_shipment",
     "approve_goods_receipt",
     "approve_inventory_opening",
+    "approve_customer_receipt",
+    "approve_supplier_payment",
     "approve_sales_order",
     "approve_purchase_order",
 ];
@@ -733,6 +737,11 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "approve_shipment" => Some("shipment:approve"),
         "approve_goods_receipt" => Some("goods_receipt:approve"),
         "approve_inventory_opening" => Some("inventory_opening:approve"),
+        "approve_customer_receipt" => Some("customer_receipt:approve"),
+        "get_customer_receipt_approval_preview" => Some("customer_receipt:read"),
+        "approve_supplier_payment" => Some("supplier_payment:approve"),
+        "get_supplier_payment_approval_preview" => Some("supplier_payment:read"),
+
         "get_shipment_approval_preview" => Some("shipment:read"),
         "get_goods_receipt_approval_preview" => Some("goods_receipt:read"),
         "get_inventory_opening_approval_preview" => Some("inventory:read"),
@@ -1211,6 +1220,8 @@ async fn core_read_result(
         | "get_purchase_order_approval_preview"
         | "get_shipment_approval_preview"
         | "get_goods_receipt_approval_preview"
+        | "get_customer_receipt_approval_preview"
+        | "get_supplier_payment_approval_preview"
         | "get_inventory_opening_approval_preview" => "",
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
@@ -1243,6 +1254,8 @@ async fn core_read_result(
             | "get_purchase_order_approval_preview"
             | "get_shipment_approval_preview"
             | "get_goods_receipt_approval_preview"
+            | "get_customer_receipt_approval_preview"
+            | "get_supplier_payment_approval_preview"
             | "get_inventory_opening_approval_preview"
     ) {
         let Some(id) = input
@@ -1257,6 +1270,8 @@ async fn core_read_result(
             "get_purchase_order_approval_preview" => "purchase-orders",
             "get_shipment_approval_preview" => "stock/shipment",
             "get_goods_receipt_approval_preview" => "stock/goods_receipt",
+            "get_customer_receipt_approval_preview" => "settlement/customer_receipt",
+            "get_supplier_payment_approval_preview" => "settlement/supplier_payment",
             _ => "stock/inventory_opening",
         };
         let Ok(joined) = core
@@ -1354,6 +1369,8 @@ async fn core_read_result(
             | "get_purchase_order_approval_preview"
             | "get_shipment_approval_preview"
             | "get_goods_receipt_approval_preview"
+            | "get_customer_receipt_approval_preview"
+            | "get_supplier_payment_approval_preview"
             | "get_inventory_opening_approval_preview"
     );
     if (approval_preview && !permits_document(&envelope["document"], scope))

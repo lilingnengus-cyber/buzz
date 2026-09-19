@@ -22,6 +22,11 @@ const expectedTools = [
   "approve_shipment",
   "approve_purchase_order",
   "approve_sales_order",
+  "approve_customer_receipt",
+  "get_customer_receipt_approval_preview",
+  "approve_supplier_payment",
+  "get_supplier_payment_approval_preview",
+
   "create_customer_receipt_draft",
   "create_goods_receipt_draft",
   "create_inventory_opening_draft",

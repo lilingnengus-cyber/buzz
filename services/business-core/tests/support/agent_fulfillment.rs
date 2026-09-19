@@ -1,3 +1,6 @@
+#[path = "agent_settlement.rs"]
+mod settlement_checks;
+
 use super::*;
 use axum::{
     body::{to_bytes, Body},
@@ -255,6 +258,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
             .unwrap();
     assert_eq!(quantity, Decimal::from(2));
     shortage_retry(&app, store, f).await;
+    settlement_checks::check(&app, store, f, supplier).await;
 }
 
 async fn shortage_retry(app: &Router, store: &PgStore, f: &Fixture) {

@@ -16,11 +16,13 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 20] = [
+const AGENT_SCOPES: [&str; 22] = [
     "business_master_data:read",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
+    "customer_receipt:read",
+    "supplier_payment:read",
     "shipment:read",
     "goods_receipt:read",
     "receivable:read",
@@ -50,6 +52,9 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         "shipment" => "shipment:approve",
         "goods-receipt" => "goods_receipt:approve",
         "inventory-opening" => "inventory_opening:approve",
+        "customer-receipt" => "customer_receipt:approve",
+        "supplier-payment" => "supplier_payment:approve",
+
         _ => return None,
     };
     let _: Uuid = parts.next()?.parse().ok()?;
@@ -835,7 +840,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 20);
+        assert_eq!(AGENT_SCOPES.len(), 22);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -850,7 +855,7 @@ mod tests {
             .copied()
             .filter(|scope| !(scope.ends_with(":create") || scope.ends_with(":update_draft")))
             .collect::<Vec<_>>();
-        assert_eq!(read_only.len(), 11);
+        assert_eq!(read_only.len(), 13);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
     }
 

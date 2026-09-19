@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 14);
+    assert_eq!(WRITE_TOOLS.len(), 16);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
@@ -445,4 +445,21 @@ async fn draft_forwarding_uses_fixed_route_actor_and_server_idempotency() {
         format!("biz://sales-order/{document_id}")
     );
     server.await.expect("server");
+}
+
+#[test]
+fn settlement_confirmation_tools_are_typed_and_not_payment_execution() {
+    for kind in ["customer_receipt", "supplier_payment"] {
+        let tool = format!("approve_{kind}");
+        assert!(WRITE_TOOLS.contains(&tool.as_str()));
+        assert_eq!(
+            required_capability(&tool),
+            Some(format!("{kind}:approve").as_str())
+        );
+        assert!(!valid_write_input(
+            &tool,
+            &serde_json::json!({"documentId":uuid::Uuid::new_v4(),"expectedVersion":1,"previewHash":"0".repeat(64),"decision":"approve","amount":"1"})
+        ));
+    }
+    assert!(!WRITE_TOOLS.contains(&"execute_bank_payment"));
 }

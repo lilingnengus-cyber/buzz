@@ -664,6 +664,70 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "get_customer_receipt_approval_preview",
+        description = "Read the exact customer_receipt record and signed confirmation preview. Pass its ID as orderId. This records an already occurred payment; it does not initiate a bank transfer or allocate invoices."
+    )]
+    async fn get_customer_receipt_approval_preview(
+        &self,
+        Parameters(input): Parameters<GetSalesOrderInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_customer_receipt_approval_preview",
+                "customer_receipt:read",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_customer_receipt",
+        description = "Confirm or reject only the existing receipt/payment record bound to the signed human command for this turn. No model-controlled target parameters. Does not initiate a bank transaction or settle receivables/payables."
+    )]
+    async fn approve_customer_receipt(
+        &self,
+        Parameters(_input): Parameters<ChatApprovalToolInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_customer_receipt",
+                "customer_receipt:approve",
+                "customer_receipt",
+            )
+            .await)
+    }
+    #[tool(
+        name = "get_supplier_payment_approval_preview",
+        description = "Read the exact supplier_payment record and signed confirmation preview. Pass its ID as orderId. This records an already occurred payment; it does not initiate a bank transfer or allocate invoices."
+    )]
+    async fn get_supplier_payment_approval_preview(
+        &self,
+        Parameters(input): Parameters<GetSalesOrderInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_supplier_payment_approval_preview",
+                "supplier_payment:read",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_supplier_payment",
+        description = "Confirm or reject only the existing receipt/payment record bound to the signed human command for this turn. No model-controlled target parameters. Does not initiate a bank transaction or settle receivables/payables."
+    )]
+    async fn approve_supplier_payment(
+        &self,
+        Parameters(_input): Parameters<ChatApprovalToolInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_supplier_payment",
+                "supplier_payment:approve",
+                "supplier_payment",
+            )
+            .await)
+    }
+    #[tool(
         name = "approve_sales_order",
         description = "Submit the signed chat approval or rejection for the exact sales order, version, and preview hash bound to this turn. The tool takes no document arguments so the model cannot substitute a different order. It may execute confirmation only after the server-side approval policy threshold is reached.",
         annotations(
@@ -1224,6 +1288,12 @@ impl BusinessReadMcp {
         });
         let started = std::time::Instant::now();
         let response = self.call_write_api(tool, &input, &context).await;
+        let reference_count = response
+            .as_ref()
+            .ok()
+            .and_then(|value| value.get("resourceRefs"))
+            .and_then(Value::as_array)
+            .map_or(0, |refs| refs.len() as i32);
         let succeeded = response.as_ref().is_ok_and(|value| {
             value.get("traceId").and_then(Value::as_str)
                 == Some(context.trace_id.to_string().as_str())
@@ -1260,7 +1330,7 @@ impl BusinessReadMcp {
                 result: if succeeded { "success" } else { "failure" },
                 result_count: i32::from(succeeded),
                 finding_count: None,
-                resource_ref_count: Some(0),
+                resource_ref_count: Some(reference_count),
                 rule_set_version: None,
                 anomaly_run_id: None,
                 duration: started.elapsed(),
@@ -2691,7 +2761,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 48);
+        assert_eq!(registered.len(), 52);
         assert!(registered
             .iter()
             .any(|tool| tool.name.as_ref() == "search_business_master_data"));
