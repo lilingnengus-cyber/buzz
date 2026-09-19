@@ -105,15 +105,98 @@ async fn sales_create_rechecks_customer_after_disable_wait() {
         .execute(&pool)
         .await
         .unwrap();
-    let service = SalesService::new(store, "SO".into(), "SHP".into(), 30);
-    assert!(create_order(
-        &service,
-        &fixture,
-        NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
-        "master-active-control"
-    )
+    // Hold the order insert after validation has acquired its customer share lock.
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT role_id,'business_master_data:manage' FROM business_user_roles WHERE enterprise_user_id=$1 ON CONFLICT DO NOTHING")
+        .bind(fixture.actor).execute(&pool).await.unwrap();
+    let mut insert_gate = pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE sales_orders IN SHARE MODE")
+        .execute(&mut *insert_gate)
+        .await
+        .unwrap();
+    let gate_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *insert_gate)
+        .await
+        .unwrap();
+    let task_store = store.clone();
+    let task_fixture = fixture.clone();
+    let order = tokio::spawn(async move {
+        let service = SalesService::new(task_store, "SO".into(), "SHP".into(), 30);
+        create_order(
+            &service,
+            &task_fixture,
+            NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+            "master-active-control",
+        )
+        .await
+    });
+    let order_pid = blocked_pid(&pool, gate_pid).await;
+    let actor = fixture.actor;
+    let expected_version: i64 =
+        sqlx::query_scalar("SELECT version FROM business_customers WHERE id=$1")
+            .bind(customer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let disable = tokio::spawn(async move {
+        use business_core::master_data::{
+            ChangeCoreMasterStatus, CoreMasterDataService, CoreMasterType,
+        };
+        CoreMasterDataService::new(store)
+            .change_status(
+                actor,
+                Uuid::new_v4(),
+                CoreMasterType::Customer,
+                customer,
+                "disable-after-order",
+                &ChangeCoreMasterStatus {
+                    status: "disabled".into(),
+                    expected_version,
+                },
+            )
+            .await
+    });
+    blocked_pid(&pool, order_pid).await;
+    insert_gate.commit().await.unwrap();
+    assert!(
+        order.await.unwrap().is_ok(),
+        "active customer order must complete"
+    );
+    let disabled = disable.await.unwrap();
+    assert!(
+        matches!(&disabled, Err(business_core::b2::DomainError::Invalid(message)) if message.contains("blocking operational impacts")),
+        "unexpected disable result: {disabled:?}"
+    );
+    let status: String = sqlx::query_scalar("SELECT status FROM business_customers WHERE id=$1")
+        .bind(customer)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "active");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM sales_orders WHERE customer_id=$1")
+        .bind(customer)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
+async fn blocked_pid(pool: &sqlx::PgPool, blocker: i32) -> i32 {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let pid: Option<i32> = sqlx::query_scalar(
+                "SELECT pid FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) LIMIT 1",
+            )
+            .bind(blocker)
+            .fetch_optional(pool)
+            .await
+            .unwrap();
+            if let Some(pid) = pid {
+                return pid;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
     .await
-    .is_ok());
+    .expect("expected real database lock wait")
 }
 async fn create_order(
     sales: &SalesService,

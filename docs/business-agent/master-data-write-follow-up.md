@@ -185,3 +185,11 @@ search_business_master_data 扩展为全部 11 类基础资料，新增 product�
 完整 postgres_b2 在新库 master_order_status_b2 通过；Core 库及新增测试严格 Clippy 通过，格式和差异检查通过。日志 `/tmp/master-order-status-{before,after,control,b2,clippy}.log`，数据库均在独立 55439。
 
 本批尚未部署，也不开放助手启停。反向交错（订单先持锁，停用后检查）、其他资料类型、采购/库存引用及状态意图接入仍需继续完成，不能由客户创建的单项回归推断全量启停安全。Windows 运行 35471308524 在本轮最后核对时仍执行 Build sidecars，未重复触发。
+
+## 客户停用反向交错验证
+
+回归进一步通过 sales_orders 的事务表锁停住真实草稿插入，并用 pg_blocking_pids 获取该业务事务 PID；随后调用真实 Core change_status，确认它等待销售事务持有的客户共享锁。放行订单插入后，销售成功，停用返回明确的 blocking operational impacts，客户仍 active，订单恰为一笔。
+
+首次反向测试误用固定 expected_version=1，而前面的直接状态切换已触发版本递增，导致版本冲突；改为读取当前版本后，在新隔离库 master_order_status_reverse_v2 通过，证明命中的是业务影响保护。两个方向都在同一回归内执行，严格 Clippy、格式和 diff 检查通过。日志 `/tmp/master-order-status-reverse-v2.log` 与 `/tmp/master-order-status-reverse-clippy.log`。
+
+这补齐客户创建路径的双向证据，其他资料及写入入口仍未补齐，尚未部署或开放助手启停。Windows 同一运行 35471308524 仍在 Build sidecars。
