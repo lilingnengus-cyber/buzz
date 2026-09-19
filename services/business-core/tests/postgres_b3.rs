@@ -140,6 +140,17 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
     ));
     sqlx::query("INSERT INTO business_supplier_scopes(enterprise_user_id,supplier_id,granted_by) VALUES($1,$2,$1)")
         .bind(fixture.actor).bind(fixture.supplier).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
+        .bind(fixture.actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        purchasing.get_order(fixture.actor, order.id).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(fixture.actor).bind(fixture.business_unit).execute(&pool).await.unwrap();
     let draft_options = purchasing
         .entry_options(fixture.actor, Some(order.id))
         .await

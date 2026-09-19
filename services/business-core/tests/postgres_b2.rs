@@ -107,6 +107,17 @@ async fn b2_postgres_closed_loop_and_concurrency() {
     ));
     sqlx::query("INSERT INTO business_customer_scopes(enterprise_user_id,customer_id,granted_by) VALUES($1,$2,$1)")
         .bind(fixture.actor).bind(fixture.customer).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
+        .bind(fixture.actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        sales.get_order(fixture.actor, first.id).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(fixture.actor).bind(fixture.business_unit).execute(&pool).await.unwrap();
     let preview = sales
         .confirmation_preview(fixture.actor, first.id)
         .await

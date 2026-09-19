@@ -14,10 +14,11 @@ impl PurchasingService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, PurchaseOrderView>("SELECT id,purchase_order_number,legal_entity_id,supplier_id,currency::text,lifecycle_status,receiving_status,gross_amount,order_date,updated_at,version FROM purchase_orders WHERE id=$1 AND legal_entity_id=ANY($2) AND supplier_id=ANY($3)")
+        sqlx::query_as::<_, PurchaseOrderView>("SELECT id,purchase_order_number,legal_entity_id,supplier_id,currency::text,lifecycle_status,receiving_status,gross_amount,order_date,updated_at,version FROM purchase_orders WHERE id=$1 AND legal_entity_id=ANY($2) AND supplier_id=ANY($3) AND business_unit_id=ANY($4)")
             .bind(id)
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>())
+            .bind(snapshot.scopes.business_unit_ids.into_iter().collect::<Vec<_>>())
             .fetch_optional(self.store.pool()).await?
             .ok_or(DomainError::NotFoundOrForbidden)
     }
