@@ -285,6 +285,17 @@ async fn project_sales_return(
     let (effective_actor, effective_trace) = attribution
         .map(|row| (row.get("actor_user_id"), row.get("trace_id")))
         .unwrap_or((actor, trace_id));
+    if let Some(date) = reversal_date {
+        return restore_return_facts(
+            tx,
+            event,
+            return_id,
+            version,
+            date,
+            (effective_actor, effective_trace),
+        )
+        .await;
+    }
     let lines=sqlx::query("SELECT r.sales_order_id,r.legal_entity_id,r.customer_id,r.warehouse_id,r.return_date,r.currency::text,l.shipment_line_id,l.sales_amount,l.total_cost,l.quantity,sl.sales_order_line_id,sl.shipment_id,l.sku_id,o.salesperson_user_id,sol.business_unit_id,sol.department_id,COALESCE(sol.brand_id,p.brand_id) brand_id,p.category_id product_category_id FROM sales_returns r JOIN sales_return_lines l ON l.sales_return_id=r.id JOIN shipment_lines sl ON sl.id=l.shipment_line_id JOIN sales_orders o ON o.id=r.sales_order_id JOIN sales_order_lines sol ON sol.id=sl.sales_order_line_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE r.id=$1 AND r.status IN ('confirmed','reversed') ORDER BY l.id")
         .bind(return_id).fetch_all(&mut **tx).await?;
     if lines.is_empty() {
@@ -318,4 +329,42 @@ async fn project_sales_return(
     }
     sqlx::query("UPDATE profit_projection_failures SET status='resolved',resolved_at=now() WHERE outbox_event_id=$1 AND status='pending'").bind(outbox_id).execute(&mut **tx).await?;
     Ok(inserted)
+}
+
+// Restore the original classified facts, never the current mutable master data.
+async fn restore_return_facts(
+    tx: &mut Transaction<'_, Postgres>,
+    event: &sqlx::postgres::PgRow,
+    id: Uuid,
+    version: i64,
+    date: chrono::NaiveDate,
+    actor_trace: (Uuid, Uuid),
+) -> Result<i64, DomainError> {
+    let complete:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_return_lines WHERE sales_return_id=$1) AND NOT EXISTS(SELECT 1 FROM sales_return_lines l CROSS JOIN (VALUES ('net_revenue'),('product_cost')) m(metric) WHERE l.sales_return_id=$1 AND (SELECT count(*) FROM profit_facts f WHERE f.source_type='sales_return' AND f.source_id=$1 AND f.source_line_id=l.shipment_line_id AND f.direction='reversal' AND f.metric_type=m.metric)<>1)").bind(id).fetch_one(&mut **tx).await?;
+    if !complete {
+        return Err(DomainError::Invalid(
+            "original return profit facts are not yet complete".into(),
+        ));
+    }
+    let event_id: Uuid = event.get("id");
+    let period = format!("{:04}-{:02}", date.year(), date.month());
+    let result=sqlx::query("INSERT INTO profit_facts(id,metric_type,direction,amount,currency,quantity,legal_entity_id,sales_order_id,sales_order_line_id,shipment_id,shipment_line_id,customer_id,sku_id,product_category_id,brand_id,salesperson_user_id,business_unit_id,department_id,warehouse_id,business_date,management_period,source_system,source_type,source_id,source_line_id,source_event_id,source_event_version,data_as_of,trace_id) SELECT gen_random_uuid(),metric_type,'normal',amount,currency,quantity,legal_entity_id,sales_order_id,sales_order_line_id,shipment_id,shipment_line_id,customer_id,sku_id,product_category_id,brand_id,salesperson_user_id,business_unit_id,department_id,warehouse_id,$2,$3,source_system,source_type,source_id,source_line_id,$4,$5,$6,$7 FROM profit_facts WHERE source_type='sales_return' AND source_id=$1 AND direction='reversal' ON CONFLICT(source_event_id,metric_type,source_line_id,direction) DO NOTHING")
+        .bind(id).bind(date).bind(period).bind(event_id).bind(version).bind(event.get::<chrono::DateTime<Utc>,_>("created_at")).bind(actor_trace.1).execute(&mut **tx).await?;
+    let count = i64::try_from(result.rows_affected())
+        .map_err(|_| DomainError::Invalid("profit fact count overflow".into()))?;
+    if count > 0 {
+        record(
+            tx,
+            actor_trace.1,
+            actor_trace.0,
+            "PROFIT_FACT_PROJECTED",
+            "profit_fact_projected",
+            "sales_return",
+            id,
+            json!({"sourceEventId":event_id,"direction":"normal","factCount":count}),
+        )
+        .await?;
+    }
+    sqlx::query("UPDATE profit_projection_failures SET status='resolved',resolved_at=now() WHERE outbox_event_id=$1 AND status='pending'").bind(event_id).execute(&mut **tx).await?;
+    Ok(count)
 }

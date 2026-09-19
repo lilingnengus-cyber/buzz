@@ -253,8 +253,24 @@ pub(super) async fn check(
 
 async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) {
     let service = business_core::b4::ProfitProjectionService::new(store.clone());
+    let changed_master = if version == 3 {
+        let row=sqlx::query("SELECT p.id,p.category_id FROM sales_return_lines l JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE l.sales_return_id=$1 LIMIT 1").bind(id).fetch_one(store.pool()).await.unwrap();
+        let product: Uuid = row.get("id");
+        let old_category: Uuid = row.get("category_id");
+        let category = Uuid::new_v4();
+        sqlx::query("INSERT INTO business_product_categories(id,code,name) VALUES($1,$2,'Changed after original projection')").bind(category).bind(format!("CHANGED-{category}")).execute(store.pool()).await.unwrap();
+        sqlx::query("UPDATE business_products SET category_id=$2 WHERE id=$1")
+            .bind(product)
+            .bind(category)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        Some((product, old_category))
+    } else {
+        None
+    };
     if version == 2 {
-        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE OR REPLACE FUNCTION test_return_fact_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_id='{id}'::uuid AND NEW.direction='normal' AND NEW.metric_type='product_cost' THEN RAISE EXCEPTION 'test partial projection rollback'; END IF; RETURN NEW; END $$"))).execute(store.pool()).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE OR REPLACE FUNCTION test_return_fact_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_id='{id}'::uuid AND NEW.direction='reversal' AND NEW.metric_type='product_cost' THEN RAISE EXCEPTION 'test partial projection rollback'; END IF; RETURN NEW; END $$"))).execute(store.pool()).await.unwrap();
         sqlx::query("CREATE TRIGGER test_return_fact_failure BEFORE INSERT ON profit_facts FOR EACH ROW EXECUTE FUNCTION test_return_fact_failure()").execute(store.pool()).await.unwrap();
         let outcome = service
             .project_pending(f.actor, Uuid::new_v4(), 1000)
@@ -274,8 +290,33 @@ async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) 
         );
         let pending:i64=sqlx::query_scalar("SELECT count(*) FROM profit_projection_failures WHERE aggregate_id=$1 AND status='pending'").bind(id).fetch_one(store.pool()).await.unwrap();
         assert_eq!(
-            pending, 1,
+            pending, 2,
             "database failures remain retryable without aborting the batch"
+        );
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE OR REPLACE FUNCTION test_return_fact_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_id='{id}'::uuid AND NEW.direction='normal' AND NEW.metric_type='product_cost' THEN RAISE EXCEPTION 'test correction rollback'; END IF; RETURN NEW; END $$"))).execute(store.pool()).await.unwrap();
+        let retried = service
+            .project_pending(f.actor, Uuid::new_v4(), 1000)
+            .await
+            .unwrap();
+        assert_eq!(retried["failures"], 1);
+        let original_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM profit_facts WHERE source_id=$1 AND direction='reversal'",
+        )
+        .bind(id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(original_count, 2);
+        let correction_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM profit_facts WHERE source_id=$1 AND direction='normal'",
+        )
+        .bind(id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            correction_count, 0,
+            "correction copy is atomic after original facts become available"
         );
         sqlx::query("DROP TRIGGER test_return_fact_failure ON profit_facts")
             .execute(store.pool())
@@ -315,6 +356,39 @@ async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) 
             if correction { version + 1 } else { 2 }
         );
     }
+    for restored in rows.iter().filter(|row| row["direction"] == "normal") {
+        let original = rows
+            .iter()
+            .find(|row| {
+                row["direction"] == "reversal"
+                    && row["metric_type"] == restored["metric_type"]
+                    && row["source_line_id"] == restored["source_line_id"]
+            })
+            .unwrap();
+        for key in [
+            "amount",
+            "currency",
+            "quantity",
+            "legal_entity_id",
+            "sales_order_id",
+            "sales_order_line_id",
+            "shipment_id",
+            "shipment_line_id",
+            "customer_id",
+            "sku_id",
+            "product_category_id",
+            "brand_id",
+            "salesperson_user_id",
+            "business_unit_id",
+            "department_id",
+            "warehouse_id",
+        ] {
+            assert_eq!(
+                restored[key], original[key],
+                "correction preserves original {key}"
+            );
+        }
+    }
     let mismatch:i64=sqlx::query_scalar("SELECT count(*) FROM profit_projection_reconciliation WHERE shipment_line_id IN (SELECT shipment_line_id FROM sales_return_lines WHERE sales_return_id=$1) AND (revenue_difference<>0 OR cost_difference<>0)").bind(id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(mismatch, 0);
     service.rebuild(f.actor, Uuid::new_v4()).await.unwrap();
@@ -323,4 +397,12 @@ async fn check_projection(store: &PgStore, f: &Fixture, id: Uuid, version: i64) 
         facts, again,
         "rebuild must neither duplicate nor rewrite original facts"
     );
+    if let Some((product, category)) = changed_master {
+        sqlx::query("UPDATE business_products SET category_id=$2 WHERE id=$1")
+            .bind(product)
+            .bind(category)
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
 }
