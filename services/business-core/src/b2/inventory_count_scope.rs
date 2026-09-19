@@ -40,18 +40,27 @@ pub(super) async fn check_frozen(
     authority: &AuthorizationSnapshot,
     id: Uuid,
 ) -> Result<(), DomainError> {
+    let mut connection = store.pool().acquire().await?;
+    check_frozen_on(&mut connection, authority, id).await
+}
+
+pub(super) async fn check_frozen_on(
+    connection: &mut sqlx::PgConnection,
+    authority: &AuthorizationSnapshot,
+    id: Uuid,
+) -> Result<(), DomainError> {
     let unit: Option<Uuid> = sqlx::query_scalar(
         "SELECT snapshot_business_unit_id FROM inventory_count_tasks WHERE id=$1",
     )
     .bind(id)
-    .fetch_optional(store.pool())
+    .fetch_optional(&mut *connection)
     .await?
     .ok_or(DomainError::NotFoundOrForbidden)?;
     let brands: Vec<Option<Uuid>> = sqlx::query_scalar(
         "SELECT snapshot_brand_id FROM inventory_count_lines WHERE inventory_count_id=$1",
     )
     .bind(id)
-    .fetch_all(store.pool())
+    .fetch_all(&mut *connection)
     .await?;
     if unit.is_some_and(|unit| !authority.scopes.business_unit_ids.contains(&unit))
         || brands

@@ -93,20 +93,35 @@ impl PgStore {
     }
 
     pub async fn snapshot(&self, user_id: Uuid) -> Result<AuthorizationSnapshot, StoreError> {
-        if !self.active_user(user_id).await? {
+        let mut connection = self.pool.acquire().await?;
+        Self::snapshot_on(&mut connection, user_id).await
+    }
+
+    /// Evaluate current authority using the caller's connection, including a locked transaction.
+    pub(crate) async fn snapshot_on(
+        connection: &mut sqlx::PgConnection,
+        user_id: Uuid,
+    ) -> Result<AuthorizationSnapshot, StoreError> {
+        let active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_users WHERE id=$1 AND status='active')",
+        )
+        .bind(user_id)
+        .fetch_one(&mut *connection)
+        .await?;
+        if !active {
             return Err(StoreError::NotFoundOrForbidden);
         }
         let roles = sqlx::query_as::<_, RoleRow>(
             "SELECT r.id,r.role_key,r.name FROM business_roles r JOIN business_user_roles ur ON ur.role_id=r.id WHERE ur.enterprise_user_id=$1 AND r.status='active' ORDER BY r.role_key",
         )
         .bind(user_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *connection)
         .await?;
         let mut permissions: BTreeSet<String> = sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT rp.permission_key FROM business_role_permissions rp JOIN business_user_roles ur ON ur.role_id=rp.role_id JOIN business_roles r ON r.id=rp.role_id WHERE ur.enterprise_user_id=$1 AND r.status='active' ORDER BY rp.permission_key",
         )
         .bind(user_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *connection)
         .await?
         .into_iter()
         .collect();
@@ -116,7 +131,7 @@ impl PgStore {
              JOIN (
                SELECT principal_id,permission_id,data_scope,obligations
                FROM business_iam.principal_permissions
-               WHERE valid_from<=now() AND (valid_until IS NULL OR valid_until>now())
+               WHERE valid_from<=clock_timestamp() AND (valid_until IS NULL OR valid_until>clock_timestamp())
                UNION ALL
                SELECT assignment.principal_id,role_permission.permission_id,
                       role_permission.data_scope,role_permission.obligations
@@ -125,8 +140,8 @@ impl PgStore {
                  ON role.id=assignment.role_id AND role.status='active'
                JOIN business_iam.role_permissions role_permission
                  ON role_permission.role_id=assignment.role_id
-               WHERE assignment.valid_from<=now()
-                 AND (assignment.valid_until IS NULL OR assignment.valid_until>now())
+               WHERE assignment.valid_from<=clock_timestamp()
+                 AND (assignment.valid_until IS NULL OR assignment.valid_until>clock_timestamp())
              ) grant_row ON grant_row.principal_id=principal.id
              JOIN business_iam.permissions permission
                ON permission.id=grant_row.permission_id AND permission.status='active'
@@ -138,18 +153,22 @@ impl PgStore {
              ORDER BY permission.capability",
         )
         .bind(user_id.to_string())
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *connection)
         .await?;
         permissions.extend(iam_permissions);
         let scopes = DataScopes {
-            legal_entity_ids: legal_entity_ids(&self.pool, user_id).await?,
-            warehouse_ids: warehouse_ids(&self.pool, user_id).await?,
-            customer_ids: customer_ids(&self.pool, user_id).await?,
-            supplier_ids: supplier_ids(&self.pool, user_id).await?,
-            brand_ids: brand_ids(&self.pool, user_id).await?,
-            business_unit_ids: business_unit_ids(&self.pool, user_id).await?,
+            legal_entity_ids: legal_entity_ids(&mut *connection, user_id).await?,
+            warehouse_ids: warehouse_ids(&mut *connection, user_id).await?,
+            customer_ids: customer_ids(&mut *connection, user_id).await?,
+            supplier_ids: supplier_ids(&mut *connection, user_id).await?,
+            brand_ids: brand_ids(&mut *connection, user_id).await?,
+            business_unit_ids: business_unit_ids(&mut *connection, user_id).await?,
         };
-        let scope_version = self.authorization_revision().await?;
+        let scope_version = sqlx::query_scalar(
+            "SELECT revision FROM business_authorization_revision WHERE singleton",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
         let roles = roles
             .into_iter()
             .map(|role| RoleSummary {
@@ -398,19 +417,34 @@ impl PgStore {
     }
 }
 
-async fn legal_entity_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn legal_entity_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT legal_entity_id FROM business_legal_entity_scopes WHERE enterprise_user_id=$1 ORDER BY legal_entity_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
-async fn warehouse_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn warehouse_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT warehouse_id FROM business_warehouse_scopes WHERE enterprise_user_id=$1 ORDER BY warehouse_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
-async fn customer_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn customer_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT customer_id FROM business_customer_scopes WHERE enterprise_user_id=$1 ORDER BY customer_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
-async fn supplier_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn supplier_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT supplier_id FROM business_supplier_scopes WHERE enterprise_user_id=$1 ORDER BY supplier_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
-async fn brand_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn brand_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar(
         "SELECT brand_id FROM business_brand_scopes WHERE enterprise_user_id=$1 ORDER BY brand_id",
     )
@@ -420,7 +454,10 @@ async fn brand_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Er
     .into_iter()
     .collect())
 }
-async fn business_unit_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn business_unit_ids(
+    pool: &mut sqlx::PgConnection,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT business_unit_id FROM business_unit_scopes WHERE enterprise_user_id=$1 ORDER BY business_unit_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
 

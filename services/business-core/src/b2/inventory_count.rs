@@ -1,3 +1,5 @@
+mod creation;
+
 use super::{
     common::{
         authorize, begin_idempotent, finish_idempotent, money, next_number, record, request_hash,
@@ -197,19 +199,20 @@ impl InventoryCountService {
         key: &str,
         input: &CreateInventoryCount,
     ) -> Result<CommandResult, DomainError> {
+        self.create_inner(actor, trace_id, key, input, None).await
+    }
+
+    async fn create_inner(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        key: &str,
+        input: &CreateInventoryCount,
+        approved: Option<&Value>,
+    ) -> Result<CommandResult, DomainError> {
         validate_currency(&input.currency)?;
         validate_create(input)?;
-        let scope = authorize(
-            &self.store,
-            actor,
-            "inventory_opening:create",
-            Some(input.legal_entity_id),
-            Some(input.warehouse_id),
-            None,
-            None,
-            None,
-        )
-        .await?;
+        let scope = creation::authorize_creation(&self.store, actor, input).await?;
         if !scope.scopes.warehouse_ids.contains(&input.warehouse_id) {
             return Err(DomainError::NotFoundOrForbidden);
         }
@@ -220,67 +223,32 @@ impl InventoryCountService {
             &input.sku_ids,
         )
         .await?;
-        let hash = request_hash(input)?;
+        let operation = if approved.is_some() {
+            "inventory_count:create_guarded"
+        } else {
+            "inventory_count:create"
+        };
+        let hash = match approved {
+            Some(snapshot) => request_hash(&json!({"command":input,"approvedSnapshot":snapshot}))?,
+            None => request_hash(input)?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =
-            begin_idempotent::<CommandResult>(&mut tx, actor, "inventory_count:create", key, &hash)
-                .await?
+            begin_idempotent::<CommandResult>(&mut tx, actor, operation, key, &hash).await?
         {
-            super::inventory_count_scope::check_frozen(&self.store, &scope, replay.id).await?;
+            super::inventory_count_scope::check_frozen_on(&mut tx, &scope, replay.id).await?;
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
         }
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-            .bind(input.warehouse_id.to_string())
-            .execute(&mut *tx)
-            .await?;
-        let functional_currency: String = sqlx::query_scalar(
-            "SELECT functional_currency::text FROM business_legal_entities WHERE id=$1",
-        )
-        .bind(input.legal_entity_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if input.currency != functional_currency {
-            return Err(DomainError::Invalid(
-                "inventory count currency must match the legal entity functional currency".into(),
-            ));
-        }
-        let business_unit_id: Uuid = sqlx::query_scalar(
-            "SELECT business_unit_id FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE",
-        )
-        .bind(input.warehouse_id)
-        .bind(input.legal_entity_id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(DomainError::NotFoundOrForbidden)?;
-        if !scope.scopes.business_unit_ids.contains(&business_unit_id) {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
-        let brand_rows = sqlx::query(
-            "SELECT s.id,p.brand_id FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=ANY($1) ORDER BY p.id,s.id FOR SHARE OF s,p",
-        ).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
-        let brands: BTreeMap<Uuid, Option<Uuid>> = brand_rows
-            .iter()
-            .map(|row| (row.get("id"), row.get("brand_id")))
-            .collect();
-        if brands.len() != input.sku_ids.len()
-            || brands
-                .values()
-                .flatten()
-                .any(|brand| !scope.scopes.brand_ids.contains(brand))
-        {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
-        let balances=sqlx::query("SELECT sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=ANY($3) ORDER BY sku_id FOR UPDATE").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
-        if balances.len() != input.sku_ids.len() {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
-        let overlap:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=$1 AND t.warehouse_id=$2 AND l.sku_id=ANY($3))").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_one(&mut *tx).await?;
-        if overlap {
-            return Err(DomainError::Invalid(
-                "inventory count scope is already frozen".into(),
-            ));
+        let creation::CreationPlan {
+            business_unit_id,
+            brands,
+            balances,
+            snapshot,
+        } = creation::plan(&mut tx, &scope, input).await?;
+        if approved.is_some_and(|expected| expected != &snapshot) {
+            return Err(DomainError::StalePreview);
         }
         let id = Uuid::new_v4();
         let number = next_number(
@@ -324,7 +292,7 @@ impl InventoryCountService {
             trace_id,
             idempotent_replay: false,
         };
-        finish_idempotent(&mut tx, actor, "inventory_count:create", key, &result).await?;
+        finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }
