@@ -14,6 +14,10 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "prepare_core_master_status",
+  "approve_core_master_status",
+  "prepare_product_master_status",
+  "approve_product_master_status",
   "get_business_master_record",
   "get_business_product_master_record",
   "prepare_core_master_creation",

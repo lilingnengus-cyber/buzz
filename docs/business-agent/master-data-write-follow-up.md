@@ -337,3 +337,7 @@ MCP 新增 Core/Product 各一对 prepare/approve status 工具，准备参数�
 MCP 状态响应校验新增独立 envelope、目标/版本、状态字段及 effectiveFields 一致性，canExecute 必须与阻塞影响和目标状态一致；现有摘要、确认命令、trace 与资源引用校验保留。status_mcp_corpus 的真实 Core/Read API 响应集共 61 条，其中四种新工具各两条启用/停用响应，共 8 条；全部通过 MCP 校验及既有篡改检查。MCP 23 项单元测试、Host 10 项定向测试、两 crate 严格 Clippy、格式和 diff 检查通过。日志 /tmp/status-mcp-tests.log、/tmp/status-host-tests-final.log、/tmp/status-mcp-corpus-validation.log、/tmp/status-mcp-host-clippy.log；语料 /tmp/status-master-mcp-corpus.jsonl。
 
 Host 测试拆到 business_agent/tests.rs，主体 825 行；首次构建因拆分后 include_str 相对路径未调整失败，修正后通过。本批未部署，尚需原生 Agent/MCP 运行时、配套发布和真实客户端验收；完整业务覆盖中的其他业务域仍未完成。
+
+## 启停原生运行时及发布状态复核
+
+当前源码原生 buzz-agent/business-read-mcp 构建完成；模拟模型运行时逐项核对普通 103 工具、Core 启停确认 60 工具和 Product 启停确认 60 工具全部通过，确认会话只有匹配的 approve 工具。详见 reports/2026-09-20-master-status-runtime.md。生产仍为 e51a84b9c；只读核对可用磁盘约 1.44 GiB，低于已有 1.5 GiB 构建启动阈值，未发起生产构建或删除数据。当前 Windows 候选不包含启停。本批不代表发布完成或真实聊天验收，完整业务目标继续。
