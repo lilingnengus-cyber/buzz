@@ -1,3 +1,5 @@
+#[path = "support/inventory_count_budget.rs"]
+mod inventory_count_budget;
 #[path = "support/inventory_count_delegation.rs"]
 mod inventory_count_delegation;
 use business_auth_gateway::{

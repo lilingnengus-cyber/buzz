@@ -1,0 +1,8 @@
+# Apply last with the inventory-count server/Host release, not by itself.
+# 500 lines need 25 detail reads + 1 preparation + 24 remaining preview pages.
+# This does not grant capabilities, approve documents, or refresh a delegation.
+services:
+  gateway:
+    environment:
+      AGENT_DELEGATION_MAX_CALLS: "64"
+      AGENT_DELEGATION_TTL_SECONDS: "900"

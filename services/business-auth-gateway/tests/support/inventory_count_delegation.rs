@@ -97,6 +97,7 @@ pub(super) async fn check(
             .unwrap();
     assert_eq!(stored, 50);
     assert!(sqlx::query("UPDATE agent_read_delegations SET scopes=array_fill('inventory:read'::text,ARRAY[129]) WHERE id=$1").bind(issued.id).execute(pool).await.is_err());
+    super::inventory_count_budget::check(pool, keys, user, binding).await;
     sqlx::query("DELETE FROM business_iam.principal_permissions WHERE principal_id=$1 AND permission_id=ANY($2)").bind(human).bind(inserted).execute(pool).await.unwrap();
     for name in ["creation", "submission", "posting", "cancellation"] {
         let scope = format!("inventory_count_{name}_intent:approve");

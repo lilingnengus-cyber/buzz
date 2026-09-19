@@ -165,3 +165,13 @@ Read API 在核验 Core 返回的完整快照一致性、数据范围、摘要�
 验证：查询契约/Read API/MCP 63 项单元测试、Host 10 项定向测试通过；单独设置数据库连接后实际运行 500 行容量闭环（默认单元命令的数据库跳过不替代它）。四种预览测试覆盖页外范围拒绝、替换意图 ID、摘要不匹配及完整结果 schema；严格 Clippy、Rust 格式、差异和文件大小门禁通过。日志 `/tmp/count-paging-{unit-verified,host,pg-verified,runtime-verified,clippy,clippy-final,size}.log`。
 
 尚未部署。发布还须核对调用次数预算：Gateway 当前代码默认每委托 20 次调用，500 行详情本身需 25 页，整轮“读取+准备+核对”约需 50 次，不能用本地无额度模拟服务当作生产放行证据。部署前应在受控企业助手配置中核对/设置可容纳完整流程的预算（现有 Gateway 有界支持 1–100，原生 Agent 每轮工具调用上限 64），并验证真实委托耗尽/重试行为。兼容回退、限定授权、服务端/前端/客户端配套发布、真实聊天和已过账纠错仍待完成。
+
+## 2026-09-20 真实签名委托的分页调用预算
+
+已重查线上四服务，仍运行 `shiyue-business-returns-*:7b5b8f49d`，Gateway 容器未设置 `AGENT_DELEGATION_MAX_CALLS` 或 `AGENT_DELEGATION_TTL_SECONDS` 覆盖值；现有代码默认值为 20 次/300 秒。线上根盘剩余约 3.1 GB，发布构建前应核对空间，保留已知可用回退镜像。本轮未修改线上配置或业务数据。
+
+新增显式发布覆盖 `deploy/business-agent/docker-compose.inventory-counts.yml`：Gateway 新委托为 64 次、900 秒绝对有效期；基础部署继续默认 20 次/300 秒。覆盖适用于该 Gateway 新签发的委托，不伪称只针对单个工具或角色；不增加能力、不自动批准、不续期已有委托。基础 Compose 与覆盖合并验证通过，输出只核对这两个非敏感配置值。
+
+隔离 PostgreSQL 测试 `inventory_count_budget_profile` 使用真实 Nostr 签名、Gateway Store 签发/消费/独立验证，依次执行 25 次详情读取授权、1 次录入准备授权和 24 次后续预览授权。50 次均成功且 used_calls 单调递增，普通委托尝试批准被拒绝。随后 20 个并发消费者仅 14 个成功，总使用次数严格为 64、状态 exhausted；两次重试仍拒绝，绝对 expires_at 没有延长。既有身份绑定、签名字段替换、撤权和并发测试继续通过。这是授权层测试，工具名不代表这份测试同时调用了 Core 业务操作；Core/Read API 500 行闭环和原生传输证据见上一节。
+
+日志 `/tmp/count-call-budget-profile.log`、`/tmp/count-call-budget-clippy.log`，源码 `services/business-auth-gateway/tests/support/inventory_count_budget.rs`。发布配置已具体化，尚未激活：下一步准备候选镜像、包含迁移 50–53 且保留盘点权限修复的兼容回退，完成演练后配套部署。实际模型耗时与上下文接续、客户端重载和真实聊天仍待验收，完整业务目标保持未完成。

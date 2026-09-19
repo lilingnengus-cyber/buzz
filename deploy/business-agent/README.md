@@ -64,3 +64,28 @@ Business Action execution adapter stays blocked. Sales/purchase document chat
 approval is a separate canary path controlled by
 `BUSINESS_CHAT_APPROVAL_ENABLED`; it is disabled by default and must have scoped
 IAM grants plus Business Core approval policies before it is enabled.
+
+## Inventory-count release profile
+
+`docker-compose.inventory-counts.yml` is an explicit Gateway budget override for
+500-line count workflows: 64 consumed calls per signed turn and a 900-second
+absolute lifetime. Apply it **last** alongside the matching count server/Host
+release and migrations through 53. The base deployment retains its 20-call,
+300-second defaults; the profile neither grants capabilities nor changes Core
+approval policies. It applies to this Gateway's new delegations, not just one
+tool or actor, and does not extend already issued delegations.
+
+A maximum-size submission needs 25 detail pages, one preparation and 24 remaining
+preview pages, leaving 14 calls for selection and additional checks. The native
+Agent also caps tool calls at 64. Keep MCP output and Agent text/context budgets
+at their normal defaults: pagination, not larger responses, handles this load.
+Token usage or slow models may still exhaust a turn or its absolute deadline;
+do not automatically replay mutations or mint new authority from the same event.
+Preserve the intent ID and hash when resuming from a new signed human turn, and
+recheck current state before confirmation.
+
+Before activation, validate the actual merged Compose configuration, build and
+exercise migration-compatible rollback images, and deploy the Gateway before a
+Host that requests 50 ordinary capabilities. After activation, inspect the new
+container's two budget variables and test read-only delegation behavior. A
+successful tool-budget test alone is not a live model or production chat test.
