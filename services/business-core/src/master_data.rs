@@ -237,10 +237,26 @@ impl CoreMasterDataService {
         key: &str,
         input: &SaveCoreMasterData,
     ) -> Result<CoreMasterCommandResult, DomainError> {
+        self.save_inner((actor, trace_id), id, key, input, None)
+            .await
+    }
+
+    async fn save_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveCoreMasterData,
+        guard: Option<&serde_json::Value>,
+    ) -> Result<CoreMasterCommandResult, DomainError> {
+        let (actor, trace_id) = context;
         let kind = CoreMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
         let mut snapshot = self.snapshot(actor, "business_master_data:manage").await?;
-        let hash = request_hash(&(id, input))?;
+        let hash = match guard {
+            Some(snapshot) => request_hash(&("guarded-master-save-v1", id, input, snapshot))?,
+            None => request_hash(&(id, input))?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CoreMasterCommandResult>(
             &mut tx,
@@ -262,6 +278,20 @@ impl CoreMasterDataService {
             .bind(format!("{}:{target_id}", kind.as_str()))
             .execute(&mut *tx)
             .await?;
+        if let Some(expected) = guard {
+            let command = match id {
+                Some(document_id) => CoreMasterCommand::Update {
+                    document_id,
+                    command: input.clone(),
+                },
+                None => CoreMasterCommand::Create {
+                    command: input.clone(),
+                },
+            };
+            if self.preview_on(&mut tx, actor, &command).await? != *expected {
+                return Err(DomainError::StalePreview);
+            }
+        }
         if let Some(existing_id) = id {
             snapshot = self
                 .existing_write_authority(&mut tx, actor, kind, existing_id)

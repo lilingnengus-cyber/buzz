@@ -227,12 +227,28 @@ impl ProductMasterService {
         key: &str,
         input: &SaveProductMasterData,
     ) -> Result<ProductMasterCommandResult, DomainError> {
+        self.save_inner((actor, trace_id), id, key, input, None)
+            .await
+    }
+
+    async fn save_inner(
+        &self,
+        context: (Uuid, Uuid),
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveProductMasterData,
+        guard: Option<&serde_json::Value>,
+    ) -> Result<ProductMasterCommandResult, DomainError> {
+        let (actor, trace_id) = context;
         let kind = ProductMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
         let mut snapshot = self
             .snapshot(actor, "business_product_master:manage")
             .await?;
-        let hash = request_hash(&(id, input))?;
+        let hash = match guard {
+            Some(snapshot) => request_hash(&("guarded-master-save-v1", id, input, snapshot))?,
+            None => request_hash(&(id, input))?,
+        };
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<ProductMasterCommandResult>(
             &mut tx,
@@ -254,6 +270,20 @@ impl ProductMasterService {
             .bind(format!("{}:{target_id}", kind.as_str()))
             .execute(&mut *tx)
             .await?;
+        if let Some(expected) = guard {
+            let command = match id {
+                Some(document_id) => ProductMasterCommand::Update {
+                    document_id,
+                    command: input.clone(),
+                },
+                None => ProductMasterCommand::Create {
+                    command: input.clone(),
+                },
+            };
+            if self.preview_on(&mut tx, actor, &command).await? != *expected {
+                return Err(DomainError::StalePreview);
+            }
+        }
         if id.is_some() {
             snapshot = self
                 .existing_write_authority(&mut tx, actor, kind, target_id)

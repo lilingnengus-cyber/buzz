@@ -1,3 +1,5 @@
+#[path = "support/master_guarded_saves.rs"]
+mod master_guarded_saves;
 use business_core::{
     b2::DomainError,
     master_data::{CoreMasterCommand, CoreMasterDataService, SaveCoreMasterData},
@@ -291,6 +293,9 @@ async fn all_master_families_have_stable_read_only_previews() {
             .await
             .unwrap();
     assert_eq!(changed_versions, 0);
+    sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)")
+        .bind(actor).bind(brand).execute(&pool).await.unwrap();
+    master_guarded_saves::check(&pool, actor, &entries, preview_unit).await;
 }
 
 async fn http_preview_checks(

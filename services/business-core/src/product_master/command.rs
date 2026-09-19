@@ -17,6 +17,41 @@ impl ProductMasterService {
         tx.rollback().await?;
         Ok(result)
     }
+    /// Save a create/update command only if its preview still matches in the write transaction.
+    /// This is a domain consistency guard, not approval authorization. Status execution
+    /// remains unavailable until concurrent operational impacts are protected.
+    pub async fn save_guarded(
+        &self,
+        actor: Uuid,
+        trace: Uuid,
+        key: &str,
+        command: &ProductMasterCommand,
+        snapshot: &Value,
+    ) -> Result<ProductMasterCommandResult, DomainError> {
+        match command {
+            MasterCommand::Create { command } => {
+                self.save_inner((actor, trace), None, key, command, Some(snapshot))
+                    .await
+            }
+            MasterCommand::Update {
+                document_id,
+                command,
+            } => {
+                self.save_inner(
+                    (actor, trace),
+                    Some(*document_id),
+                    key,
+                    command,
+                    Some(snapshot),
+                )
+                .await
+            }
+            MasterCommand::ChangeStatus { .. } => Err(DomainError::Invalid(
+                "guarded status execution is not available".into(),
+            )),
+        }
+    }
+
     pub(super) async fn preview_on(
         &self,
         tx: &mut Transaction<'_, Postgres>,

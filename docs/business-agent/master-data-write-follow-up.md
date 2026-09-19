@@ -44,3 +44,15 @@
 负向控制移除父级 FOR SHARE，真实锁等待断言失败；恢复后完整数据库及 HTTP 场景通过。前批事务权限回归通过、Core 单元测试 25 项、严格 Clippy、格式、差异及文件大小门禁通过。日志 /tmp/master-previews-{restored,negative-lock,authority-regression,unit-final,clippy-complete,size-final}.log。数据库在独立 55439 实例的新库，未调用生产业务写入。运行预览集成测试需同时提供 BUSINESS_CORE_MASTER_PREVIEW_TEST_DATABASE_URL 与 BUSINESS_CORE_DATABASE_URL 指向同一隔离新库、至少 32 字符的 BUSINESS_CORE_SERVICE_CREDENTIAL 及 BUSINESS_WEB_ORIGIN；未配置而跳过不算验收。
 
 本批未部署。下一步把确定的命令/当前记录/父级及影响快照保存为不可变意图，接入执行事务中的快照复核、审批与幂等结果，再实现固定助手工具和详情链接。其他完整业务域、CRM 真实聊天与 Windows 验收保持未完成。
+
+## 2026-09-20 创建与修改的事务内快照复核
+
+Core 与 Product 服务新增 save_guarded，复用原有保存事务和写入逻辑。在目标锁及父级锁内重算完整预览，与传入快照逐项比较；变化返回 StalePreview，旧版本仍返回 VersionConflict，当前权限或范围缺失仍拒绝。创建/修改的幂等摘要绑定命令与快照，并与普通工作台保存摘要隔离。成功后的重放返回原记录和 trace，但继续校验当前权限；拒绝会回滚幂等占位。普通工作台 save 的摘要与调用接口保持兼容。
+
+这是领域一致性入口，不是审批授权。没有新增 HTTP 写入接口或助手工具，没有审批投票和审批状态原子提交。save_guarded 明确拒绝 ChangeStatus；启停尚需完成与并发业务引用的事务保护，不能仅凭预览或旧的影响计数放行。创建/修改快照包含当时的影响信息，但本批不承诺冻结后续并发业务引用。
+
+隔离新库 master_guarded_final 验证 11 类资料各创建、修改一次，共 22 次业务审计；重复执行返回原结果且无新增审计。修改快照后复用幂等键拒绝；错快照拒绝后使用同键及正确快照可成功，证明占位已回滚。旧版本、撤销客户/品牌范围及 guarded 启停均拒绝。客户与 SKU 执行真实等待父级行锁，父级版本变更提交后拒绝旧快照，未增加业务审计。预览与 HTTP 只读断言先于这些执行用例独立完成。
+
+负向控制临时关闭 Core 快照比较，错快照用例错误执行并导致测试失败；已恢复且最终新库完整通过。既有事务权限集成回归通过，Core 25 项单元测试通过，严格 Clippy、格式、差异和文件大小检查通过。日志 /tmp/master-guard-{final,authority,unit,negative,clippy-final,size}.log。本批未部署，未发送聊天消息，未写入生产业务记录。
+
+下一步接入不可变意图与实际审批策略，将审批执行完成标记与 save_guarded 的业务写入原子提交；全局基础资料不得伪造法人范围。完成后再登记 Gateway、Read API、MCP 与 Host 的固定准备/确认能力，并补足启停的并发引用保护。
