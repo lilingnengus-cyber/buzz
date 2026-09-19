@@ -14,6 +14,7 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "get_inventory_count_approval_preview",
   "search_inventory_counts",
   "get_inventory_count",
   "search_inventory_count_options",
@@ -154,10 +155,16 @@ const capacityFixture = process.env.BUSINESS_MCP_CAPACITY_FIXTURE
   ? JSON.parse(await readFile(process.env.BUSINESS_MCP_CAPACITY_FIXTURE, "utf8")) : null;
 const probeId = "00000000-0000-4000-8000-000000000001";
 const traceId = capacityFixture?.traceId ?? probeId;
-const capacityInput = capacityFixture ? {
+const capacityInput = process.env.BUSINESS_MCP_CAPACITY_INPUT ? JSON.parse(await readFile(process.env.BUSINESS_MCP_CAPACITY_INPUT, "utf8")) : capacityFixture ? {
   inventoryCountId: capacityFixture.document.source.id,
   command: capacityFixture.document.operation.command,
 } : null;
+const capacityPage = process.env.BUSINESS_MCP_CAPACITY_PAGE ? JSON.parse(await readFile(process.env.BUSINESS_MCP_CAPACITY_PAGE, "utf8")) : null;
+if (capacityPage) {
+  capacityPage.traceId = traceId;
+  capacityPage.items[0].traceId = traceId;
+}
+const capacityPageInput = capacityPage ? {documentId:capacityFixture.item.id,documentType:capacityFixture.documentType,previewHash:capacityFixture.previewHash,offset:capacityPage.items[0].previewPagination.offset,limit:20} : null;
 const capacityCalls = [];
 const capacityServer = http.createServer((request, response) => {
   let raw = "";
@@ -171,11 +178,13 @@ const capacityServer = http.createServer((request, response) => {
         delegationId: probeId, enterpriseUserId: probeId, identityBindingId: probeId,
         sourceBuzzEventId: "a".repeat(64), sourceBuzzPubkey: "b".repeat(64), sourceChannelId: "capacity-probe",
         agentId: "acceptance-agent", agentTurnId: "acceptance-turn", traceId,
-        usedCalls: 1, maxCalls: 20, requiredScope: "inventory_count_submission_intent:create",
-        effectiveGrant: { capability: "inventory_count_submission_intent:create", dataScope: { mode: "unrestricted" }, obligations: [] },
+        usedCalls: 1, maxCalls: 20, requiredScope: input.requiredScope,
+        effectiveGrant: { capability: input.requiredScope, dataScope: { mode: "unrestricted" }, obligations: [] },
       });
     } else if (request.url === "/v1/write/prepare_inventory_count_submission") {
       jsonResponse(response, capacityFixture);
+    } else if (request.url === "/v1/read/get_inventory_count_approval_preview" && capacityPage) {
+      jsonResponse(response, capacityPage);
     } else if (request.url === "/internal/agent-audit") {
       response.writeHead(204); response.end();
     } else { response.writeHead(404); response.end(); }
@@ -184,8 +193,8 @@ const capacityServer = http.createServer((request, response) => {
 await new Promise((resolve, reject) => { capacityServer.once("error", reject); capacityServer.listen(0, "127.0.0.1", resolve); });
 const capacityAddress = capacityServer.address();
 const capacityUrl = `http://127.0.0.1:${capacityAddress.port}/`;
-const payloadLimit = process.env.BUSINESS_CAPACITY_PAYLOAD_BYTES ?? "1048576";
-const textLimit = process.env.BUSINESS_CAPACITY_TEXT_BYTES ?? "1048576";
+const payloadLimit = process.env.BUSINESS_CAPACITY_PAYLOAD_BYTES ?? "131072";
+const textLimit = process.env.BUSINESS_CAPACITY_TEXT_BYTES ?? "51200";
 const contextLimit = process.env.BUSINESS_CAPACITY_CONTEXT_TOKENS ?? "200000";
 const observedRequests = [];
 const modelServer = http.createServer((request, response) => {
@@ -207,8 +216,10 @@ const modelServer = http.createServer((request, response) => {
           index: 0,
           message: capacityFixture && observedRequests.length === 1
             ? { role: "assistant", content: null, tool_calls: [{ id: "capacity-call", type: "function", function: { name: "business-read-mcp__prepare_inventory_count_submission", arguments: JSON.stringify(capacityInput) } }] }
-            : { role: "assistant", content: "probe complete" },
-          finish_reason: capacityFixture && observedRequests.length === 1 ? "tool_calls" : "stop",
+            : capacityPage && observedRequests.length === 2
+              ? {role:"assistant",content:null,tool_calls:[{id:"capacity-page-call",type:"function",function:{name:"business-read-mcp__get_inventory_count_approval_preview",arguments:JSON.stringify(capacityPageInput)}}]}
+              : { role: "assistant", content: "probe complete" },
+          finish_reason: capacityFixture && (observedRequests.length === 1 || (capacityPage && observedRequests.length === 2)) ? "tool_calls" : "stop",
         },
       ],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -338,8 +349,23 @@ try {
     const toolMessage = observedRequests.flatMap(body => body.messages ?? []).find(message => message.role === "tool");
     assert(toolMessage, `model must receive the count result: ${JSON.stringify(observedRequests.map(body => ({keys:Object.keys(body), messages:(body.messages??[]).map(m=>({role:m.role,length:JSON.stringify(m.content).length})), calls:capacityCalls.map(c=>c.path)})))}`);
     assert(!toolMessage.content.includes("elided from tool result"), "count result must not be truncated by the agent text budget");
-    const digest = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-    assert.equal(digest(JSON.parse(toolMessage.content)), digest(capacityFixture), "all count lines, effects and the confirmation hash must survive transport");
+    const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])) : value;
+    const digest = value => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+    assert.equal(digest(JSON.parse(toolMessage.content)), digest(capacityFixture), "all returned preview lines, effects, pagination and the full confirmation hash must survive transport");
+    if (capacityPage) {
+      const pageMessage=observedRequests.flatMap(body=>body.messages??[]).find(message=>message.role==="tool" && message.tool_call_id==="capacity-page-call");
+      assert(pageMessage,"model must receive the requested later preview page");
+      const decodedPage=JSON.parse(pageMessage.content);
+      assert.equal(decodedPage.status,"ok", JSON.stringify({...decodedPage,items:undefined}));
+      assert.equal(digest(decodedPage.items),digest(capacityPage.items));
+      assert.equal(decodedPage.pagination.hasMore,capacityPage.pagination.hasMore);
+      assert.equal(decodedPage.pagination.nextCursor ?? null,capacityPage.pagination.nextCursor ?? null);
+      assert.deepEqual(decodedPage.summary,capacityPage.summary);
+      assert.deepEqual(decodedPage.resourceRefs.filter(ref=>ref.type!=="agent_query"),capacityPage.resourceRefs);
+      assert.equal(decodedPage.resourceRefs.find(ref=>ref.type==="agent_query")?.bizUri, `biz://agent-query/${traceId}`);
+      assert.equal(decodedPage.traceId,capacityPage.traceId);
+      assert.deepEqual(capacityCalls.find(call=>call.path==="/v1/read/get_inventory_count_approval_preview")?.input,capacityPageInput);
+    }
     const write = capacityCalls.find(call => call.path === "/v1/write/prepare_inventory_count_submission");
     assert.deepEqual(write?.input, capacityInput);
     assert.equal(capacityCalls.filter(call => call.path === "/v1/write/prepare_inventory_count_submission").length, 1);
@@ -358,7 +384,7 @@ try {
       modelVisibleTools: modelTools.length,
       onlyFixedBusinessTools: true,
       promptCompleted: true,
-      ...(capacityFixture ? { capacityPayloadBytes: Buffer.byteLength(JSON.stringify(capacityFixture)), completeCountResultReachedModel: true, mockedLocalServices: true, contextTokenLimit: Number(contextLimit), payloadByteLimit: Number(payloadLimit), toolTextByteLimit: Number(textLimit) } : {}),
+      ...(capacityFixture ? { laterPreviewPageReachedModel: Boolean(capacityPage), capacityInputLines: capacityInput.command.lines.length, capacityPayloadBytes: Buffer.byteLength(JSON.stringify(capacityFixture)), completeReturnedPreviewReachedModel: true, totalCountLines: capacityFixture.previewPagination?.totalLines, returnedPreviewLines: capacityFixture.document.lines.length, mockedLocalServices: true, contextTokenLimit: Number(contextLimit), payloadByteLimit: Number(payloadLimit), toolTextByteLimit: Number(textLimit) } : {}),
     }),
   );
 } finally {

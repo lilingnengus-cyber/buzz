@@ -334,3 +334,84 @@ async fn stale_approval_never_reaches_execution_route() {
 
 #[path = "inventory_count_writes_postgres.rs"]
 mod postgres;
+
+#[tokio::test]
+async fn preview_pages_bind_hash_and_check_scope_outside_the_page() {
+    for family_name in ["creation", "submission", "posting", "cancellation"] {
+        for allowed in [true, false] {
+            let id = Uuid::new_v4();
+            let intent = Uuid::new_v4();
+            let kind = format!("inventory_count_{family_name}_intent");
+            let ctx = context("inventory:read");
+            let command = canonical(
+                &format!("prepare_inventory_count_{family_name}"),
+                &input(family_name, id),
+            )
+            .unwrap();
+            let mut snapshot = snapshot(family_name, id, &command);
+            let mut second = snapshot["lines"][0].clone();
+            second["id"] = json!(Uuid::new_v4());
+            if !allowed {
+                second["brandId"] = json!(Uuid::new_v4());
+            }
+            snapshot["lines"].as_array_mut().unwrap().push(second);
+            let envelope = envelope(&kind, intent, &snapshot, ctx.trace_id);
+            let hash = envelope["previewHash"].clone();
+            let server = Router::new().route(
+                "/{*path}",
+                get(move || {
+                    let envelope = envelope.clone();
+                    async move { Json(envelope) }
+                }),
+            );
+            let (core, task) = serve(server).await;
+            let scope = iam_authorization_scope(&grant(&ctx, id), "inventory:read").unwrap();
+            let input = json!({"documentId":intent,"documentType":kind,"previewHash":hash,"offset":0,"limit":1});
+            let result = crate::inventory_count_previews::read(&core, &input, &scope, &ctx).await;
+            assert_eq!(
+                result.status(),
+                if allowed {
+                    StatusCode::OK
+                } else {
+                    StatusCode::NOT_FOUND
+                }
+            );
+            if allowed {
+                let bytes = axum::body::to_bytes(result.into_body(), 65536)
+                    .await
+                    .unwrap();
+                let decoded: BusinessToolResult<Value> = serde_json::from_slice(&bytes).unwrap();
+                assert!(decoded.pagination.unwrap().has_more);
+                assert_eq!(
+                    decoded.items[0]["document"]["lines"]
+                        .as_array()
+                        .unwrap()
+                        .len(),
+                    1
+                );
+                assert_eq!(decoded.items[0]["previewHash"], hash);
+                assert_eq!(
+                    decoded.items[0]["previewHashScope"],
+                    "complete_server_snapshot"
+                );
+                let mut stale = input.clone();
+                stale["previewHash"] = json!("0".repeat(64));
+                assert_eq!(
+                    crate::inventory_count_previews::read(&core, &stale, &scope, &ctx)
+                        .await
+                        .status(),
+                    StatusCode::CONFLICT
+                );
+                let mut swapped = input.clone();
+                swapped["documentId"] = json!(Uuid::new_v4());
+                assert_eq!(
+                    crate::inventory_count_previews::read(&core, &swapped, &scope, &ctx)
+                        .await
+                        .status(),
+                    StatusCode::SERVICE_UNAVAILABLE
+                );
+            }
+            task.abort();
+        }
+    }
+}

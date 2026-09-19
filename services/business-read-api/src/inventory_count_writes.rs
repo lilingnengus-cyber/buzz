@@ -108,7 +108,11 @@ pub(super) fn valid(tool: &str, input: &Value) -> bool {
         })
     }
 }
-fn permits_snapshot(snapshot: &Value, scope: &AuthorizationScope, creation: bool) -> bool {
+pub(super) fn permits_snapshot(
+    snapshot: &Value,
+    scope: &AuthorizationScope,
+    creation: bool,
+) -> bool {
     let mut document = if creation {
         snapshot["command"].clone()
     } else {
@@ -134,7 +138,7 @@ fn permits_snapshot(snapshot: &Value, scope: &AuthorizationScope, creation: bool
     }
     inventory_counts::permits(&document, scope, false)
 }
-fn bound_preview(value: &Value, kind: &str, trace: Uuid) -> bool {
+pub(super) fn bound_preview(value: &Value, kind: &str, trace: Uuid) -> bool {
     let Some(id) = value["item"]["id"]
         .as_str()
         .and_then(|v| v.parse::<Uuid>().ok())
@@ -155,7 +159,7 @@ fn bound_preview(value: &Value, kind: &str, trace: Uuid) -> bool {
         && value["approvalCommand"] == format!("确认 {} {id} v1 {hash}", kind.replace('_', "-"))
         && value["rejectionCommand"] == format!("拒绝 {} {id} v1 {hash}", kind.replace('_', "-"))
 }
-async fn fetch(
+pub(super) async fn fetch(
     core: &CoreClient,
     path: &str,
     input: Option<&Value>,
@@ -199,7 +203,7 @@ async fn fetch(
     }
     Ok(value)
 }
-fn count_ref(id: Uuid) -> Value {
+pub(super) fn count_ref(id: Uuid) -> Value {
     json!({"type":"inventory_count","id":id,"title":"查看库存盘点","bizUri":format!("biz://inventory-count/{id}")})
 }
 pub(super) async fn forward(
@@ -284,7 +288,10 @@ pub(super) async fn forward(
             };
             json!([count_ref(id)])
         };
-        return Json(prepared).into_response();
+        return match super::inventory_count_previews::page(prepared, 0, 20) {
+            Some(prepared) => Json(prepared).into_response(),
+            None => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        };
     }
     let Ok(command) = serde_json::from_value::<Approval>(input) else {
         return StatusCode::BAD_REQUEST.into_response();

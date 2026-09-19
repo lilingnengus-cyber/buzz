@@ -16,14 +16,15 @@ use business_anomaly_contracts::{
 };
 use business_query_contracts::{
     valid_biz_uri, BusinessToolResult, BusinessToolStatus, DataQualityInput, Evidence,
-    GetBusinessDocumentInput, GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput,
-    ManagementProfitReportInput, ManagementReportSnapshotInput, OperatingDashboardInput,
-    OrderProfitInput, PayablesInput, ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput,
-    ResourceRef, ScopeSummary, SearchFinancialDocumentsInput, SearchInventoryCountOptionsInput,
-    SearchInventoryCountsInput, SearchMasterDataInput, SearchPurchaseOrdersInput,
-    SearchSalesOrdersInput, SearchStockDocumentsInput, SettlementAllocationsInput, ValidateInput,
-    INVENTORY_READ, MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ,
-    RECEIVABLE_READ, SALES_ORDER_READ,
+    GetBusinessDocumentInput, GetInventoryCountInput, GetInventoryCountPreviewInput,
+    GetPurchaseOrderInput, GetSalesOrderInput, InventoryBalanceInput, ManagementProfitReportInput,
+    ManagementReportSnapshotInput, OperatingDashboardInput, OrderProfitInput, PayablesInput,
+    ProfitEvidenceInput, ProfitabilityInput, ReceivablesInput, ResourceRef, ScopeSummary,
+    SearchFinancialDocumentsInput, SearchInventoryCountOptionsInput, SearchInventoryCountsInput,
+    SearchMasterDataInput, SearchPurchaseOrdersInput, SearchSalesOrdersInput,
+    SearchStockDocumentsInput, SettlementAllocationsInput, ValidateInput, INVENTORY_READ,
+    MASTER_DATA_READ, ORDER_PROFIT_READ, PAYABLE_READ, PURCHASE_ORDER_READ, RECEIVABLE_READ,
+    SALES_ORDER_READ,
 };
 use chrono::Utc;
 use rmcp::{
@@ -1424,7 +1425,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "prepare_inventory_count_creation",
-        description = "Prepare a new inventory count only after resolving exact legal entity, warehouse, SKU IDs, business date and currency. Preparation does not freeze stock. Present the frozen-stock impact and exact returned confirmation command. Confirmation creates the count and immediately freezes selected stock until posting or cancellation. No count link exists before execution."
+        description = "Prepare a new inventory count only after resolving exact legal entity, warehouse, SKU IDs, business date and currency. Preparation does not freeze stock. Present the frozen-stock impact and exact returned confirmation command. Confirmation creates the count and immediately freezes selected stock until posting or cancellation. No count link exists before execution. Preparation returns at most 20 lines; follow previewPagination.nextOffset via get_inventory_count_approval_preview with the same intent ID, type and hash to review every line."
     )]
     async fn prepare_inventory_count_creation(
         &self,
@@ -1453,7 +1454,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "prepare_inventory_count_submission",
-        description = "Prepare recording all physical count lines with the exact current version and human-provided quantities. Never infer actual quantities from book balances. Shows variance and valuation effects; does not post inventory and retains the stock freeze. Present the exact returned confirmation command."
+        description = "Prepare recording all physical count lines with the exact current version and human-provided quantities. Never infer actual quantities from book balances. Shows variance and valuation effects; Preparation returns at most 20 lines; follow previewPagination.nextOffset via get_inventory_count_approval_preview with the same intent ID, type and hash to review every line. does not post inventory and retains the stock freeze. Present the exact returned confirmation command."
     )]
     async fn prepare_inventory_count_submission(
         &self,
@@ -1482,7 +1483,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "prepare_inventory_count_posting",
-        description = "Prepare posting the recorded count differences at the exact current version. Present per-line quantity/value effects and release of the count freeze, then the exact returned confirmation command. Preparation itself does not alter inventory."
+        description = "Prepare posting the recorded count differences at the exact current version. Present per-line quantity/value effects and release of the count freeze, then the exact returned confirmation command. Preparation itself does not alter inventory. Preparation returns at most 20 lines; follow previewPagination.nextOffset via get_inventory_count_approval_preview with the same intent ID, type and hash to review every line."
     )]
     async fn prepare_inventory_count_posting(
         &self,
@@ -1511,7 +1512,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "prepare_inventory_count_cancellation",
-        description = "Prepare cancellation of an active inventory count at its current version with a human-provided reasonCode. Explain release of the freeze without posting quantity or value differences. Present the exact returned confirmation command."
+        description = "Prepare cancellation of an active inventory count at its current version with a human-provided reasonCode. Explain release of the freeze without posting quantity or value differences. Preparation returns at most 20 lines; follow previewPagination.nextOffset via get_inventory_count_approval_preview with the same intent ID, type and hash to review every line. Present the exact returned confirmation command."
     )]
     async fn prepare_inventory_count_cancellation(
         &self,
@@ -1539,6 +1540,22 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "get_inventory_count_approval_preview",
+        description = "Read up to 20 lines of an existing inventory count approval intent, bound to its exact intent ID, type and full preview hash. Follow nextOffset to review all lines; each page rechecks the whole snapshot and current authority. A page is not the complete snapshot; never hash a page or imply all lines were reviewed when they were not. This tool does not approve or execute."
+    )]
+    async fn get_inventory_count_approval_preview(
+        &self,
+        Parameters(input): Parameters<GetInventoryCountPreviewInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke(
+                "get_inventory_count_approval_preview",
+                INVENTORY_READ,
+                input,
+            )
+            .await)
+    }
+    #[tool(
         name = "search_inventory_counts",
         description = "Search authorized inventory counts by exact ID, number, warehouse, SKU and status. Returns count summaries, variance totals and current version. Use get_inventory_count for all line IDs and quantities. Follow nextOffset even for empty filtered pages; disambiguate multiple matches."
     )]
@@ -1552,11 +1569,11 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "get_inventory_count",
-        description = "Read one exact inventory count including line IDs, recorded actuals, current version and frozen state. This is a read, not approval or execution."
+        description = "Read up to 20 lines of one exact inventory count, including line IDs, recorded actuals and frozen state. Follow nextOffset and supply expectedVersion from the first page on later pages; restart if the version changes. This is a read, not approval or execution."
     )]
     async fn get_inventory_count(
         &self,
-        Parameters(input): Parameters<GetBusinessDocumentInput>,
+        Parameters(input): Parameters<GetInventoryCountInput>,
     ) -> Result<String, ErrorData> {
         Ok(self
             .invoke("get_inventory_count", INVENTORY_READ, input)
@@ -3265,7 +3282,10 @@ fn validate_business_value(value: &Value) -> Result<(), String> {
             }
             for (key, nested) in object {
                 let unset_count_quantity = nested.is_null()
-                    && matches!(key.as_str(), "actualOnHandQuantity" | "varianceQuantity");
+                    && matches!(
+                        key.as_str(),
+                        "actualOnHandQuantity" | "varianceQuantity" | "recordedActualQuantity"
+                    );
                 if key.ends_with("Quantity") && !nested.is_string() && !unset_count_quantity {
                     return Err("Business quantity was not a decimal string".into());
                 }
@@ -3811,6 +3831,8 @@ mod tests {
         assert!(validate_business_value(&json!({"lines":[{"actualOnHandQuantity":null,"varianceQuantity":null,"snapshotOnHandQuantity":"0"}]})).is_ok());
         assert!(validate_business_value(&json!({"onHandQuantity":null})).is_err());
         assert!(validate_business_value(&json!({"actualOnHandQuantity":2})).is_err());
+        assert!(validate_business_value(&json!({"recordedActualQuantity":null})).is_ok());
+        assert!(validate_business_value(&json!({"recordedActualQuantity":2})).is_err());
         let context = context();
         let value = json!({"schemaVersion":1,"status":"ok","traceId":context.trace_id,"documentType":"inventory_count_creation_intent","item":{"id":Uuid::new_v4(),"status":"draft"},"previewHash":"a".repeat(64),"resourceRefs":[]});
         assert!(
@@ -3829,7 +3851,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 120);
+        assert_eq!(registered.len(), 121);
         for name in [
             "search_inventory_counts",
             "get_inventory_count",

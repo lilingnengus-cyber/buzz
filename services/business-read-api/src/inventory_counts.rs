@@ -1,7 +1,7 @@
 //! Count reads use Core authority and intersect the current agent delegation.
 use super::*;
 use business_query_contracts::{
-    GetBusinessDocumentInput, SearchInventoryCountOptionsInput, SearchInventoryCountsInput,
+    GetInventoryCountInput, SearchInventoryCountOptionsInput, SearchInventoryCountsInput,
     ValidateInput,
 };
 use std::collections::BTreeSet;
@@ -67,7 +67,7 @@ pub(super) async fn read(
     let filter = match tool {
         "search_inventory_counts" => normalized::<SearchInventoryCountsInput>(input),
         "search_inventory_count_options" => normalized::<SearchInventoryCountOptionsInput>(input),
-        "get_inventory_count" => normalized::<GetBusinessDocumentInput>(input),
+        "get_inventory_count" => normalized::<GetInventoryCountInput>(input),
         _ => None,
     };
     let Some(filter) = filter else {
@@ -125,7 +125,7 @@ pub(super) async fn read(
     if envelope["traceId"].as_str() != Some(context.trace_id.to_string().as_str()) {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let (mut items, has_more, next) = if detail {
+    let (mut items, mut has_more, mut next) = if detail {
         if !envelope["item"].is_object() || envelope["item"]["id"] != filter["documentId"] {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
@@ -153,6 +153,31 @@ pub(super) async fn read(
     }
     if detail && items.is_empty() {
         return StatusCode::NOT_FOUND.into_response();
+    }
+    if detail {
+        let item = &mut items[0];
+        if filter["expectedVersion"]
+            .as_i64()
+            .is_some_and(|v| item["version"].as_i64() != Some(v))
+        {
+            return StatusCode::CONFLICT.into_response();
+        }
+        let Some(lines) = item["lines"].as_array() else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        let total = lines.len();
+        let offset = filter["offset"].as_u64().unwrap_or(0) as usize;
+        let limit = filter["limit"].as_u64().unwrap_or(20) as usize;
+        let selected = lines
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        has_more = offset.saturating_add(limit) < total;
+        next = has_more.then_some((offset + limit) as u64);
+        item["lines"] = json!(selected);
+        item["lineCount"] = json!(total);
     }
     let refs = if options {
         vec![]
@@ -184,7 +209,7 @@ pub(super) async fn read(
             ("nextOffset".into(), json!(next)),
             (
                 "requiresDisambiguation".into(),
-                json!(has_more || items.len() > 1),
+                json!(!detail && (has_more || items.len() > 1)),
             ),
         ]),
         items,

@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
 mod inventory_counts;
-pub use inventory_counts::{SearchInventoryCountOptionsInput, SearchInventoryCountsInput};
+pub use inventory_counts::{
+    GetInventoryCountInput, GetInventoryCountPreviewInput, SearchInventoryCountOptionsInput,
+    SearchInventoryCountsInput,
+};
 mod document_id;
 mod financial_documents;
 pub use document_id::GetBusinessDocumentInput;

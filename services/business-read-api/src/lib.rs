@@ -3,6 +3,7 @@
 mod allocation_history;
 mod config;
 mod financial_documents;
+mod inventory_count_previews;
 mod inventory_count_writes;
 mod inventory_counts;
 mod master_data;
@@ -44,9 +45,10 @@ use subtle::ConstantTimeEq;
 use url::Url;
 use uuid::Uuid;
 
-const READ_TOOLS: [&str; 40] = [
+const READ_TOOLS: [&str; 41] = [
     "search_inventory_counts",
     "get_inventory_count",
+    "get_inventory_count_approval_preview",
     "search_inventory_count_options",
     "search_sales_returns",
     "search_purchase_returns",
@@ -396,7 +398,8 @@ async fn read_tool(
     let response = if READ_TOOLS.contains(&tool.as_str()) {
         if let Some(core) = &state.core {
             core_read_result(core, &tool, &input, &effective_scope, &context).await
-        } else if inventory_counts::handles(&tool)
+        } else if tool == "get_inventory_count_approval_preview"
+            || inventory_counts::handles(&tool)
             || tool == "search_business_master_data"
             || matches!(
                 tool.as_str(),
@@ -886,6 +889,7 @@ fn required_capability(tool: &str) -> Option<&'static str> {
         "search_goods_receipts" => Some("goods_receipt:read"),
         "search_inventory_openings"
         | "search_inventory_counts"
+        | "get_inventory_count_approval_preview"
         | "get_inventory_count"
         | "search_inventory_count_options" => Some("inventory:read"),
         "search_customer_receipts" => Some("customer_receipt:read"),
@@ -1392,6 +1396,9 @@ async fn core_read_result(
     }
     if let Some((kind, mode)) = return_documents::family(tool) {
         return return_documents::read(core, kind, mode, input, scope, context).await;
+    }
+    if tool == "get_inventory_count_approval_preview" {
+        return inventory_count_previews::read(core, input, scope, context).await;
     }
     if inventory_counts::handles(tool) {
         return inventory_counts::read(core, tool, input, scope, context).await;

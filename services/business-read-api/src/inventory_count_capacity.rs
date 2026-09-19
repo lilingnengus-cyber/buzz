@@ -17,8 +17,8 @@ async fn measure(label: &str, response: Response) -> Value {
     }
 
     assert!(
-        bytes.len() < 1024 * 1024,
-        "{label}: {} bytes exceeds 1 MiB",
+        bytes.len() < 50 * 1024,
+        "{label}: {} bytes exceeds default 50 KiB agent text budget",
         bytes.len()
     );
     serde_json::from_slice(&bytes).unwrap()
@@ -89,24 +89,98 @@ async fn five_hundred_line_count_and_multi_document_search_fit_transport() {
         .await,
     )
     .await;
-    assert_eq!(detail["items"][0]["lines"].as_array().unwrap().len(), 500);
-    let lines=detail["items"][0]["lines"].as_array().unwrap().iter().map(|line|json!({"countLineId":line["id"],"actualOnHandQuantity":"1","surplusUnitCost":"7"})).collect::<Vec<_>>();
+    assert_eq!(detail["items"][0]["lines"].as_array().unwrap().len(), 20);
+    assert_eq!(detail["summary"]["requiresDisambiguation"], false);
+    let mut all_lines = detail["items"][0]["lines"].as_array().unwrap().clone();
+    for offset in (20..500).step_by(20) {
+        let next = measure(
+            "detail-page",
+            inventory_counts::read(
+                &core,
+                "get_inventory_count",
+                &json!({"documentId":id,"offset":offset,"expectedVersion":1}),
+                &scope,
+                &read_ctx,
+            )
+            .await,
+        )
+        .await;
+        all_lines.extend(
+            next["items"][0]["lines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .cloned(),
+        );
+    }
+    assert_eq!(all_lines.len(), 500);
+    assert_eq!(
+        all_lines
+            .iter()
+            .map(|l| l["id"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        500
+    );
+    let lines=all_lines.iter().map(|line|json!({"countLineId":line["id"],"actualOnHandQuantity":"1","surplusUnitCost":"7"})).collect::<Vec<_>>();
     let mut ctx = context("inventory_count_submission_intent:create");
     ctx.enterprise_user_id = f.actor;
+    let submission_input =
+        json!({"inventoryCountId":id,"command":{"expectedVersion":1,"lines":lines}});
+    if let Ok(directory) = std::env::var("BUSINESS_COUNT_CAPACITY_OUTPUT_DIR") {
+        std::fs::write(
+            std::path::Path::new(&directory).join("submission-input.json"),
+            serde_json::to_vec(&submission_input).unwrap(),
+        )
+        .unwrap();
+    }
     let prepared = measure(
         "submission",
         forward(
             &core,
             "prepare_inventory_count_submission",
-            json!({"inventoryCountId":id,"command":{"expectedVersion":1,"lines":lines}}),
+            submission_input,
             &ctx,
             &authority(&ctx, &f),
         )
         .await,
     )
     .await;
+    assert_eq!(prepared["document"]["lines"].as_array().unwrap().len(), 20);
+    assert_eq!(prepared["previewPagination"]["totalLines"], 500);
+    let mut seen = std::collections::BTreeSet::new();
+    for offset in (0..500).step_by(20) {
+        let preview=measure("approval-page",crate::inventory_count_previews::read(&core,&json!({"documentId":prepared["item"]["id"],"documentType":"inventory_count_submission_intent","previewHash":prepared["previewHash"],"offset":offset}),&scope,&read_ctx).await).await;
+        let page = &preview["items"][0];
+        assert_eq!(page["previewHash"], prepared["previewHash"]);
+        assert_eq!(
+            page["document"]["operation"]["command"]["lines"]
+                .as_array()
+                .unwrap()
+                .len(),
+            20
+        );
+        for line in page["document"]["lines"].as_array().unwrap() {
+            assert!(seen.insert(line["id"].as_str().unwrap().to_string()));
+            assert_eq!(line["impact"]["actualOnHandQuantity"], "1");
+        }
+    }
+    assert_eq!(seen.len(), 500);
     let submitted = approve(&core, &f, "submission", &prepared, "approve").await;
     assert_eq!(submitted["updatedDocument"]["version"], 2);
+    assert_eq!(
+        inventory_counts::read(
+            &core,
+            "get_inventory_count",
+            &json!({"documentId":id,"offset":20,"expectedVersion":1}),
+            &scope,
+            &read_ctx
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(crate::inventory_count_previews::read(&core,&json!({"documentId":prepared["item"]["id"],"documentType":"inventory_count_submission_intent","previewHash":prepared["previewHash"],"offset":20}),&scope,&read_ctx).await.status(),StatusCode::CONFLICT);
     let mut ctx = context("inventory_count_posting_intent:create");
     ctx.enterprise_user_id = f.actor;
     let prepared = measure(
