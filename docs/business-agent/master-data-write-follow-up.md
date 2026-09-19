@@ -269,3 +269,11 @@ shipment_master_status 的真实 PostgreSQL 回归覆盖九类资料（客户、
 完整 B2 销售闭环与并发在 shipment_master_b2 通过；Core 与该测试严格 Clippy、格式及 diff 检查通过。日志 /tmp/shipment-master-{status,b2,clippy}.log；均为独立 55439 测试库。sales.rs 964 行、inventory.rs 846 行，未增加文件长度例外。
 
 本批未部署。其他归属覆盖、状态变更的反向影响检查及助手启停意图仍待接入；Windows 实机及真实会话验收、完整业务覆盖中的其他模块继续保留为未完成。
+
+## 仓库停用与采购草稿反向交错
+
+新增真实 Core change_status 并发回归：先以 purchase_orders 表锁停住已取得资料共享锁的采购草稿插入，观测采购 PID；再发起仓库停用，确认它等待采购事务的资料锁，最后放行采购。旧实现于 warehouse_disable_before 错误返回仓库 disabled，原因是 purchase_inbound 仅统计 confirmed 采购行，漏掉已提交 draft。
+
+仓库影响查询改为统计 draft/confirmed 且存在未完成数量的采购行，与采购创建引用保护配合。warehouse_disable_final 中草稿成功提交后停用因 blocking operational impacts 拒绝，仓库保持 active；影响预览显示一条阻塞采购行。取消草稿后预览允许停用，真实停用成功，再启用恢复测试环境。完整 B3 采购/收货/成本/应付及并发回归、严格 Clippy、格式与 diff 检查通过。日志 /tmp/warehouse-disable-{before,after,final,clippy-final}.log；独立数据库端口 55439。
+
+本批未部署。该验证仅证明仓库与采购草稿的反向交错，不能代替其他资料类型或业务入口；助手启停意图及完整业务覆盖余项仍未完成。

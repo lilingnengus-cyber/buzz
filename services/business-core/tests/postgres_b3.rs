@@ -2,6 +2,8 @@
 mod master_status;
 #[path = "postgres_b3/receiving_master_status.rs"]
 mod receiving_master_status;
+#[path = "postgres_b3/warehouse_disable.rs"]
+mod warehouse_disable;
 use business_core::{
     b2::{
         model::{
@@ -58,6 +60,7 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
     store.migrate().await.unwrap();
     let fixture = seed(&pool).await;
     master_status::check(&pool, &store, &fixture).await;
+    warehouse_disable::check(&pool, &store, &fixture).await;
     let date = NaiveDate::from_ymd_opt(2026, 8, 21).unwrap();
     let purchasing = PurchasingService::new(store.clone(), "PO".into(), 30);
     let receiving =
