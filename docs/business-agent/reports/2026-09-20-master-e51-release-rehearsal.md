@@ -29,8 +29,6 @@
 
 MCP 候选 `/tmp/business-master-client-e51a84b9c/business-read-mcp`，SHA-256 为 `3e9d7317d0c863c37c81d6a62b8475b1998f84dc999795775a774e80113ed06f`。使用已安装 buzz-agent 和候选 MCP 的模拟模型原生回合完成，普通会话 101 工具、指定确认会话 60 工具，均仅暴露固定业务工具。日志 `/tmp/business-master-e51-runtime-{ordinary,approval}.log`。这不代表真实聊天或线上授权链验收。
 
-## 后续发布条件
-
 ## 发布镜像运行时补充验证
 
 e51 Core 候选实际连接 `master_rehearsal_ddecf9c0e`，通过隔离容器及仅回环端口 33120 运行。订单预览、两种退货读取，以及法人、业务单元、客户、SKU 的完整记录读取均成功。四类 master intent 各三个路由共 12 项检查通过：缺少幂等键的准备请求返回 400，不存在意图预览返回 404，缺少审批字段返回 422。日志 `/tmp/business-master-e51-canary.log`。
@@ -40,3 +38,15 @@ e51 Core 候选实际连接 `master_rehearsal_ddecf9c0e`，通过隔离容器及
 暂停镜像采用流式源码构建，避免另存一份服务器源码目录。暂停路由文件输入和输出 SHA 与先前已审核版本一致；构建开始前检查至少 1.5 GiB，运行中低于 1 GiB 自动终止。日志 `/tmp/business-master-e51-paused-build.log`。构建及暂停路由运行结果须以随后实际检查为准。
 
 尚需构建并运行验证 e51 暂停镜像、准备 Web 配套、完成新能力的副本运行时检查，再进行配套生产切换和真实客户端验收。服务器根分区构建后约剩 1.6 GB，继续构建须遵守已有磁盘阈值，不能直接删除生产数据或旧镜像。当前 Compose 文件均为候选覆盖，不能独立启动；暂停覆盖引用的镜像尚未构建。
+
+## 暂停回退与配套检查完成
+
+暂停镜像 `shiyue-business-master-paused-business-core:e51a84b9c` 构建成功，镜像 ID 为 `sha256:621f4da73c80e50c3c3b548b39d2cb3e865d88d0291069fda550cc1b59c696de`。实际连接副本验证全部 12 个基础资料意图接口返回 503；订单预览、销售/采购退货读取、法人/业务单元/客户/SKU 完整详情仍正常。日志 `/tmp/business-master-e51-paused-canary.log`。构建后服务器剩余约 1.07 GiB；未删除旧镜像、缓存或生产卷。
+
+四服务各自连接隔离副本的启动检查通过：Gateway/IAM readiness 204，Core/Read API health 200。上游地址在启动检查中替换为不可达本地地址，避免连接生产服务；这项检查仅证明启动健康，不能作为跨服务签名链验收。日志 `/tmp/business-master-e51-services-canary.log`。
+
+Web 配套 `tsc --noEmit && vite build` 通过，入口 `index-ChD_1Fhb.js`、样式 `index-15V03VvM.css`，尚未发布。日志 `/tmp/business-master-e51-web-build.log`。
+
+Host 提示补充基础资料查找、专用商品读取、字段保留及显式清空、计量精度询问、不可变字段、签名确认及实际链接规则，并修正顶部审批例外范围。10 项 Host 定向测试通过，提交 `ee7b26b81`。兼容源码已加入该段提示，Host 发布版正在重建；之前签名的 Mac 候选仍需替换新 Host 并重新签名，不能把旧包当作已包含本次提示修复。
+
+下一步是完成客户端候选更新、配套生产迁移/授权/服务/Web 切换及真实客户端验收。基础资料启停、新法人授权与其他业务域仍未完成。
