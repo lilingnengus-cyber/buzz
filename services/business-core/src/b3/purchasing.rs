@@ -362,7 +362,7 @@ impl PurchasingService {
             version,
             actor,
             trace_id,
-            json!({"version":version}),
+            json!({"version":version,"reasonCode":input.reason_code}),
         )
         .await?;
         record(
@@ -373,7 +373,7 @@ impl PurchasingService {
             topic,
             "purchase_order",
             order_id,
-            json!({"version":version}),
+            json!({"version":version,"reasonCode":input.reason_code}),
         )
         .await?;
         let result = CommandResult {

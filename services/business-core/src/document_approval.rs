@@ -2,6 +2,8 @@
 pub mod allocation;
 mod allocation_history;
 mod financial_documents;
+/// Bound cancellation of remaining order quantities.
+pub mod order_cancellation;
 /// Immutable reversal preparation and signed execution.
 pub mod reversal;
 mod settlement;
@@ -75,6 +77,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(settlement::routes())
         .merge(allocation::routes())
         .merge(reversal::routes())
+        .merge(order_cancellation::routes())
         .route(
             "/v1/agent-allocation-history/{kind}",
             get(allocation_history::search),
@@ -414,6 +417,7 @@ async fn cast_vote(
         .await?,
         "shipment" | "goods_receipt" | "inventory_opening" => Some(stock::authority_row(store, document_type, document_id).await?),
         "customer_receipt" | "supplier_payment" => Some(settlement::authority_row(store, document_type, document_id).await?),
+        "sales_order_cancellation_intent" | "purchase_order_cancellation_intent" => Some(order_cancellation::authority_row(store,document_type,document_id).await?),
         "customer_receipt_reversal_intent" | "supplier_payment_reversal_intent" | "receivable_allocation_reversal_intent" | "payable_allocation_reversal_intent" => Some(reversal::authority_row(store, document_type, document_id).await?),
         "receivable_allocation_intent" | "payable_allocation_intent" => Some(allocation::authority_row(store, document_type, document_id).await?),
         _ => return Err(StoreError::Invalid("document type".into())),
@@ -428,6 +432,7 @@ async fn cast_vote(
             | "shipment"
             | "customer_receipt"
             | "receivable_allocation_intent"
+            | "sales_order_cancellation_intent"
             | "customer_receipt_reversal_intent"
             | "receivable_allocation_reversal_intent"
     ) {

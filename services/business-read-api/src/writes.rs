@@ -22,6 +22,8 @@ pub(super) async fn write_tool(
             | "approve_supplier_payment_reversal"
             | "approve_receivable_allocation_reversal"
             | "approve_payable_allocation_reversal"
+            | "approve_sales_order_cancellation"
+            | "approve_purchase_order_cancellation"
             | "approve_inventory_opening"
     );
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
@@ -70,6 +72,8 @@ pub(super) async fn write_tool(
             | "prepare_supplier_payment_reversal"
             | "prepare_receivable_allocation_reversal"
             | "prepare_payable_allocation_reversal"
+            | "prepare_sales_order_cancellation"
+            | "prepare_purchase_order_cancellation"
     ) {
         return forward_intent_prepare(core, &tool, input, &context, &grant).await;
     }
@@ -85,6 +89,12 @@ pub(super) async fn write_tool(
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "prepare_sales_order_cancellation" | "prepare_purchase_order_cancellation" => {
+            serde_json::from_value::<
+                business_core::document_approval::order_cancellation::PrepareOrderCancellation,
+            >(input.clone())
+            .is_ok()
+        }
         "prepare_customer_receipt_reversal"
         | "prepare_supplier_payment_reversal"
         | "prepare_receivable_allocation_reversal"
@@ -142,6 +152,8 @@ pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
         | "approve_supplier_payment_reversal"
         | "approve_receivable_allocation_reversal"
         | "approve_payable_allocation_reversal"
+        | "approve_sales_order_cancellation"
+        | "approve_purchase_order_cancellation"
         | "approve_inventory_opening" => {
             serde_json::from_value::<ChatApprovalToolInput>(input.clone()).is_ok()
         }
@@ -168,6 +180,15 @@ async fn forward_chat_approval(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let path = match tool {
+        "approve_sales_order_cancellation" => format!(
+            "v1/agent-approvals/order-cancellations/sales_order_cancellation_intent/{}",
+            input.document_id
+        ),
+        "approve_purchase_order_cancellation" => format!(
+            "v1/agent-approvals/order-cancellations/purchase_order_cancellation_intent/{}",
+            input.document_id
+        ),
+
         "approve_customer_receipt_reversal" => format!(
             "v1/agent-approvals/reversals/customer_receipt_reversal_intent/{}",
             input.document_id
@@ -396,6 +417,9 @@ async fn scope_allows_write(
         return false;
     };
     let path = match tool {
+        "approve_sales_order_cancellation"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/order-cancellations/sales_order_cancellation_intent/{id}")),
+        "approve_purchase_order_cancellation"=>input["documentId"].as_str().map(|id|format!("v1/agent-approval-previews/order-cancellations/purchase_order_cancellation_intent/{id}")),
+
         "approve_customer_receipt_reversal" => input["documentId"].as_str().map(|id| {
             format!("v1/agent-approval-previews/reversals/customer_receipt_reversal_intent/{id}")
         }),
@@ -556,6 +580,17 @@ async fn forward_intent_prepare(
     grant: &EffectiveGrant,
 ) -> Response {
     let (kind, category, source_kind) = match tool {
+        "prepare_sales_order_cancellation" => (
+            "sales_order_cancellation_intent",
+            "order-cancellation",
+            "sales_order",
+        ),
+        "prepare_purchase_order_cancellation" => (
+            "purchase_order_cancellation_intent",
+            "order-cancellation",
+            "purchase_order",
+        ),
+
         "prepare_receivable_allocation" => (
             "receivable_allocation_intent",
             "allocation",
@@ -637,7 +672,7 @@ async fn forward_intent_prepare(
     prepared["item"]["status"] = json!("draft");
     prepared["schemaVersion"] = json!(1);
     prepared["status"] = json!("ok");
-    prepared["resourceRefs"] = json!([{"type":source_kind,"id":source_id,"title":"查看核销来源单据","bizUri":format!("biz://{}/{source_id}",source_kind.replace('_',"-"))}]);
+    prepared["resourceRefs"] = json!([{"type":source_kind,"id":source_id,"title":"查看来源单据","bizUri":format!("biz://{}/{source_id}",source_kind.replace('_',"-"))}]);
     Json(prepared).into_response()
 }
 
@@ -679,6 +714,16 @@ mod allocation_tests {
     async fn target_scope_is_checked_before_persisting_allocation_intent() {
         for allowed in [false, true] {
             for (tool, kind, category) in [
+                (
+                    "prepare_sales_order_cancellation",
+                    "sales_order_cancellation_intent",
+                    "order-cancellation",
+                ),
+                (
+                    "prepare_purchase_order_cancellation",
+                    "purchase_order_cancellation_intent",
+                    "order-cancellation",
+                ),
                 (
                     "prepare_receivable_allocation",
                     "receivable_allocation_intent",

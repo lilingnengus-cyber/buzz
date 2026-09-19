@@ -12,7 +12,11 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 41] = [
+const AGENT_SCOPES: [&str; 45] = [
+    "sales_order_cancellation_intent:create",
+    "sales_order_cancellation_intent:approve",
+    "purchase_order_cancellation_intent:create",
+    "purchase_order_cancellation_intent:approve",
     "customer_receipt_reversal_intent:create",
     "customer_receipt_reversal_intent:approve",
     "supplier_payment_reversal_intent:create",
@@ -96,6 +100,14 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         "payable-allocation-reversal-intent" => (
             "payable_allocation_reversal_intent",
             "payable_allocation_reversal_intent:approve",
+        ),
+        "sales-order-cancellation-intent" => (
+            "sales_order_cancellation_intent",
+            "sales_order_cancellation_intent:approve",
+        ),
+        "purchase-order-cancellation-intent" => (
+            "purchase_order_cancellation_intent",
+            "purchase_order_cancellation_intent:approve",
         ),
         "sales-order" => ("sales_order", "sales_order:approve"),
         "purchase-order" => ("purchase_order", "purchase_order:approve"),
@@ -862,6 +874,8 @@ mod tests {
     #[test]
     fn settlement_commands_bind_exact_record_family() {
         for kind in [
+            "sales-order-cancellation-intent",
+            "purchase-order-cancellation-intent",
             "customer-receipt-reversal-intent",
             "supplier-payment-reversal-intent",
             "receivable-allocation-reversal-intent",

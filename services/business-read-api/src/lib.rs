@@ -80,7 +80,11 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 28] = [
+const WRITE_TOOLS: [&str; 32] = [
+    "prepare_sales_order_cancellation",
+    "prepare_purchase_order_cancellation",
+    "approve_sales_order_cancellation",
+    "approve_purchase_order_cancellation",
     "prepare_customer_receipt_reversal",
     "prepare_supplier_payment_reversal",
     "prepare_receivable_allocation_reversal",
@@ -754,6 +758,11 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_sales_order_cancellation" => Some("sales_order_cancellation_intent:create"),
+        "prepare_purchase_order_cancellation" => Some("purchase_order_cancellation_intent:create"),
+        "approve_sales_order_cancellation" => Some("sales_order_cancellation_intent:approve"),
+        "approve_purchase_order_cancellation" => Some("purchase_order_cancellation_intent:approve"),
+
         "get_customer_receipt_allocations" => Some("customer_receipt:read"),
         "get_supplier_payment_allocations" => Some("supplier_payment:read"),
         "prepare_customer_receipt_reversal" => Some("customer_receipt_reversal_intent:create"),

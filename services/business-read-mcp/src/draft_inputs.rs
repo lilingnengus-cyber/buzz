@@ -102,3 +102,11 @@ pub(super) struct PrepareReversalInput {
     expected_target_version: Option<i64>,
     reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareOrderCancellationInput {
+    source_document_id: Uuid,
+    expected_source_version: i64,
+    reason: String,
+}

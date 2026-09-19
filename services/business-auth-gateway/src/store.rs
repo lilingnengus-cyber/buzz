@@ -1,4 +1,4 @@
-// Migration 0038 includes immutable reversal intents.
+// Migration 0039 includes immutable order cancellation intents.
 use crate::{
     auth::Claims,
     config::Config,

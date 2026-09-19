@@ -729,6 +729,64 @@ impl BusinessReadMcp {
             .await)
     }
     #[tool(
+        name = "prepare_sales_order_cancellation",
+        description = "Prepare cancellation of all remaining unfulfilled order quantities, bound to current version and a human-provided reason. Present retained fulfilled quantities, released reservations and exact signed confirmation command. Does not delete the order or reverse posted stock or receivables/payables."
+    )]
+    async fn prepare_sales_order_cancellation(
+        &self,
+        Parameters(input): Parameters<PrepareOrderCancellationInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_sales_order_cancellation",
+                "sales_order_cancellation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_sales_order_cancellation",
+        description = "Approve or reject only the cancellation intent bound to the current exact signed human command. No model-controlled IDs, versions, quantities or reason. Report success only for executed=true."
+    )]
+    async fn approve_sales_order_cancellation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_sales_order_cancellation",
+                "sales_order_cancellation_intent:approve",
+                "sales_order_cancellation_intent",
+            )
+            .await)
+    }
+    #[tool(
+        name = "prepare_purchase_order_cancellation",
+        description = "Prepare cancellation of all remaining unfulfilled order quantities, bound to current version and a human-provided reason. Present retained fulfilled quantities, released reservations and exact signed confirmation command. Does not delete the order or reverse posted stock or receivables/payables."
+    )]
+    async fn prepare_purchase_order_cancellation(
+        &self,
+        Parameters(input): Parameters<PrepareOrderCancellationInput>,
+    ) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_write(
+                "prepare_purchase_order_cancellation",
+                "purchase_order_cancellation_intent:create",
+                input,
+            )
+            .await)
+    }
+    #[tool(
+        name = "approve_purchase_order_cancellation",
+        description = "Approve or reject only the cancellation intent bound to the current exact signed human command. No model-controlled IDs, versions, quantities or reason. Report success only for executed=true."
+    )]
+    async fn approve_purchase_order_cancellation(&self) -> Result<String, ErrorData> {
+        Ok(self
+            .invoke_chat_approval(
+                "approve_purchase_order_cancellation",
+                "purchase_order_cancellation_intent:approve",
+                "purchase_order_cancellation_intent",
+            )
+            .await)
+    }
+    #[tool(
         name = "prepare_customer_receipt_reversal",
         description = "Prepare an immutable reversal intent for an explicitly selected record and a human-provided reason. Does not reverse balances. Bind current source and, for allocation reversals, target versions. Present the returned effects and exact confirmation command. Never initiate a bank transfer or refund."
     )]
@@ -3024,7 +3082,7 @@ mod tests {
     #[test]
     fn tools_include_fixed_reads_draft_creates_and_two_bound_approval_tools() {
         let registered = BusinessReadMcp::tool_router().list_all();
-        assert_eq!(registered.len(), 70);
+        assert_eq!(registered.len(), 74);
         assert!(registered
             .iter()
             .any(|tool| tool.name.as_ref() == "search_business_master_data"));

@@ -586,7 +586,7 @@ impl SalesService {
         };
         sqlx::query("UPDATE sales_orders SET lifecycle_status=$2,fulfillment_status='cancelled',cancelled_at=now(),completed_at=CASE WHEN $2='completed' THEN now() ELSE completed_at END,updated_by_user_id=$3,trace_id=$4 WHERE id=$1").bind(order_id).bind(status).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
-        sqlx::query("INSERT INTO sales_order_events(id,sales_order_id,event_type,order_version,payload,actor_user_id,trace_id) VALUES($1,$2,'cancelled',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(order_id).bind(version).bind(json!({"shippedQuantity":total_shipped.to_string()})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO sales_order_events(id,sales_order_id,event_type,order_version,payload,actor_user_id,trace_id) VALUES($1,$2,'cancelled',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(order_id).bind(version).bind(json!({"shippedQuantity":total_shipped.to_string(),"reasonCode":input.reason_code})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         record(
             &mut tx,
             trace_id,
@@ -595,7 +595,7 @@ impl SalesService {
             "sales_order_cancelled",
             "sales_order",
             order_id,
-            json!({"version":version,"releasedQuantity":(total_ordered-total_shipped).to_string()}),
+            json!({"version":version,"releasedQuantity":(total_ordered-total_shipped).to_string(),"reasonCode":input.reason_code}),
         )
         .await?;
         let result = CommandResult {

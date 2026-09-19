@@ -1,3 +1,5 @@
+#[path = "agent_order_cancellation.rs"]
+mod cancellation_checks;
 #[path = "agent_settlement.rs"]
 mod settlement_checks;
 
@@ -275,6 +277,7 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     assert_eq!(quantity, Decimal::from(2));
     shortage_retry(&app, store, f).await;
     settlement_checks::check(&app, store, f, supplier).await;
+    cancellation_checks::check(&app, store, f, supplier, sku).await;
 }
 
 async fn shortage_retry(app: &Router, store: &PgStore, f: &Fixture) {
