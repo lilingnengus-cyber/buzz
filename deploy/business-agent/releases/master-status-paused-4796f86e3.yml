@@ -1,0 +1,4 @@
+# Append after the matching candidate; rehearse pause routes before use.
+services:
+  business-core:
+    image: shiyue-business-candidate-master-paused:4796f86e38a2355b37a9eb836d74e8b8d4285b8b
