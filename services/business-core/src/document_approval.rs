@@ -1,3 +1,4 @@
+mod adjustment;
 /// Immutable, scoped allocation preparation and signed execution.
 pub mod allocation;
 mod allocation_history;
@@ -94,6 +95,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(order_hold::routes())
         .merge(report_snapshot::routes())
         .merge(operating_snapshot::routes())
+        .merge(adjustment::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
         .merge(inventory_count_creation::routes())
