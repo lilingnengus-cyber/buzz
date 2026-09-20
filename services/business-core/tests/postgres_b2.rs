@@ -10,6 +10,8 @@ mod inventory_count_frozen_scopes;
 mod inventory_count_operations;
 #[path = "support/inventory_count_scopes.rs"]
 mod inventory_count_scopes;
+#[path = "support/sales_hold.rs"]
+mod sales_hold;
 use b2_seed::seed;
 #[path = "support/inventory_count.rs"]
 mod inventory_count;
@@ -258,20 +260,7 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .await
         .unwrap();
 
-    let hold = sales
-        .set_hold(
-            fixture.actor,
-            Uuid::new_v4(),
-            confirmed.id,
-            "order-hold-0001",
-            &VersionCommand {
-                expected_version: 2,
-                reason_code: Some("CREDIT_REVIEW".into()),
-            },
-            true,
-        )
-        .await
-        .unwrap();
+    let hold = sales_hold::place(&sales, &pool, &fixture, confirmed.id).await;
     let line_id: Uuid =
         sqlx::query_scalar("SELECT id FROM sales_order_lines WHERE sales_order_id=$1")
             .bind(confirmed.id)

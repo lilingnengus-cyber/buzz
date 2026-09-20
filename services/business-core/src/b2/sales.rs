@@ -4,6 +4,7 @@ mod draft;
 use draft::{
     calculate_lines, insert_order_lines, validate_order_input, validate_order_master_data,
 };
+mod hold;
 mod master_status;
 
 use super::{
@@ -404,114 +405,6 @@ impl SalesService {
             idempotent_replay: false,
         };
         finish_idempotent(&mut tx, actor, "sales_order:confirm", key, &result).await?;
-        tx.commit().await?;
-        Ok(result)
-    }
-
-    pub async fn set_hold(
-        &self,
-        actor: Uuid,
-        trace_id: Uuid,
-        order_id: Uuid,
-        key: &str,
-        input: &VersionCommand,
-        place: bool,
-    ) -> Result<CommandResult, DomainError> {
-        let scope = self.order_scope(order_id).await?;
-        let permission = if place {
-            "sales_order:place_hold"
-        } else {
-            "sales_order:release_hold"
-        };
-        authorize(
-            &self.store,
-            actor,
-            permission,
-            Some(scope.0),
-            None,
-            Some(scope.1),
-            None,
-            Some(scope.2),
-        )
-        .await?;
-        if input
-            .reason_code
-            .as_deref()
-            .is_none_or(|value| value.is_empty() || value.len() > 64)
-        {
-            return Err(DomainError::Invalid("reasonCode is required".into()));
-        }
-        let operation = if place {
-            "sales_order:place_hold"
-        } else {
-            "sales_order:release_hold"
-        };
-        let hash = request_hash(input)?;
-        let mut tx = self.store.pool().begin().await?;
-        if let Some(mut replay) =
-            begin_idempotent::<CommandResult>(&mut tx, actor, operation, key, &hash).await?
-        {
-            replay.idempotent_replay = true;
-            tx.commit().await?;
-            return Ok(replay);
-        }
-        let row=sqlx::query("SELECT order_number,lifecycle_status,hold_status,version FROM sales_orders WHERE id=$1 FOR UPDATE").bind(order_id).fetch_one(&mut *tx).await?;
-        if row.get::<i64, _>("version") != input.expected_version {
-            return Err(DomainError::VersionConflict);
-        }
-        if row.get::<String, _>("lifecycle_status") != "confirmed" {
-            return Err(DomainError::Invalid(
-                "hold applies only to confirmed orders".into(),
-            ));
-        }
-        let expected = if place { "none" } else { "manual_review_hold" };
-        if row.get::<String, _>("hold_status") != expected {
-            return Err(DomainError::Invalid(
-                "hold transition is not allowed".into(),
-            ));
-        }
-        let status = if place { "manual_review_hold" } else { "none" };
-        sqlx::query(
-            "UPDATE sales_orders SET hold_status=$2,updated_by_user_id=$3,trace_id=$4 WHERE id=$1",
-        )
-        .bind(order_id)
-        .bind(status)
-        .bind(actor)
-        .bind(trace_id)
-        .execute(&mut *tx)
-        .await?;
-        let version = input.expected_version + 1;
-        let event = if place {
-            "manual_review_hold_placed"
-        } else {
-            "manual_review_hold_released"
-        };
-        let audit = if place {
-            "SALES_ORDER_HOLD_PLACED"
-        } else {
-            "SALES_ORDER_HOLD_RELEASED"
-        };
-        sqlx::query("INSERT INTO sales_order_events(id,sales_order_id,event_type,order_version,payload,actor_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7)").bind(Uuid::new_v4()).bind(order_id).bind(event).bind(version).bind(json!({"reasonCode":input.reason_code})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        record(
-            &mut tx,
-            trace_id,
-            actor,
-            audit,
-            event,
-            "sales_order",
-            order_id,
-            json!({"reasonCode":input.reason_code,"version":version}),
-        )
-        .await?;
-        let result = CommandResult {
-            id: order_id,
-            number: row.get("order_number"),
-            status: status.into(),
-            version,
-            trace_id,
-            idempotent_replay: false,
-        };
-        finish_idempotent(&mut tx, actor, operation, key, &result).await?;
         tx.commit().await?;
         Ok(result)
     }
