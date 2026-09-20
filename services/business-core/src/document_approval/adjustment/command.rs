@@ -2,6 +2,7 @@ use super::*;
 use crate::b4::{model::CreateAdjustmentBatch, AdjustmentService};
 use sqlx::{Postgres, Transaction};
 mod post;
+mod reversal;
 pub(super) use post::domain_error;
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -12,6 +13,7 @@ pub(super) struct Replacement {
 }
 pub(super) enum Command {
     Post(post::Command),
+    Reverse(reversal::Command),
     Create(CreateAdjustmentBatch),
     Replace(Replacement),
 }
@@ -19,6 +21,9 @@ impl Command {
     pub(super) fn parse(kind: &str, value: Value) -> Result<Self, StoreError> {
         let invalid = || StoreError::Invalid("adjustment draft input".into());
         match kind {
+            "operational_adjustment_reversal_intent" => {
+                Ok(Self::Reverse(reversal::Command::parse(value)?))
+            }
             "operational_adjustment_post_intent" => {
                 Ok(Self::Post(post::Command::parse(kind, value)?))
             }
@@ -38,6 +43,7 @@ impl Command {
     pub(super) fn value(&self) -> Result<Value, StoreError> {
         match self {
             Self::Post(v) => v.value(),
+            Self::Reverse(v) => v.value(),
             Self::Create(v) => serde_json::to_value(v)
                 .map_err(|_| StoreError::Invalid("adjustment draft input".into())),
             Self::Replace(v) => serde_json::to_value(v)
@@ -47,6 +53,7 @@ impl Command {
     pub(super) fn action(&self) -> &'static str {
         match self {
             Self::Post(v) => v.action(),
+            Self::Reverse(_) => "profit_adjustment:reverse",
             Self::Create(_) => "profit_adjustment:create",
             Self::Replace(_) => "profit_adjustment:update_draft",
         }
@@ -60,6 +67,7 @@ impl Command {
     pub(super) fn result_field(&self) -> &'static str {
         match self {
             Self::Post(_) => "postedDocument",
+            Self::Reverse(_) => "reversedDocument",
             Self::Create(_) => "createdDocument",
             Self::Replace(_) => "updatedDocument",
         }
@@ -72,6 +80,7 @@ impl Command {
     ) -> Result<Value, StoreError> {
         let (source, input) = match self {
             Self::Post(v) => return v.preview_on(service, tx, actor).await,
+            Self::Reverse(v) => return v.preview_on(service, tx, actor).await,
             Self::Create(v) => (None, v),
             Self::Replace(v) => (Some((v.batch_id, v.expected_version)), &v.batch),
         };
@@ -93,6 +102,7 @@ impl Command {
     ) -> Result<Value, StoreError> {
         let (source, input) = match self {
             Self::Post(v) => return v.save_on(service, tx, context, request, snapshot).await,
+            Self::Reverse(v) => return v.save_on(service, tx, context, request, snapshot).await,
             Self::Create(v) => (None, v),
             Self::Replace(v) => (Some((v.batch_id, v.expected_version)), &v.batch),
         };

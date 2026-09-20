@@ -82,6 +82,8 @@ mod drafts;
 mod expiry;
 #[path = "support/adjustment_intent_fixture.rs"]
 mod fixture;
+#[path = "support/adjustment_reversal_intents.rs"]
+mod reversals;
 const KIND: &str = "operational_adjustment_post_intent";
 async fn counts(pool: &PgPool) -> (i64, i64, i64, i64, i64, i64, i64, i64) {
     sqlx::query_as("SELECT (SELECT count(*) FROM business_document_approval_requests),(SELECT count(*) FROM business_document_approval_votes),(SELECT count(*) FROM operational_adjustment_previews),(SELECT count(*) FROM operational_adjustment_allocations),(SELECT count(*) FROM profit_facts),(SELECT count(*) FROM business_core_audit_events),(SELECT count(*) FROM business_command_idempotency),(SELECT count(*) FROM business_core_outbox)").fetch_one(pool).await.unwrap()
@@ -267,6 +269,7 @@ async fn adjustment_intents_bind_preview_votes_and_posting() {
     assert_eq!(facts, 1);
     sqlx::query("UPDATE business_approval_policies SET min_approvers=1 WHERE action_code='profit_adjustment:post'").execute(&pool).await.unwrap();
     expiry::verify(&pool, &app, &f, order, first).await;
+    reversals::verify(&pool, &app, &f, order, first, second).await;
 }
 async fn reviewer(pool: &PgPool, f: &Fixture) -> Uuid {
     let id = Uuid::new_v4();
