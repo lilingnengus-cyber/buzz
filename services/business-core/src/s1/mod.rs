@@ -4,6 +4,7 @@ pub mod api;
 mod incidents;
 mod quality;
 mod trends;
+const PROJECTION_HEALTH_SQL: &str = include_str!("sql/projection_health.sql");
 
 pub use incidents::IncidentCommand;
 pub use trends::{CreateSubscription, GenerateOperatingSnapshot, SubscriptionCommand};
@@ -120,11 +121,14 @@ impl OperationsService {
         .fetch_one(self.store.pool()).await?;
         record_stage(&mut stages, "profitFacts", stage_started);
         let stage_started = Instant::now();
-        let projection = sqlx::query(
-            "SELECT o.updated_at,COALESCE((SELECT count(*) FROM business_core_outbox e WHERE e.topic IN ('shipment_confirmed','shipment_reversed','sales_return_confirmed','sales_return_reversed') AND (o.last_outbox_created_at IS NULL OR (e.created_at,e.id)>(o.last_outbox_created_at,o.last_outbox_event_id))),0) pending_events,(SELECT count(*) FROM profit_projection_failures f WHERE f.status='pending' AND (EXISTS(SELECT 1 FROM shipments s JOIN sales_orders so ON so.id=s.sales_order_id WHERE s.id=f.aggregate_id AND s.legal_entity_id=ANY($1) AND s.customer_id=ANY($2) AND s.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)) OR EXISTS(SELECT 1 FROM sales_returns r JOIN sales_orders so ON so.id=r.sales_order_id WHERE r.id=f.aggregate_id AND r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND r.warehouse_id=ANY($3) AND (so.brand_id IS NULL OR so.brand_id=ANY($4)) AND so.business_unit_id=ANY($5)))) pending_failures FROM profit_projection_offsets o WHERE o.consumer_name='profit_projection_v1'",
-        )
-        .bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu)
-        .fetch_optional(self.store.pool()).await?;
+        let projection = sqlx::query(sqlx::AssertSqlSafe(PROJECTION_HEALTH_SQL))
+            .bind(&le)
+            .bind(&customer)
+            .bind(&wh)
+            .bind(&brand)
+            .bind(&bu)
+            .fetch_optional(self.store.pool())
+            .await?;
         record_stage(&mut stages, "projectionHealth", stage_started);
 
         let revenue: Decimal = profit.get("revenue");
@@ -138,7 +142,7 @@ impl OperationsService {
         let received_line_count = purchasing.get::<i64, _>("received_line_count");
         let updated_at = projection
             .as_ref()
-            .map(|row| row.get::<chrono::DateTime<Utc>, _>("updated_at"));
+            .and_then(|row| row.get::<Option<chrono::DateTime<Utc>>, _>("updated_at"));
         let now = Utc::now();
         let freshness_age_seconds =
             updated_at.map(|value| now.signed_duration_since(value).num_seconds().max(0));

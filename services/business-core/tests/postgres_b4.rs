@@ -20,6 +20,8 @@ mod operating_snapshot_detail;
 mod operating_snapshot_preview;
 #[path = "support/operating_snapshot_timezone.rs"]
 mod operating_snapshot_timezone;
+#[path = "support/projection_health_scope.rs"]
+mod projection_health_scope;
 use business_core::{
     b2::{
         model::{
@@ -698,6 +700,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     operating_snapshot_preview::verify(&pool, &operations, f.actor).await;
     operating_snapshot_timezone::verify(&pool, &operations, f.actor).await;
     operating_snapshot_detail::verify(&pool, &operations, f.actor).await;
+    projection_health_scope::verify(&pool, &operations, f.actor).await;
 }
 
 #[allow(clippy::too_many_arguments)]

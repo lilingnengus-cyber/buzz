@@ -217,3 +217,15 @@ MCP 26 项测试通过，包含 /tmp/operating-adapter-proof.jsonl 的 8 份真�
 从真实 63 库 operating_adapter_verified 克隆 operating_detail_upgrade，手动执行 64 SQL（非应用 migrator）：2 行旧快照去除新增字段前后摘要均为 169aded2abfed5ecd0f90ea305b8caf3，snapshot_scope 全 NULL。新库测试通过正常 migrator 到 64。日志 /tmp/operating-detail-{history,http,intents,mcp,contracts,links,upgrade,clippy-final,size}.log。
 
 本批未部署、未发送真实聊天、未更新安装包。上线需配套迁移 64、Core、Read API/MCP、Web 和 Desktop；跨业务受限维度筛选仍未完成，旧行未知历史范围无法自动恢复，生成与事件统计仍存在原 auth scopeHash 身份口径，需继续处理。
+
+## 报表投影健康的业务范围修正
+
+继续检查受限报表时发现：数据质量与驾驶舱的 pendingEvents 原来读取全局 outbox，其他业务范围的排队事件会影响本人的报表；数据质量 pendingFailures 只检查 shipment，漏掉销售退货确认/冲销失败；没有 profit_projection_offsets 行时还会把真实队列显示为零。
+
+新增共享只读 SQL，按当前法人、客户、仓库、品牌（保持原 NULL 品牌规则）、业务单元确定可见 shipment / sales_return，并严格匹配四类主题与来源类型，分别计算待处理事件与未解决失败。水位尚未初始化时仍计算可见事件，更新时间返回空、保持未就绪状态。未知/格式错误/无可见来源的事件不会通过 UUID 强制转换报错，也不会作为当前范围的业务计数。驾驶舱和数据质量共用查询；日报/周报纯预览及实际生成继续使用同事务数据质量，因此退货投影失败不再被遗漏。
+
+真实新库 projection_health_scope（55439）完整 B4 回归通过：有/无 cursor 的可见队列、四种主题、退货失败、未知来源、五种实际非空维度撤销/恢复、推进水位与解决失败，逐项验证驾驶舱/数据质量计数相同；只剩退货失败时，日报预览质量明确 blocked。该 fixture 在隔离库插入用于验证投影健康的来源记录/事件，不声称重新验收真实退货操作全流程。日志 /tmp/projection-health-scope-test.log。
+
+本批未增加用户筛选参数、未放宽 Read API 对不支持维度的拒绝；跨业务受限报表能力仍需实现，不能把此缺陷修正当作完整筛选已完成。无需新迁移，尚未部署。
+
+projection_health_approvals 实际数据库审批竞争/撤权/过期回归通过；Core all-targets 严格 Clippy、格式、差异及文件大小检查通过（/tmp/projection-health-{approvals,clippy,size}.log）。未运行全仓 just ci；完整企业助手写入目标与发布/真实客户端验收待办保持不变。
