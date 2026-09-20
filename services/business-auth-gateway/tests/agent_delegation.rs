@@ -1,3 +1,5 @@
+#[path = "support/adjustment_delegation.rs"]
+mod adjustment_delegation;
 #[path = "support/inventory_count_budget.rs"]
 mod inventory_count_budget;
 #[path = "support/inventory_count_delegation.rs"]
@@ -155,6 +157,7 @@ async fn delegation_is_hashed_scoped_atomic_and_revocable() {
         human_iam_id,
     )
     .await;
+    adjustment_delegation::check(&store, &pool, &user_keys, human_iam_id).await;
     // Approval must survive independent API verification only when every signed field matches.
     sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id,data_scope,obligations) SELECT $1,id,'{\"mode\":\"unrestricted\"}'::jsonb,'[]'::jsonb FROM business_iam.permissions WHERE capability='inventory_opening:approve'")
         .bind(human_iam_id).execute(&pool).await.unwrap();

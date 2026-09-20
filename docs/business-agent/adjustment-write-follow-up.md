@@ -52,3 +52,11 @@
 真实 PostgreSQL 55439 的 adjustment_intents_final 路由验收通过：只读零写入、同键准备重放、意图不可修改、无策略/自批/篡改摘要拒绝、双人审批、首位审批人失效后拒绝、策略降低仍需原人数、最终投票审计故障后八类记录整体回滚、拒绝保持草稿、并发两票只执行一次、功能开关关闭。通过 pg_blocking_pids 证明审批在最终审计处实际等待，等待期间意图过期，释放后全部回滚且批次仍为 draft。adjustment_intents_b4 完整 B4 回归亦通过。初次验收发现遗漏动作白名单，已修复；故障注入响应断言从 500 修正为现有统一错误映射 503 后，在新库重验。日志 /tmp/adjustment-intent-{final,b4}.log。
 
 Core/Gateway all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。当前仅为 Core 源码与隔离验收，尚未接入 Gateway/Read API/MCP/Host 对新意图的聊天签名验证和工具链，不能称为客户端已可用；未部署、未发送真实聊天。下一步贯通签名委托与固定工具，再继续草稿创建/修改、详情和逆转。
+
+## Gateway 与 Host 签名委托接入
+
+Gateway 固定能力清单增加 operational_adjustment_post_intent:create / approve，支持精确的确认及拒绝命令，继续沿用真实 Nostr 签名、来源频道、五分钟时效与 IAM 授权校验。Host 普通会话仅申请准备权限；只有识别出结构化确认或拒绝命令且审批开关开启，才额外申请对应 approve 权限。当前 Gateway 111 项白名单，Host 普通会话 66 项权限；不自动赋权。Read API 与 MCP 的费用固定工具尚未接入，不能据此宣称聊天过账链路可用。
+
+隔离 PostgreSQL 55439 的 adjustment_signed_final 验收：真实绑定密钥签署确认/拒绝，签发、消费及独立再次验证成功；替换文档、版本、摘要、决定，缺失审批内容或换用另一文档家族权限均拒绝。单独覆盖过旧/未来事件、签名后篡改、频道错配、命令家族错配、多余文本、裸“确认”、审批开关关闭，均不签发任何委托。原容量测试的 59 项旧子集升级为实际 66 项普通清单，数据库完整保存，129 项仍拒绝。
+
+Host 10 项针对性测试、Gateway 8 项单元测试及上述真实数据库验收通过；两包 all-targets 严格 Clippy、格式/差异和文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-signed-{final,host-final,unit,clippy-final,size}.log。未部署、未更换客户端、未代发真实聊天。下一步为 Read API 的固定入口、预检范围和独立结果校验，再接 MCP 工具与端到端签名执行验收。

@@ -98,12 +98,16 @@ async fn expect_revocation_request(
 
 #[test]
 fn agent_scope_allowlist_has_only_draft_writes() {
-    assert_eq!(AGENT_SCOPES.len(), 65);
+    assert_eq!(AGENT_SCOPES.len(), 66);
     assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
     assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
     assert!(AGENT_SCOPES.contains(&"sales_order:create"));
     assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
     assert!(!AGENT_SCOPES.contains(&"payment:execute"));
+    assert!(AGENT_SCOPES.contains(&"operational_adjustment_post_intent:create"));
+    assert!(AGENT_SCOPES
+        .iter()
+        .all(|scope| !scope.ends_with(":approve")));
 }
 
 #[test]
@@ -248,6 +252,10 @@ fn chat_approval_scope_requires_an_exact_structured_command() {
         Some("inventory_opening:approve")
     );
     for (kind, scope) in [
+        (
+            "operational-adjustment-post-intent",
+            "operational_adjustment_post_intent:approve",
+        ),
         (
             "operating-report-snapshot-intent",
             "operating_report_snapshot_intent:approve",
