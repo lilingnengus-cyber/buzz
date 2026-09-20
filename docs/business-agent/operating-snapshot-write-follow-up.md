@@ -189,3 +189,15 @@ Gateway 固定能力列表新增 operating_report_snapshot_intent:create/approve
 实际新库 operating_adapter_verified（55439）+ 真实 Core HTTP 测试：daily/weekly 两种准备、生成与冻结复用成功；六维越权委托在准备前拒绝且意图数不变；审批越权拒绝；摘要/时间/owner 篡改校验拒绝；两票策略下一票 pending，拒绝命令 rejected，均无生成结果。导出 8 份实际返回值 /tmp/operating-adapter-proof.jsonl 供后续 MCP 验证。Read API lib 测试 53 项、Gateway agent 测试 4 项通过；其中其他依赖专用数据库变量的历史 adapter 测试未在本轮配置数据库，不把这些算作真实数据库回归。日志 /tmp/operating-adapter-verified.log、/tmp/operating-gateway-tests.log。两服务 all-targets 严格 Clippy、格式、差异与文件大小检查通过（/tmp/operating-adapter-{clippy,size}.log）。未运行全仓 just ci。
 
 本批尚未接入 MCP/Host，也未部署、自动授权或发送真实聊天消息。下一步接入 MCP 固定工具、独立结果验证和 Host 精确确认路由，然后处理维度过滤与详情页，完成客户端验收。
+
+## 日报/周报 MCP 与 Host 接入
+
+MCP 新增固定 prepare_operating_report_snapshot / approve_operating_report_snapshot。准备输入只有 cadence、periodStart、currency、utcOffsetMinutes；要求明确已完成周期、周一开始的周报及固定时区。说明明确库存是生成时点值，准备不是生成，遇到不支持的委托维度不能移除限制重试。审批工具不接受模型业务参数，只使用当前签名委托的意图 ID、版本、摘要与确认/拒绝决定。
+
+独立结果模块复算 sourceHash、previewHash，检查六维范围结构、真实日期/UTC 边界、指标十进制字符串、请求人、确认文字、实际创建或复用结果。准备的 owner 必须匹配委托用户；审批结果的 owner 必须匹配已签名预览，不强制等于独立审批人。检查生成 ID/时间/来源摘要/质量/时区、票数和执行状态，pending/rejected 不得携带生成结果。没有已实现的 operating 详情链接，非空 resourceRefs 被拒绝。
+
+Host 普通委托新增 operating_report_snapshot_intent:create（共 65 个 scope）；仅完整、精确的 operating-report-snapshot-intent 确认命令选择相应 approve scope。工具可见性按普通/当前确认会话区分，每种确认会话只开放匹配的一个审批工具，准备工具在确认会话隐藏。
+
+MCP 26 项测试通过，包含 /tmp/operating-adapter-proof.jsonl 的 8 份真实 Core/Read API 结果与 owner、时间、摘要、命令、链接、效果、签名意图反例；月报 6 份真实结果继续通过。Host 命令与委托测试 10 项通过（/tmp/operating-mcp-final-test.log、/tmp/operating-host-test.log）。MCP/Host all-targets 严格 Clippy、格式、差异、文件大小检查通过（/tmp/operating-mcp-clippy-final.log、/tmp/operating-mcp-size.log）。
+
+本地实际新编译 business-read-mcp + buzz-agent 二进制、模拟模型端点运行：普通会话 107 个固定工具，operating 确认会话 60 个工具且只有对应审批写入工具，两种 prompt 均完成（/tmp/operating-native-{ordinary,approval}.log）。这是工具可见性与实际程序联通证据，不是生产登录/真实聊天/Windows 验收。本批未部署、未改现有安装包、未代发消息。完整目标继续保留：报表维度过滤、历史范围身份、详情链接、配套迁移与发布，以及其他业务领域完整流程均尚有待办。

@@ -14,6 +14,8 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "prepare_operating_report_snapshot",
+  "approve_operating_report_snapshot",
   "prepare_management_report_snapshot",
   "approve_management_report_snapshot",
   "prepare_sales_order_hold",

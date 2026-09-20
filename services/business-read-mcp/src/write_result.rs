@@ -5,6 +5,9 @@ pub(super) fn validate_write_result(
     context: &DelegationContext,
     max_payload_bytes: usize,
 ) -> Result<(), String> {
+    if operating_snapshot_result::family(tool).is_some() {
+        return operating_snapshot_result::prepare(tool, result, context, max_payload_bytes);
+    }
     if report_snapshot_result::family(tool).is_some() {
         return report_snapshot_result::prepare(tool, result, context, max_payload_bytes);
     }
