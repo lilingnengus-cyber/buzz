@@ -38,3 +38,16 @@
 本机隔离库 status_authority_rehearsal（55439，从隔离 master_status_intents_atomic 克隆）使用固定演练身份、有限期且带附加限制的四项来源授权。脚本成功插入四项；数据库断言四个限制字段与来源逐项完全相同；重复执行被 status grants already exist 拒绝。日志 /tmp/status-authority-rehearsal.log。未在生产执行，尚需在生产副本核验实际来源授权及审批策略。
 
 再次检查同一构建 35479487131 仍 in_progress，未重复触发。候选产物、暂停方案验证及发布继续未完成。
+
+## 候选四服务产物校验完成
+
+运行 35479487131 已成功，源码仍为 4796f86e38a2355b37a9eb836d74e8b8d4285b8b。产物下载到 /tmp/business-candidate-35479487131；SHA256SUMS 三项逐一通过。归档大小 59,748,556 字节，归档内文件合计 162,295,366 字节（不等于 Docker 加载峰值）。归档 SHA-256 为 faa4d4cd91c34657b7594d836fdc51bcef2409c1f00cdd805b1587091f095b50。
+
+实际读取 Docker 归档 manifest 和四份 image config，四服务均为 linux/amd64、标准入口，revision 标签与源码 SHA 一致。镜像 ID：
+
+- Gateway：697cf9977e0636da4496ac851814a052c95d739ab8c5dd0dd35613cf9e86ee7a
+- Core：91a49a51429bcecc0b2f4dc61a4073576902d10343c4b0b6b1dbe1a3ccff1d87
+- Read API：eb18a5cfdfb40f65e565a8c72a565121d7d57b8b856b7df87827a22ea3ab994e
+- IAM：5d99abfb3e1cb742d8aae3d0a94727c6d96722dfeadea9a82ec7dc35445e4a21
+
+新增独立 business-master-pause workflow，固定检出上述同一源码，使用已有暂停脚本，只将 master agent 路由包装为 503，保留迁移、普通工作台与权限修复。完整源码逐文件比较已通过，仅路由文件及生成的来源清单有差异；YAML 解析和 action 完整 SHA 格式检查通过。原候选运行已结束，不重复构建四服务候选。暂停镜像仍须完成构建及副本运行验证；未加载生产镜像、执行授权或切换服务。

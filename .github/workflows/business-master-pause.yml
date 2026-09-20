@@ -1,0 +1,59 @@
+name: Business master pause candidate
+on:
+  push:
+    branches: [codex/life-write-intent-compiler]
+    paths: [.github/workflows/business-master-pause.yml]
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.repository == 'lilingnengus-cyber/buzz' && github.ref == 'refs/heads/codex/life-write-intent-compiler'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: 4796f86e38a2355b37a9eb836d74e8b8d4285b8b
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: 4796f86e38a2355b37a9eb836d74e8b8d4285b8b
+          persist-credentials: false
+      - name: Prepare matching pause source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir "$RUNNER_TEMP/master-source"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/master-source"
+          python3 scripts/prepare-business-master-rollback.py \
+            "$RUNNER_TEMP/master-source" "$RUNNER_TEMP/master-paused" \
+            --expected-router-sha256 76af97d58974b476a92ae236fd53997d03f06b63d4559444c138a63d2048363d
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          source = Path(os.environ["RUNNER_TEMP"]) / "master-source"
+          paused = source.with_name("master-paused")
+          before = {str(p.relative_to(source)): p.read_bytes() for p in source.rglob("*") if p.is_file()}
+          after = {str(p.relative_to(paused)): p.read_bytes() for p in paused.rglob("*") if p.is_file()}
+          changed = {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)}
+          assert changed == {"services/business-core/src/document_approval.rs", "master-rollback.json"}, changed
+          PY
+      - name: Build and export matching pause image
+        run: |
+          set -euo pipefail
+          image="shiyue-business-candidate-master-paused:${SOURCE_SHA}"
+          docker build --file "$RUNNER_TEMP/master-paused/deploy/business-agent/Dockerfile.candidate" \
+            --target business-core --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "com.shiyueshizi.business.mode=pause-master-agent-routes" \
+            --tag "$image" "$RUNNER_TEMP/master-paused"
+          mkdir candidate
+          printf '%s\n' "$SOURCE_SHA" > candidate/source-sha.txt
+          cp "$RUNNER_TEMP/master-paused/master-rollback.json" candidate/
+          docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{json .Config.Entrypoint}}' > candidate/images.txt
+          docker save "$image" | gzip > candidate/business-master-paused.tar.gz
+          cd candidate
+          sha256sum business-master-paused.tar.gz images.txt source-sha.txt master-rollback.json > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: business-master-pause-4796f86e38a2355b37a9eb836d74e8b8d4285b8b
+          path: candidate/
+          retention-days: 7
+          if-no-files-found: error
