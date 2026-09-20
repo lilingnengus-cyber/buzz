@@ -151,3 +151,18 @@ adjustment_draft_b4 完整既有 B4 回归通过，Core all-targets 严格 Clipp
 真实 PostgreSQL 55439 的 adjustment_draft_preview 通过：重复预览相同且九类计数/编号序列总值不变，篡改金额拒绝，引用订单版本变化使摘要变化并拒绝旧预览；创建及替换既可整体回滚，也可提交得到 draft 和正确版本。101 行源草稿的预览包含所有旧行，第 101 行变化使旧摘要失效，即使源批次版本未改变也拒绝旧预览。非法范围拒绝。原草稿受控入口的撤权锁等待、审计故障、幂等及版本回归在同一新库通过。
 
 Core all-targets 严格 Clippy、格式/差异及文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-draft-preview-{test,clippy,size}.log。本批仍是 Core 领域入口，没有新增外部路由、迁移、助手工具或部署。下一步将该预览保存为不可变创建/替换意图，接入签名确认、审批投票和固定工具；完整目标仍未完成。
+
+
+## Core 草稿不可变意图与原子审批
+
+迁移 67 扩展既有不可变意图表、审批请求与委托文档约束，登记 operational_adjustment_creation_intent / operational_adjustment_update_intent 的 create / approve 能力，不自动赋权或建立审批策略。Core 复用已有费用意图路由；创建输入为完整 CreateAdjustmentBatch，替换输入为 batchId、expectedVersion、batch，拒绝未知字段。准备阶段只持久化 30 分钟不可变意图及准备审计，不创建草稿或消耗编号。
+
+复用现有多人审批的当前身份、权限、完整范围覆盖、策略、全部历史投票复查、门槛不降低及最终实际时钟截止检查。创建/修改按各自领域权限检查，无需过账权限；过账仍保留原 profit_adjustment:preview 与 post 权限组合。审批始终重算请求人的预览，独立审批人额外范围不会改变内容。达到门槛后调用绑定预览的草稿事务入口；投票、草稿/明细、编号、审计、outbox、幂等和请求终态原子提交。
+
+响应分别使用 createdDocument、updatedDocument 或原有 postedDocument，避免把保存草稿误称过账；待审批及拒绝时相应结果为空。原过账命令提取到独立模块，外部过账形状保持不变。Core 内部服务入口仍依赖上游验证签名来源，不能把本次 Core 路由验收称为真实签名客户端验收。
+
+真实 PostgreSQL 55439 的 adjustment_draft_intents_final 验证：只读预览零写入、准备不创建草稿、准备幂等、缺策略/禁止自批拒绝、双人创建、并发双票替换只执行一次、重复终态冲突、确认夹带金额拒绝、拒绝不产生草稿、意图不可修改、已过期拒绝、源草稿变化拒绝。最终投票审计触发器故障后，完整草稿/行内容、编号、投票、请求和相关记录均保持原样。
+
+创建和修改两类均用 pg_blocking_pids 证明在最终审计处真实等待，等待至意图过期后释放，业务写入和投票整体回滚。既有费用过账的多人、撤权、并发、审计故障与最终等待过期回归在同一新库通过。Core/Gateway all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-draft-intents-{final,clippy,size}.log。
+
+本批尚未接入 Gateway 新文档家族的签名命令验证、Read API/MCP 固定工具和 Host 委托，未部署、未发送真实聊天。下一步贯通上述助手链路，再验证完整签名端到端、详情页面和逆转；完整目标仍未完成。

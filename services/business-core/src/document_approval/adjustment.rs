@@ -146,7 +146,7 @@ async fn preview(
             .execute(&mut *tx)
             .await?;
         let (command, snapshot, creator) = load(&mut tx, &kind, id).await?;
-        viewer(&mut tx, c.actor_user_id, &snapshot).await?;
+        viewer(&mut tx, c.actor_user_id, &snapshot, &command).await?;
         if command
             .preview_on(&state.adjustments, &mut tx, creator)
             .await?
@@ -220,14 +220,14 @@ async fn viewer(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     actor: Uuid,
     snapshot: &Value,
+    command: &Command,
 ) -> Result<crate::model::AuthorizationSnapshot, StoreError> {
-    let current =
-        crate::master_write_authority::snapshot(tx, actor, "profit_adjustment:post", false)
-            .await
-            .map_err(command::domain_error)?;
+    let current = crate::master_write_authority::snapshot(tx, actor, command.action(), false)
+        .await
+        .map_err(command::domain_error)?;
     if !current
         .permission_keys
-        .contains("profit_adjustment:preview")
+        .contains(command.preview_permission())
     {
         return Err(StoreError::NotFoundOrForbidden);
     }

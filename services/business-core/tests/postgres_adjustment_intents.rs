@@ -76,6 +76,8 @@ async fn prepare(app: &Router, actor: Uuid, kind: &str, input: Value) -> Value {
     result
 }
 
+#[path = "support/adjustment_draft_intents.rs"]
+mod drafts;
 #[path = "support/adjustment_intent_expiry.rs"]
 mod expiry;
 #[path = "support/adjustment_intent_fixture.rs"]
@@ -104,6 +106,7 @@ async fn adjustment_intents_bind_preview_votes_and_posting() {
     sqlx::query("INSERT INTO business_brands(id,code,name) VALUES($1,'ADJ_REVIEWER_EXTRA','Reviewer extra scope')").bind(extra).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$3)").bind(first).bind(extra).bind(f.actor).execute(&pool).await.unwrap();
     let app = business_core::router(AppState::new(store.clone(), &Config::from_env().unwrap()));
+    drafts::verify(&pool, &app, &f, order, first, second).await;
     let id = fixture::draft(&pool, &f, order, "adjustment-intent-draft").await;
     let input = json!({"batchId":id,"expectedVersion":1});
     let before = counts(&pool).await;

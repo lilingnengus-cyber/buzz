@@ -1,33 +1,68 @@
 use super::*;
-use crate::b4::{model::VersionCommand, AdjustmentService};
+use crate::b4::{model::CreateAdjustmentBatch, AdjustmentService};
 use sqlx::{Postgres, Transaction};
+mod post;
+pub(super) use post::domain_error;
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Input {
+pub(super) struct Replacement {
     batch_id: Uuid,
     expected_version: i64,
+    batch: CreateAdjustmentBatch,
 }
-pub(super) struct Command {
-    input: Input,
+pub(super) enum Command {
+    Post(post::Command),
+    Create(CreateAdjustmentBatch),
+    Replace(Replacement),
 }
 impl Command {
     pub(super) fn parse(kind: &str, value: Value) -> Result<Self, StoreError> {
-        if kind != "operational_adjustment_post_intent" {
-            return Err(StoreError::NotFoundOrForbidden);
+        let invalid = || StoreError::Invalid("adjustment draft input".into());
+        match kind {
+            "operational_adjustment_post_intent" => {
+                Ok(Self::Post(post::Command::parse(kind, value)?))
+            }
+            "operational_adjustment_creation_intent" => Ok(Self::Create(
+                serde_json::from_value(value).map_err(|_| invalid())?,
+            )),
+            "operational_adjustment_update_intent" => {
+                let input: Replacement = serde_json::from_value(value).map_err(|_| invalid())?;
+                if input.batch_id.is_nil() || input.expected_version < 1 {
+                    return Err(invalid());
+                }
+                Ok(Self::Replace(input))
+            }
+            _ => Err(StoreError::NotFoundOrForbidden),
         }
-        let input: Input = serde_json::from_value(value)
-            .map_err(|_| StoreError::Invalid("adjustment posting input".into()))?;
-        if input.expected_version < 1 {
-            return Err(StoreError::Invalid("adjustment version".into()));
-        }
-        Ok(Self { input })
     }
     pub(super) fn value(&self) -> Result<Value, StoreError> {
-        serde_json::to_value(&self.input)
-            .map_err(|_| StoreError::Invalid("adjustment posting input".into()))
+        match self {
+            Self::Post(v) => v.value(),
+            Self::Create(v) => serde_json::to_value(v)
+                .map_err(|_| StoreError::Invalid("adjustment draft input".into())),
+            Self::Replace(v) => serde_json::to_value(v)
+                .map_err(|_| StoreError::Invalid("adjustment draft input".into())),
+        }
     }
     pub(super) fn action(&self) -> &'static str {
-        "profit_adjustment:post"
+        match self {
+            Self::Post(v) => v.action(),
+            Self::Create(_) => "profit_adjustment:create",
+            Self::Replace(_) => "profit_adjustment:update_draft",
+        }
+    }
+    pub(super) fn preview_permission(&self) -> &'static str {
+        match self {
+            Self::Post(_) => "profit_adjustment:preview",
+            _ => self.action(),
+        }
+    }
+    pub(super) fn result_field(&self) -> &'static str {
+        match self {
+            Self::Post(_) => "postedDocument",
+            Self::Create(_) => "createdDocument",
+            Self::Replace(_) => "updatedDocument",
+        }
     }
     pub(super) async fn preview_on(
         &self,
@@ -35,22 +70,17 @@ impl Command {
         tx: &mut Transaction<'_, Postgres>,
         actor: Uuid,
     ) -> Result<Value, StoreError> {
-        crate::master_write_authority::read(tx, actor, self.action())
-            .await
-            .map_err(domain_error)?;
+        let (source, input) = match self {
+            Self::Post(v) => return v.preview_on(service, tx, actor).await,
+            Self::Create(v) => (None, v),
+            Self::Replace(v) => (Some((v.batch_id, v.expected_version)), &v.batch),
+        };
         let preview = service
-            .allocation_preview_on(
-                tx,
-                actor,
-                self.input.batch_id,
-                &VersionCommand {
-                    expected_version: self.input.expected_version,
-                },
-            )
+            .draft_preview_on(tx, actor, source, input)
             .await
             .map_err(domain_error)?;
         Ok(
-            json!({"schemaVersion":1,"kind":"operational_adjustment_post","input":self.value()?,"ownerUserId":actor,"scope":preview["preview"]["scope"],"allocationPreview":preview,"effects":{"postsAdjustment":true,"createsBatch":false},"boundary":"management_only_not_general_ledger"}),
+            json!({"schemaVersion":1,"kind":preview["preview"]["kind"],"input":self.value()?,"ownerUserId":actor,"scope":preview["preview"]["scope"],"draftPreview":preview,"effects":preview["preview"]["effects"],"boundary":"management_only_not_general_ledger"}),
         )
     }
     pub(super) async fn save_on(
@@ -61,31 +91,24 @@ impl Command {
         request: Uuid,
         snapshot: &Value,
     ) -> Result<Value, StoreError> {
+        let (source, input) = match self {
+            Self::Post(v) => return v.save_on(service, tx, context, request, snapshot).await,
+            Self::Create(v) => (None, v),
+            Self::Replace(v) => (Some((v.batch_id, v.expected_version)), &v.batch),
+        };
         let result = service
-            .post_guarded_on(
+            .apply_draft_preview_on(
                 tx,
                 context.0,
                 context.1,
-                self.input.batch_id,
                 &format!("chat-adjustment-{request}"),
-                &VersionCommand {
-                    expected_version: self.input.expected_version,
-                },
-                &snapshot["allocationPreview"],
+                source,
+                input,
+                &snapshot["draftPreview"],
             )
             .await
             .map_err(domain_error)?;
         serde_json::to_value(result)
-            .map_err(|_| StoreError::Invalid("adjustment posting result".into()))
-    }
-}
-pub(super) fn domain_error(e: crate::b2::DomainError) -> StoreError {
-    match e {
-        crate::b2::DomainError::NotFoundOrForbidden => StoreError::NotFoundOrForbidden,
-        crate::b2::DomainError::VersionConflict
-        | crate::b2::DomainError::StalePreview
-        | crate::b2::DomainError::IdempotencyConflict => StoreError::Conflict,
-        crate::b2::DomainError::Database(e) => StoreError::Database(e),
-        _ => StoreError::Invalid("adjustment input or state".into()),
+            .map_err(|_| StoreError::Invalid("adjustment draft result".into()))
     }
 }

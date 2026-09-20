@@ -20,7 +20,7 @@ async fn voter(
     }
     sqlx::query("SELECT r.id FROM business_roles r JOIN business_user_roles ur ON ur.role_id=r.id WHERE ur.enterprise_user_id=$1 ORDER BY r.id FOR SHARE OF r")
         .bind(actor).fetch_all(&mut **tx).await?;
-    let authority = viewer(tx, actor, snapshot).await?;
+    let authority = viewer(tx, actor, snapshot, command).await?;
     if policy.step_up_amount_minor.is_some()
         || (!policy.allow_self_approval && actor == creator)
         || !authority
@@ -46,11 +46,11 @@ async fn voter(
         }
     }
     let policy_deadline = authority::permission(tx, actor, &policy.required_permission).await?;
-    let read_deadline = authority::permission(tx, actor, "profit_adjustment:preview").await?;
+    let read_deadline = authority::permission(tx, actor, command.preview_permission()).await?;
     let write_deadline = authority::permission(tx, actor, command.action()).await?;
     let creator_deadline = authority::permission(tx, creator, command.action()).await?;
     let creator_preview_deadline =
-        authority::permission(tx, creator, "profit_adjustment:preview").await?;
+        authority::permission(tx, creator, command.preview_permission()).await?;
     // Recompute the requester's adjustment, not the reviewer's different data scope.
     if snapshot["ownerUserId"] != json!(creator)
         || command.preview_on(&state.adjustments, tx, creator).await? != *snapshot
@@ -87,7 +87,7 @@ pub(super) async fn execute(
     if terminal {
         return Err(StoreError::Conflict);
     }
-    viewer(&mut tx, actor, &snapshot).await?;
+    viewer(&mut tx, actor, &snapshot, &command).await?;
     if command
         .preview_on(&state.adjustments, &mut tx, creator)
         .await?
@@ -183,6 +183,6 @@ pub(super) async fn execute(
     }
     tx.commit().await?;
     Ok(
-        json!({"documentId":id,"documentType":kind,"requestId":request,"status":status,"executed":execute,"postedDocument":created,"approvalCount":count,"minimumApprovers":minimum,"traceId":trace}),
+        json!({"documentId":id,"documentType":kind,"requestId":request,"status":status,"executed":execute,(command.result_field()):created,"approvalCount":count,"minimumApprovers":minimum,"traceId":trace}),
     )
 }
