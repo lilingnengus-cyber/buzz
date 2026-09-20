@@ -497,3 +497,6 @@ mod tests;
 
 #[cfg(test)]
 mod test_fixture;
+
+#[cfg(test)]
+mod adjustment_chain_tests;

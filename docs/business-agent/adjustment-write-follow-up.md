@@ -80,3 +80,15 @@ MCP 独立校验准备信封、摘要、命令及请求人，审批时校验签�
 实际使用上一批 /tmp/adjustment-adapter-proof.jsonl 三组真实 Core/Read API 返回验证 executed、pending、rejected；测试篡改单据/版本/摘要/决定/类型、结果编号/状态/版本/trace、金额/客户（重算摘要后仍拒绝）、伪造链接、敏感字段及畸形结构。MCP 测试 27 项通过（本批真实结果测试显式提供文件，其他可选数据库产物测试可能跳过）；Host 针对性测试 11 项通过。两个包严格 all-targets Clippy、格式/差异及文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-mcp-{safe-final,host,clippy-final,size}.log。
 
 实际 debug MCP 进程完成 stdio initialize/tools-list：普通会话 108 项，费用审批会话 60 项，准备参数严格两个字段，审批无参数；证据 /tmp/adjustment-mcp-inventory.json。该探针仅检验进程协议与目录，没有调用生产服务。源码链路的各段已接入，但尚未完成单次真实签名消息贯穿 Gateway→MCP→Read API→Core 的端到端联调，未部署、未更新安装包、未发送真实聊天。下一步完成隔离端到端验收，然后推进费用草稿与逆转及配套发布。
+
+## 隔离签名执行链路验收
+
+新增 Read API 的 adjustment_chain_tests，使用真实 Gateway / Core / Read API HTTP 路由、Gateway 签名与当前委托复核器，以及实际 business-read-mcp 二进制的 stdio initialize/tools-call。测试身份经真实绑定 challenge 和签名验证绑定，只在隔离数据库授予准备/审批 IAM 能力；Core 明确配置单人允许自批测试策略。源数据由真实开账、订单、发货、利润投影和费用草稿服务生成。没有以 AcceptanceTest verifier 或模拟 API 返回替代执行链路。测试配置的 OIDC JWT verifier 没有走外部登录，本轮也没有通过 relay 或客户端代发消息。
+
+准备消息签名→Gateway 签发委托→MCP 消费→Read API 再验证→Core 保存意图；随后对返回的原样确认/拒绝命令重新签名并签发新委托，再贯穿 MCP/Read API/Core。验证确认仅产生一条对应费用事实，拒绝保持草稿，同一审批会话重复调用不重复执行；数据库审批 source_buzz_event_id 精确等于签名事件 ID，成功 MCP 审计共七条（两个正常准备、确认/拒绝及三个负例准备）。
+
+完整负例包括通过 Gateway HTTP 撤销委托后调用、签名命令摘要与意图不一致、准备后批次版本变化；三者均不创建审批请求、不产生费用事实，保持 draft。MCP 子进程设 kill_on_drop，协议调用有 20 秒超时并正常终止。共享业务夹具移到 test_fixture，避免同一源模块重复加载。
+
+PostgreSQL 55439 新库 adjustment_chain_final 验收实际通过。Read API 测试命令的 56 项通过中，本批链路用专用环境变量实际执行；其他需要独立数据库环境变量的测试可能提前返回，不声称全部数据库场景重验。严格 all-targets Clippy、格式/差异和文件大小检查通过，未运行全仓 just ci。日志 /tmp/adjustment-chain-{final,clippy-final,size}.log。运行前必须先构建当前 MCP：cargo build -p business-read-mcp，并显式设置 BUSINESS_ADJUSTMENT_CHAIN_MCP_BINARY 绝对路径及 BUSINESS_ADJUSTMENT_CHAIN_TEST_DATABASE_URL、正常 Core 配置。
+
+费用过账签名链路已有隔离端到端证据；仍未部署、未更新安装包或完成 Windows/真实聊天验收。下一步补全费用草稿查找/详情、创建/修改和逆转，再做配套权限、发布与实际客户端验证；完整企业业务写入目标继续保持。

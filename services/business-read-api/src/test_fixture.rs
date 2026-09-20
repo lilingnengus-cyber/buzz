@@ -1,3 +1,8 @@
+use business_core::PgStore;
+use serde_json::json;
+use sqlx::PgPool;
+#[path = "../../business-core/tests/support/adjustment_intent_fixture.rs"]
+pub(crate) mod adjustments;
 use uuid::Uuid;
 #[path = "../../business-core/tests/support/b2_seed.rs"]
 mod b2_seed;

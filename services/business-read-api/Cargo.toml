@@ -28,5 +28,7 @@ url = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+business-auth-gateway = { path = "../business-auth-gateway" }
+nostr = { workspace = true }
 sqlx = { workspace = true }
 tower = { workspace = true }

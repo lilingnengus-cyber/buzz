@@ -1,8 +1,6 @@
 use super::*;
-use crate::test_fixture::{seed, Fixture};
-use sqlx::PgPool;
-#[path = "../../business-core/tests/support/adjustment_intent_fixture.rs"]
-mod fixture;
+use crate::test_fixture::adjustments as fixture;
+use crate::test_fixture::seed;
 use business_core::PgStore;
 fn context(actor: Uuid, capability: &str) -> RequestContext {
     RequestContext {
