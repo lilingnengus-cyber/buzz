@@ -76,3 +76,15 @@ management_snapshot_preview_final（55439）完整 B4 回归通过：预览前�
 提取 generate_snapshot_on：由调用方持有并提交事务，内部快照、编号、审计和幂等写入均留在该事务中。原普通/受保护生成继续使用原有重试包装及独立事务；新入口显式检查 transaction_isolation，只接受 repeatable read 或 serializable，调用方负责重试整个外层事务。
 
 独立数据库 management_snapshot_outer_tx（55439）完整 B4 回归通过。新测试实际生成后撤销外层事务，确认快照、审计、幂等和编号计数全部恢复；默认 read committed 调用被拒绝且无残留。日志 /tmp/snapshot-outer-test.log。此项仅提供事务接口，尚未实现报表审批投票或 Agent 工具，未部署。
+
+## 月报意图与 Core 原子审批
+
+新增迁移 0061：business_agent_report_snapshot_intents 保存不可修改/删除的输入、完整预览和 30 分钟有效期；扩展审批请求/委托类型约束，登记 create/approve IAM capability，不自动授权或创建审批策略。当前只开放 management_profit_statement，profitability_by_dimension 计算尚未实现独立维度语义，不能冒充已支持。
+
+Core 新增 agent-report-snapshot-previews、agent-report-snapshot-intents、agent-approval-previews/report-snapshots、agent-approvals/report-snapshots 路由。准备绑定可选 preflight hash，同键只复用相同且仍有效的意图。审批沿用严格文字命令输入、当前策略、身份/角色/权限 witness、所有历史投票者重新验证及最终墙钟过期检查；整个事务使用 REPEATABLE READ，审批票、快照和执行状态统一提交。snapshot_preview_on 支持同一外层事务。
+
+真实 Router + PostgreSQL 独立库 report_snapshot_intents_verified（55439）通过：只读预览无报表、准备重放、意图不可更新、无策略拒绝、摘要篡改拒绝、另一个确认已生成报表后的旧意图拒绝、成功只生成一份、重复确认拒绝、拒绝票不生成。审计触发器在报表创建后故意失败，快照/请求/投票均为零，再移除故障原意图成功。数据库故障沿用 API 的 503 映射。日志 /tmp/report-intent-test-verified.log。
+
+仍未部署，未接通 Gateway/Read API/MCP/Host 文本命令或真实聊天。新外层事务的序列化冲突目前安全返回数据库错误，尚需增加整个审批事务的有界重试及并发/等候过期、多审批者撤权专项验证。经营日/周报尚未接入；完整报表业务流程未完成。
+
+迁移 61 后完整 B4 流程与订单暂停/解除审批回归分别在 report_intent_b4_regression、report_intent_hold_regression 独立数据库通过；严格 Clippy、格式、文件大小及差异检查通过。未运行全仓 just ci。日志 /tmp/report-intent-{b4,hold,clippy,size}.log。

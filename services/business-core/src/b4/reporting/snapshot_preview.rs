@@ -31,11 +31,28 @@ impl ProfitReportingService {
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *tx)
             .await?;
-        let (_, scope) = self.snapshot_scope_on(&mut tx, actor, input).await?;
-        let content = self.snapshot_content_on(&mut tx, input, &scope).await?;
-        let preview = content.preview(input, &scope);
+        let preview = self.snapshot_preview_on(&mut tx, actor, input).await?;
         tx.commit().await?;
         Ok(preview)
+    }
+    /// Preview using the caller's repeatable-read transaction without committing it.
+    pub async fn snapshot_preview_on(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: Uuid,
+        input: &GenerateReportSnapshot,
+    ) -> Result<Value, DomainError> {
+        let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
+            .fetch_one(&mut **tx)
+            .await?;
+        if isolation != "repeatable read" && isolation != "serializable" {
+            return Err(DomainError::Invalid(
+                "snapshot requires repeatable-read isolation".into(),
+            ));
+        }
+        let (_, scope) = self.snapshot_scope_on(tx, actor, input).await?;
+        let content = self.snapshot_content_on(tx, input, &scope).await?;
+        Ok(content.preview(input, &scope))
     }
     /// Generate only the content bound to the provided preview, rechecking current authority.
     pub async fn generate_snapshot_guarded(

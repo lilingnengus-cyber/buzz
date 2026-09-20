@@ -10,6 +10,7 @@ mod master;
 pub mod order_cancellation;
 mod order_hold;
 mod permission_witness;
+mod report_snapshot;
 /// Immutable return inspection and logistics intents.
 pub mod return_disposition;
 mod returns;
@@ -89,6 +90,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(crm::routes())
         .merge(master::routes())
         .merge(order_hold::routes())
+        .merge(report_snapshot::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
         .merge(inventory_count_creation::routes())
