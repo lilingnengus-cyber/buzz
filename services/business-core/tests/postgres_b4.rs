@@ -1,3 +1,5 @@
+#[path = "support/operating_snapshot_authority.rs"]
+mod operating_snapshot_authority;
 use business_core::{
     b2::{
         model::{
@@ -663,6 +665,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
         operations.dashboard(outsider, "2026-08", "CNY").await,
         Err(business_core::b2::DomainError::NotFoundOrForbidden)
     ));
+    operating_snapshot_authority::verify(&pool, &operations, f.actor, date).await;
 }
 
 #[allow(clippy::too_many_arguments)]

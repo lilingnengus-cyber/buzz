@@ -107,8 +107,16 @@ impl OperationsService {
         idempotency_key: &str,
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
+        validate_snapshot_input(input)?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
+        let auth = crate::master_write_authority::snapshot(
+            &mut tx,
+            actor,
+            "management_report:generate_snapshot",
+            false,
+        )
+        .await?;
         if let Some(value) = begin_idempotent::<Value>(
             &mut tx,
             actor,
@@ -118,11 +126,20 @@ impl OperationsService {
         )
         .await?
         {
+            let id = value["id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .ok_or(DomainError::NotFoundOrForbidden)?;
+            let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operating_report_snapshots WHERE id=$1 AND scope_hash=$2)")
+                .bind(id).bind(&auth.effective_scope_hash).fetch_one(&mut *tx).await?;
+            if !visible {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
             tx.commit().await?;
             return Ok(value);
         }
         let result = self
-            .generate_operating_snapshot_once(actor, trace_id, input)
+            .generate_operating_snapshot_on(&mut tx, actor, trace_id, input)
             .await?;
         finish_idempotent(
             &mut tx,
@@ -142,16 +159,27 @@ impl OperationsService {
         trace_id: Uuid,
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
+        let mut tx = self.store.pool().begin().await?;
+        let result = self
+            .generate_operating_snapshot_on(&mut tx, actor, trace_id, input)
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    async fn generate_operating_snapshot_on(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: Uuid,
+        trace_id: Uuid,
+        input: &GenerateOperatingSnapshot,
+    ) -> Result<Value, DomainError> {
         validate_snapshot_input(input)?;
-        let auth = authorize(
-            &self.store,
+        let auth = crate::master_write_authority::snapshot(
+            tx,
             actor,
             "management_report:generate_snapshot",
-            None,
-            None,
-            None,
-            None,
-            None,
+            false,
         )
         .await?;
         let period_end =
@@ -164,7 +192,7 @@ impl OperationsService {
             ));
         }
         if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4")
-            .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_optional(self.store.pool()).await?
+            .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_optional(&mut **tx).await?
         {
             return Ok(snapshot_result(&row, false, trace_id));
         }
@@ -179,17 +207,17 @@ impl OperationsService {
             .into_iter()
             .collect::<Vec<_>>();
         let sales = sqlx::query("SELECT count(*) order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) order_amount FROM sales_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&brand).bind(&bu).fetch_one(self.store.pool()).await?;
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let shipments = sqlx::query("SELECT count(*) FILTER(WHERE s.status='confirmed') shipment_count,COALESCE(sum(s.sales_amount) FILTER(WHERE s.status='confirmed'),0)::numeric(24,6) shipped_revenue FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE s.shipment_date>=$1 AND s.shipment_date<$2 AND s.currency=$3 AND s.legal_entity_id=ANY($4) AND s.customer_id=ANY($5) AND s.warehouse_id=ANY($6) AND (o.brand_id IS NULL OR o.brand_id=ANY($7)) AND o.business_unit_id=ANY($8)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(self.store.pool()).await?;
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let purchasing = sqlx::query("SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount FROM purchase_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND supplier_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).fetch_one(self.store.pool()).await?;
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let inventory = sqlx::query("SELECT COALESCE(sum(b.inventory_value),0)::numeric(24,6) inventory_value,count(*) FILTER(WHERE b.on_hand_quantity-b.reserved_quantity=0 AND b.reserved_quantity>0) stockout_count FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id WHERE e.functional_currency=$1 AND b.legal_entity_id=ANY($2) AND b.warehouse_id=ANY($3)")
-            .bind(&input.currency).bind(&le).bind(&wh).fetch_one(self.store.pool()).await?;
+            .bind(&input.currency).bind(&le).bind(&wh).fetch_one(&mut **tx).await?;
         let profit = sqlx::query("SELECT COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='net_revenue'),0)::numeric(24,6) revenue,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='product_cost'),0)::numeric(24,6) product_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type IN ('outbound_freight','sales_commission','platform_fee','customer_rebate','other_direct_cost','allocated_operating_expense')),0)::numeric(24,6) operating_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='supplier_rebate'),0)::numeric(24,6) supplier_rebate FROM profit_facts WHERE business_date>=$1 AND business_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND warehouse_id=ANY($6) AND (brand_id IS NULL OR brand_id=ANY($7)) AND business_unit_id=ANY($8)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(self.store.pool()).await?;
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let incidents = sqlx::query("SELECT count(*) FILTER(WHERE first_seen_at >= $2::date AND first_seen_at < $3::date) opened_count,count(*) FILTER(WHERE resolved_at >= $2::date AND resolved_at < $3::date) resolved_count,count(*) FILTER(WHERE due_at < COALESCE(resolved_at,$3::date) AND first_seen_at < $3::date) breached_count,COALESCE(avg(EXTRACT(EPOCH FROM (resolved_at-first_seen_at))/3600) FILTER(WHERE resolved_at >= $2::date AND resolved_at < $3::date),0)::numeric(18,3) average_resolution_hours FROM operating_report_incidents WHERE scope_hash=$1")
-            .bind(&auth.effective_scope_hash).bind(input.period_start).bind(period_end).fetch_one(self.store.pool()).await?;
+            .bind(&auth.effective_scope_hash).bind(input.period_start).bind(period_end).fetch_one(&mut **tx).await?;
         let revenue: Decimal = profit.get("revenue");
         let operating_profit = revenue
             - profit.get::<Decimal, _>("product_cost")
@@ -221,16 +249,14 @@ impl OperationsService {
             "metrics": payload
         }))?));
         let id = Uuid::new_v4();
-        let mut tx = self.store.pool().begin().await?;
         let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(cadence,period_start,currency,scope_hash) DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status")
-            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&auth.effective_scope_hash).bind(&payload).bind(quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut *tx).await?;
+            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&auth.effective_scope_hash).bind(&payload).bind(quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut **tx).await?;
         let (row, created) = if let Some(row) = inserted {
-            audit(&mut tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"sourceHash":source_hash})).await?;
+            audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"sourceHash":source_hash})).await?;
             (row, true)
         } else {
-            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_one(&mut *tx).await?, false)
+            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_one(&mut **tx).await?, false)
         };
-        tx.commit().await?;
         Ok(snapshot_result(&row, created, trace_id))
     }
 
