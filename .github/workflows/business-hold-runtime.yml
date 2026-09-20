@@ -22,11 +22,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh run download 35482054779 --repo lilingnengus-cyber/buzz --dir candidate
-          cd candidate/business-candidate-c186ddf01119acfb545c56dee7b77304874e282b
+          gh run download 35501065470 --repo lilingnengus-cyber/buzz --dir candidate
+          cd candidate/business-candidate-99423340217f38e427997d8938ddfceb9d699ae0
           sha256sum --check SHA256SUMS
-          echo '22d56a501f15adf748949f79e2d09692225c44c5bbe6ddc84acf8433ce500651  business-images.tar.gz' | sha256sum --check
-          test "$(cat source-sha.txt)" = c186ddf01119acfb545c56dee7b77304874e282b
+          test "$(cat source-sha.txt)" = 99423340217f38e427997d8938ddfceb9d699ae0
+          python3 -c 'import json; p=json.load(open("master-rollback.json")); assert p["pausedModules"] == ["master", "order_hold", "adjustment", "report_snapshot", "operating_snapshot"]'
           gzip -dc business-images.tar.gz | docker load
       - name: Verify migration and pause routing on PostgreSQL 17
         run: python3 scripts/verify-business-hold-runtime.py

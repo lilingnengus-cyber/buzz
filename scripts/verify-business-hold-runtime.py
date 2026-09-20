@@ -11,7 +11,7 @@ import uuid
 if os.environ.get("GITHUB_ACTIONS") != "true":
     raise SystemExit("Run only in the isolated GitHub Actions job")
 
-SOURCE = "c186ddf01119acfb545c56dee7b77304874e282b"
+SOURCE = "99423340217f38e427997d8938ddfceb9d699ae0"
 NETWORK = "business-hold-runtime"
 CREDENTIAL = "isolated-runtime-credential-" + uuid.uuid4().hex
 DB = "postgres://rehearsal:rehearsal@hold-postgres:5432/rehearsal"
@@ -60,7 +60,7 @@ try:
            f"shiyue-business-candidate-gateway:{SOURCE}", "--migrate-only")
     version = docker("exec", "hold-postgres", "psql", "-U", "rehearsal", "-d", "rehearsal",
                      "-Atc", "SELECT max(version) FROM _sqlx_migrations WHERE success")
-    assert version == "59", version
+    assert version == "68", version
     docker("exec", "hold-postgres", "psql", "-U", "rehearsal", "-d", "rehearsal",
            "-v", "ON_ERROR_STOP=1", "-c", """
         INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name)
@@ -93,6 +93,8 @@ try:
         else:
             raise AssertionError(f"{mode} Core did not become ready")
     evidence = {"source": SOURCE, "migration": version, "routes": []}
+    extra_prepares = [f"/v1/agent-adjustment-{mode}/operational_adjustment_{kind}_intent" for mode in ("previews", "intents") for kind in ("creation", "update", "post", "reversal")]
+    extra_prepares += [f"/v1/agent-{family}-snapshot-{mode}/{kind}_report_snapshot_intent" for family, kind in (("report", "management"), ("operating", "operating")) for mode in ("previews", "intents")]
     for path in [
         "/v1/agent-order-hold-previews/sales_order_hold_intent",
         "/v1/agent-order-hold-previews/sales_order_release_hold_intent",
@@ -100,7 +102,7 @@ try:
         "/v1/agent-order-hold-intents/sales_order_release_hold_intent",
         "/v1/agent-master-intents/core_master_status_intent",
         "/v1/agent-master-intents/product_master_status_intent",
-    ]:
+    ] + extra_prepares:
         normal = request(ports["normal"], path, {})
         paused = request(ports["paused"], path, {})
         assert normal in (400, 422), (path, normal)
@@ -114,6 +116,8 @@ try:
         "core_master_creation_intent", "core_master_update_intent", "core_master_status_intent",
         "product_master_creation_intent", "product_master_update_intent", "product_master_status_intent",
     )]
+    families += [("adjustments", f"operational_adjustment_{kind}_intent") for kind in ("creation", "update", "post", "reversal")]
+    families += [("report-snapshots", "management_report_snapshot_intent"), ("operating-snapshots", "operating_report_snapshot_intent")]
     for family, kind in families:
         for prefix, payload, expected in [
             ("agent-approvals", {}, 422),
