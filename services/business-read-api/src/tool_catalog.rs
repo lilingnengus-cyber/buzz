@@ -55,7 +55,9 @@ pub(super) const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-pub(super) const WRITE_TOOLS: [&str; 90] = [
+pub(super) const WRITE_TOOLS: [&str; 92] = [
+    "prepare_operating_report_snapshot",
+    "approve_operating_report_snapshot",
     "prepare_management_report_snapshot",
     "approve_management_report_snapshot",
     "prepare_sales_order_hold",
@@ -150,6 +152,8 @@ pub(super) const WRITE_TOOLS: [&str; 90] = [
 
 pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_operating_report_snapshot" => Some("operating_report_snapshot_intent:create"),
+        "approve_operating_report_snapshot" => Some("operating_report_snapshot_intent:approve"),
         "prepare_management_report_snapshot" => Some("management_report_snapshot_intent:create"),
         "approve_management_report_snapshot" => Some("management_report_snapshot_intent:approve"),
         "prepare_sales_order_hold" => Some("sales_order_hold_intent:create"),

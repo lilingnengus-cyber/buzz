@@ -177,3 +177,15 @@ operating_timezone_verified（55439）完整 B4 实测通过：覆盖偏移周�
 前一审批人失去范围后，旧意图不能继续执行；恢复范围也不能使旧授权 revision 的意图重新有效，必须重新准备。将短有效期意图阻塞在最终审计，等待过期后释放，确认报表、请求、投票、审计、幂等计数全部保持不变。授权 revision 锁等待期间撤销生成权限，释放后重新校验并拒绝，无业务写入。
 
 实际新库 operating_intent_races_final（55439）完整 operating 意图测试通过；日志 /tmp/operating-intent-races-final.log。该测试目标严格 Clippy、格式、差异和文件大小检查通过（/tmp/operating-intent-races-{clippy,size}.log）。这些结果补齐上一节注明缺失的日报/周报竞争验证；仍不代表 Gateway/Read API/MCP、部署或真实客户端验收完成。
+
+## 日报/周报 Gateway 与 Read API 接入
+
+Gateway 固定能力列表新增 operating_report_snapshot_intent:create/approve（共 109 个 scope），确认/拒绝解析器仅接受对应完整意图命令。Read API 新增 prepare_operating_report_snapshot / approve_operating_report_snapshot（共 92 个写入工具），复用已验证签名上下文，模型输入不能覆盖来源事件/频道。开关继续区分准备与审批。
+
+接入层在保存前请求 Core 纯预览，校验严格输入、请求人、六维范围结构、固定 UTC 边界、全部指标类型、来源摘要、冻结效果，再用预检摘要绑定准备。确认先校验当前审批预览与委托范围，执行返回值必须匹配请求人、来源摘要、质量、时区、实际 ID/时间、创建或复用效果及票数。pending/rejected 不允许携带生成结果。目前没有已实现的 operating 详情深链接，resourceRefs 保持空数组，不能伪造月报链接。
+
+混合业务指标尚未在所有查询统一实现客户/供应商/品牌/业务单元/仓库 IAM 筛选，接入层明确拒绝携带这些限制的委托；仅接受无附加维度限制或法人范围覆盖完整预览的委托，Core 自身用户权限继续生效。这是未完成的业务能力边界，不能视为已经覆盖受限委托；还需实现完整跨域口径、历史身份及实际详情页。
+
+实际新库 operating_adapter_verified（55439）+ 真实 Core HTTP 测试：daily/weekly 两种准备、生成与冻结复用成功；六维越权委托在准备前拒绝且意图数不变；审批越权拒绝；摘要/时间/owner 篡改校验拒绝；两票策略下一票 pending，拒绝命令 rejected，均无生成结果。导出 8 份实际返回值 /tmp/operating-adapter-proof.jsonl 供后续 MCP 验证。Read API lib 测试 53 项、Gateway agent 测试 4 项通过；其中其他依赖专用数据库变量的历史 adapter 测试未在本轮配置数据库，不把这些算作真实数据库回归。日志 /tmp/operating-adapter-verified.log、/tmp/operating-gateway-tests.log。两服务 all-targets 严格 Clippy、格式、差异与文件大小检查通过（/tmp/operating-adapter-{clippy,size}.log）。未运行全仓 just ci。
+
+本批尚未接入 MCP/Host，也未部署、自动授权或发送真实聊天消息。下一步接入 MCP 固定工具、独立结果验证和 Host 精确确认路由，然后处理维度过滤与详情页，完成客户端验收。

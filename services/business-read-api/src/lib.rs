@@ -10,6 +10,7 @@ mod inventory_count_writes;
 mod inventory_counts;
 mod master_data;
 mod master_writes;
+mod operating_snapshot_writes;
 mod order_hold_writes;
 mod report_snapshot_writes;
 mod return_documents;
