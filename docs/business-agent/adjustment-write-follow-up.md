@@ -313,3 +313,18 @@ Mac release 构建与候选签名验证通过：/tmp/Pacioli-adjustment-99423340
 生产副本派生隔离库 adjustment_authority_tests 验证正常路径与五类拒绝：来源过期、范围变 unrestricted、逆转确认权限停用、签名义务缺失、操作者停用。负向路径无新增授权；正常路径先 ROLLBACK 验证，再实际提交于隔离库，得到 13 项同范围授权与 5 项策略；5 笔订单完整记录摘要保持原值。日志 /tmp/adjustment-authority-final.log。原演练库包含早期 12 项授权版本，最终验收以 adjustment_authority_tests 为准。
 
 生产仍未改写，下一步将候选镜像、迁移和该授权在生产版本配置下进一步核对，备份后部署，并验证服务/Web/Mac 配套；按用户要求不再执行 Windows 安装验收。
+
+
+## 2026-09-20 生产发布与 Mac 配套完成
+
+生产四服务已切换到 99423340217f38e427997d8938ddfceb9d699ae0，数据库迁移 57→68 与 IAM runtime 授权迁移均退出 0。备份及此前完整 Compose 链保存在服务器 `/opt/business-platform/releases/adjustment-994233402/`；`before-adjustment.dump` 为 821352 字节，`pg_restore --list` 校验通过（1188 行）。候选镜像包 SHA256 为 `6c177c3eeade13190918936b36828c9e9d63e992058154e646e5ca9abef3ecb3`，与 CI 清单一致。发布目录含暂停写入镜像覆盖配置；暂停策略只暂停新增家族，不能把旧服务直接回退当作已经验证的数据库降级。
+
+费用／报表部署授权新增 13 个有范围限制的 IAM grant 和 5 个审批策略（审计 6af23004-7404-4ddf-86ff-46be163cb6de）；主数据状态新增 4 个继承原限制的 grant（0d08176d-160e-40d3-a767-403a235f9566）；订单暂停／解除新增 4 个受法人、业务单元和客户范围限制的 grant 与 2 个策略（4a068c04-ca13-4b57-8996-da7a480df4c6）。均运行既有已演练脚本，未创建测试业务单据。
+
+四服务镜像版本核对一致；Gateway `/health/ready` 返回 204，Read API `/health` 返回 200，IAM healthy，Core 返回 status=ok。生产现有 5 笔销售订单 COPY 数据与发布前备份逐行一致，规范排序后 SHA256 为 `4b145e55c3f1a5ed46b14364dfdad59b0c8a9983791758743c83da2262b5f9a9`。四类费用预览接口无凭据请求均返回 401。证据为服务器发布目录 `production-verification.json`。磁盘余量约 14GB，使用率 76%。这些检查不等同于真实用户业务写入验收。
+
+Web 使用 `scripts/release-business-web.sh` 发布成功，静态版本 `business-web-46fd67bbf-66c5a675eeca`，保留 rollback pointer，入口资源 `index-Divvm1on.js` 及服务健康检查通过。本地日志 `/tmp/adjustment-production-web-release.log`。
+
+Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/adjustment-994233402/`，安装验收候选的 buzz-acp、buzz-agent 和独立 business-read-mcp，应用重新签名校验通过并已重启。三个组件哈希与候选 manifest 一致，重启后企业助手 MCP 路径保留。安装后实际 buzz-agent/MCP 配合模拟模型探针通过，113 个固定工具、promptCompleted=true；日志 `/tmp/adjustment-installed-mac-runtime.log`。没有代发真实聊天，因此登录恢复、实际聊天写入和链接打开仍未验收。Windows 安装验收按用户指示不执行。
+
+本阶段完成服务、Web 和 Mac 配套发布；完整业务流程目标仍未完成。下一步先验证 Mac 当前登录状态与只读查询／详情链接，再按既有授权边界进行真实写入验收；后续业务覆盖缺口见 full-workflow-coverage.md。
