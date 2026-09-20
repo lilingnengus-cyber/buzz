@@ -127,3 +127,16 @@ Read API 独立验证 Core 返回的完整范围被当前委托覆盖。这是�
 查询合同 15 项、Host 11 项、MCP 28 项、Read API 57 项报告通过；其中环境变量控制的其他集成测试可能跳过，本批只将上述显式新库和实际响应语料计为新增运行证据。六个相关包 all-targets 严格 Clippy 通过，真实 MCP 进程目录探针通过；未运行全仓 just ci。日志 /tmp/adjustment-read-{contract,host,mcp,test,gateway,core,clippy}.log，目录 /tmp/adjustment-read-inventory.json。
 
 本批未部署、未更新安装包、未发送真实聊天，尚未将新读取接入完整签名端到端验收。下一步补齐费用草稿创建/修改的不可变意图、签名确认与幂等保护，并完成真实详情页面及逆转；完整业务流程目标仍未完成。
+
+
+## 草稿写入的受控事务入口
+
+增加 create_guarded_on / replace_draft_guarded_on，要求调用方提供 repeatable-read 或 serializable 事务，并在任意错误后回滚完整事务。新入口不提交，且本身不是签名确认 API。原浏览器 create / replace_draft 的持久化逻辑提取到私有方法，保持旧参数和幂等语义；不能据此认为旧浏览器路径已获得新入口的全部权限保护。
+
+新入口先验证输入，将所有显式订单引用（directSalesOrderId、salesOrderIds、fixedWeights）按 ID 排序并锁定；引用必须处于当前全部业务范围内，且与草稿法人、币种相符。资源等待结束后取得授权版本 SHARE 锁并重新检查权限。修改还锁定原草稿，通过整单明细授权检查全部旧行及旧目标，防止用替换删除越权明细。动态分摊尚不在此阶段计算或冻结，后续确认意图仍需绑定明确预览及执行边界。
+
+使用独立 guarded 幂等命名空间，修改摘要包含 batchId、expectedVersion 和完整替换内容，拒绝同键跨草稿重放；派生内部键调用原持久化方法。重放仍检查当前范围。所有草稿、明细、事件、审计、outbox 和幂等记录加入同一事务。
+
+真实 PostgreSQL 55439 的 adjustment_draft_verified 证明：错误隔离拒绝，创建/修改成功后调用方回滚，创建/修改幂等重放，旧版本与同键跨草稿拒绝，未知显式目标拒绝，旧行越权不能通过替换移除，撤权后重放拒绝。用 pg_blocking_pids 确认真实目标订单/草稿行锁等待，在等待期间撤销客户范围，释放后两种写入均失败。审计触发器注入创建/修改故障，回滚后七类记录计数不变。首次测试使用过短幂等键，修正测试数据后在全新库重验，未放宽生产键规范。
+
+adjustment_draft_b4 完整既有 B4 回归通过，Core all-targets 严格 Clippy 通过。证据 /tmp/adjustment-draft-{verified,b4,clippy}.log；未运行全仓 just ci。本批没有新增迁移、对外路由或助手工具，未部署和发送真实聊天。下一步基于这些事务入口增加草稿创建/替换的不可变确认意图、完整内容预览、签名委托与固定工具；完整业务流程目标保持未完成。

@@ -156,7 +156,7 @@ impl AdjustmentService {
         Ok(result)
     }
 }
-async fn visible_order(
+pub(super) async fn visible_order(
     tx: &mut Transaction<'_, Postgres>,
     id: Uuid,
     authorization: &AuthorizationSnapshot,
