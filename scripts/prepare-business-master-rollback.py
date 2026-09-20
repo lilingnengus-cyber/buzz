@@ -12,6 +12,8 @@ parser.add_argument("destination", type=Path)
 parser.add_argument("--expected-router-sha256", required=True)
 parser.add_argument("--include-order-hold", action="store_true",
                     help="Also pause the paired sales order hold agent routes")
+parser.add_argument("--include-adjustments-and-reports", action="store_true",
+                    help="Also pause adjustment and management/operating snapshot agent routes")
 args = parser.parse_args()
 source = args.source.resolve(strict=True)
 destination = args.destination.resolve()
@@ -23,6 +25,8 @@ if hashlib.sha256(original).hexdigest() != args.expected_router_sha256:
     raise SystemExit("candidate router differs from reviewed source")
 text = original.decode()
 modules = ("master", "order_hold") if args.include_order_hold else ("master",)
+if args.include_adjustments_and_reports:
+    modules += ("adjustment", "report_snapshot", "operating_snapshot")
 for module in modules:
     old = f".merge({module}::routes())"
     if text.count(old) != 1:
@@ -42,7 +46,7 @@ fn paused_master_routes(routes: Router<Arc<AppState>>) -> Router<Arc<AppState>> 
 shutil.copytree(source, destination, symlinks=True)
 (destination / relative).write_text(text)
 manifest = {
-    "mode": "pause-master-and-order-hold-agent-routes" if args.include_order_hold else "pause-master-agent-routes",
+    "mode": "pause-business-candidate-agent-routes" if args.include_adjustments_and_reports else ("pause-master-and-order-hold-agent-routes" if args.include_order_hold else "pause-master-agent-routes"),
     "pausedModules": list(modules),
     "sourceRouterSha256": hashlib.sha256(original).hexdigest(),
     "pausedRouterSha256": hashlib.sha256(text.encode()).hexdigest(),
