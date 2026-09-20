@@ -12,6 +12,8 @@ use uuid::Uuid;
 mod b2_seed;
 #[path = "support/adjustment_intent_fixture.rs"]
 mod fixture;
+#[path = "support/adjustment_draft_preview.rs"]
+mod preview;
 struct Fixture {
     actor: Uuid,
     legal_entity: Uuid,
@@ -31,7 +33,7 @@ async fn tx(pool: &PgPool) -> Transaction<'_, Postgres> {
     tx
 }
 async fn counts(pool: &PgPool) -> Vec<i64> {
-    sqlx::query_scalar("SELECT n FROM (SELECT count(*) n FROM operational_adjustment_batches UNION ALL SELECT count(*) FROM operational_adjustment_lines UNION ALL SELECT count(*) FROM operational_adjustment_events UNION ALL SELECT count(*) FROM business_core_audit_events UNION ALL SELECT count(*) FROM business_command_idempotency UNION ALL SELECT count(*) FROM profit_facts UNION ALL SELECT count(*) FROM business_core_outbox) counts").fetch_all(pool).await.unwrap()
+    sqlx::query_scalar("SELECT n FROM (SELECT count(*) n FROM operational_adjustment_batches UNION ALL SELECT count(*) FROM operational_adjustment_lines UNION ALL SELECT count(*) FROM operational_adjustment_events UNION ALL SELECT count(*) FROM business_core_audit_events UNION ALL SELECT count(*) FROM business_command_idempotency UNION ALL SELECT count(*) FROM profit_facts UNION ALL SELECT count(*) FROM business_core_outbox UNION ALL SELECT count(*) FROM business_numbering_issuances UNION ALL SELECT COALESCE(sum(current_value),0)::bigint FROM business_numbering_sequence_pools) counts").fetch_all(pool).await.unwrap()
 }
 #[tokio::test]
 async fn draft_transactions_are_atomic_scoped_versioned_and_idempotent() {
@@ -50,6 +52,7 @@ async fn draft_transactions_are_atomic_scoped_versioned_and_idempotent() {
     sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT role_id,'profit_adjustment:update_draft' FROM business_user_roles WHERE enterprise_user_id=$1 ON CONFLICT DO NOTHING").bind(f.actor).execute(&pool).await.unwrap();
     let service = AdjustmentService::new(store, "ADJ".into(), 500);
     let input:CreateAdjustmentBatch=serde_json::from_value(json!({"legalEntityId":f.legal_entity,"currency":"CNY","managementPeriod":"2026-08","lines":[{"metricType":"allocated_operating_expense","amount":"10.01","businessDate":"2026-08-21","allocationBasis":"direct","directSalesOrderId":order,"reasonCode":"TEST"}]})).unwrap();
+    preview::verify(&pool, &service, &f, order, &input).await;
     let before = counts(&pool).await;
     let mut t = pool.begin().await.unwrap();
     assert!(service

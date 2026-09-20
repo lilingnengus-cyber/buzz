@@ -105,7 +105,7 @@ fn internal_key(operation: &str, key: &str, hash: &str) -> String {
         hex::encode(Sha256::digest(format!("{operation}:{key}:{hash}")))
     )
 }
-async fn isolation(tx: &mut Transaction<'_, Postgres>) -> Result<(), DomainError> {
+pub(super) async fn isolation(tx: &mut Transaction<'_, Postgres>) -> Result<(), DomainError> {
     let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
         .fetch_one(&mut **tx)
         .await?;
@@ -116,7 +116,7 @@ async fn isolation(tx: &mut Transaction<'_, Postgres>) -> Result<(), DomainError
     }
     Ok(())
 }
-fn references(input: &CreateAdjustmentBatch) -> BTreeSet<Uuid> {
+pub(super) fn references(input: &CreateAdjustmentBatch) -> BTreeSet<Uuid> {
     input
         .lines
         .iter()
@@ -132,7 +132,7 @@ fn references(input: &CreateAdjustmentBatch) -> BTreeSet<Uuid> {
         })
         .collect()
 }
-async fn lock_references(
+pub(super) async fn lock_references(
     tx: &mut Transaction<'_, Postgres>,
     input: &CreateAdjustmentBatch,
 ) -> Result<(), DomainError> {
@@ -145,7 +145,7 @@ async fn lock_references(
     }
     Ok(())
 }
-async fn check_references(
+pub(super) async fn check_references(
     tx: &mut Transaction<'_, Postgres>,
     input: &CreateAdjustmentBatch,
     current: &AuthorizationSnapshot,

@@ -4,6 +4,7 @@ mod search;
 pub use detail::AdjustmentDetailQuery;
 pub use search::AdjustmentSearchQuery;
 mod draft_commands;
+mod draft_preview;
 mod guarded_drafts;
 mod guarded_post;
 mod transaction_commands;
