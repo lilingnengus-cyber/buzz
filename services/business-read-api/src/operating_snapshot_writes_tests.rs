@@ -39,6 +39,10 @@ async fn value(response: Response) -> Value {
 fn strict_inputs() {
     let mut input = json!({"cadence":"weekly","periodStart":"2026-01-19","currency":"CNY","utcOffsetMinutes":480});
     assert!(valid("prepare_operating_report_snapshot", &input));
+    input["businessUnitIds"] = json!([]);
+    assert!(!valid("prepare_operating_report_snapshot", &input));
+    input["businessUnitIds"] = json!([Uuid::new_v4()]);
+    assert!(valid("prepare_operating_report_snapshot", &input));
     input["periodStart"] = json!("2026-01-20");
     assert!(!valid("prepare_operating_report_snapshot", &input));
     input["cadence"] = json!("daily");
@@ -215,6 +219,45 @@ async fn operating_adapter_uses_real_core_and_checks_before_writing() {
         let command = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
         let result =
             value(forward(&core, tool, command, &c, &grant(&c, f.legal_entity)).await).await;
+        assert_eq!(result["executed"], true);
+        export(tool, c.trace_id, &result);
+    }
+    for cadence in ["daily", "weekly"] {
+        let tool = "prepare_operating_report_snapshot";
+        let c = context(f.actor, required_capability(tool).unwrap());
+        let input = json!({"cadence":cadence,"periodStart":"2026-04-06","currency":"CNY","utcOffsetMinutes":480,"legalEntityIds":[f.legal_entity],"businessUnitIds":[f.business_unit]});
+        let scoped = |c: &RequestContext| {
+            let mut allowed = grant(c, f.legal_entity);
+            if let DataScope::Restricted(ref mut dimensions) = allowed.data_scope {
+                dimensions.insert("business_unit".into(), [f.business_unit.to_string()].into());
+            }
+            allowed
+        };
+        let mut unfiltered = input.clone();
+        unfiltered
+            .as_object_mut()
+            .unwrap()
+            .remove("businessUnitIds");
+        assert_eq!(
+            forward(&core, tool, unfiltered, &c, &scoped(&c))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        let prepared = value(forward(&core, tool, input, &c, &scoped(&c)).await).await;
+        assert_eq!(
+            prepared["document"]["scope"]["businessUnitIds"],
+            json!([f.business_unit])
+        );
+        assert_eq!(
+            prepared["document"]["metrics"]["unavailableMetrics"]["slaBreached"],
+            "not_attributable_to_selected_business_units"
+        );
+        export(tool, c.trace_id, &prepared);
+        let tool = "approve_operating_report_snapshot";
+        let c = context(f.actor, required_capability(tool).unwrap());
+        let command = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
+        let result = value(forward(&core, tool, command, &c, &scoped(&c)).await).await;
         assert_eq!(result["executed"], true);
         export(tool, c.trace_id, &result);
     }

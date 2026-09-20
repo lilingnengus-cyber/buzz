@@ -79,7 +79,7 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
                 .as_object()
                 .is_some_and(|o| !o.is_empty())
         {
-            for mutation in 0..4 {
+            for mutation in 0..6 {
                 let mut bad = preview.clone();
                 match mutation {
                     0 => bad["metrics"]["slaBreached"] = json!(0),
@@ -90,7 +90,15 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
                             .remove("slaBreached");
                     }
                     2 => bad["dataQualityStatus"] = json!("complete"),
-                    _ => bad["scope"]["legalEntityIds"] = json!([Uuid::new_v4()]),
+                    3 => bad["scope"]["legalEntityIds"] = json!([Uuid::new_v4()]),
+                    4 if preview["input"].get("businessUnitIds").is_some() => {
+                        bad["scope"]["businessUnitIds"] = json!([Uuid::new_v4()])
+                    }
+                    5 if preview["input"].get("businessUnitIds").is_some() => {
+                        bad["metrics"]["unavailableMetrics"]["slaBreached"] =
+                            json!("not_attributable_to_selected_legal_entities");
+                    }
+                    _ => continue,
                 }
                 bad["sourceHash"]=json!(hex::encode(Sha256::digest(serde_json::to_vec(&json!({"cadence":bad["input"]["cadence"],"utcOffsetMinutes":bad["input"]["utcOffsetMinutes"],"periodStartUtc":bad["periodStartUtc"],"periodEndUtc":bad["periodEndUtc"],"periodStart":bad["input"]["periodStart"],"periodEnd":bad["periodEnd"],"currency":bad["input"]["currency"],"scopeHash":bad["scopeHash"],"metrics":bad["metrics"]})).unwrap())));
                 assert!(
@@ -101,5 +109,5 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
         }
         count += 1;
     }
-    assert_eq!(count, 12);
+    assert_eq!(count, 16);
 }

@@ -26,6 +26,9 @@ pub struct GenerateOperatingSnapshot {
     /// Optional explicit legal-entity subset; omitted preserves the existing full-scope contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_entity_ids: Option<Vec<Uuid>>,
+    /// Optional nonempty authorized business-unit subset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub business_unit_ids: Option<Vec<Uuid>>,
     pub cadence: String,
     pub currency: String,
     pub period_start: NaiveDate,
@@ -482,6 +485,7 @@ impl OperationsService {
                 cadence: cadence.clone(),
                 currency: row.get("currency"),
                 period_start,
+                business_unit_ids: None,
                 legal_entity_ids: None,
                 utc_offset_minutes: offset,
             };

@@ -5,6 +5,9 @@ pub(super) struct OperatingSnapshotInput {
     /// Optional nonempty legal-entity UUID subset from scoped lookup. Never guess IDs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) legal_entity_ids: Option<Vec<Uuid>>,
+    /// Optional nonempty authorized business-unit UUID subset; inventory follows warehouse ownership.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) business_unit_ids: Option<Vec<Uuid>>,
     /// Daily or weekly reporting cadence; weekly periods start on Monday.
     #[schemars(regex(pattern = r"^(daily|weekly)$"))]
     pub(super) cadence: String,

@@ -3,6 +3,8 @@
 pub mod api;
 mod incidents;
 mod quality;
+#[cfg(test)]
+mod quality_scope_tests;
 mod trends;
 const PROJECTION_HEALTH_SQL: &str = include_str!("sql/projection_health.sql");
 

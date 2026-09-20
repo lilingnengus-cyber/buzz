@@ -1,3 +1,4 @@
+import { operatingMetricUnavailable } from "./operatingMetricAvailability";
 import React from "react";
 import {
   type ApiFailure,
@@ -262,7 +263,7 @@ export function OperatingTrendsView() {
                   </span>
                   <span>
                     {item.metrics.averageResolutionHours == null
-                      ? "异常指标不可按法人拆分"
+                      ? `异常指标${operatingMetricUnavailable(item.metrics.unavailableMetrics?.averageResolutionHours)}`
                       : `平均解决 ${item.metrics.averageResolutionHours}h`}
                   </span>
                   <code>{item.sourceHash.slice(0, 10)}</code>

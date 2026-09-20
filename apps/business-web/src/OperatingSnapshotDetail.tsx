@@ -1,3 +1,4 @@
+import { operatingMetricUnavailable } from "./operatingMetricAvailability";
 import React from "react";
 import {
   type ApiFailure,
@@ -127,25 +128,34 @@ export function OperatingSnapshotDetail({ id }: { id: string }) {
                   [
                     "新增异常",
                     detail.metrics.incidentsOpened == null
-                      ? "不可按法人拆分"
+                      ? operatingMetricUnavailable(
+                          detail.metrics.unavailableMetrics?.incidentsOpened,
+                        )
                       : String(detail.metrics.incidentsOpened),
                   ],
                   [
                     "已解决异常",
                     detail.metrics.incidentsResolved == null
-                      ? "不可按法人拆分"
+                      ? operatingMetricUnavailable(
+                          detail.metrics.unavailableMetrics?.incidentsResolved,
+                        )
                       : String(detail.metrics.incidentsResolved),
                   ],
                   [
                     "SLA 超时数",
                     detail.metrics.slaBreached == null
-                      ? "不可按法人拆分"
+                      ? operatingMetricUnavailable(
+                          detail.metrics.unavailableMetrics?.slaBreached,
+                        )
                       : String(detail.metrics.slaBreached),
                   ],
                   [
                     "平均解决时长（小时）",
                     detail.metrics.averageResolutionHours == null
-                      ? "不可按法人拆分"
+                      ? operatingMetricUnavailable(
+                          detail.metrics.unavailableMetrics
+                            ?.averageResolutionHours,
+                        )
                       : formatDecimal(detail.metrics.averageResolutionHours),
                   ],
                 ] as const

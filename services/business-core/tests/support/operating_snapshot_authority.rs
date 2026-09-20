@@ -8,6 +8,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid, day
         cadence: "daily".into(),
         currency: "CNY".into(),
         period_start: day,
+        business_unit_ids: None,
         legal_entity_ids: None,
         utc_offset_minutes: 480,
     };

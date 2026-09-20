@@ -71,6 +71,14 @@ mod tests {
             .unwrap()
             .iter()
             .all(|v| v != "legalEntityIds"));
+        assert!(operating.input_schema["properties"]
+            .get("businessUnitIds")
+            .is_some());
+        assert!(operating.input_schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v != "businessUnitIds"));
         assert_eq!(
             operating.input_schema.get("additionalProperties"),
             Some(&json!(false))

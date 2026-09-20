@@ -243,3 +243,17 @@ Read API 和 MCP 支持新字段/版本，独立核对 input 与冻结法人的�
 operating_legal_adapter_final 真实 Core HTTP + Read API 验证宽范围被拒、显式法人选择的 daily/weekly 准备和确认成功；导出 12 份新旧版本结果到 /tmp/operating-legal-final-proof.jsonl。MCP 26 项测试通过，额外验证重新计算 sourceHash 也不能把未知数改零、删掉原因、谎称 complete 或偷换法人范围。输入 schema 包含可选 legalEntityIds 且不接受未知字段。原生 MCP/Agent 模拟模型会话仍为普通 107、确认 60 工具且只开放对应确认工具（/tmp/operating-legal-native-{ordinary,approval}.log）；非真实聊天验收。
 
 浏览器模拟 API 的 3 项实际页面测试通过，四个 null 指标显示不可拆分，不显示 null 或零；前端检查/构建通过（/tmp/operating-legal-browser.log）。Core/API/MCP 严格 Clippy、格式/差异/文件大小门禁通过后提交；未运行全仓 just ci。本批无需新迁移，但新筛选输入/nullable 指标需要配套 Core、Read API、MCP、Web 版本。未部署或更新安装包；完整业务写入目标和其他维度、异常归属、发布及真实客户端验收仍未完成。
+
+## 日报/周报显式业务单元筛选
+
+新增可选 businessUnitIds；非空、属于当前授权且归属于所选法人，否则拒绝。省略字段不改变旧请求序列化、身份和原有统计。显式筛选使用独立范围身份，预览、幂等重放、确认生成绑定相同业务单元集合。销售/采购/发货/利润按来源订单或事实业务单元统计，库存按仓库所属业务单元统计；不能为了缩小库存而删除其他业务单元仓库的授权 ID，否则会误删跨单元仓库发货。数据质量的库存对账按仓库，应收/应付对账按来源订单，利润及投影健康按所选业务单元。
+
+业务单元筛选时四个异常指标一律为 null，固定原因 not_attributable_to_selected_business_units，质量不能是 complete；包括显式全选当前业务单元，因为旧异常是全授权汇总，不能证明与新的库存/往来款归属口径相同。Read API/MCP 校验精确业务单元集合、固定原因和 null，不能更换成法人原因或重新计算摘要后偷换范围。受业务单元限制的委托仅在显式筛选且冻结范围被完全覆盖时通过；其余未实现的客户、品牌、供应商、仓库受限委托继续拒绝。
+
+页面按冻结的原因显示“不可按业务单元拆分”，保留法人原因和未知原因的“不可用”，没有增加操作按钮。趋势比较额外识别业务单元筛选口径，避免六维 UUID 集合相同但统计规则不同的旧快照被当作环比基线。
+
+验证：隔离 PostgreSQL 55439 的 operating_bu_scope / operating_bu_final 完整 B4 回归通过，覆盖订单和仓库分属两个业务单元、日报周报金额隔离、生成/详情/同键重放、空/越权集合、显式全选异常仍不可用及不同口径不比较。最终补充已授权业务单元与所选法人不相容的拒绝用例，在 operating_bu_verified 新库再验收。数据质量事务测试在 operating_bu_final 上注入库存及应收差异，分别只影响正确业务单元，结束后回滚；本轮没有非零应付差异 fixture，不声称采购应付完整流程验收。operating_bu_approvals 原审批竞争、撤权、过期回归通过。
+
+operating_bu_adapter 真实 Core HTTP + Read API 验证业务单元受限委托的旧无筛选请求被拒，显式 daily/weekly 准备和确认成功；导出 /tmp/operating-bu-proof.jsonl 共 16 份实际返回。MCP 26 项测试通过（同时复用月报 6 份实际结果），含重新计算来源摘要后的范围/原因篡改拒绝及可选输入 schema。前端检查、构建、4 项模拟 API 实际页面测试通过；首次页面测试使用旧构建导致新原因断言失败，重新构建后通过。日志 /tmp/operating-bu-{scope,final,verified,quality-final,approvals,adapter,mcp,browser-final,clippy-final,size}.log。
+
+无需新迁移，需配套发布 Core、Read API、MCP、Web。尚未部署、更新安装包或发送真实聊天；未运行全仓 just ci。完整业务写入目标继续保留，下一步补充仓库等剩余筛选及其明确归属，随后配套发布和真实客户端验收。

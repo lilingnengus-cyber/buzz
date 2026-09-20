@@ -6,18 +6,20 @@ pub(super) async fn resolve(
     input: &GenerateOperatingSnapshot,
 ) -> Result<(DataScopes, String), DomainError> {
     let mut scopes = auth.scopes.clone();
-    let Some(ids) = &input.legal_entity_ids else {
+    if input.legal_entity_ids.is_none() && input.business_unit_ids.is_none() {
         return Ok((scopes, auth.effective_scope_hash.clone()));
-    };
-    if ids.is_empty() {
-        return Err(DomainError::Invalid(
-            "legalEntityIds must not be empty".into(),
-        ));
     }
-    if ids.iter().any(|id| !scopes.legal_entity_ids.contains(id)) {
-        return Err(DomainError::NotFoundOrForbidden);
+    if let Some(ids) = &input.legal_entity_ids {
+        if ids.is_empty() {
+            return Err(DomainError::Invalid(
+                "legalEntityIds must not be empty".into(),
+            ));
+        }
+        if ids.iter().any(|id| !scopes.legal_entity_ids.contains(id)) {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        scopes.legal_entity_ids = ids.iter().copied().collect();
     }
-    scopes.legal_entity_ids = ids.iter().copied().collect();
     for (table, ids) in [
         ("business_units", &mut scopes.business_unit_ids),
         ("business_warehouses", &mut scopes.warehouse_ids),
@@ -36,8 +38,24 @@ pub(super) async fn resolve(
             .await?;
         *ids = selected.into_iter().collect();
     }
+    if let Some(ids) = &input.business_unit_ids {
+        if ids.is_empty() {
+            return Err(DomainError::Invalid(
+                "businessUnitIds must not be empty".into(),
+            ));
+        }
+        if ids.iter().any(|id| !scopes.business_unit_ids.contains(id)) {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        scopes.business_unit_ids = ids.iter().copied().collect();
+    }
+    let version = if input.business_unit_ids.is_some() {
+        "operating-business-unit-scope-v1"
+    } else {
+        "operating-legal-scope-v1"
+    };
     let hash = hex::encode(Sha256::digest(serde_json::to_vec(
-        &json!({"version":"operating-legal-scope-v1","authorizationScopeHash":auth.effective_scope_hash,"scope":scopes}),
+        &json!({"version":version,"authorizationScopeHash":auth.effective_scope_hash,"scope":scopes}),
     )?));
     Ok((scopes, hash))
 }

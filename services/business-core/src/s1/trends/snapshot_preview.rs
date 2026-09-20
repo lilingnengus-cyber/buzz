@@ -13,7 +13,7 @@ pub(super) struct OperatingContent {
 }
 impl OperatingContent {
     pub(super) fn preview(&self, actor: Uuid, input: &GenerateOperatingSnapshot) -> Value {
-        json!({"schemaVersion":if input.legal_entity_ids.is_some(){2}else{1},"kind":"operating_report_snapshot","input":input,
+        json!({"schemaVersion":if input.legal_entity_ids.is_some() || input.business_unit_ids.is_some(){2}else{1},"kind":"operating_report_snapshot","input":input,
             "ownerUserId":actor,"periodEnd":self.period_end,
             "periodStartUtc":self.period_start_utc,"periodEndUtc":self.period_end_utc,"timeBasis":"fixed_utc_offset","scope":self.scope,"scopeHash":self.scope_hash,
             "metrics":self.payload,"sourceHash":self.source_hash,"dataQualityStatus":self.quality_status,
@@ -106,7 +106,8 @@ impl OperationsService {
             })?;
         let (period_start_utc, period_end_utc) = utc_bounds(input, period_end)?;
         let (selected, scope_hash) = snapshot_scope::resolve(tx, &auth, input).await?;
-        let incident_metrics_available = selected.legal_entity_ids == auth.scopes.legal_entity_ids;
+        let incident_metrics_available = input.business_unit_ids.is_none()
+            && selected.legal_entity_ids == auth.scopes.legal_entity_ids;
         let scope = serde_json::to_value(&selected)?;
         auth.scopes = selected;
         let local_today =
@@ -138,8 +139,8 @@ impl OperationsService {
             .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let purchasing = sqlx::query("SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount FROM purchase_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND supplier_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
             .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let inventory = sqlx::query("SELECT COALESCE(sum(b.inventory_value),0)::numeric(24,6) inventory_value,count(*) FILTER(WHERE b.on_hand_quantity-b.reserved_quantity=0 AND b.reserved_quantity>0) stockout_count FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id WHERE e.functional_currency=$1 AND b.legal_entity_id=ANY($2) AND b.warehouse_id=ANY($3)")
-            .bind(&input.currency).bind(&le).bind(&wh).fetch_one(&mut **tx).await?;
+        let inventory = sqlx::query("SELECT COALESCE(sum(b.inventory_value),0)::numeric(24,6) inventory_value,count(*) FILTER(WHERE b.on_hand_quantity-b.reserved_quantity=0 AND b.reserved_quantity>0) stockout_count FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id WHERE e.functional_currency=$1 AND b.legal_entity_id=ANY($2) AND b.warehouse_id=ANY($3) AND ($4::uuid[] IS NULL OR w.business_unit_id=ANY($4))")
+            .bind(&input.currency).bind(&le).bind(&wh).bind(input.business_unit_ids.as_ref()).fetch_one(&mut **tx).await?;
         let profit = sqlx::query("SELECT COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='net_revenue'),0)::numeric(24,6) revenue,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='product_cost'),0)::numeric(24,6) product_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type IN ('outbound_freight','sales_commission','platform_fee','customer_rebate','other_direct_cost','allocated_operating_expense')),0)::numeric(24,6) operating_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='supplier_rebate'),0)::numeric(24,6) supplier_rebate FROM profit_facts WHERE business_date>=$1 AND business_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND warehouse_id=ANY($6) AND (brand_id IS NULL OR brand_id=ANY($7)) AND business_unit_id=ANY($8)")
             .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
         let incidents = sqlx::query("SELECT count(*) FILTER(WHERE first_seen_at >= $2::timestamptz AND first_seen_at < $3::timestamptz) opened_count,count(*) FILTER(WHERE resolved_at >= $2::timestamptz AND resolved_at < $3::timestamptz) resolved_count,count(*) FILTER(WHERE due_at < LEAST(COALESCE(resolved_at,$3::timestamptz),$3::timestamptz) AND first_seen_at < $3::timestamptz) breached_count,COALESCE(avg(EXTRACT(EPOCH FROM (resolved_at-first_seen_at))/3600) FILTER(WHERE resolved_at >= $2::timestamptz AND resolved_at < $3::timestamptz),0)::numeric(18,3) average_resolution_hours FROM operating_report_incidents WHERE scope_hash=$1")
@@ -150,10 +151,11 @@ impl OperationsService {
             - profit.get::<Decimal, _>("operating_cost")
             + profit.get::<Decimal, _>("supplier_rebate");
         let quality = self
-            .data_quality_for_legal_entities_on(
+            .data_quality_for_snapshot_on(
                 tx,
                 actor,
                 input.legal_entity_ids.as_ref().map(|_| le.as_slice()),
+                input.business_unit_ids.as_ref().map(|_| bu.as_slice()),
             )
             .await?;
         let mut quality_status = quality["status"].as_str().unwrap_or("blocked");
@@ -175,7 +177,7 @@ impl OperationsService {
             "slaBreached": incidents.get::<i64,_>("breached_count"),
             "averageResolutionHours": incidents.get::<Decimal,_>("average_resolution_hours").to_string()
         });
-        if input.legal_entity_ids.is_some() {
+        if input.legal_entity_ids.is_some() || input.business_unit_ids.is_some() {
             payload["unavailableMetrics"] = json!({});
             if !incident_metrics_available {
                 for key in [
@@ -186,7 +188,11 @@ impl OperationsService {
                 ] {
                     payload[key] = Value::Null;
                     payload["unavailableMetrics"][key] =
-                        json!("not_attributable_to_selected_legal_entities");
+                        json!(if input.business_unit_ids.is_some() {
+                            "not_attributable_to_selected_business_units"
+                        } else {
+                            "not_attributable_to_selected_legal_entities"
+                        });
                 }
             }
         }

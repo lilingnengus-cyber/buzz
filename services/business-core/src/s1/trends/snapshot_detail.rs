@@ -2,6 +2,14 @@ use super::*;
 use sqlx::postgres::PgRow;
 /// Compare recorded report scope, not the changing authorization revision.
 pub(super) fn same_scope(left: &PgRow, right: &PgRow) -> bool {
+    // Explicit business-unit selection also changes inventory and quality attribution.
+    let unit_filtered = |row: &PgRow| {
+        row.get::<Value, _>("payload")["unavailableMetrics"]["slaBreached"]
+            == "not_attributable_to_selected_business_units"
+    };
+    if unit_filtered(left) != unit_filtered(right) {
+        return false;
+    }
     match (
         left.get::<Option<Value>, _>("snapshot_scope"),
         right.get::<Option<Value>, _>("snapshot_scope"),
