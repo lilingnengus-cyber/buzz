@@ -97,3 +97,11 @@ Linux 流程现在同批导出四项服务及 writes-paused Core 镜像。暂停
 授权脚本对来源有效期改用 clock_timestamp，并在新增策略/授权后再次检查来源授权到期；同时锁定四项目标 permission 行，避免校验过程中目标停用或签名义务被并发修改。失败全部回滚。
 
 order_hold_authority_negative 为生产数据副本的独立克隆。六项负向测试均拒绝且新增授权/策略数量保持 0：enterprise user 停用、来源授权已过期、来源授权扩大为 unrestricted、目标权限停用、approve 缺失 fresh_signed_chat_command、准备中来源授权到期（200ms 有效期，校验后等待 400ms）。正常路径通过后主动 ROLLBACK，未发布到生产。本批只改部署 SQL，无需重建正在运行的候选镜像。
+
+## Linux 候选完成与本地进程运行
+
+运行 35482054779 已 success。产物 /tmp/business-hold-candidate-35482054779/business-candidate-c186ddf01119acfb545c56dee7b77304874e282b/，包含四服务和 writes-paused 镜像；全部校验和、来源全 SHA、linux/amd64、65532:65532 用户、entrypoint 和 revision 标签已逐项核对。暂停 manifest 的 pausedModules 精确为 master/order_hold。
+
+business-images.tar.gz 68,461,921 bytes，SHA256 22d56a501f15adf748949f79e2d09692225c44c5bbe6ddc84acf8433ce500651；tar 内文件总计 187,467,617 bytes。尚未加载生产服务器，不能将归档验证当作容器运行验收。Windows 35482058899 此时仍在构建。
+
+重新编译并以临时本地端口启动 Core，连接 order_hold_production_rehearsal：/health 200、现有 /v1/sales-orders 成功、原生产草稿订单的 hold dry preview 明确 canExecute=false。测试后终止了本次进程，无生产调用或业务写入。日志 /tmp/order-hold-core-runtime-build.log、/tmp/order-hold-core-runtime.log。此为 macOS 原生 Core 运行，不替代 Linux 镜像及暂停回退测试。
