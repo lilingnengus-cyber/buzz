@@ -131,3 +131,11 @@ Windows 35482058899 的 Verify native Business Agent tool loading 步骤已 succ
 release 构建退出 0，生成 /tmp/Pacioli-order-hold-c186ddf01.app（已发布 UI 基础，只替换 buzz-acp/buzz-agent）和 /tmp/business-hold-mac-c186ddf01/business-read-mcp。临时应用 ad-hoc 签名及 codesign --verify --deep --strict 通过，没有覆盖 /Applications 或代理配置。
 
 签名后 SHA256：buzz-acp 3a79d1a5991ce2f689240b85d69524859316d15e2ba8046f79dce27725e5591b；buzz-agent 35ef7bf7d67b57443f81e6c12c0e846c4821776e95c41b730fa9b627cf7e7c45；MCP 71390a04a194b2b493bbd9e3eea0a65559843d64623914baabd38c5da9d9183a。候选程序真实 stdio/模拟模型探针：普通 105，sales_order_hold_intent:approve 60，sales_order_release_hold_intent:approve 60，均固定集合且完成 prompt。日志 /tmp/order-hold-mac-sign.log、/tmp/order-hold-mac-release-{runtime,approve,resume}.log。不代表实际模型推理或真实客户端聊天。Windows 安装包及生产发布继续待完成。
+
+## Windows 配套安装包构建完成
+
+运行 35482058899 success，来源 c186ddf01119acfb545c56dee7b77304874e282b，版本 0.5.19-test.3。构建日志中的原生程序探针证明普通 105 与 product_master_update_intent:approve 60 工具均完成模拟 prompt；尚不能扩展为 hold 确认 profile 或安装后的验证。
+
+产物 /tmp/pacioli-windows-hold-35482058899/buzz-windows-canary-c186ddf01119acfb545c56dee7b77304874e282b/Pacioli_0.5.19-test.3_x64-setup.exe，60,631,356 bytes，SHA256 0588fcca5be7c884bfc00f6d73275954c7961c644d12ee2efab408a024d0ff5b。下载后检查 PE 标识并计算哈希。GitHub artifact 10596756712，归档服务报告 digest sha256:dbf93163495760b5cc627a5d73cba02de0bd997107c8a4422c3826988caf8bf1（这是 zip digest，不是 exe 哈希）。本地日志 /tmp/pacioli-windows-hold-35482058899.log。
+
+新增独立 Windows 安装验收运行 35483601691，消费上述同一 installer 并固定 exe 哈希，在临时 runner 静默安装，再对安装后的 buzz-agent/business-read-mcp 测试普通、暂停确认、恢复确认 profile。该运行刚启动，不能称为安装验收通过。产物为未签名测试包，无自动更新；生产配套服务仍未发布，不应视为可直接替代已上线版本的完整交付。
