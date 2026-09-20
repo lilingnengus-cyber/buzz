@@ -123,6 +123,19 @@ fn actual_draft_adapter_responses_bind_signed_state_and_effects() {
             bad[field] = json!({"id":Uuid::new_v4(),"status":"draft"});
             assert!(approval(&approve_tool, &bad, &c, 131072).is_err());
         }
+        if v["executed"] == true {
+            for field in ["id", "title", "type", "bizUri"] {
+                let mut wrong = v.clone();
+                wrong["resourceRefs"][0][field] = json!("wrong");
+                assert!(
+                    approval(&approve_tool, &wrong, &c, 131072).is_err(),
+                    "link {field}"
+                );
+            }
+            let mut wrong = v.clone();
+            wrong["resourceRefs"] = json!([]);
+            assert!(approval(&approve_tool, &wrong, &c, 131072).is_err());
+        }
         states.insert((kind.to_string(), v["status"].as_str().unwrap().to_string()));
     }
     assert_eq!(states.len(), 6);

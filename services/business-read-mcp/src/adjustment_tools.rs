@@ -29,7 +29,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "approve_operational_adjustment_reversal",
-        description = "Approve or reject only the reversal intent bound to the fresh signed human command. No model-controlled arguments. Report reversal only when executed=true and the verified reversedDocument is returned; pending/rejected do not reverse. Never approve for the human or invent links. No bank refund."
+        description = "Approve or reject only the reversal intent bound to the fresh signed human command. No model-controlled arguments. Report reversal only when executed=true and the verified reversedDocument is returned; pending/rejected do not reverse. Never approve for the human. Use only the verified resourceRefs link after execution. No bank refund."
     )]
     async fn approve_operational_adjustment_reversal(&self) -> Result<String, ErrorData> {
         Ok(self
@@ -59,7 +59,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "approve_operational_adjustment_creation",
-        description = "Approve or reject only the expense draft intent bound to the fresh signed human command. No model-controlled arguments. Report saved draft only for verified executed=true with the corresponding draft result. Pending/rejected do not save. Does not post profit facts or make payments. Never approve for the human or invent links."
+        description = "Approve or reject only the expense draft intent bound to the fresh signed human command. No model-controlled arguments. Report saved draft only for verified executed=true with the corresponding draft result. Pending/rejected do not save. Does not post profit facts or make payments. Never approve for the human. Use only the verified resourceRefs link after execution."
     )]
     async fn approve_operational_adjustment_creation(&self) -> Result<String, ErrorData> {
         Ok(self
@@ -88,7 +88,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "approve_operational_adjustment_update",
-        description = "Approve or reject only the expense draft intent bound to the fresh signed human command. No model-controlled arguments. Report saved draft only for verified executed=true with the corresponding draft result. Pending/rejected do not save. Does not post profit facts or make payments. Never approve for the human or invent links."
+        description = "Approve or reject only the expense draft intent bound to the fresh signed human command. No model-controlled arguments. Report saved draft only for verified executed=true with the corresponding draft result. Pending/rejected do not save. Does not post profit facts or make payments. Never approve for the human. Use only the verified resourceRefs link after execution."
     )]
     async fn approve_operational_adjustment_update(&self) -> Result<String, ErrorData> {
         Ok(self
@@ -150,7 +150,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "approve_operational_adjustment_post",
-        description = "Approve or reject only the operational adjustment posting intent bound to the current fresh signed human command. No model-controlled arguments. Never approve for the human. Report posting only when executed=true and a verified postedDocument is returned; pending/rejected do not post. This records management profit adjustments, not general-ledger entries or payments. Do not invent detail links."
+        description = "Approve or reject only the operational adjustment posting intent bound to the current fresh signed human command. No model-controlled arguments. Never approve for the human. Report posting only when executed=true and a verified postedDocument is returned; pending/rejected do not post. This records management profit adjustments, not general-ledger entries or payments. Use only the verified resourceRefs link after execution."
     )]
     async fn approve_operational_adjustment_post(&self) -> Result<String, ErrorData> {
         Ok(self

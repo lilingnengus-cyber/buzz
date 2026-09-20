@@ -124,6 +124,16 @@ fn real_adjustment_results_bind_signed_preview_and_effects() {
             bad[key] = value;
             assert!(approval(tool, &bad, &c, 131072).is_err(), "{key}");
         }
+        if v["executed"] == true {
+            for field in ["id", "title", "type", "bizUri"] {
+                let mut wrong = v.clone();
+                wrong["resourceRefs"][0][field] = json!("wrong");
+                assert!(approval(tool, &wrong, &c, 131072).is_err(), "link {field}");
+            }
+            let mut wrong = v.clone();
+            wrong["resourceRefs"] = json!([]);
+            assert!(approval(tool, &wrong, &c, 131072).is_err());
+        }
         states.insert(v["status"].as_str().unwrap().to_string());
         count += 1;
     }

@@ -284,3 +284,12 @@ Read API 查找与详情结果返回与实际批次 UUID 对应的 biz://profit-
 Web 构建、类型与金额展示检查通过；Playwright 四项真实浏览器测试覆盖嵌入/普通路由、完整两页及版本绑定、第二页版本变化不展示部分结果、无权限不回退列表。页面测试使用 HTTP fixture，不等于生产业务会话验收。新库 adjustment_detail_links_final 与真实 Core HTTP 读取验证通过，MCP 加载实际新响应验证并拒绝跨批次/错误类型/缺失链接；API 57 项、MCP 34 项报告通过（其他未配置环境变量测试可跳过）。两包 all-targets 严格 Clippy、27 项桌面资源解析、格式/差异与文件大小门禁通过，未运行全仓 just ci。日志 /tmp/adjustment-detail-{build,browser,read-final,mcp,clippy,resolver,web-check,size}.log；实际查询响应 /tmp/adjustment-detail-read-proof.json。首轮旧的空 resourceRefs 断言失败，更新为精确链接断言后使用新库重验通过。
 
 尚未部署或通过真实 Mac/Windows 会话验收。下一步补齐写入回复链接并回归完整链路，再进行配套发布；完整业务目标保持未完成。
+
+
+## 费用写入执行回复详情链接
+
+创建、修改、过账和逆转四类执行成功回复均返回实际结果批次的 biz://profit-adjustment/{UUID} 详情链接，标题取已验证单据编号。准备只保存意图，待审批/拒绝不声称完成，因此这些结果仍不返回执行链接。MCP 精确检查链接集合的类型、ID、标题和 URI 与已验证执行单据一致，跨批次、错误类型/标题/地址和缺失链接均拒绝。工具说明同步要求仅使用已验证资源链接。
+
+新库 adjustment_write_links_final 的真实 Core HTTP 验证四类费用成功、拒绝、等待审批，并生成 12 份实际响应；MCP 显式加载这些响应，34 项报告通过，新增成功链接四字段篡改及缺失校验。新库 adjustment_write_links_chain 使用真实 Gateway/Core/Read API 和实际 MCP 子进程回归创建、修改、查询、过账、逆转及各类签名负向场景，通过完整链路验证。API 57 项报告通过，其中运行证据以本次显式配置的新库测试为准；两包 all-targets 严格 Clippy、格式、差异及文件大小检查通过，未运行全仓 just ci。首轮旧的空链接断言失败，更新为与 executed 对应的断言后新库重验通过。
+
+证据 /tmp/adjustment-write-links-{api-final,mcp,chain,clippy,size}.log；真实响应 /tmp/adjustment-links-{post,draft,reversal}-final.jsonl。未部署、未代发真实聊天。费用源码流程与详情链接已贯通，下一步核对发布条件并构建配套候选，完成服务端与 Mac/Windows 客户端发布及真实会话验收；完整业务目标仍未完成。

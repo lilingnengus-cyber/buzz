@@ -213,7 +213,10 @@ pub(super) async fn verify(
             } else {
                 assert!(result[field].is_null());
             }
-            assert!(result["resourceRefs"].as_array().unwrap().is_empty());
+            assert_eq!(
+                result["resourceRefs"].as_array().unwrap().len(),
+                usize::from(result["executed"] == true)
+            );
             if let Ok(path) = std::env::var("BUSINESS_ADJUSTMENT_DRAFT_ADAPTER_PROOF") {
                 use std::io::Write;
                 let mut out = std::fs::OpenOptions::new()

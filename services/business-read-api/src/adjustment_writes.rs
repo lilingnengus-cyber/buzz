@@ -241,6 +241,10 @@ pub(super) async fn forward(
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
+    if result["executed"] == true {
+        let document = &result[drafts::result_field(kind)];
+        result["resourceRefs"] = json!([{"type":"profit_adjustment","id":document["id"],"title":document["number"],"bizUri":format!("biz://profit-adjustment/{}", document["id"].as_str().unwrap_or_default())}]);
+    }
     result["preview"] = preview["document"].clone();
     result["previewHash"] = preview["previewHash"].clone();
     Json(result).into_response()

@@ -85,6 +85,12 @@ fn bounded(v: &Value, context: &DelegationContext, max: usize) -> Result<(), Str
     }
     validate_business_value(&monetary)
 }
+fn executed_links(v: &Value, kind: &str) -> bool {
+    let d = &v[drafts::result_field(kind)];
+    uuid(&d["id"])
+        && v["resourceRefs"]
+            == json!([{"type":"profit_adjustment","id":d["id"],"title":d["number"],"bizUri":format!("biz://profit-adjustment/{}", d["id"].as_str().unwrap_or_default())}])
+}
 mod drafts;
 pub(super) mod reversal;
 mod snapshot;
@@ -225,7 +231,7 @@ pub(super) fn approval(
         if kind != "operational_adjustment_post_intent" {
             if c.approval_decision.as_deref() != Some("approve")
                 || count < minimum
-                || v["resourceRefs"] != json!([])
+                || !executed_links(v, kind)
                 || !(if kind == "operational_adjustment_reversal_intent" {
                     reversal::valid_result(v, &v["preview"], c.trace_id)
                 } else {
@@ -249,7 +255,7 @@ pub(super) fn approval(
                 .as_i64()
                 .and_then(|v| v.checked_add(2))
                 .is_none_or(|version| d["version"].as_i64() != Some(version))
-            || v["resourceRefs"] != json!([])
+            || !executed_links(v, kind)
         {
             return Err("Invalid executed adjustment posting result".into());
         }
