@@ -1,0 +1,4 @@
+# Append after the matching order-hold candidate overlay. Pauses master and hold agent routes.
+services:
+  business-core:
+    image: shiyue-business-candidate-writes-paused:99423340217f38e427997d8938ddfceb9d699ae0

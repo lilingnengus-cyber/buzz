@@ -25,13 +25,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh run download 35482058899 --repo lilingnengus-cyber/buzz --dir candidate
+          gh run download 35501267285 --repo lilingnengus-cyber/buzz --dir candidate
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $installers = @(Get-ChildItem candidate -Filter 'Pacioli_0.5.19-test.3_x64-setup.exe' -Recurse)
+          $installers = @(Get-ChildItem candidate -Filter 'Pacioli_0.5.19-test.5_x64-setup.exe' -Recurse)
           if ($installers.Count -ne 1) { throw 'Expected exactly one reviewed installer' }
           $installer = $installers[0].FullName
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne '0588fcca5be7c884bfc00f6d73275954c7961c644d12ee2efab408a024d0ff5b') { throw 'Installer digest mismatch' }
+          if ($hash -ne '2a20a2194d77c06e7d19e648d1af1026ac70baeec3982f9b25d26f515efd35f9') { throw 'Installer digest mismatch' }
           $installPath = Join-Path $env:RUNNER_TEMP 'pacioli-hold-installed'
           $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installPath") -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
@@ -49,7 +49,7 @@ jobs:
             if ($matches.Count -ne 1) { throw "Expected one installed $($entry[0])" }
             [Environment]::SetEnvironmentVariable($entry[1], $matches[0].FullName, 'Process')
           }
-          foreach ($scope in @('', 'sales_order_hold_intent:approve', 'sales_order_release_hold_intent:approve')) {
+          foreach ($scope in @('', 'sales_order_hold_intent:approve', 'sales_order_release_hold_intent:approve', 'operational_adjustment_creation_intent:approve', 'operational_adjustment_update_intent:approve', 'operational_adjustment_post_intent:approve', 'operational_adjustment_reversal_intent:approve', 'management_report_snapshot_intent:approve', 'operating_report_snapshot_intent:approve')) {
             $env:BUSINESS_RUNTIME_APPROVAL_SCOPE = $scope
             node scripts/business-agent-runtime-acceptance.mjs 2>&1 | Tee-Object -FilePath installed-runtime.log -Append
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
