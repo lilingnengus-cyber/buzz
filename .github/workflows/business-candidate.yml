@@ -1,5 +1,12 @@
 name: Business service candidate
 on:
+  # A new workflow cannot be dispatched until present on the default branch.
+  # Limit branch-triggered builds to changes to these candidate build files.
+  push:
+    branches: [codex/life-write-intent-compiler]
+    paths:
+      - .github/workflows/business-candidate.yml
+      - deploy/business-agent/Dockerfile.candidate
   workflow_dispatch:
 permissions:
   contents: read
