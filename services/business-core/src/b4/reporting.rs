@@ -279,18 +279,15 @@ impl ProfitReportingService {
         ) {
             return Err(DomainError::Invalid("unsupported report type".into()));
         }
-        let auth = authorize(
-            &self.store,
+        let mut tx = self.store.pool().begin().await?;
+        let auth = crate::master_write_authority::snapshot(
+            &mut tx,
             actor,
             "management_report:generate_snapshot",
-            None,
-            None,
-            None,
-            None,
-            None,
+            false,
         )
         .await?;
-        let legal_entities = if input.legal_entity_ids.is_empty() {
+        let mut legal_entities = if input.legal_entity_ids.is_empty() {
             auth.scopes
                 .legal_entity_ids
                 .iter()
@@ -306,6 +303,8 @@ impl ProfitReportingService {
             }
             input.legal_entity_ids.clone()
         };
+        legal_entities.sort_unstable();
+        legal_entities.dedup();
         let customers = auth.scopes.customer_ids.iter().copied().collect::<Vec<_>>();
         let brands = auth.scopes.brand_ids.iter().copied().collect::<Vec<_>>();
         let business_units = auth
@@ -320,8 +319,26 @@ impl ProfitReportingService {
             .iter()
             .copied()
             .collect::<Vec<_>>();
+        let scope = json!({"legalEntityIds":legal_entities,"customerIds":customers,"brandIds":brands,"businessUnitIds":business_units,"warehouseIds":warehouses});
+        if let Some(prior_id) = input.supersedes_snapshot_id {
+            let prior = sqlx::query("SELECT report_type,management_period,currency::text,scope FROM management_report_snapshots WHERE id=$1 FOR SHARE")
+                .bind(prior_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+            let prior_scope: Value = prior.get("scope");
+            if !snapshot_scope_allowed(&prior_scope, &auth.scopes) {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
+            if prior.get::<String, _>("report_type") != input.report_type
+                || prior.get::<String, _>("management_period") != input.management_period
+                || prior.get::<String, _>("currency") != input.currency
+                || prior_scope != scope
+            {
+                return Err(DomainError::Invalid(
+                    "superseded snapshot must have the same report, period, currency and scope"
+                        .into(),
+                ));
+            }
+        }
         let hash = request_hash(input)?;
-        let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
             &mut tx,
             actor,
@@ -331,6 +348,15 @@ impl ProfitReportingService {
         )
         .await?
         {
+            let prior_scope: Value =
+                sqlx::query_scalar("SELECT scope FROM management_report_snapshots WHERE id=$1")
+                    .bind(replay.id)
+                    .fetch_optional(&mut *tx)
+                    .await?
+                    .ok_or(DomainError::NotFoundOrForbidden)?;
+            if !snapshot_scope_allowed(&prior_scope, &auth.scopes) {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
@@ -347,7 +373,6 @@ impl ProfitReportingService {
         } else {
             "partial"
         };
-        let scope = json!({"legalEntityIds":legal_entities,"customerIds":customers,"brandIds":brands,"businessUnitIds":business_units,"warehouseIds":warehouses});
         let scope_hash = hex::encode(Sha256::digest(serde_json::to_vec(&scope)?));
         let source_hash = hex::encode(Sha256::digest(serde_json::to_vec(
             &json!({"scope":scope,"watermark":watermark,"amounts":amounts}),
@@ -428,26 +453,7 @@ impl ProfitReportingService {
             .into_iter()
             .filter(|row| {
                 let scope: Value = row.get("scope");
-                [
-                    ("legalEntityIds", &authorization.scopes.legal_entity_ids),
-                    ("customerIds", &authorization.scopes.customer_ids),
-                    ("brandIds", &authorization.scopes.brand_ids),
-                    ("businessUnitIds", &authorization.scopes.business_unit_ids),
-                    ("warehouseIds", &authorization.scopes.warehouse_ids),
-                ]
-                .into_iter()
-                .all(|(key, allowed)| {
-                    scope
-                        .get(key)
-                        .and_then(Value::as_array)
-                        .is_some_and(|values| {
-                            values
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .filter_map(|value| Uuid::parse_str(value).ok())
-                                .all(|value| allowed.contains(&value))
-                        })
-                })
+                snapshot_scope_allowed(&scope, &authorization.scopes)
             })
             .take(limit.clamp(1, 100) as usize)
             .collect::<Vec<_>>();
@@ -542,4 +548,28 @@ fn validate_dimension(value: &str) -> Result<(), DomainError> {
             "unsupported profitability dimension".into(),
         ))
     }
+}
+
+fn snapshot_scope_allowed(scope: &Value, allowed: &crate::model::DataScopes) -> bool {
+    [
+        ("legalEntityIds", &allowed.legal_entity_ids),
+        ("customerIds", &allowed.customer_ids),
+        ("brandIds", &allowed.brand_ids),
+        ("businessUnitIds", &allowed.business_unit_ids),
+        ("warehouseIds", &allowed.warehouse_ids),
+    ]
+    .into_iter()
+    .all(|(key, ids)| {
+        scope
+            .get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|values| {
+                values.iter().all(|value| {
+                    value
+                        .as_str()
+                        .and_then(|value| Uuid::parse_str(value).ok())
+                        .is_some_and(|id| ids.contains(&id))
+                })
+            })
+    })
 }
