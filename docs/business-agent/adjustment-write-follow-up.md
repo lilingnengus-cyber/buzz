@@ -166,3 +166,12 @@ Core all-targets 严格 Clippy、格式/差异及文件大小检查通过，未�
 创建和修改两类均用 pg_blocking_pids 证明在最终审计处真实等待，等待至意图过期后释放，业务写入和投票整体回滚。既有费用过账的多人、撤权、并发、审计故障与最终等待过期回归在同一新库通过。Core/Gateway all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-draft-intents-{final,clippy,size}.log。
 
 本批尚未接入 Gateway 新文档家族的签名命令验证、Read API/MCP 固定工具和 Host 委托，未部署、未发送真实聊天。下一步贯通上述助手链路，再验证完整签名端到端、详情页面和逆转；完整目标仍未完成。
+
+
+## 草稿 Gateway 与 Host 签名委托
+
+Gateway 固定白名单接入两类草稿意图的 create / approve，当前共 116 项；Host 普通会话只新增两项准备权限，共 69 项，纯只读仍为 18 项。精确的 operational-adjustment-creation-intent / operational-adjustment-update-intent 确认及拒绝命令才申请对应审批权限，继续绑定真实 Nostr 事件、频道、文档、版本、摘要和决定。不自动赋权；迁移沿用 67。
+
+真实 PostgreSQL 55439 的 adjustment_draft_signed_final 验证完整 69 项普通委托保存，129 项仍拒绝；两类草稿均用隔离真实密钥签署确认/拒绝，完成签发、消费和独立 verify_write。变更文档、版本、摘要、决定、缺失绑定及错误家族均拒绝。三类费用意图分别验证过旧/未来签名、签名后篡改、频道错配、跨家族及创建/修改互换、多余文本、裸确认和审批开关关闭，均不签发委托。
+
+Host 11 项定向测试、Gateway 4 项签名命令单元测试、新库委托验收及两包 all-targets 严格 Clippy 通过；格式/差异及文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-draft-signed-{host,unit,final,clippy,size}.log。未代发真实聊天或部署，Read API/MCP 草稿工具仍未接入，因此不能声称客户端已能创建或修改费用草稿。下一步接入固定工具与独立快照/金额/结果校验，再贯通真实签名端到端。

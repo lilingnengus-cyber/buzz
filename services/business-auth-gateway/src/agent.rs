@@ -41,6 +41,14 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "operational-adjustment-creation-intent" => (
+            "operational_adjustment_creation_intent",
+            "operational_adjustment_creation_intent:approve",
+        ),
+        "operational-adjustment-update-intent" => (
+            "operational_adjustment_update_intent",
+            "operational_adjustment_update_intent:approve",
+        ),
         "operational-adjustment-post-intent" => (
             "operational_adjustment_post_intent",
             "operational_adjustment_post_intent:approve",

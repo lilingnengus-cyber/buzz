@@ -1,5 +1,9 @@
-pub(super) const AGENT_SCOPES: [&str; 112] = [
+pub(super) const AGENT_SCOPES: [&str; 116] = [
     "profit_adjustment:read",
+    "operational_adjustment_creation_intent:create",
+    "operational_adjustment_creation_intent:approve",
+    "operational_adjustment_update_intent:create",
+    "operational_adjustment_update_intent:approve",
     "operational_adjustment_post_intent:create",
     "operational_adjustment_post_intent:approve",
     "operating_report_snapshot_intent:create",

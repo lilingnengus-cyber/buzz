@@ -1,20 +1,37 @@
 use super::*;
 
 pub(super) async fn check(store: &Store, pool: &sqlx::PgPool, keys: &Keys, human: Uuid) {
-    let scope = "operational_adjustment_post_intent:approve";
+    for kind in [
+        "operational-adjustment-post-intent",
+        "operational-adjustment-creation-intent",
+        "operational-adjustment-update-intent",
+    ] {
+        check_kind(store, pool, keys, human, kind).await;
+    }
+}
+async fn check_kind(store: &Store, pool: &sqlx::PgPool, keys: &Keys, human: Uuid, kind: &str) {
+    let scope = format!("{}:approve", kind.replace('-', "_"));
     let permission: Uuid = sqlx::query_scalar("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability=$2 RETURNING permission_id")
-        .bind(human).bind(scope).fetch_one(pool).await.unwrap();
+        .bind(human).bind(&scope).fetch_one(pool).await.unwrap();
     for mode in [
-        "stale", "future", "tampered", "channel", "family", "suffix", "bare", "disabled",
+        "stale", "future", "tampered", "channel", "family", "sibling", "suffix", "bare", "disabled",
     ] {
         let channel = Uuid::new_v4().to_string();
         let id = Uuid::new_v4();
         let hash = "d".repeat(64);
         let content = match mode {
             "bare" => "确认".to_owned(),
-            "suffix" => format!("确认 operational-adjustment-post-intent {id} v1 {hash} extra"),
+            "suffix" => format!("确认 {kind} {id} v1 {hash} extra"),
             "family" => format!("确认 operating-report-snapshot-intent {id} v1 {hash}"),
-            _ => format!("确认 operational-adjustment-post-intent {id} v1 {hash}"),
+            "sibling" => {
+                let other = if kind == "operational-adjustment-creation-intent" {
+                    "operational-adjustment-update-intent"
+                } else {
+                    "operational-adjustment-creation-intent"
+                };
+                format!("确认 {other} {id} v1 {hash}")
+            }
+            _ => format!("确认 {kind} {id} v1 {hash}"),
         };
         let mut builder = EventBuilder::new(Kind::TextNote, content)
             .tags([Tag::custom(TagKind::Custom("h".into()), [channel.clone()])]);
@@ -24,7 +41,7 @@ pub(super) async fn check(store: &Store, pool: &sqlx::PgPool, keys: &Keys, human
         }
         let mut event = builder.sign_with_keys(keys).unwrap();
         if mode == "tampered" {
-            event.content = format!("拒绝 operational-adjustment-post-intent {id} v1 {hash}");
+            event.content = format!("拒绝 {kind} {id} v1 {hash}");
         }
         let before: i64 = sqlx::query_scalar("SELECT count(*) FROM agent_read_delegations")
             .fetch_one(pool)
@@ -47,7 +64,7 @@ pub(super) async fn check(store: &Store, pool: &sqlx::PgPool, keys: &Keys, human
                     },
                     agent_id: "business-query-agent".into(),
                     agent_turn_id: format!("adjustment-negative-{mode}"),
-                    scopes: vec![scope.into()],
+                    scopes: vec![scope.clone()],
                 },
                 facts(Uuid::new_v4()),
             )

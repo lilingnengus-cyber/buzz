@@ -4,6 +4,8 @@ use nostr::{EventBuilder, Keys, Kind};
 #[test]
 fn settlement_commands_bind_exact_record_family() {
     for kind in [
+        "operational-adjustment-creation-intent",
+        "operational-adjustment-update-intent",
         "operational-adjustment-post-intent",
         "operating-report-snapshot-intent",
         "management-report-snapshot-intent",
