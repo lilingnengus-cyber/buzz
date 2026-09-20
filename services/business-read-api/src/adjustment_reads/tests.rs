@@ -86,7 +86,11 @@ async fn reads_real_core_without_writes_and_enforces_delegated_scope() {
         detail["items"][0]["lines"][0]["directSalesOrderId"],
         json!(order)
     );
-    assert_eq!(detail["resourceRefs"], json!([]));
+    assert_eq!(
+        detail["resourceRefs"],
+        json!([{"type":"profit_adjustment","id":detail["items"][0]["id"],"title":detail["items"][0]["adjustmentNumber"],"bizUri":format!("biz://profit-adjustment/{}",detail["items"][0]["id"].as_str().unwrap())}])
+    );
+    assert_eq!(detail["summary"]["detailLinkAvailable"], true);
     for key in [
         "legal_entity",
         "customer",

@@ -1,3 +1,4 @@
+import { LinkedAdjustmentDetail } from "./LinkedAdjustmentDetail";
 import { LinkedMasterDetail } from "./LinkedMasterDetail";
 import { route, WORKFLOW_NAV_ALIASES } from "./businessRoute";
 import { NAV_GROUPS, NAV, type Section } from "./businessNavigation";
@@ -321,7 +322,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "numbering") return <NumberingRulesCenter />;
   if (section === "profits") return <OrderProfits id={id} />;
   if (section === "profitability") return <Profitability />;
-  if (section === "adjustments") return <ProfitAdjustments id={id} />;
+  if (section === "adjustments") return id ? <LinkedAdjustmentDetail key={id} id={id} /> : <ProfitAdjustments />;
   if (section === "reports") return <ManagementReports id={id} />;
   if (section === "sales") return <SalesOrderWorkflowPage id={id} />;
   if ((section === "salesReturns" || section === "purchaseReturns") && id)
@@ -1957,7 +1958,7 @@ function ProfitAdjustments({ id }: { id?: string }) {
         <div className="compact-list">
           {rows.map((item) => (
             <article key={item.id}>
-              <a href={`/profit-adjustments/${item.id}`}>
+              <a href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/profit-adjustments/${item.id}`}>
                 {item.adjustmentNumber}
               </a>
               <Status value={item.status} />

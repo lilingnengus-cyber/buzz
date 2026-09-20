@@ -120,10 +120,21 @@ pub(super) async fn read(
                 "requiresDisambiguation".into(),
                 json!(!detail && (has_more || items.len() > 1)),
             ),
-            ("detailLinkAvailable".into(), json!(false)),
+            ("detailLinkAvailable".into(), json!(true)),
         ]),
+        resource_refs: items
+            .iter()
+            .filter_map(|item| {
+                let id = item["id"].as_str()?;
+                Some(ResourceRef {
+                    r#type: "profit_adjustment".into(),
+                    id: Some(id.into()),
+                    title: item["adjustmentNumber"].as_str()?.into(),
+                    biz_uri: format!("biz://profit-adjustment/{id}"),
+                })
+            })
+            .collect(),
         items,
-        resource_refs: vec![],
         pagination: Some(Pagination {
             next_cursor: next,
             has_more,

@@ -25,7 +25,22 @@ pub(super) fn validate(
     if !matches!(result.status, BusinessToolStatus::Ok)
         || result.summary.get("source") != Some(&json!("business-core-adjustments"))
         || result.summary.get("boundary") != Some(&json!("management_only_not_general_ledger"))
-        || !result.resource_refs.is_empty()
+        || result.summary.get("detailLinkAvailable") != Some(&json!(true))
+        || result.resource_refs.len() != result.items.len()
+        || result
+            .resource_refs
+            .iter()
+            .zip(&result.items)
+            .any(|(link, item)| {
+                link.r#type != "profit_adjustment"
+                    || link.id.as_deref() != item["id"].as_str()
+                    || link.title != item["adjustmentNumber"].as_str().unwrap_or_default()
+                    || link.biz_uri
+                        != format!(
+                            "biz://profit-adjustment/{}",
+                            item["id"].as_str().unwrap_or_default()
+                        )
+            })
         || c.required_scope != "profit_adjustment:read"
     {
         return Err("Invalid adjustment read envelope".into());

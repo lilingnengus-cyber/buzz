@@ -101,7 +101,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "search_operational_adjustments",
-        description = "Find authorized operational expense/profit adjustment batches by literal number, period, status and legal entity. Follow pagination.nextCursor as afterId until complete and resolve ambiguity. Returns current batch IDs and versions; read the full detail before editing or posting. Read only; does not create drafts or post. No detail link is currently returned."
+        description = "Find authorized operational expense/profit adjustment batches by literal number, period, status and legal entity. Follow pagination.nextCursor as afterId until complete and resolve ambiguity. Returns current batch IDs and versions; read the full detail before editing or posting. Read only; does not create drafts or post. Use the verified resourceRefs link to open the system detail page."
     )]
     async fn search_operational_adjustments(
         &self,

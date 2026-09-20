@@ -273,3 +273,14 @@ MCP 新增 prepare_operational_adjustment_reversal 与零参数 approve_operatio
 新库 adjustment_reversal_chain 在真实 Gateway/Core/Read API HTTP 服务和实际 MCP 子进程间完成签名链路。逆转批准、拒绝、待第二人审批各一例；回读批次状态，成功时原事实与抵销事实金额净和为零。投票来源事件精确匹配人类签名事件，重复确认不再执行；Gateway HTTP 撤销委托、签名错误摘要、源版本变化均拒绝，批次/明细/投票/请求/事实/编号/幂等/事件状态保持不变。既有草稿与过账链路同时通过；数据库独立回读三种逆转请求各 1 条，成功工具审计共 36 条。
 
 三包 all-targets 严格 Clippy、格式、差异、文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-reversal-mcp-{final,host,clippy,size}.log，工具清单 /tmp/adjustment-reversal-mcp-inventory.json，完整链路 /tmp/adjustment-reversal-chain-test.log。未部署或代发真实用户聊天。下一步实现费用详情页面与对应链接，再推进配套发布、Mac/Windows 真实客户端验收；完整业务流程仍未完成。
+
+
+## 系统费用详情页面与查询回复链接
+
+原费用详情路由实际筛选最多 200 条列表，未读取明细。本阶段改为独立 LinkedAdjustmentDetail，直接按 UUID 请求已有整单授权详情 API，逐页读取全部行，后续页绑定首次版本。加载完整前不展示部分明细；批次/版本/合计/总行数不一致、重复行、异常游标或权限失败均显示错误。展示状态、期间、版本、总额、目标数、全部明细及直接订单链接；嵌入模式保持 /embed 路径，不新增写入/确认按钮。
+
+Read API 查找与详情结果返回与实际批次 UUID 对应的 biz://profit-adjustment 链接，MCP 严格验证链接数量、类型、ID、标题和 URI 与结果一致。桌面已有对应资源路由，验证 UUID 链接进入系统 /embed/profit-adjustments/{id}。写入准备及执行回复暂仍不返回详情链接，需下一阶段同步加入严格结果校验。
+
+Web 构建、类型与金额展示检查通过；Playwright 四项真实浏览器测试覆盖嵌入/普通路由、完整两页及版本绑定、第二页版本变化不展示部分结果、无权限不回退列表。页面测试使用 HTTP fixture，不等于生产业务会话验收。新库 adjustment_detail_links_final 与真实 Core HTTP 读取验证通过，MCP 加载实际新响应验证并拒绝跨批次/错误类型/缺失链接；API 57 项、MCP 34 项报告通过（其他未配置环境变量测试可跳过）。两包 all-targets 严格 Clippy、27 项桌面资源解析、格式/差异与文件大小门禁通过，未运行全仓 just ci。日志 /tmp/adjustment-detail-{build,browser,read-final,mcp,clippy,resolver,web-check,size}.log；实际查询响应 /tmp/adjustment-detail-read-proof.json。首轮旧的空 resourceRefs 断言失败，更新为精确链接断言后使用新库重验通过。
+
+尚未部署或通过真实 Mac/Windows 会话验收。下一步补齐写入回复链接并回归完整链路，再进行配套发布；完整业务目标保持未完成。

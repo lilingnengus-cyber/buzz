@@ -23,6 +23,19 @@ fn real_adjustment_read_results_bind_filters_versions_and_pages() {
         let result: BusinessToolResult<Value> = serde_json::from_value(proof[key].clone()).unwrap();
         assert!(validate(tool, result.clone(), &input, &c, 131072).is_ok());
         assert!(validate(tool, result.clone(), &input, &c, 1).is_err());
+        for mode in 0..4 {
+            let mut wrong = result.clone();
+            match mode {
+                0 => {
+                    wrong.resource_refs[0].biz_uri =
+                        format!("biz://profit-adjustment/{}", Uuid::new_v4())
+                }
+                1 => wrong.resource_refs[0].id = Some(Uuid::new_v4().to_string()),
+                2 => wrong.resource_refs[0].r#type = "sales_order".into(),
+                _ => wrong.resource_refs.clear(),
+            }
+            assert!(validate(tool, wrong, &input, &c, 131072).is_err());
+        }
         let mut wrong = result.clone();
         wrong.pagination.as_mut().unwrap().next_cursor = Some("wrong".into());
         assert!(validate(tool, wrong, &input, &c, 131072).is_err());
