@@ -22,3 +22,11 @@
 后续发布需准备迁移 58 的候选与匹配暂停镜像，在隔离副本验证四项受限能力、现有策略约束、普通读取及完整启停链路，再切换服务与 Host/MCP。可先研究异地构建后传送镜像，避免增加生产编译峰值；仍须验证解包/启动余量。新法人创建权限仍未配置。Windows 候选源码仍为 6c8ad6492，未包含本次启停，不能作为启停 Windows 验收证据。
 
 完整业务覆盖仍未完成；本报告仅证明当前原生 Agent/MCP 的工具发现、会话容量和确认工具隔离。
+
+## 异地候选构建已启动
+
+新增 Dockerfile.candidate，在 Rust 1.95/bookworm 中一次构建 Gateway、Core、Read API、IAM 四服务，保留每个服务的标准入口和非 root 运行用户。GitHub Linux runner 导出共享层镜像归档、源码 SHA、镜像 ID/平台/入口清单及 SHA256SUMS，保存为七天 artifact；不推送部署标签，不操作生产服务。
+
+新 workflow 尚未存在默认分支，gh workflow run 返回 404；随后增加精确仓库/集成分支约束，以及仅两个候选构建文件变更触发的 push 路径。未修改默认分支。YAML 解析与差异检查通过。
+
+运行 35479487131，job 105994575986，源码 4796f86e38a2355b37a9eb836d74e8b8d4285b8b。最后核对 status=in_progress，正在 Build and export four service images。须继续检查同一运行，不因观察超时重复启动。产物、镜像加载、匹配暂停镜像、副本验收和生产部署均尚未完成。
