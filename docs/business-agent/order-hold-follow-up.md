@@ -113,3 +113,9 @@ business-images.tar.gz 68,461,921 bytes，SHA256 22d56a501f15adf748949f79e2d0969
 首轮 35482536682 failure 是读取 fixture 未创建请求用户导致两版返回 404；没有降低断言，补充只读用户及 sales_order:read 后重跑通过。证据 /tmp/business-hold-runtime-35482589265/business-hold-runtime-evidence/runtime-evidence.json 和容器日志。该验收覆盖迁移、进程启动及选定入口隔离，不代表真实业务暂停/恢复或所有审批路径均在容器中测试。
 
 Windows 35482058899 的 Verify native Business Agent tool loading 步骤已 success，最新仍在 Build Windows NSIS installer (unsigned)。生产仍未切换。
+
+## 全部审批家族暂停入口补充验证
+
+运行 35482679706 success，仍消费 c186ddf01 原镜像归档。新增六类 master 意图及两类 hold 意图的 approve/approval-preview 请求，共 16 项；连同此前准备/预览共 22 项暂停路由用例均为 503，未认证均 401。正常镜像对不完整审批输入返回 422，对不存在意图预览返回 404。未受影响的 sales-order 审批两版均正确返回 422，授权读取两版均 200。
+
+已下载并逐项检查 /tmp/business-hold-runtime-35482679706/business-hold-runtime-evidence/runtime-evidence.json。此项证明暂停路由与认证隔离，不代表成功业务审批的端到端回放。Windows 35482058899 最新仍 in_progress；没有额外启动 Windows 构建，也没有切换生产。
