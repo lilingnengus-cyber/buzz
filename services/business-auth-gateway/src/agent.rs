@@ -41,6 +41,11 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
         _ => return None,
     };
     let (document_type, required_scope) = match parts.next()? {
+        "sales-order-hold-intent" => ("sales_order_hold_intent", "sales_order_hold_intent:approve"),
+        "sales-order-release-hold-intent" => (
+            "sales_order_release_hold_intent",
+            "sales_order_release_hold_intent:approve",
+        ),
         "core-master-status-intent" => (
             "core_master_status_intent",
             "core_master_status_intent:approve",

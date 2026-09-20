@@ -311,7 +311,17 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 84);
+    assert_eq!(WRITE_TOOLS.len(), 88);
+    for operation in ["hold", "release_hold"] {
+        assert_eq!(
+            required_capability(&format!("prepare_sales_order_{operation}")).unwrap(),
+            format!("sales_order_{operation}_intent:create")
+        );
+        assert_eq!(
+            required_capability(&format!("approve_sales_order_{operation}")).unwrap(),
+            format!("sales_order_{operation}_intent:approve")
+        );
+    }
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }

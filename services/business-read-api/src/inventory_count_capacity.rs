@@ -36,7 +36,7 @@ async fn five_hundred_line_count_and_multi_document_search_fit_transport() {
         .unwrap();
     let store = PgStore::new(pool);
     store.migrate().await.unwrap();
-    let f = b2_seed::seed(store.pool()).await;
+    let f = crate::test_fixture::seed(store.pool()).await;
     let skus:Vec<Uuid>=sqlx::query_scalar("INSERT INTO business_skus(id,product_id,code,name) SELECT gen_random_uuid(),s.product_id,'COUNT-CAPACITY-'||n,repeat('商',200) FROM business_skus s CROSS JOIN generate_series(1,500) n WHERE s.id=$1 RETURNING id").bind(f.sku).fetch_all(store.pool()).await.unwrap();
     sqlx::query("INSERT INTO inventory_balances(legal_entity_id,warehouse_id,sku_id) SELECT $1,$2,unnest($3::uuid[])").bind(f.legal_entity).bind(f.warehouse).bind(&skus).execute(store.pool()).await.unwrap();
     for action in [

@@ -166,6 +166,16 @@ pub(super) async fn fetch(
     context: &RequestContext,
     tool: &str,
 ) -> Result<Value, Response> {
+    fetch_bound(core, path, input, context, tool, None).await
+}
+pub(super) async fn fetch_bound(
+    core: &CoreClient,
+    path: &str,
+    input: Option<&Value>,
+    context: &RequestContext,
+    tool: &str,
+    preflight: Option<&str>,
+) -> Result<Value, Response> {
     let url = core
         .base_url
         .join(path)
@@ -174,6 +184,11 @@ pub(super) async fn fetch(
         core.client.post(url).json(input)
     } else {
         core.client.get(url)
+    };
+    let request = if let Some(hash) = preflight {
+        request.header("x-business-preflight-hash", hash)
+    } else {
+        request
     };
     let response = request
         .header("x-business-service-credential", &core.credential)

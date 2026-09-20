@@ -4,6 +4,8 @@ use nostr::{EventBuilder, Keys, Kind};
 #[test]
 fn settlement_commands_bind_exact_record_family() {
     for kind in [
+        "sales-order-hold-intent",
+        "sales-order-release-hold-intent",
         "core-master-status-intent",
         "product-master-status-intent",
         "core-master-creation-intent",

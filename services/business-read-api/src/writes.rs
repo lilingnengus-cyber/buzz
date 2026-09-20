@@ -10,7 +10,8 @@ pub(super) async fn write_tool(
     }
     let is_approval = ((inventory_count_writes::family(&tool).is_some()
         || crm_writes::family(&tool).is_some()
-        || master_writes::family(&tool).is_some())
+        || master_writes::family(&tool).is_some()
+        || order_hold_writes::family(&tool).is_some())
         && tool.starts_with("approve_"))
         || matches!(
             tool.as_str(),
@@ -80,6 +81,9 @@ pub(super) async fn write_tool(
     let Some(core) = state.core.as_ref() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if order_hold_writes::family(&tool).is_some() {
+        return order_hold_writes::forward(core, &tool, input, &context, &grant).await;
+    }
     if master_writes::family(&tool).is_some() {
         return master_writes::forward(core, &tool, input, &context, &grant).await;
     }
@@ -123,6 +127,9 @@ pub(super) async fn write_tool(
 }
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
+    if order_hold_writes::family(tool).is_some() {
+        return order_hold_writes::valid(tool, input);
+    }
     if master_writes::family(tool).is_some() {
         return master_writes::valid(tool, input);
     }

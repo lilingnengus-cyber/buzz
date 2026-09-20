@@ -34,7 +34,32 @@ async fn prepare(
             c.trace_id,
         );
     };
-    match prepare_on(&state, c.actor_user_id, c.trace_id, &kind, key, value).await {
+    let expected = match headers.get("x-business-preflight-hash") {
+        Some(value) => match value.to_str() {
+            Ok(value) if value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit()) => {
+                Some(value)
+            }
+            _ => {
+                return approval_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_preflight_hash",
+                    c.trace_id,
+                )
+            }
+        },
+        None => None,
+    };
+    match prepare_on(
+        &state,
+        c.actor_user_id,
+        c.trace_id,
+        &kind,
+        key,
+        value,
+        expected,
+    )
+    .await
+    {
         Ok((id, snapshot)) => Json(envelope(id, &kind, snapshot, c.trace_id)).into_response(),
         Err(e) => store_error(e, c.trace_id),
     }
@@ -46,11 +71,15 @@ async fn prepare_on(
     kind: &str,
     key: &str,
     value: Value,
+    expected: Option<&str>,
 ) -> Result<(Uuid, Value), StoreError> {
     let command = Command::parse(kind, value)?;
     let input = command.value()?;
     let mut tx = state.store.pool().begin().await?;
     let snapshot = command.preview_on(&state.sales, &mut tx, actor).await?;
+    if expected.is_some_and(|hash| hash_json(&snapshot) != hash) {
+        return Err(StoreError::Conflict);
+    }
     let id = Uuid::new_v4();
     let inserted = sqlx::query("INSERT INTO business_agent_order_hold_intents(id,kind,input,snapshot,created_by_user_id,idempotency_key,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(created_by_user_id,idempotency_key) DO NOTHING")
         .bind(id).bind(kind).bind(&input).bind(&snapshot).bind(actor).bind(key).bind(trace).execute(&mut *tx).await?.rows_affected();

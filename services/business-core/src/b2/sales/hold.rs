@@ -53,7 +53,7 @@ impl SalesService {
         place: bool,
     ) -> Result<Value, DomainError> {
         let row = self.hold_row(tx, actor, order_id, place).await?;
-        Ok(hold_snapshot(&row, order_id, input, place))
+        hold_snapshot(tx, &row, order_id, input, place).await
     }
 
     /// Execute only the exact reviewed hold transition; ordinary workbench hashes stay compatible.
@@ -94,7 +94,7 @@ impl SalesService {
             "sales_order:release_hold"
         };
         crate::master_write_authority::read(tx, actor, permission).await?;
-        let row = sqlx::query("SELECT order_number,legal_entity_id,customer_id,business_unit_id,lifecycle_status,hold_status,version FROM sales_orders WHERE id=$1 FOR UPDATE")
+        let row = sqlx::query("SELECT order_number,legal_entity_id,customer_id,business_unit_id,brand_id,lifecycle_status,hold_status,version FROM sales_orders WHERE id=$1 FOR UPDATE")
             .bind(order_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         let current = crate::master_write_authority::snapshot(tx, actor, permission, false).await?;
         if !current
@@ -156,7 +156,7 @@ impl SalesService {
         }
         let row = self.hold_row(tx, actor, order_id, place).await?;
         if let Some(expected) = guard {
-            if hold_snapshot(&row, order_id, input, place) != *expected {
+            if hold_snapshot(tx, &row, order_id, input, place).await? != *expected {
                 return Err(DomainError::StalePreview);
             }
         }
@@ -220,12 +220,13 @@ impl SalesService {
     }
 }
 
-fn hold_snapshot(
+async fn hold_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
     row: &sqlx::postgres::PgRow,
     id: Uuid,
     input: &VersionCommand,
     place: bool,
-) -> Value {
+) -> Result<Value, DomainError> {
     let lifecycle: String = row.get("lifecycle_status");
     let hold: String = row.get("hold_status");
     let version: i64 = row.get("version");
@@ -234,10 +235,12 @@ fn hold_snapshot(
         .reason_code
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty() && s.len() <= 64);
-    json!({
+    let lines: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'skuId',sku_id,'warehouseId',warehouse_id,'businessUnitId',business_unit_id,'brandId',brand_id) FROM sales_order_lines WHERE sales_order_id=$1 ORDER BY line_number,id").bind(id).fetch_all(&mut **tx).await?;
+    Ok(json!({
+        "lines":lines,
         "source": {"id":id,"orderNumber":row.get::<String,_>("order_number"),
             "legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"customerId":row.get::<Uuid,_>("customer_id"),
-            "businessUnitId":row.get::<Uuid,_>("business_unit_id"),"version":version,
+            "businessUnitId":row.get::<Uuid,_>("business_unit_id"),"brandId":row.get::<Option<Uuid>,_>("brand_id"),"version":version,
             "lifecycleStatus":lifecycle,"holdStatus":hold},
         "operation":if place {"place_hold"} else {"release_hold"},
         "expectedVersion":input.expected_version,"reasonCode":input.reason_code,
@@ -245,5 +248,5 @@ fn hold_snapshot(
         "blocksShipmentCreationAndConfirmation":place,
         "changesInventoryReservation":false,
         "canExecute":lifecycle=="confirmed" && hold==expected && version==input.expected_version && reason_valid
-    })
+    }))
 }

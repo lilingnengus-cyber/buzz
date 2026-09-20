@@ -1,19 +1,7 @@
 use super::*;
 use business_core::PgStore;
 
-#[path = "../../business-core/tests/support/b2_seed.rs"]
-mod b2_seed;
-
-struct Fixture {
-    actor: Uuid,
-    legal_entity: Uuid,
-    business_unit: Uuid,
-    warehouse: Uuid,
-    customer: Uuid,
-    brand: Uuid,
-    uom: Uuid,
-    sku: Uuid,
-}
+use crate::test_fixture::{seed, Fixture};
 
 fn config(database_url: String, service_credential: String) -> business_core::Config {
     business_core::Config {
@@ -124,7 +112,7 @@ async fn real_core_preparation_and_approval_complete_count_lifecycle() {
         .unwrap();
     let store = PgStore::new(pool);
     store.migrate().await.unwrap();
-    let f = b2_seed::seed(store.pool()).await;
+    let f = seed(store.pool()).await;
     sqlx::query(
         "INSERT INTO inventory_balances(legal_entity_id,warehouse_id,sku_id) VALUES($1,$2,$3)",
     )
