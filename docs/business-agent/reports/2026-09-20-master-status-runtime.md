@@ -67,3 +67,11 @@
 在副本通过 Core 创建新客户 3c23358e-d87d-4d2d-8ada-761e1cda0192 和计量单位 289c841c-585b-46a1-89a7-e0920a193ec0，分别执行 disabled→active，实读状态/版本为 disabled v2→active v3。四次状态意图重复 prepare 返回同一 ID；篡改确认 command 皆 422；已执行意图再次确认皆 409。Trace 498c5872-d26f-4930-8987-52ce9b2f4138。此处使用隔离服务测试身份和合成来源事件，未发送用户消息，不证明真实签名聊天链路。
 
 服务器演练脚本 /tmp/business-status-{prepare.sh,migrate.py,authority-verify.sql,canary.py,services.py,write.py}，全部明确固定副本库和候选标签；启动参数继承现有配置但凭据只进入 0600 临时环境文件，不输出。临时环境文件在启动后移除。
+
+## 暂停产物完成，等待加载余量
+
+暂停运行 35479896390 已成功，产物下载到 /tmp/business-master-pause-35479896390。四项 SHA256SUMS 校验通过；镜像 4b6d14fd019cf75d7900e7a41b838bc2ddf8a8b6eed0eab267b8961278940e44，linux/amd64、65532:65532、business-core 入口，revision 与候选源码一致，模式标签 pause-master-agent-routes。归档 42,559,902 字节，SHA-256 2dd1652ffb2fbb35f80a2e33f3ea015f9cd9a2143167673a8b073ed77af7e304；归档文件合计 117,472,480 字节。暂停来源清单的两个路由摘要与本机逐文件核验结果一致。
+
+最新服务器可用 1,265,553,408 字节，低于沿用的加载余量 2×117,472,480+64 MiB+1 GiB=1,375,795,648 字节，差约 105 MiB。因此尚未加载暂停镜像，未删缓存/旧镜像/卷，也未切换生产。基础 Debian 层与候选相同，但其余两层不同；不能只按压缩包大小或假定层去重完成来放行。暂停运行时、副本四服务端到端、生产迁移授权及客户端仍待完成。
+
+重复执行副本授权脚本已被 status grants already exist 拒绝。最后生产只读复核仍为 migration 57、主资料意图 0、订单 5、四服务 e51a84b9c。
