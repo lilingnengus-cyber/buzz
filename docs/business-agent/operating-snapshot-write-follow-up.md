@@ -135,3 +135,15 @@ Read API/MCP 支持明确排除未分配事实的品牌、仓库受限委托，S
 实际 PostgreSQL report_dimension_filters（55439）完整 B4 回归：同一组 3/5/7/11 元事实在完整/品牌/仓库/两者组合下分别为 26/8/10/3 元，快照身份不同；空筛选/越权 ID 拒绝，不同口径替代拒绝，旧请求重放原 ID 和原 26 元内容。report_filter_adapter 实际 Core HTTP + Read API：品牌/仓库受限准备及确认成功，旧宽范围快照读取 404，筛选后快照详情读取成功。导出 6 份真实结果到 /tmp/report-filter-mcp-proof.jsonl，MCP 25 项测试通过，包含新筛选返回值；report_filters_approval_regression 完整审批竞争/撤权/过期/回滚回归通过。
 
 日志 /tmp/report-filter-{test,adapter,mcp,approval}.log。三服务严格 Clippy、格式、文件大小和差异检查通过（/tmp/report-filter-{clippy,size}.log）。本批无需新迁移，未部署；生产及旧安装包仍不包含这些源码更新。下一步继续日报/周报写入链路，供应商归属与其他剩余完整业务流程仍未完成。
+
+## 日报/周报纯预览与受保护生成基础
+
+提取 trends/snapshot_preview.rs 共用计算，新增 operating_snapshot_preview(_on)、generate_operating_snapshot_guarded(_on)。新预览包含输入、排他 periodEnd、ownerUserId、完整六维范围/当前 scopeHash、指标、质量、来源摘要、创建或复用效果及已有快照时间。已有快照直接取冻结 payload/质量，不用实时指标冒充历史结果；新预览没有波动的采样时间字段。预览不写快照/审计/幂等。
+
+受保护请求哈希绑定完整输入与预览，事务内复算后比较；变化返回 StalePreview，不残留幂等占位。成功重放保留原结果并重新检查当前授权和原快照可见性。普通生成/定时生成继续共享计算，普通请求哈希保持原样。外层事务接口检查 repeatable read/serializable，由调用方决定提交或回滚。日期加法改为 checked_add_signed，极端日期返回输入错误。
+
+operating_preview_guarded（55439）完整 B4 回归通过，新增日报、周报两组实测：预览计数不变、摘要篡改拒绝、库存变动导致旧预览拒绝、外层生成后回滚全部记录、低隔离级别拒绝、正确生成内容与预览一致、同键重放、同键改预览冲突、冻结后修改实时库存不改变已有预览、新键复用同 ID。极端日期无 panic。已有生成授权、相同/不同 key 并发、指标一致快照、月报筛选测试继续通过。
+
+日志 /tmp/operating-preview-guarded.log；严格 Clippy、格式、文件大小及差异检查通过（/tmp/operating-preview-{clippy,size}.log）。未部署、未增加日报/周报聊天工具。
+
+接入审批前仍须解决：operating scopeHash 当前绑定用户与授权 revision，不能直接照搬月报用不同审批人复算同一预览；事件时间统计仍使用数据库时区的 date 转换，utcOffsetMinutes 只用于完成周期检查/调度，旧快照唯一键也不包含 offset。必须明确并实现准确时区/历史身份语义，再开放完整日报/周报写入链路。

@@ -1,3 +1,4 @@
+mod snapshot_preview;
 use super::OperationsService;
 use crate::{
     b2::{
@@ -11,6 +12,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use snapshot_preview::OperatingContent;
 use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
 
@@ -108,7 +110,13 @@ impl OperationsService {
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
         crate::snapshot_transaction::retry(|| {
-            self.generate_operating_snapshot_request_once(actor, trace_id, idempotency_key, input)
+            self.generate_operating_snapshot_request_once(
+                actor,
+                trace_id,
+                idempotency_key,
+                input,
+                None,
+            )
         })
         .await
     }
@@ -119,22 +127,49 @@ impl OperationsService {
         trace_id: Uuid,
         idempotency_key: &str,
         input: &GenerateOperatingSnapshot,
+        expected: Option<&Value>,
     ) -> Result<Value, DomainError> {
-        validate_snapshot_input(input)?;
-        let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *tx)
             .await?;
+        let result = self
+            .operating_snapshot_request_on(
+                &mut tx,
+                actor,
+                trace_id,
+                idempotency_key,
+                input,
+                expected,
+            )
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+    async fn operating_snapshot_request_on(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: Uuid,
+        trace_id: Uuid,
+        idempotency_key: &str,
+        input: &GenerateOperatingSnapshot,
+        expected: Option<&Value>,
+    ) -> Result<Value, DomainError> {
+        snapshot_preview::ensure_isolation(tx).await?;
+        validate_snapshot_input(input)?;
+        let hash = match expected {
+            Some(preview) => request_hash(&("guarded-operating-snapshot-v1", input, preview))?,
+            None => request_hash(input)?,
+        };
         let auth = crate::master_write_authority::snapshot(
-            &mut tx,
+            tx,
             actor,
             "management_report:generate_snapshot",
             false,
         )
         .await?;
         if let Some(value) = begin_idempotent::<Value>(
-            &mut tx,
+            tx,
             actor,
             "operating_snapshot_generate",
             idempotency_key,
@@ -147,25 +182,23 @@ impl OperationsService {
                 .and_then(|id| Uuid::parse_str(id).ok())
                 .ok_or(DomainError::NotFoundOrForbidden)?;
             let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operating_report_snapshots WHERE id=$1 AND scope_hash=$2)")
-                .bind(id).bind(&auth.effective_scope_hash).fetch_one(&mut *tx).await?;
+                .bind(id).bind(&auth.effective_scope_hash).fetch_one(&mut **tx).await?;
             if !visible {
                 return Err(DomainError::NotFoundOrForbidden);
             }
-            tx.commit().await?;
             return Ok(value);
         }
         let result = self
-            .generate_operating_snapshot_on(&mut tx, actor, trace_id, input)
+            .generate_operating_snapshot_on(tx, actor, trace_id, input, expected)
             .await?;
         finish_idempotent(
-            &mut tx,
+            tx,
             actor,
             "operating_snapshot_generate",
             idempotency_key,
             &result,
         )
         .await?;
-        tx.commit().await?;
         Ok(result)
     }
 
@@ -192,7 +225,7 @@ impl OperationsService {
             .execute(&mut *tx)
             .await?;
         let result = self
-            .generate_operating_snapshot_on(&mut tx, actor, trace_id, input)
+            .generate_operating_snapshot_on(&mut tx, actor, trace_id, input, None)
             .await?;
         tx.commit().await?;
         Ok(result)
@@ -204,89 +237,32 @@ impl OperationsService {
         actor: Uuid,
         trace_id: Uuid,
         input: &GenerateOperatingSnapshot,
+        expected: Option<&Value>,
     ) -> Result<Value, DomainError> {
-        validate_snapshot_input(input)?;
-        let auth = crate::master_write_authority::snapshot(
-            tx,
-            actor,
-            "management_report:generate_snapshot",
-            false,
-        )
-        .await?;
-        let period_end =
-            input.period_start + Duration::days(if input.cadence == "daily" { 1 } else { 7 });
-        let local_today =
-            (Utc::now() + Duration::minutes(i64::from(input.utc_offset_minutes))).date_naive();
-        if period_end > local_today {
-            return Err(DomainError::Invalid(
-                "only completed operating periods can be frozen".into(),
-            ));
+        let content = self.operating_snapshot_content_on(tx, actor, input).await?;
+        if expected.is_some_and(|preview| *preview != content.preview(actor, input)) {
+            return Err(DomainError::StalePreview);
         }
-        if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4")
-            .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_optional(&mut **tx).await?
-        {
+        let OperatingContent {
+            period_end,
+            scope_hash,
+            payload,
+            quality_status,
+            source_hash,
+            existing,
+            ..
+        } = content;
+        if let Some(row) = existing {
             return Ok(snapshot_result(&row, false, trace_id));
         }
-        let le = auth.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>();
-        let wh = auth.scopes.warehouse_ids.into_iter().collect::<Vec<_>>();
-        let customer = auth.scopes.customer_ids.into_iter().collect::<Vec<_>>();
-        let supplier = auth.scopes.supplier_ids.into_iter().collect::<Vec<_>>();
-        let brand = auth.scopes.brand_ids.into_iter().collect::<Vec<_>>();
-        let bu = auth
-            .scopes
-            .business_unit_ids
-            .into_iter()
-            .collect::<Vec<_>>();
-        let sales = sqlx::query("SELECT count(*) order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) order_amount FROM sales_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let shipments = sqlx::query("SELECT count(*) FILTER(WHERE s.status='confirmed') shipment_count,COALESCE(sum(s.sales_amount) FILTER(WHERE s.status='confirmed'),0)::numeric(24,6) shipped_revenue FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE s.shipment_date>=$1 AND s.shipment_date<$2 AND s.currency=$3 AND s.legal_entity_id=ANY($4) AND s.customer_id=ANY($5) AND s.warehouse_id=ANY($6) AND (o.brand_id IS NULL OR o.brand_id=ANY($7)) AND o.business_unit_id=ANY($8)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let purchasing = sqlx::query("SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount FROM purchase_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND supplier_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let inventory = sqlx::query("SELECT COALESCE(sum(b.inventory_value),0)::numeric(24,6) inventory_value,count(*) FILTER(WHERE b.on_hand_quantity-b.reserved_quantity=0 AND b.reserved_quantity>0) stockout_count FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id WHERE e.functional_currency=$1 AND b.legal_entity_id=ANY($2) AND b.warehouse_id=ANY($3)")
-            .bind(&input.currency).bind(&le).bind(&wh).fetch_one(&mut **tx).await?;
-        let profit = sqlx::query("SELECT COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='net_revenue'),0)::numeric(24,6) revenue,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='product_cost'),0)::numeric(24,6) product_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type IN ('outbound_freight','sales_commission','platform_fee','customer_rebate','other_direct_cost','allocated_operating_expense')),0)::numeric(24,6) operating_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='supplier_rebate'),0)::numeric(24,6) supplier_rebate FROM profit_facts WHERE business_date>=$1 AND business_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND warehouse_id=ANY($6) AND (brand_id IS NULL OR brand_id=ANY($7)) AND business_unit_id=ANY($8)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let incidents = sqlx::query("SELECT count(*) FILTER(WHERE first_seen_at >= $2::date AND first_seen_at < $3::date) opened_count,count(*) FILTER(WHERE resolved_at >= $2::date AND resolved_at < $3::date) resolved_count,count(*) FILTER(WHERE due_at < COALESCE(resolved_at,$3::date) AND first_seen_at < $3::date) breached_count,COALESCE(avg(EXTRACT(EPOCH FROM (resolved_at-first_seen_at))/3600) FILTER(WHERE resolved_at >= $2::date AND resolved_at < $3::date),0)::numeric(18,3) average_resolution_hours FROM operating_report_incidents WHERE scope_hash=$1")
-            .bind(&auth.effective_scope_hash).bind(input.period_start).bind(period_end).fetch_one(&mut **tx).await?;
-        let revenue: Decimal = profit.get("revenue");
-        let operating_profit = revenue
-            - profit.get::<Decimal, _>("product_cost")
-            - profit.get::<Decimal, _>("operating_cost")
-            + profit.get::<Decimal, _>("supplier_rebate");
-        let quality = self.data_quality_on(tx, actor).await?;
-        let quality_status = quality["status"].as_str().unwrap_or("blocked");
-        let payload = json!({
-            "salesOrderCount": sales.get::<i64,_>("order_count"),
-            "salesOrderAmount": sales.get::<Decimal,_>("order_amount").to_string(),
-            "shipmentCount": shipments.get::<i64,_>("shipment_count"),
-            "shippedRevenue": shipments.get::<Decimal,_>("shipped_revenue").to_string(),
-            "purchaseOrderCount": purchasing.get::<i64,_>("purchase_order_count"),
-            "purchaseOrderAmount": purchasing.get::<Decimal,_>("purchase_order_amount").to_string(),
-            "inventoryValueAsOfGeneration": inventory.get::<Decimal,_>("inventory_value").to_string(),
-            "stockoutCountAsOfGeneration": inventory.get::<i64,_>("stockout_count"),
-            "managementOperatingProfit": operating_profit.to_string(),
-            "incidentsOpened": incidents.get::<i64,_>("opened_count"),
-            "incidentsResolved": incidents.get::<i64,_>("resolved_count"),
-            "slaBreached": incidents.get::<i64,_>("breached_count"),
-            "averageResolutionHours": incidents.get::<Decimal,_>("average_resolution_hours").to_string()
-        });
-        let source_hash = hex::encode(Sha256::digest(serde_json::to_vec(&json!({
-            "cadence": input.cadence,
-            "periodStart": input.period_start,
-            "periodEnd": period_end,
-            "currency": input.currency,
-            "scopeHash": auth.effective_scope_hash,
-            "metrics": payload
-        }))?));
         let id = Uuid::new_v4();
         let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(cadence,period_start,currency,scope_hash) DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status")
-            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&auth.effective_scope_hash).bind(&payload).bind(quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut **tx).await?;
+            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut **tx).await?;
         let (row, created) = if let Some(row) = inserted {
             audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"sourceHash":source_hash})).await?;
             (row, true)
         } else {
-            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_one(&mut **tx).await?, false)
+            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).fetch_one(&mut **tx).await?, false)
         };
         Ok(snapshot_result(&row, created, trace_id))
     }

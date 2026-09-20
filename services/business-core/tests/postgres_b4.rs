@@ -14,6 +14,8 @@ mod operating_snapshot_authority;
 mod operating_snapshot_concurrency;
 #[path = "support/operating_snapshot_consistency.rs"]
 mod operating_snapshot_consistency;
+#[path = "support/operating_snapshot_preview.rs"]
+mod operating_snapshot_preview;
 use business_core::{
     b2::{
         model::{
@@ -689,6 +691,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     management_snapshot_late_fact::verify(&pool, &reporting, f.actor).await;
     management_snapshot_preview::verify(&pool, &reporting, f.actor).await;
     management_snapshot_filters::verify(&pool, &reporting, &f).await;
+    operating_snapshot_preview::verify(&pool, &operations, f.actor).await;
 }
 
 #[allow(clippy::too_many_arguments)]
