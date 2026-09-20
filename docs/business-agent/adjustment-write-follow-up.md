@@ -293,3 +293,14 @@ Web 构建、类型与金额展示检查通过；Playwright 四项真实浏览�
 新库 adjustment_write_links_final 的真实 Core HTTP 验证四类费用成功、拒绝、等待审批，并生成 12 份实际响应；MCP 显式加载这些响应，34 项报告通过，新增成功链接四字段篡改及缺失校验。新库 adjustment_write_links_chain 使用真实 Gateway/Core/Read API 和实际 MCP 子进程回归创建、修改、查询、过账、逆转及各类签名负向场景，通过完整链路验证。API 57 项报告通过，其中运行证据以本次显式配置的新库测试为准；两包 all-targets 严格 Clippy、格式、差异及文件大小检查通过，未运行全仓 just ci。首轮旧的空链接断言失败，更新为与 executed 对应的断言后新库重验通过。
 
 证据 /tmp/adjustment-write-links-{api-final,mcp,chain,clippy,size}.log；真实响应 /tmp/adjustment-links-{post,draft,reversal}-final.jsonl。未部署、未代发真实聊天。费用源码流程与详情链接已贯通，下一步核对发布条件并构建配套候选，完成服务端与 Mac/Windows 客户端发布及真实会话验收；完整业务目标仍未完成。
+
+
+## 发布候选与生产数据迁移演练
+
+服务器清理已获用户授权并完成，最近核查根分区可用约 14 GB、使用率 76%。生产四服务仍为 e51a84b9c、数据库版本 57。服务端候选 99423340217f38e427997d8938ddfceb9d699ae0 的 CI 35501065470 成功，归档下载到 /tmp/business-adjustment-candidate-35501065470/，SHA256SUMS 全部通过，暂停 manifest 精确包含 master/order_hold/adjustment/report_snapshot/operating_snapshot。CI 35501683706 的实际 Linux 容器与 PostgreSQL17 验证迁移 68、46 项暂停路由，原读取两版均 200，原审批输入校验仍 422。证据 /tmp/business-adjustment-runtime-35501683706/business-hold-runtime-evidence/。
+
+Mac release 构建与候选签名验证通过：/tmp/Pacioli-adjustment-994233402.app，MCP 与哈希清单 /tmp/business-adjustment-mac-994233402/。普通 113 与逆转审批 62 工具原生模拟模型探针通过；尚未替换已安装应用。Windows 35501267285 构建成功，源码 917dcd785 仅比服务候选增加工具清单校验，安装包 /tmp/business-adjustment-windows-35501267285/buzz-windows-canary-917dcd7856c81f330ba85edbbbd77aaf6f048ce8/Pacioli_0.5.19-test.5_x64-setup.exe，SHA256 2a20a2194d77c06e7d19e648d1af1026ac70baeec3982f9b25d26f515efd35f9。用户明确要求不进行 Windows 安装验收；此前已启动的 35509212544 在检查前结束，后续不再启动安装验收，也不把用户 Windows 实机验收视作完成。
+
+最新生产 plain SQL 备份保存到 /tmp/adjustment-production-rehearsal-994233402.sql，权限 0600，完整性结束标记检查通过；为 PG16 隔离恢复仅移除 PG17 的 SET transaction_timeout。隔离库 adjustment_production_rehearsal_994233402 恢复后从版本 57 成功迁移至 68。迁移前后 sales_orders 均 5 条，按 ID 排序的完整记录摘要同为 7d3c9dfefc05e05557cad4b238ef080d；审批请求和新增费用意图均 0。日志 /tmp/adjustment-production-{restore,gateway-build,migrate}.log。此为数据迁移兼容性证据，不代替生产同镜像演练或上线健康检查。
+
+副本确认现有操作者具有 profit_adjustment:create/update_draft/preview/post/reverse/read 与 management_report:generate_snapshot 等业务权限，但费用/报表专用助手 IAM 授权和审批策略为空。下一步准备并演练保持现有数据范围和审批约束的部署授权，完成备份与发布回退核对后再切换。当前生产未迁移、未新增授权、未修改业务记录；完整业务目标仍未完成。
