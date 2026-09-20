@@ -119,3 +119,9 @@ Windows 35482058899 的 Verify native Business Agent tool loading 步骤已 succ
 运行 35482679706 success，仍消费 c186ddf01 原镜像归档。新增六类 master 意图及两类 hold 意图的 approve/approval-preview 请求，共 16 项；连同此前准备/预览共 22 项暂停路由用例均为 503，未认证均 401。正常镜像对不完整审批输入返回 422，对不存在意图预览返回 404。未受影响的 sales-order 审批两版均正确返回 422，授权读取两版均 200。
 
 已下载并逐项检查 /tmp/business-hold-runtime-35482679706/business-hold-runtime-evidence/runtime-evidence.json。此项证明暂停路由与认证隔离，不代表成功业务审批的端到端回放。Windows 35482058899 最新仍 in_progress；没有额外启动 Windows 构建，也没有切换生产。
+
+## Mac 配套程序构建进行中
+
+当前 crates/services 与 c186ddf01119acfb545c56dee7b77304874e282b 的 git diff 已确认为空；未提交 LifeDock 改动不会进入本次构建。已启动 cargo build --release --locked -p buzz-acp -p buzz-agent -p business-read-mcp，CARGO_INCREMENTAL=0，日志 /tmp/order-hold-mac-sidecars-build.log。必须确认进程最终退出和新二进制哈希后才能制作应用候选，不能使用遗留 target/release 文件作为新构建证据。
+
+计划从已发布 /Applications/Pacioli.app 制作临时副本，只更新本批 Rust 侧程序并重新签名，MCP 单独准备版本固定目录；不安装或重载。服务器只读空间最新 1,250,328,576 bytes，仍不满足新归档加载余量，未清理缓存。Windows 35482058899 仍在安装包构建步骤。
