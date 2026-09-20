@@ -1,3 +1,4 @@
+mod allocation_preview;
 use super::{
     allocation::{largest_remainder, AllocationTarget},
     common::{authorize, period},
@@ -271,40 +272,18 @@ impl AdjustmentService {
         ) {
             return Err(DomainError::Invalid("adjustment is not previewable".into()));
         }
-        let lines=sqlx::query("SELECT id,metric_type,amount,business_date,allocation_basis,allocation_scope FROM operational_adjustment_lines WHERE batch_id=$1 ORDER BY line_number").bind(batch_id).fetch_all(&mut *tx).await?;
-        let watermark: i64 =
-            sqlx::query_scalar("SELECT COALESCE(max(fact_sequence),0) FROM profit_facts")
-                .fetch_one(&mut *tx)
-                .await?;
-        let mut payload_lines = Vec::new();
-        let mut total = Decimal::ZERO;
-        let mut allocated = Decimal::ZERO;
-        for line in lines {
-            let amount: Decimal = line.get("amount");
-            total += amount;
-            let targets = targets(&mut tx, &batch, &line, self.max_targets).await?;
-            for target in &targets {
-                ensure_order_scope(&mut tx, target.0, &authorization).await?;
-                ensure_line_target_scope(
-                    &mut tx,
-                    target.0,
-                    &line.get::<Value, _>("allocation_scope"),
-                )
-                .await?;
-            }
-            let allocations = largest_remainder(
-                amount,
-                &targets
-                    .iter()
-                    .map(|row| AllocationTarget {
-                        sales_order_id: row.0,
-                        weight: row.1,
-                    })
-                    .collect::<Vec<_>>(),
-            )?;
-            allocated += allocations.iter().map(|row| row.amount).sum::<Decimal>();
-            payload_lines.push(json!({"lineId":line.get::<Uuid,_>("id"),"metricType":line.get::<String,_>("metric_type"),"businessDate":line.get::<chrono::NaiveDate,_>("business_date"),"targets":allocations.into_iter().map(|row|json!({"salesOrderId":row.sales_order_id,"weight":row.weight.to_string(),"amount":row.amount.to_string(),"remainderRank":row.remainder_rank})).collect::<Vec<_>>() }));
-        }
+        let calculation = allocation_preview::calculate(
+            &mut tx,
+            &batch,
+            batch_id,
+            &authorization,
+            self.max_targets,
+        )
+        .await?;
+        let watermark = calculation.watermark;
+        let payload_lines = calculation.lines;
+        let total = calculation.total;
+        let allocated = calculation.allocated;
         let source_hash = hex::encode(Sha256::digest(serde_json::to_vec(
             &json!({"watermark":watermark,"lines":payload_lines}),
         )?));

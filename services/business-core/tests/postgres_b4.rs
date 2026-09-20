@@ -1,3 +1,5 @@
+#[path = "support/adjustment_allocation_preview.rs"]
+mod adjustment_allocation_preview;
 #[path = "support/management_snapshot_authority.rs"]
 mod management_snapshot_authority;
 #[path = "support/management_snapshot_concurrency.rs"]
@@ -716,6 +718,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     operating_snapshot_business_units::verify(&pool, &operations, &f).await;
     projection_health_scope::verify(&pool, &operations, f.actor).await;
     operating_snapshot_warehouses::verify(&pool, &operations, &f).await;
+    adjustment_allocation_preview::verify(&pool, &adjustments, &f).await;
 }
 
 #[allow(clippy::too_many_arguments)]
