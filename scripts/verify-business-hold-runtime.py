@@ -61,6 +61,17 @@ try:
     version = docker("exec", "hold-postgres", "psql", "-U", "rehearsal", "-d", "rehearsal",
                      "-Atc", "SELECT max(version) FROM _sqlx_migrations WHERE success")
     assert version == "59", version
+    docker("exec", "hold-postgres", "psql", "-U", "rehearsal", "-d", "rehearsal",
+           "-v", "ON_ERROR_STOP=1", "-c", """
+        INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name)
+        VALUES('00000000-0000-4000-8000-000000000001','runtime-test','reader','Runtime reader');
+        INSERT INTO business_roles(id,role_key,name)
+        VALUES('00000000-0000-4000-8000-000000000002','runtime_reader','Runtime reader');
+        INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by)
+        VALUES('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001');
+        INSERT INTO business_role_permissions(role_id,permission_key)
+        VALUES('00000000-0000-4000-8000-000000000002','sales_order:read');
+    """)
     ports = {}
     for mode, image in [("normal", "business-core"), ("paused", "writes-paused")]:
         name = "hold-" + mode
@@ -96,10 +107,10 @@ try:
         assert paused == 503, (path, paused)
         assert request(ports["paused"], path, {}, authenticated=False) == 401
         evidence["routes"].append({"path": path, "normal": normal, "paused": paused})
-    # Existing read routes still reach their permission checks in both images.
+    # Existing read routes succeed for the same minimally authorized reader.
     normal = request(ports["normal"], "/v1/sales-orders")
     paused = request(ports["paused"], "/v1/sales-orders")
-    assert normal == paused and normal in (401, 403), (normal, paused)
+    assert normal == paused == 200, (normal, paused)
     evidence["existingRead"] = {"normal": normal, "paused": paused}
     with open("runtime-evidence.json", "w") as output:
         json.dump(evidence, output, indent=2)
