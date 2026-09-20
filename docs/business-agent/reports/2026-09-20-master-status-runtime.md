@@ -30,3 +30,11 @@
 新 workflow 尚未存在默认分支，gh workflow run 返回 404；随后增加精确仓库/集成分支约束，以及仅两个候选构建文件变更触发的 push 路径。未修改默认分支。YAML 解析与差异检查通过。
 
 运行 35479487131，job 105994575986，源码 4796f86e38a2355b37a9eb836d74e8b8d4285b8b。最后核对 status=in_progress，正在 Build and export four service images。须继续检查同一运行，不因观察超时重复启动。产物、镜像加载、匹配暂停镜像、副本验收和生产部署均尚未完成。
+
+## 启停授权脚本隔离演练
+
+新增 releases/master-status-authority.sql，要求迁移 58、活动身份、两项当前主资料审批策略，以及恰好四项有效的 Core/Product update create/approve 来源授权。脚本按能力逐项复制 data_scope、obligations、valid_from、valid_until，仅写入对应 status 授权及审计；不修改现有审批策略、Core 权限或对象范围。目标已有授权时直接失败，不覆盖。
+
+本机隔离库 status_authority_rehearsal（55439，从隔离 master_status_intents_atomic 克隆）使用固定演练身份、有限期且带附加限制的四项来源授权。脚本成功插入四项；数据库断言四个限制字段与来源逐项完全相同；重复执行被 status grants already exist 拒绝。日志 /tmp/status-authority-rehearsal.log。未在生产执行，尚需在生产副本核验实际来源授权及审批策略。
+
+再次检查同一构建 35479487131 仍 in_progress，未重复触发。候选产物、暂停方案验证及发布继续未完成。
