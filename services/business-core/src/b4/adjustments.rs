@@ -1,6 +1,8 @@
 mod allocation_preview;
 mod detail;
+mod search;
 pub use detail::AdjustmentDetailQuery;
+pub use search::AdjustmentSearchQuery;
 mod guarded_post;
 mod transaction_commands;
 use super::{

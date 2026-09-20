@@ -47,11 +47,22 @@ impl AdjustmentService {
             false,
         )
         .await?;
+        let result = self.detail_on(&mut tx, id, query, &authorization).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+    pub(super) async fn detail_on(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        query: &AdjustmentDetailQuery,
+        authorization: &AuthorizationSnapshot,
+    ) -> Result<Value, DomainError> {
         let batch = sqlx::query(
             "SELECT b.*,to_jsonb(b) record FROM operational_adjustment_batches b WHERE id=$1",
         )
         .bind(id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
         let version: i64 = batch.get("version");
@@ -65,7 +76,7 @@ impl AdjustmentService {
         if query.expected_version.is_some_and(|v| v != version) {
             return Err(DomainError::VersionConflict);
         }
-        let lines=sqlx::query("SELECT l.*,to_jsonb(l)||jsonb_build_object('amount',l.amount::text) record FROM operational_adjustment_lines l WHERE batch_id=$1 ORDER BY line_number,id").bind(id).fetch_all(&mut *tx).await?;
+        let lines=sqlx::query("SELECT l.*,to_jsonb(l)||jsonb_build_object('amount',l.amount::text) record FROM operational_adjustment_lines l WHERE batch_id=$1 ORDER BY line_number,id").bind(id).fetch_all(&mut **tx).await?;
         let mut order_ids = BTreeSet::new();
         let mut total = Decimal::ZERO;
         let scopes = &authorization.scopes;
@@ -111,7 +122,7 @@ impl AdjustmentService {
                 "direct" | "fixed_weight"
             ) {
                 order_ids.extend(
-                    targets(&mut tx, &batch, line, self.max_targets)
+                    targets(tx, &batch, line, self.max_targets)
                         .await?
                         .into_iter()
                         .map(|(id, _)| id),
@@ -121,14 +132,14 @@ impl AdjustmentService {
                 .checked_add(line.get::<Decimal, _>("amount"))
                 .ok_or_else(|| DomainError::Invalid("adjustment total overflow".into()))?;
         }
-        let allocated:Vec<Uuid>=sqlx::query_scalar("SELECT DISTINCT sales_order_id FROM operational_adjustment_allocations WHERE batch_id=$1").bind(id).fetch_all(&mut *tx).await?;
+        let allocated:Vec<Uuid>=sqlx::query_scalar("SELECT DISTINCT sales_order_id FROM operational_adjustment_allocations WHERE batch_id=$1").bind(id).fetch_all(&mut **tx).await?;
         order_ids.extend(allocated);
         for order in &order_ids {
-            visible_order(&mut tx, *order, &authorization).await?;
+            visible_order(tx, *order, authorization).await?;
         }
         // Order ownership can change after posting. Historical fact dimensions
         // must also remain accessible, rather than relying only on today's order.
-        let outside:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM profit_facts WHERE source_type='operational_adjustment' AND source_id=$1 AND (NOT(legal_entity_id=ANY($2)) OR (customer_id IS NOT NULL AND NOT(customer_id=ANY($3))) OR (brand_id IS NOT NULL AND NOT(brand_id=ANY($4))) OR (business_unit_id IS NOT NULL AND NOT(business_unit_id=ANY($5))) OR (warehouse_id IS NOT NULL AND NOT(warehouse_id=ANY($6)))))").bind(id).bind(scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.customer_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.brand_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.warehouse_ids.iter().copied().collect::<Vec<_>>()).fetch_one(&mut *tx).await?;
+        let outside:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM profit_facts WHERE source_type='operational_adjustment' AND source_id=$1 AND (NOT(legal_entity_id=ANY($2)) OR (customer_id IS NOT NULL AND NOT(customer_id=ANY($3))) OR (brand_id IS NOT NULL AND NOT(brand_id=ANY($4))) OR (business_unit_id IS NOT NULL AND NOT(business_unit_id=ANY($5))) OR (warehouse_id IS NOT NULL AND NOT(warehouse_id=ANY($6)))))").bind(id).bind(scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.customer_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.brand_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.warehouse_ids.iter().copied().collect::<Vec<_>>()).fetch_one(&mut **tx).await?;
         if outside {
             return Err(DomainError::NotFoundOrForbidden);
         }
@@ -141,7 +152,6 @@ impl AdjustmentService {
             .collect();
         let next = query.offset + items.len();
         let result = json!({"schemaVersion":1,"batch":batch.get::<Value,_>("record"),"lines":items,"totalAmount":total.to_string(),"targetOrderCount":order_ids.len(),"scope":authorization.scopes,"pagination":{"offset":query.offset,"limit":query.limit,"total":total_lines,"nextOffset":if next<total_lines {Some(next)}else{None}},"version":version,"boundary":"management_only_not_general_ledger"});
-        tx.commit().await?;
         Ok(result)
     }
 }

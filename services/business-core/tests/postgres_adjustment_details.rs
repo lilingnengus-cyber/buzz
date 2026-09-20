@@ -1,3 +1,5 @@
+#[path = "support/adjustment_search.rs"]
+mod search;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -92,6 +94,7 @@ async fn details_check_all_lines_current_and_historical_scope_and_versions() {
         .unwrap();
     let config = Config::from_env().unwrap();
     let app = business_core::router(AppState::new(store.clone(), &config));
+    search::verify(&pool, &app, &f, order).await;
     let path = format!("/v1/profit-adjustments/{batch}?limit=1");
     let before: (i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM operational_adjustment_previews),(SELECT count(*) FROM business_core_audit_events),(SELECT count(*) FROM profit_facts)").fetch_one(&pool).await.unwrap();
     let (status, first) = call(&app, f.actor, "GET", &path, Value::Null, "").await;
@@ -205,6 +208,19 @@ async fn details_check_all_lines_current_and_historical_scope_and_versions() {
         call(&disabled, f.actor, "GET", &posted_path, Value::Null, "")
             .await
             .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        call(
+            &disabled,
+            f.actor,
+            "GET",
+            "/v1/profit-adjustments",
+            Value::Null,
+            ""
+        )
+        .await
+        .0,
         StatusCode::SERVICE_UNAVAILABLE
     );
 }

@@ -152,6 +152,7 @@ fn default_limit() -> i64 {
 
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/v1/profit-adjustments", get(search_adjustments))
         .route("/v1/profit-adjustments/{id}", get(get_adjustment))
         .route("/v1/order-profits", get(order_profits))
         .route("/v1/profitability", get(profitability))
@@ -306,6 +307,20 @@ async fn profit_evidence(
         .await
         .map(Json)
         .map_err(|e| B4ApiError::domain(e, c.trace_id))
+}
+async fn search_adjustments(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<super::AdjustmentSearchQuery>,
+) -> Result<Json<serde_json::Value>, B4ApiError> {
+    enabled(&s, 2, c.trace_id)?;
+    let mut result = s
+        .adjustments
+        .search(c.actor_user_id, &q)
+        .await
+        .map_err(|e| B4ApiError::domain(e, c.trace_id))?;
+    result["traceId"] = json!(c.trace_id);
+    Ok(Json(result))
 }
 async fn get_adjustment(
     State(s): State<Arc<AppState>>,
