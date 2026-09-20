@@ -1,0 +1,64 @@
+name: Windows hold installer runtime
+on:
+  push:
+    branches: [codex/life-write-intent-compiler]
+    paths: [.github/workflows/windows-hold-runtime.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.repository == 'lilingnengus-cyber/buzz' && github.ref == 'refs/heads/codex/life-write-intent-compiler'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+      - name: Download and install exact candidate in temporary runner
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh run download 35482058899 --repo lilingnengus-cyber/buzz --dir candidate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installers = @(Get-ChildItem candidate -Filter 'Pacioli_0.5.19-test.3_x64-setup.exe' -Recurse)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one reviewed installer' }
+          $installer = $installers[0].FullName
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '0588fcca5be7c884bfc00f6d73275954c7961c644d12ee2efab408a024d0ff5b') { throw 'Installer digest mismatch' }
+          $installPath = Join-Path $env:RUNNER_TEMP 'pacioli-hold-installed'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installPath") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
+          "HOLD_INSTALL_PATH=$installPath" >> $env:GITHUB_ENV
+          $manifest = Get-ChildItem $installPath -Filter '*.exe' -Recurse | ForEach-Object {
+            @{path=$_.FullName.Substring($installPath.Length); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+          }
+          $manifest | ConvertTo-Json | Set-Content installed-executables.json
+      - name: Exercise installed Agent and MCP in all hold profiles
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($entry in @(@('buzz-agent.exe','BUSINESS_AGENT_TEST_BINARY'),@('business-read-mcp.exe','BUSINESS_MCP_TEST_BINARY'))) {
+            $matches = @(Get-ChildItem $env:HOLD_INSTALL_PATH -Filter $entry[0] -Recurse)
+            if ($matches.Count -ne 1) { throw "Expected one installed $($entry[0])" }
+            [Environment]::SetEnvironmentVariable($entry[1], $matches[0].FullName, 'Process')
+          }
+          foreach ($scope in @('', 'sales_order_hold_intent:approve', 'sales_order_release_hold_intent:approve')) {
+            $env:BUSINESS_RUNTIME_APPROVAL_SCOPE = $scope
+            node scripts/business-agent-runtime-acceptance.mjs 2>&1 | Tee-Object -FilePath installed-runtime.log -Append
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: windows-hold-installed-runtime
+          path: |
+            installed-executables.json
+            installed-runtime.log
+          retention-days: 7
