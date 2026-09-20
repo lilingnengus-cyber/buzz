@@ -55,3 +55,15 @@
 暂停构建已启动：运行 35479896390，job 105995689678，workflow 提交 c3b35f5bb，实际检出及镜像来源固定为 4796f86e38a2355b37a9eb836d74e8b8d4285b8b。最后核对正在 Build and export matching pause image，源码差异校验步骤已通过。继续观察该运行，不能把产物尚未返回当成失败。
 
 已准备 master-status-4796f86e3.yml 与 master-status-paused-4796f86e3.yml，固定完整源码标签并保留 64/900 委托配置；YAML 解析通过。尚未与服务器实际 Compose 链合并验证、启动或验证暂停行为。服务器最新可用空间 1,527,910,400 字节，线上四服务仍为 e51a84b9c。镜像传输/加载前须重新计算峰值及保留余量，不能将归档体积直接当成加载峰值。
+
+## Linux 候选生产副本演练
+
+加载前以两倍归档解包体积、64 MiB 缓冲和至少 1 GiB 保留量检查磁盘，通过后流式加载四个已校验候选镜像。仅增加镜像，没有替换生产服务；加载后可用 1,279,614,976 字节。禁止将此余量复用为后续加载许可，每次重新检查。
+
+创建新的生产只读快照备份 /opt/business-platform/shared/master-status-rehearsal-4796f86e3.dump（0600，818925 字节），恢复到独立数据库 master_status_rehearsal_4796f86e3。候选 Gateway migrate-only 将副本 57 升至 58，原五张销售订单保留。master-status-authority.sql 在该副本成功复制四项权限，审计 Trace fa3fdd0d-b871-4e05-8625-401b9600246a；SQL 断言 data_scope、obligations、valid_from、valid_until 与四项来源授权逐项一致。
+
+四服务分别连接副本启动，Gateway/IAM ready=204，Core/Read API health=200；测试进程结束后删除的仅是本次创建的 canary 容器。Read API 上游封闭为不可用本机地址，此项仅证明启动健康，不代表四服务端到端授权链已验收。Core 实际读取旧订单预览、两类退货列表、法人/业务单元/客户/SKU 均成功。六类主资料意图的 18 条路径对缺字段、空 ID 分别返回 400/404/422，含本次两类 status 意图。
+
+在副本通过 Core 创建新客户 3c23358e-d87d-4d2d-8ada-761e1cda0192 和计量单位 289c841c-585b-46a1-89a7-e0920a193ec0，分别执行 disabled→active，实读状态/版本为 disabled v2→active v3。四次状态意图重复 prepare 返回同一 ID；篡改确认 command 皆 422；已执行意图再次确认皆 409。Trace 498c5872-d26f-4930-8987-52ce9b2f4138。此处使用隔离服务测试身份和合成来源事件，未发送用户消息，不证明真实签名聊天链路。
+
+服务器演练脚本 /tmp/business-status-{prepare.sh,migrate.py,authority-verify.sql,canary.py,services.py,write.py}，全部明确固定副本库和候选标签；启动参数继承现有配置但凭据只进入 0600 临时环境文件，不输出。临时环境文件在启动后移除。
