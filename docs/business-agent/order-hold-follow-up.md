@@ -83,3 +83,11 @@ Linux 流程现在同批导出四项服务及 writes-paused Core 镜像。暂停
 本地 55439 新建 order_hold_authority_rehearsal（克隆隔离测试库），仅把部署脚本中四个生产 UUID 替换为 fixture 对应 UUID 后演练；未使用生产数据库。实际生成四项授权，obligations/valid_from/valid_until/法人范围一致；两项策略均保留双人、禁止自审、跨业务单元及 10000 金额阈值。再次执行明确拒绝已存在授权。审计 trace 8e4d9f9c-7c2b-49c9-8052-00758c036abd。此证据尚不能证明生产账号满足全部前置条件，生产克隆演练仍需完成。
 
 新增 order-hold-c186ddf01.yml 和 order-hold-paused-c186ddf01.yml，固定候选来源全 SHA，配套迁移及四服务与双入口暂停镜像。尚未在生产合并或启动。
+
+## 生产数据副本迁移与授权验证
+
+只读检查生产确认：迁移仍为 57；目标账号 business_admin 已有 sales_order:place_hold/release_hold；sales_order:approve IAM 授权仅限预期法人；原销售确认策略为 business_admin、单人、允许自审。新 hold 策略尚不存在。
+
+将新鲜生产 pg_dump 恢复到本地 55439 独立库 order_hold_production_rehearsal，使用本批重建 gateway --migrate-only 成功执行 57→59，再原样运行 master-status-authority.sql 和 order-hold-authority.sql（本次没有替换 UUID）。最终核对八项新增授权、两项复制策略、零 hold 意图。审计 trace 分别 b87a0137-33b0-4314-a1e2-159c9a0269da、f163aa90-85b4-40a3-862b-005d57186c57。
+
+备份 /tmp/order-hold-production-rehearsal.dump 和 .sql 权限 0600。远端 custom dump 版本不被本地 PG16 pg_restore 支持，因此改用 plain SQL，仅移除 PG16 不支持的 SET transaction_timeout = 0；恢复及迁移均成功。这证明生产数据和 SQL 迁移兼容性，不代替生产同版本镜像运行验收。日志 /tmp/order-hold-production-{restore,migrate,authority}.log。生产未改写、缓存未清理。Linux 35482054779 和 Windows 35482058899 最新查询均仍 in_progress。
