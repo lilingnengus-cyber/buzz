@@ -14,6 +14,17 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_operational_adjustments",
+  "get_operational_adjustment",
+  "prepare_operational_adjustment_creation",
+  "approve_operational_adjustment_creation",
+  "prepare_operational_adjustment_update",
+  "approve_operational_adjustment_update",
+  "prepare_operational_adjustment_post",
+  "approve_operational_adjustment_post",
+  "prepare_operational_adjustment_reversal",
+  "approve_operational_adjustment_reversal",
+
   "prepare_operating_report_snapshot",
   "approve_operating_report_snapshot",
   "prepare_management_report_snapshot",
