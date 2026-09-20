@@ -45,6 +45,10 @@ fn parse_chat_approval_command(content: &str) -> Option<ChatApprovalCommand> {
             "operational_adjustment_creation_intent",
             "operational_adjustment_creation_intent:approve",
         ),
+        "operational-adjustment-reversal-intent" => (
+            "operational_adjustment_reversal_intent",
+            "operational_adjustment_reversal_intent:approve",
+        ),
         "operational-adjustment-update-intent" => (
             "operational_adjustment_update_intent",
             "operational_adjustment_update_intent:approve",

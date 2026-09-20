@@ -5,6 +5,7 @@ pub(super) async fn check(store: &Store, pool: &sqlx::PgPool, keys: &Keys, human
         "operational-adjustment-post-intent",
         "operational-adjustment-creation-intent",
         "operational-adjustment-update-intent",
+        "operational-adjustment-reversal-intent",
     ] {
         check_kind(store, pool, keys, human, kind).await;
     }

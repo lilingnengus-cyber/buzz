@@ -242,3 +242,12 @@ Host 提示更新为完整同版本读取、保留未修改字段、缺资料补
 真实 PostgreSQL 55439 的 adjustment_reverse_intent 完整费用意图测试通过，包括既有过账与草稿回归，以及逆转纯预览零写入、空原因拒绝、准备幂等、缺策略/自审拒绝、错误摘要和确认夹带原因拒绝、双人审批、首位审批人撤权后拒绝、最终投票审计故障整体回滚、原事实与抵销事实金额净和为零、原因留痕、终态重复确认拒绝。并发两人审批只执行一次，拒绝保持 posted，源版本变化拒绝且相关状态不变。使用真实数据库阻塞验证最终审计等待期间过期后整体回滚，源批次仍为 posted。
 
 Core/Gateway all-targets 严格 Clippy、格式、差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-reversal-intent-{test,check,clippy,size}.log。本阶段尚未部署或发送真实聊天；逆转 Gateway/Host 签名委托、Read API/MCP 固定工具与完整签名链路仍需接入，完整业务流程目标保持未完成。下一步接入逆转签名委托，再贯通助手工具和真实链路验收。
+
+
+## 逆转 Gateway 与 Host 签名委托
+
+Gateway 白名单增加逆转意图 create/approve，共 118 项；Host 普通会话只增加准备权限，共 70 项，纯只读范围保持 18 项。精确 operational-adjustment-reversal-intent 确认/拒绝命令映射独立审批能力，复用真实 Nostr 事件签名、频道、文档、版本、摘要和决定绑定。迁移沿用 0068，不自动赋权或初始化审批策略。
+
+真实 PostgreSQL 55439 的 adjustment_reversal_signed 验证完整 70 项普通委托持久化、129 项限制拒绝；隔离密钥签署逆转确认及拒绝，完成签发、消费与独立 verify_write，错误文档、版本、摘要、决定、缺失绑定和错误家族均拒绝。四类费用意图均验证过旧/未来签名、签名后篡改、频道错配、跨家族、兄弟意图错配、多余文本、裸确认及审批开关关闭不签发委托。
+
+Host 11 项定向测试、Gateway 4 项单元测试和新库真实签名委托测试通过；两包 all-targets 严格 Clippy、格式、差异和文件大小检查通过。证据 /tmp/adjustment-reversal-signed-{host,unit,db,clippy,size}.log。未运行全仓 just ci，未部署或发送真实聊天。下一步接入 Read API/MCP 逆转准备与零参数确认工具、独立快照校验并验证完整签名服务链路；当前不能声称客户端已能执行费用逆转。

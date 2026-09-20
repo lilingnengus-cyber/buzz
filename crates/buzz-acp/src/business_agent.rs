@@ -16,9 +16,10 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 69] = [
+const AGENT_SCOPES: [&str; 70] = [
     "profit_adjustment:read",
     "operational_adjustment_creation_intent:create",
+    "operational_adjustment_reversal_intent:create",
     "operational_adjustment_update_intent:create",
     "operational_adjustment_post_intent:create",
     "operating_report_snapshot_intent:create",
@@ -96,6 +97,9 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
     let scope = match parts.next()? {
         "operational-adjustment-creation-intent" => {
             "operational_adjustment_creation_intent:approve"
+        }
+        "operational-adjustment-reversal-intent" => {
+            "operational_adjustment_reversal_intent:approve"
         }
         "operational-adjustment-update-intent" => "operational_adjustment_update_intent:approve",
         "operational-adjustment-post-intent" => "operational_adjustment_post_intent:approve",
