@@ -1,0 +1,17 @@
+# Candidate only. Append to the verified live chain after migration and authority rehearsal.
+services:
+  gateway:
+    image: shiyue-business-candidate-gateway:c186ddf01119acfb545c56dee7b77304874e282b
+    environment:
+      AGENT_DELEGATION_MAX_CALLS: "64"
+      AGENT_DELEGATION_TTL_SECONDS: "900"
+  migrate:
+    image: shiyue-business-candidate-gateway:c186ddf01119acfb545c56dee7b77304874e282b
+  business-core:
+    image: shiyue-business-candidate-business-core:c186ddf01119acfb545c56dee7b77304874e282b
+  business-read-api:
+    image: shiyue-business-candidate-business-read-api:c186ddf01119acfb545c56dee7b77304874e282b
+  iam-admin-api:
+    image: shiyue-business-candidate-iam-admin-api:c186ddf01119acfb545c56dee7b77304874e282b
+  iam-admin-migrate:
+    image: shiyue-business-candidate-iam-admin-api:c186ddf01119acfb545c56dee7b77304874e282b
