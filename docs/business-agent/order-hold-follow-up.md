@@ -67,3 +67,11 @@ MCP 新增独立 order_hold_result 验证器：固定字段、预览家族/操�
 日志 /tmp/order-hold-mcp-corpus-api.log、/tmp/order-hold-mcp-final.log、/tmp/order-hold-host-tests.log、/tmp/order-hold-final-clippy.log、/tmp/order-hold-mcp-final-clippy.log、/tmp/order-hold-native-{build,ordinary,pause,resume}.log。尚未安装这些原生文件；新 MCP 的确认验证要求本批配套 Read API 返回预览证明，不能单独替换线上旧 MCP。
 
 后续仍需配套 Linux/Windows 候选、迁移/受限授权及暂停回退演练、生产和客户端发布、获准真实聊天与 Windows 实机验收。已有 4796f86e3 镜像不含本批订单暂停/恢复，旧主资料暂停方案也不覆盖订单暂停路由。生产缓存清理问题仍等待此前明确授权请求的答复；本轮未清理或切换生产。
+
+## 配套候选构建已启动（尚未完成）
+
+来源 c186ddf01119acfb545c56dee7b77304874e282b。Linux Business service candidate 运行 35482054779 已启动，Windows Canary 运行 35482058899 已排队；必须读取这些具体运行的最终结果，不能把已启动视为构建成功。两者来源 SHA 已核对一致。
+
+Linux 流程现在同批导出四项服务及 writes-paused Core 镜像。暂停镜像从同一提交的 git archive 生成，仅对 master/order_hold Agent 路由加 503 层，保留迁移和既有工作台行为；manifest 与镜像清单同归档计算校验和。准备脚本继续支持旧版仅 master 模式。临时目录验证旧/新模式的准确路由替换、其他路由保留、来源不变、摘要对应，以及来源摘要不匹配时拒绝生成，均通过。镜像编译和实际 HTTP 暂停验证仍待完成。
+
+这次未切换生产、未安装客户端、未清理服务器缓存。后续需下载校验、隔离迁移和暂停恢复演练，再进行配套发布及实际客户端验收。
