@@ -2,7 +2,7 @@ use business_core::b4::{model::GenerateReportSnapshot, ProfitReportingService};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-const INSERT_FACT: &str = "INSERT INTO profit_facts SELECT (jsonb_populate_record(NULL::profit_facts,to_jsonb(f)||jsonb_build_object('id',$1::uuid,'fact_sequence',nextval('business_profit_fact_sequence'),'source_event_id',$2::uuid,'source_line_id',$3::uuid,'amount',$4::text,'management_period','2026-04','business_date','2026-04-01'))).* FROM profit_facts f WHERE metric_type='net_revenue' AND direction='normal' ORDER BY fact_sequence LIMIT 1 RETURNING fact_sequence";
+pub(super) const INSERT_FACT: &str = "INSERT INTO profit_facts SELECT (jsonb_populate_record(NULL::profit_facts,to_jsonb(f)||jsonb_build_object('id',$1::uuid,'fact_sequence',nextval('business_profit_fact_sequence'),'source_event_id',$2::uuid,'source_line_id',$3::uuid,'amount',$4::text,'management_period','2026-04','business_date','2026-04-01'))).* FROM profit_facts f WHERE metric_type='net_revenue' AND direction='normal' ORDER BY fact_sequence LIMIT 1 RETURNING fact_sequence";
 
 pub async fn verify(pool: &PgPool, service: &ProfitReportingService, actor: Uuid) {
     // Reserve and insert the lower sequence, but deliberately commit it last.

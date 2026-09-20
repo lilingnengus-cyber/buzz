@@ -62,3 +62,11 @@ management_snapshot_late_fact（55439）完整 B4 回归通过。测试在未提
 使用实际重建 gateway --migrate-only 对已有 59 数据的独立副本 management_snapshot_upgrade 升至 60，原 management_report_snapshots 全行摘要前后一致（5ca7e5d082a4efb838b1583fe347b7f9）。严格 Clippy、格式、文件大小及差异检查通过。日志 /tmp/management-snapshot-late-fact.log、/tmp/management-snapshot-upgrade.log、/tmp/management-snapshot-late-{clippy,size}.log。
 
 迁移 60 必须与使用新冲突键的 Core 配套发布；不能把仅支持旧冲突键的报表源码作为迁移后的回退方案。当前 c186ddf01 暂停候选仍固定迁移 59，不受本批源码影响；本批未部署。质量状态单独变化时是否产生新内容版本、完整前驱链和助手意图/确认仍需明确及实现。
+
+## 月报只读预览与受保护生成
+
+新增 Core snapshot_preview 和 generate_snapshot_guarded。范围/前驱验证及内容聚合抽取到 reporting/snapshot_preview.rs，普通生成与预览共用同一套计算。预览明确输入、完整范围、来源序号/摘要、金额/事实数量、数据质量、创建或复用效果及非财务法定报表边界；复用时显示实际历史快照 ID/编号/版本、前驱、生成时间、数据截止时间及冻结时的质量状态。预览不分配编号、不写快照/审计/幂等。
+
+受保护生成的幂等哈希绑定 input 和完整 preview；事务内重新生成预览，任何内容/范围/来源/复用状态变化均返回 StalePreview，失败不留幂等占位。成功重放继续校验当前权限/原快照范围，但返回原不可变结果，避免因为创建后 existing 状态变化拒绝合法重试。普通生成保留原请求哈希。
+
+management_snapshot_preview_final（55439）完整 B4 回归通过：预览前后四项记录/编号计数不变；摘要篡改、加入新事实后的旧预览拒绝且无残留；新预览成功生成，原预览同键成功重放，改变预览同键返回 IdempotencyConflict；新的复用预览返回原快照，不新增快照，含历史时间信息。日志 /tmp/management-snapshot-preview-final.log。尚未增加 HTTP/Agent 意图、审批策略或 MCP 工具，不能据此声称聊天写入已开放；经营日/周报相同接口仍需接入。
