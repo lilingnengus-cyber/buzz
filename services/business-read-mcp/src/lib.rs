@@ -7,6 +7,8 @@ mod master_result;
 mod master_tools;
 mod order_hold_result;
 mod order_hold_tools;
+mod report_snapshot_result;
+mod report_snapshot_tools;
 mod write_result;
 use write_result::validate_write_result;
 mod tool_visibility;
@@ -2393,14 +2395,22 @@ impl BusinessReadMcp {
         let started = std::time::Instant::now();
         let response = self.call_write_api(tool, &input, &context).await;
         let response = response.and_then(|value| {
-            if (order_hold_result::family(tool).is_some()
-                && order_hold_result::approval(
+            if (report_snapshot_result::family(tool).is_some()
+                && report_snapshot_result::approval(
                     tool,
                     &value,
                     &context,
                     self.config.max_payload_bytes,
                 )
                 .is_err())
+                || (order_hold_result::family(tool).is_some()
+                    && order_hold_result::approval(
+                        tool,
+                        &value,
+                        &context,
+                        self.config.max_payload_bytes,
+                    )
+                    .is_err())
                 || master_result::family(tool).is_some()
                     && master_result::approval(
                         tool,

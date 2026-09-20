@@ -107,6 +107,7 @@ async fn report_adapter_checks_scope_before_prepare_and_confirm() {
             .unwrap();
     assert_eq!(count, 0);
     let prepared = value(forward(&core, tool, input.clone(), &c, &allowed).await).await;
+    export(tool, c.trace_id, &prepared);
     assert_eq!(prepared["resourceRefs"], json!([]));
     let mut tampered = prepared["document"].clone();
     tampered["sourceHash"] = json!("a".repeat(64));
@@ -137,6 +138,7 @@ async fn report_adapter_checks_scope_before_prepare_and_confirm() {
         .unwrap();
     assert_eq!(count, 0);
     let result = value(forward(&core, tool, approval, &c, &allowed).await).await;
+    export(tool, c.trace_id, &result);
     assert_eq!(result["executed"], true);
     assert_eq!(
         result["resourceRefs"][0]["bizUri"],
@@ -154,12 +156,14 @@ async fn report_adapter_checks_scope_before_prepare_and_confirm() {
         reused["document"]["effects"]["createsImmutableSnapshot"],
         false
     );
+    export(tool, c.trace_id, &reused);
     assert_eq!(reused["resourceRefs"], result["resourceRefs"]);
     let tool = "approve_management_report_snapshot";
     let c = context(f.actor, required_capability(tool).unwrap());
     let allowed = grant(&c, f.legal_entity, f.business_unit, f.customer);
     let approval = json!({"documentId":reused["item"]["id"],"expectedVersion":1,"previewHash":reused["previewHash"],"decision":"approve"});
     let replay = value(forward(&core, tool, approval, &c, &allowed).await).await;
+    export(tool, c.trace_id, &replay);
     assert_eq!(
         replay["createdDocument"]["id"],
         result["createdDocument"]["id"]
@@ -171,4 +175,21 @@ async fn report_adapter_checks_scope_before_prepare_and_confirm() {
         .unwrap();
     assert_eq!(count, 1);
     server.abort();
+}
+
+fn export(tool: &str, trace: Uuid, result: &Value) {
+    use std::io::Write;
+    if let Ok(path) = std::env::var("BUSINESS_REPORT_MCP_FIXTURE_FILE") {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        writeln!(
+            file,
+            "{}",
+            json!({"tool":tool,"traceId":trace,"result":result})
+        )
+        .unwrap();
+    }
 }

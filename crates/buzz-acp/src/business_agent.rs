@@ -16,7 +16,8 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 63] = [
+const AGENT_SCOPES: [&str; 64] = [
+    "management_report_snapshot_intent:create",
     "sales_order_hold_intent:create",
     "sales_order_release_hold_intent:create",
     "core_master_status_intent:create",
@@ -88,6 +89,7 @@ fn chat_approval_scope(content: &str) -> Option<&'static str> {
         return None;
     }
     let scope = match parts.next()? {
+        "management-report-snapshot-intent" => "management_report_snapshot_intent:approve",
         "sales-order-hold-intent" => "sales_order_hold_intent:approve",
         "sales-order-release-hold-intent" => "sales_order_release_hold_intent:approve",
         "core-master-status-intent" => "core_master_status_intent:approve",

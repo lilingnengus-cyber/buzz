@@ -111,3 +111,17 @@ Gateway 登记 management_report_snapshot_intent:create/approve，解析固定 m
 真实 HTTP Core + PostgreSQL 独立库 report_snapshot_adapter_verified（55439）验收：六类不匹配/不支持范围的准备均拒绝且意图计数为零；成功准备、非法范围/摘要校验、确认前客户范围复核、实际生成及详情链接；已有快照的再次准备/审批复用原 ID，快照数保持 1。日志 /tmp/report-adapter-test-final.log。Read API 库测试 51 项通过（数据库环境未设时数据库用例跳过，不能计作 51 项真实数据库验收）；Gateway Agent 单测 4 项通过。尚未接入 MCP/Host，未部署或发送真实聊天消息。
 
 Gateway/Read API 严格 Clippy、格式、文件大小和差异检查通过；日志 /tmp/report-adapter-clippy-final.log、/tmp/report-adapter-size.log。未运行全仓 just ci。
+
+## MCP 与 Host 月报工具接入
+
+MCP 增加固定 prepare_management_report_snapshot / approve_management_report_snapshot。准备只接受严格的月报输入，审批零业务参数，从当前已签名委托取意图 ID、版本、摘要和决定。Host 普通委托新增 create（共 64 个 scope）；严格文字确认才选对应 approve scope。工具说明要求明确月份/币种、展示范围/金额/质量/创建或复用效果并等待用户，不把准备当作已生成。
+
+MCP 独立复算 scopeHash、sourceHash、previewHash，检查固定报表类型、结构、执行状态、票数、当前签名意图、trace 和实际 biz://management-report/<UUID> 链接。新意图准备不得伪造未生成快照的链接；复用必须匹配已有快照 ID/编号/版本。拒绝或等待审批结果不能携带已生成记录。
+
+真实 Core/Read API/数据库 report_mcp_proof（55439）导出四份新建/复用准备及确认返回值 /tmp/report-mcp-proof-96ece.jsonl；MCP 25 项测试通过，包含这四份实际结果及摘要、命令、链接、结果字段、签名意图、pending/rejected 反例（/tmp/report-mcp-proof-test.log）。Host 命令/委托测试 10 项通过（/tmp/report-host-test.log）。
+
+本地实际 buzz-agent + business-read-mcp 二进制、模拟模型端点运行：普通会话 106 个固定工具；月报确认会话 60 个，只含对应审批写入工具，两种 prompt 均完成。日志 /tmp/report-native-{ordinary,approval}.log。此探针验证实际工具可见性，不代表真实用户聊天、生产登录或 Windows 运行已验收。
+
+仍未部署；旧 c186ddf01 安装包不含本批报表功能。品牌/仓库/供应商受限报表过滤、日报/周报，以及整目标其余业务领域仍需继续；上线还需配套迁移 60/61、授权/策略、暂停回退与真实客户端验证。
+
+本批严格 Clippy（MCP、Read API、Host 全 targets）、格式、文件大小及差异检查通过；日志 /tmp/report-mcp-clippy-final.log、/tmp/report-mcp-size.log。未运行全仓 just ci。

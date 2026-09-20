@@ -210,6 +210,9 @@ impl BusinessReadMcp {
 }
 impl BusinessReadMcp {
     pub(crate) fn all_tools() -> ToolRouter<Self> {
-        Self::tool_router() + Self::master_router() + order_hold_tools::router()
+        Self::tool_router()
+            + Self::master_router()
+            + order_hold_tools::router()
+            + report_snapshot_tools::router()
     }
 }
