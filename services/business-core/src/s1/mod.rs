@@ -6,6 +6,8 @@ mod quality;
 #[cfg(test)]
 mod quality_scope_tests;
 mod trends;
+#[cfg(test)]
+mod warehouse_quality_tests;
 const PROJECTION_HEALTH_SQL: &str = include_str!("sql/projection_health.sql");
 
 pub use incidents::IncidentCommand;

@@ -13,7 +13,7 @@ pub(super) struct OperatingContent {
 }
 impl OperatingContent {
     pub(super) fn preview(&self, actor: Uuid, input: &GenerateOperatingSnapshot) -> Value {
-        json!({"schemaVersion":if input.legal_entity_ids.is_some() || input.business_unit_ids.is_some(){2}else{1},"kind":"operating_report_snapshot","input":input,
+        json!({"schemaVersion":if input.warehouse_ids.is_some(){3}else if input.legal_entity_ids.is_some() || input.business_unit_ids.is_some(){2}else{1},"kind":"operating_report_snapshot","input":input,
             "ownerUserId":actor,"periodEnd":self.period_end,
             "periodStartUtc":self.period_start_utc,"periodEndUtc":self.period_end_utc,"timeBasis":"fixed_utc_offset","scope":self.scope,"scopeHash":self.scope_hash,
             "metrics":self.payload,"sourceHash":self.source_hash,"dataQualityStatus":self.quality_status,
@@ -106,7 +106,8 @@ impl OperationsService {
             })?;
         let (period_start_utc, period_end_utc) = utc_bounds(input, period_end)?;
         let (selected, scope_hash) = snapshot_scope::resolve(tx, &auth, input).await?;
-        let incident_metrics_available = input.business_unit_ids.is_none()
+        let incident_metrics_available = input.warehouse_ids.is_none()
+            && input.business_unit_ids.is_none()
             && selected.legal_entity_ids == auth.scopes.legal_entity_ids;
         let scope = serde_json::to_value(&selected)?;
         auth.scopes = selected;
@@ -133,12 +134,12 @@ impl OperationsService {
             .business_unit_ids
             .into_iter()
             .collect::<Vec<_>>();
-        let sales = sqlx::query("SELECT count(*) order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) order_amount FROM sales_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
+        let sales = sqlx::query("SELECT count(DISTINCT o.id) order_count,COALESCE(sum(CASE WHEN $8::uuid[] IS NULL THEN o.gross_amount ELSE l.gross_amount END),0)::numeric(24,6) order_amount FROM sales_orders o LEFT JOIN sales_order_lines l ON $8::uuid[] IS NOT NULL AND l.sales_order_id=o.id AND l.warehouse_id=ANY($8) WHERE o.order_date>=$1 AND o.order_date<$2 AND o.currency=$3 AND o.legal_entity_id=ANY($4) AND o.customer_id=ANY($5) AND (o.brand_id IS NULL OR o.brand_id=ANY($6)) AND o.business_unit_id=ANY($7) AND ($8::uuid[] IS NULL OR l.id IS NOT NULL)")
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&brand).bind(&bu).bind(input.warehouse_ids.as_ref()).fetch_one(&mut **tx).await?;
         let shipments = sqlx::query("SELECT count(*) FILTER(WHERE s.status='confirmed') shipment_count,COALESCE(sum(s.sales_amount) FILTER(WHERE s.status='confirmed'),0)::numeric(24,6) shipped_revenue FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE s.shipment_date>=$1 AND s.shipment_date<$2 AND s.currency=$3 AND s.legal_entity_id=ANY($4) AND s.customer_id=ANY($5) AND s.warehouse_id=ANY($6) AND (o.brand_id IS NULL OR o.brand_id=ANY($7)) AND o.business_unit_id=ANY($8)")
             .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&customer).bind(&wh).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
-        let purchasing = sqlx::query("SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount FROM purchase_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND supplier_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)")
-            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).fetch_one(&mut **tx).await?;
+        let purchasing = sqlx::query("SELECT count(DISTINCT o.id) purchase_order_count,COALESCE(sum(CASE WHEN $8::uuid[] IS NULL THEN o.gross_amount ELSE l.gross_amount END),0)::numeric(24,6) purchase_order_amount FROM purchase_orders o LEFT JOIN purchase_order_lines l ON $8::uuid[] IS NOT NULL AND l.purchase_order_id=o.id AND l.warehouse_id=ANY($8) WHERE o.order_date>=$1 AND o.order_date<$2 AND o.currency=$3 AND o.legal_entity_id=ANY($4) AND o.supplier_id=ANY($5) AND (o.brand_id IS NULL OR o.brand_id=ANY($6)) AND o.business_unit_id=ANY($7) AND ($8::uuid[] IS NULL OR l.id IS NOT NULL)")
+            .bind(input.period_start).bind(period_end).bind(&input.currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).bind(input.warehouse_ids.as_ref()).fetch_one(&mut **tx).await?;
         let inventory = sqlx::query("SELECT COALESCE(sum(b.inventory_value),0)::numeric(24,6) inventory_value,count(*) FILTER(WHERE b.on_hand_quantity-b.reserved_quantity=0 AND b.reserved_quantity>0) stockout_count FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id WHERE e.functional_currency=$1 AND b.legal_entity_id=ANY($2) AND b.warehouse_id=ANY($3) AND ($4::uuid[] IS NULL OR w.business_unit_id=ANY($4))")
             .bind(&input.currency).bind(&le).bind(&wh).bind(input.business_unit_ids.as_ref()).fetch_one(&mut **tx).await?;
         let profit = sqlx::query("SELECT COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='net_revenue'),0)::numeric(24,6) revenue,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='product_cost'),0)::numeric(24,6) product_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type IN ('outbound_freight','sales_commission','platform_fee','customer_rebate','other_direct_cost','allocated_operating_expense')),0)::numeric(24,6) operating_cost,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END) FILTER(WHERE metric_type='supplier_rebate'),0)::numeric(24,6) supplier_rebate FROM profit_facts WHERE business_date>=$1 AND business_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND warehouse_id=ANY($6) AND (brand_id IS NULL OR brand_id=ANY($7)) AND business_unit_id=ANY($8)")
@@ -156,6 +157,7 @@ impl OperationsService {
                 actor,
                 input.legal_entity_ids.as_ref().map(|_| le.as_slice()),
                 input.business_unit_ids.as_ref().map(|_| bu.as_slice()),
+                input.warehouse_ids.as_ref().map(|_| wh.as_slice()),
             )
             .await?;
         let mut quality_status = quality["status"].as_str().unwrap_or("blocked");
@@ -177,7 +179,13 @@ impl OperationsService {
             "slaBreached": incidents.get::<i64,_>("breached_count"),
             "averageResolutionHours": incidents.get::<Decimal,_>("average_resolution_hours").to_string()
         });
-        if input.legal_entity_ids.is_some() || input.business_unit_ids.is_some() {
+        if input.warehouse_ids.is_some() {
+            payload["aggregationBasis"] = json!({"orderAmounts":"selected_warehouse_lines","orderCounts":"distinct_orders_with_selected_warehouse_lines","businessUnitFilterApplied":input.business_unit_ids.is_some()});
+        }
+        if input.legal_entity_ids.is_some()
+            || input.business_unit_ids.is_some()
+            || input.warehouse_ids.is_some()
+        {
             payload["unavailableMetrics"] = json!({});
             if !incident_metrics_available {
                 for key in [
@@ -187,12 +195,13 @@ impl OperationsService {
                     "averageResolutionHours",
                 ] {
                     payload[key] = Value::Null;
-                    payload["unavailableMetrics"][key] =
-                        json!(if input.business_unit_ids.is_some() {
-                            "not_attributable_to_selected_business_units"
-                        } else {
-                            "not_attributable_to_selected_legal_entities"
-                        });
+                    payload["unavailableMetrics"][key] = json!(if input.warehouse_ids.is_some() {
+                        "not_attributable_to_selected_warehouses"
+                    } else if input.business_unit_ids.is_some() {
+                        "not_attributable_to_selected_business_units"
+                    } else {
+                        "not_attributable_to_selected_legal_entities"
+                    });
                 }
             }
         }

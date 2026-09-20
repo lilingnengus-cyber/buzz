@@ -43,6 +43,10 @@ fn strict_inputs() {
     assert!(!valid("prepare_operating_report_snapshot", &input));
     input["businessUnitIds"] = json!([Uuid::new_v4()]);
     assert!(valid("prepare_operating_report_snapshot", &input));
+    input["warehouseIds"] = json!([]);
+    assert!(!valid("prepare_operating_report_snapshot", &input));
+    input["warehouseIds"] = json!([Uuid::new_v4()]);
+    assert!(valid("prepare_operating_report_snapshot", &input));
     input["periodStart"] = json!("2026-01-20");
     assert!(!valid("prepare_operating_report_snapshot", &input));
     input["cadence"] = json!("daily");
@@ -260,6 +264,52 @@ async fn operating_adapter_uses_real_core_and_checks_before_writing() {
         let result = value(forward(&core, tool, command, &c, &scoped(&c)).await).await;
         assert_eq!(result["executed"], true);
         export(tool, c.trace_id, &result);
+    }
+    for cadence in ["daily", "weekly"] {
+        for by_unit in [false, true] {
+            let tool = "prepare_operating_report_snapshot";
+            let c = context(f.actor, required_capability(tool).unwrap());
+            let mut input = json!({"cadence":cadence,"periodStart":"2026-05-04","currency":"CNY","utcOffsetMinutes":480,"legalEntityIds":[f.legal_entity],"warehouseIds":[f.warehouse]});
+            if by_unit {
+                input["businessUnitIds"] = json!([f.business_unit]);
+            }
+            let scoped = |c: &RequestContext| {
+                let mut allowed = grant(c, f.legal_entity);
+                if let DataScope::Restricted(ref mut dimensions) = allowed.data_scope {
+                    dimensions.insert("warehouse".into(), [f.warehouse.to_string()].into());
+                    if by_unit {
+                        dimensions
+                            .insert("business_unit".into(), [f.business_unit.to_string()].into());
+                    }
+                }
+                allowed
+            };
+            let mut unfiltered = input.clone();
+            unfiltered.as_object_mut().unwrap().remove("warehouseIds");
+            assert_eq!(
+                forward(&core, tool, unfiltered, &c, &scoped(&c))
+                    .await
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+            let prepared = value(forward(&core, tool, input, &c, &scoped(&c)).await).await;
+            assert_eq!(prepared["document"]["schemaVersion"], 3);
+            assert_eq!(
+                prepared["document"]["scope"]["warehouseIds"],
+                json!([f.warehouse])
+            );
+            assert_eq!(
+                prepared["document"]["metrics"]["aggregationBasis"]["businessUnitFilterApplied"],
+                by_unit
+            );
+            export(tool, c.trace_id, &prepared);
+            let tool = "approve_operating_report_snapshot";
+            let c = context(f.actor, required_capability(tool).unwrap());
+            let command = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
+            let result = value(forward(&core, tool, command, &c, &scoped(&c)).await).await;
+            assert_eq!(result["executed"], true);
+            export(tool, c.trace_id, &result);
+        }
     }
     sqlx::query("UPDATE business_approval_policies SET min_approvers=2 WHERE action_code='management_report:generate_snapshot'").execute(&pool).await.unwrap();
     for decision in ["approve", "reject"] {

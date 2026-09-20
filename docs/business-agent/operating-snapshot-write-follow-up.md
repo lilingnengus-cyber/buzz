@@ -257,3 +257,19 @@ operating_legal_adapter_final 真实 Core HTTP + Read API 验证宽范围被拒�
 operating_bu_adapter 真实 Core HTTP + Read API 验证业务单元受限委托的旧无筛选请求被拒，显式 daily/weekly 准备和确认成功；导出 /tmp/operating-bu-proof.jsonl 共 16 份实际返回。MCP 26 项测试通过（同时复用月报 6 份实际结果），含重新计算来源摘要后的范围/原因篡改拒绝及可选输入 schema。前端检查、构建、4 项模拟 API 实际页面测试通过；首次页面测试使用旧构建导致新原因断言失败，重新构建后通过。日志 /tmp/operating-bu-{scope,final,verified,quality-final,approvals,adapter,mcp,browser-final,clippy-final,size}.log。
 
 无需新迁移，需配套发布 Core、Read API、MCP、Web。尚未部署、更新安装包或发送真实聊天；未运行全仓 just ci。完整业务写入目标继续保留，下一步补充仓库等剩余筛选及其明确归属，随后配套发布和真实客户端验收。
+
+## 日报/周报显式仓库筛选
+
+新增可选 warehouseIds：必须非空、属于当前授权、归属于所选法人。可单独使用，也可与法人/业务单元组合；仓库不会按所属业务单元强行裁剪，以保留跨业务单元仓库履约。显式仓库筛选采用独立范围身份，并区分是否同时显式选择业务单元。省略字段保留既有输入序列化及 v1/v2 行为。
+
+销售和采购订单按所选仓库的明细行汇总 gross_amount（含已有折扣及税额），订单数 count distinct 单据 ID。同一订单跨仓库时，两个单仓报告可各计 1 单，但全选仍计 1，不能将单仓订单数相加。发货和利润继续按实际来源/事实仓库筛选，库存取生成时点所选仓库余额；数据质量的应收通过实际出库、应付通过实际收货定位仓库。与业务单元组合时保留订单业务单元及库存仓库所属业务单元的既定口径。
+
+仓库筛选预览为 schemaVersion=3，冻结 metrics 增加 aggregationBasis，明确订单金额为 selected_warehouse_lines、订单数为 distinct_orders_with_selected_warehouse_lines，以及 businessUnitFilterApplied。口径随指标进入 sourceHash 和签名确认；Read API、MCP 独立核对精确内容，拒绝将其篡改为整单金额口径。四个异常指标仍无法按仓库拆分，返回 null 和固定原因 not_attributable_to_selected_warehouses，质量不声明 complete。详情与趋势展示说明，没有新操作按钮。历史趋势比较要求相同 aggregationBasis，不能混用六维范围相同但统计口径不同的快照。
+
+真实 PostgreSQL 55439：operating_wh_scope 完整 B4 回归通过，实际业务服务创建跨两仓三行的销售/采购订单并确认一笔采购收货。两仓含税折后金额分别 149、203.40，全选为 352.40，订单数始终为 1；收货仓库存为 180。日报/周报覆盖冻结、详情、同键重放、空/未知仓库拒绝、实际既有发货和利润的仓库隔离、业务单元组合身份。最终 operating_wh_verified 新库进一步证明不同 aggregationBasis 不比较、相同仓库口径跨期可比较、撤销仓库范围后详情及幂等重放拒绝、已授权但与所选法人不符的仓库拒绝。
+
+在 operating_wh_scope 上，三个数据质量事务测试全部通过并回滚：库存与应收差异只落入原仓库，应付差异只落入实际收货仓库；同时补上上一批缺少的非零应付差异业务单元归属证明。operating_wh_approvals 的原审批竞争、过期、撤权回归通过。
+
+operating_wh_adapter 真实 Core HTTP + Read API 验证仓库受限委托不能使用旧无筛选请求；daily/weekly 的仓库筛选、仓库+业务单元组合均可准备并确认。共 24 份新旧版本结果导出 /tmp/operating-wh-proof.jsonl，MCP 26 项测试通过，包含来源摘要重新计算后的仓库范围/统计口径篡改拒绝，兼容原月报 6 份结果。前端检查、构建及 5 项模拟 API 实际页面测试通过；Core/API/MCP 严格 Clippy、格式/差异及文件大小门禁通过。日志 /tmp/operating-wh-{scope,verified,quality,approvals,adapter,mcp,browser,clippy,size}.log。
+
+无需新增迁移，尚未部署、更新安装包或发送真实聊天；未运行全仓 just ci。需要配套发布 Core、Read API、MCP 和 Web。完整业务写入目标不变，客户/供应商/品牌筛选、异常归属、配套发布及真实客户端验收等仍在待办。

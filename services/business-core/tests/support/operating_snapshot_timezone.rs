@@ -10,6 +10,7 @@ fn input(cadence: &str, offset: i16, day: u32) -> GenerateOperatingSnapshot {
         currency: "CNY".into(),
         period_start: NaiveDate::from_ymd_opt(2026, 1, day).unwrap(),
         business_unit_ids: None,
+        warehouse_ids: None,
         legal_entity_ids: None,
         utc_offset_minutes: offset,
     }

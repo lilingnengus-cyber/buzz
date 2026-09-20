@@ -29,6 +29,9 @@ pub struct GenerateOperatingSnapshot {
     /// Optional nonempty authorized business-unit subset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub business_unit_ids: Option<Vec<Uuid>>,
+    /// Optional nonempty warehouse subset; order amounts include selected lines only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warehouse_ids: Option<Vec<Uuid>>,
     pub cadence: String,
     pub currency: String,
     pub period_start: NaiveDate,
@@ -486,6 +489,7 @@ impl OperationsService {
                 currency: row.get("currency"),
                 period_start,
                 business_unit_ids: None,
+                warehouse_ids: None,
                 legal_entity_ids: None,
                 utc_offset_minutes: offset,
             };

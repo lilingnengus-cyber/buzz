@@ -7,7 +7,10 @@ pub(super) fn same_scope(left: &PgRow, right: &PgRow) -> bool {
         row.get::<Value, _>("payload")["unavailableMetrics"]["slaBreached"]
             == "not_attributable_to_selected_business_units"
     };
-    if unit_filtered(left) != unit_filtered(right) {
+    if unit_filtered(left) != unit_filtered(right)
+        || left.get::<Value, _>("payload").get("aggregationBasis")
+            != right.get::<Value, _>("payload").get("aggregationBasis")
+    {
         return false;
     }
     match (

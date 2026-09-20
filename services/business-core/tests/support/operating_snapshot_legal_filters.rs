@@ -22,6 +22,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, f: &Fixture) {
             utc_offset_minutes: 480,
             legal_entity_ids: None,
             business_unit_ids: None,
+            warehouse_ids: None,
         };
         assert!(serde_json::to_value(&base)
             .unwrap()

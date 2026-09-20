@@ -32,6 +32,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, f: &Fixture) {
             utc_offset_minutes: 480,
             legal_entity_ids: None,
             business_unit_ids: None,
+            warehouse_ids: None,
         };
         assert!(serde_json::to_value(&base)
             .unwrap()
@@ -153,6 +154,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, f: &Fixture) {
         utc_offset_minutes: 480,
         legal_entity_ids: None,
         business_unit_ids: None,
+        warehouse_ids: None,
     };
     let previous = service
         .generate_operating_snapshot(f.actor, Uuid::new_v4(), "bu-previous-unfiltered", &prior)

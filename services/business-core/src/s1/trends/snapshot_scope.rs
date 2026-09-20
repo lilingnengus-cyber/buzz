@@ -6,7 +6,10 @@ pub(super) async fn resolve(
     input: &GenerateOperatingSnapshot,
 ) -> Result<(DataScopes, String), DomainError> {
     let mut scopes = auth.scopes.clone();
-    if input.legal_entity_ids.is_none() && input.business_unit_ids.is_none() {
+    if input.legal_entity_ids.is_none()
+        && input.business_unit_ids.is_none()
+        && input.warehouse_ids.is_none()
+    {
         return Ok((scopes, auth.effective_scope_hash.clone()));
     }
     if let Some(ids) = &input.legal_entity_ids {
@@ -49,7 +52,24 @@ pub(super) async fn resolve(
         }
         scopes.business_unit_ids = ids.iter().copied().collect();
     }
-    let version = if input.business_unit_ids.is_some() {
+    if let Some(ids) = &input.warehouse_ids {
+        if ids.is_empty() {
+            return Err(DomainError::Invalid(
+                "warehouseIds must not be empty".into(),
+            ));
+        }
+        if ids.iter().any(|id| !scopes.warehouse_ids.contains(id)) {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        scopes.warehouse_ids = ids.iter().copied().collect();
+    }
+    let version = if input.warehouse_ids.is_some() {
+        if input.business_unit_ids.is_some() {
+            "operating-warehouse-business-unit-scope-v1"
+        } else {
+            "operating-warehouse-scope-v1"
+        }
+    } else if input.business_unit_ids.is_some() {
         "operating-business-unit-scope-v1"
     } else {
         "operating-legal-scope-v1"

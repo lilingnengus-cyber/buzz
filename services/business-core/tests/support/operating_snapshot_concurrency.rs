@@ -23,6 +23,7 @@ fn input(day: NaiveDate) -> GenerateOperatingSnapshot {
         currency: "CNY".into(),
         period_start: day,
         business_unit_ids: None,
+        warehouse_ids: None,
         legal_entity_ids: None,
         utc_offset_minutes: 480,
     }

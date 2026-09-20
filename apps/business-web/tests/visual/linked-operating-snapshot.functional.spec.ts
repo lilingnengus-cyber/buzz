@@ -197,3 +197,63 @@ test("业务单元筛选快照不把无法归属的异常显示为零", async ({
     "null",
   );
 });
+
+test("仓库筛选快照不把无法归属的异常显示为零", async ({ page }) => {
+  const id = "54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
+  await page.route("**/api/v1/operations/snapshots/*", (route) =>
+    route.fulfill({
+      json: {
+        id,
+        cadence: "daily",
+        periodStart: "2026-03-02",
+        periodEnd: "2026-03-03",
+        currency: "CNY",
+        utcOffsetMinutes: 480,
+        dataQualityStatus: "partial",
+        generatedAt: "2026-03-04T00:00:00Z",
+        sourceHash: "a".repeat(64),
+        scope: { legalEntityIds: [id] },
+        scopeBasis: "recorded",
+        metrics: {
+          aggregationBasis: {
+            orderAmounts: "selected_warehouse_lines",
+            orderCounts: "distinct_orders_with_selected_warehouse_lines",
+            businessUnitFilterApplied: false,
+          },
+          salesOrderCount: 1,
+          salesOrderAmount: "123.45",
+          shipmentCount: 1,
+          shippedRevenue: "100.00",
+          purchaseOrderCount: 0,
+          purchaseOrderAmount: "0.00",
+          inventoryValueAsOfGeneration: "600.00",
+          stockoutCountAsOfGeneration: 0,
+          managementOperatingProfit: "70.00",
+          incidentsOpened: null,
+          incidentsResolved: null,
+          slaBreached: null,
+          averageResolutionHours: null,
+          unavailableMetrics: {
+            incidentsOpened: "not_attributable_to_selected_warehouses",
+            incidentsResolved: "not_attributable_to_selected_warehouses",
+            slaBreached: "not_attributable_to_selected_warehouses",
+            averageResolutionHours: "not_attributable_to_selected_warehouses",
+          },
+        },
+      },
+    }),
+  );
+  await page.goto(`/embed/operating-snapshots/${id}`);
+  await expect(
+    page.getByRole("cell", { name: "不可按仓库拆分", exact: true }),
+  ).toHaveCount(4);
+  await expect(page.getByTestId("operating-snapshot-detail")).toContainText(
+    "CNY 123.45",
+  );
+  await expect(page.getByTestId("operating-snapshot-detail")).toContainText(
+    "订单金额仅含所选仓库的明细",
+  );
+  await expect(page.getByTestId("operating-snapshot-detail")).not.toContainText(
+    "null",
+  );
+});

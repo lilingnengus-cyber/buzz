@@ -32,6 +32,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid, day
                     currency: "CNY".into(),
                     period_start: day.pred_opt().unwrap(),
                     business_unit_ids: None,
+                    warehouse_ids: None,
                     legal_entity_ids: None,
                     utc_offset_minutes: 480,
                 },

@@ -67,14 +67,14 @@ pub(super) fn valid_snapshot(v: &Value, kind: &str) -> bool {
         "managementOperatingProfit",
         "averageResolutionHours",
     ];
-    kind == "operating_report_snapshot_intent" && v["schemaVersion"]==if v["input"].get("legalEntityIds").is_some() || v["input"].get("businessUnitIds").is_some(){2}else{1} && v["kind"]=="operating_report_snapshot"
+    kind == "operating_report_snapshot_intent" && v["schemaVersion"]==if v["input"].get("warehouseIds").is_some(){3}else if v["input"].get("legalEntityIds").is_some() || v["input"].get("businessUnitIds").is_some(){2}else{1} && v["kind"]=="operating_report_snapshot"
         && canonical("prepare_operating_report_snapshot", &v["input"]).as_ref()==Some(&v["input"])
         && uuid(&v["ownerUserId"]) && v["timeBasis"]=="fixed_utc_offset" && period(v).is_some()
         && v["boundary"]=="business_operations_only_not_financial_accounting"
         && scope.as_object().is_some_and(|o| o.len()==6 && o.keys().all(|k| arrays.contains(&k.as_str())))
         && arrays.iter().all(|k| scope[*k].as_array().is_some_and(|a| a.iter().all(uuid)))
         && scope["legalEntityIds"].as_array().is_some_and(|a| !a.is_empty()) && digest(&v["scopeHash"])
-        && selected_scope_binds(v, "legalEntityIds") && selected_scope_binds(v, "businessUnitIds")
+        && selected_scope_binds(v, "legalEntityIds") && selected_scope_binds(v, "businessUnitIds") && selected_scope_binds(v, "warehouseIds")
         && valid_metrics(v,&counts,&amounts)
         && hash(&json!({"cadence":v["input"]["cadence"],"utcOffsetMinutes":v["input"]["utcOffsetMinutes"],"periodStartUtc":v["periodStartUtc"],"periodEndUtc":v["periodEndUtc"],"periodStart":v["input"]["periodStart"],"periodEnd":v["periodEnd"],"currency":v["input"]["currency"],"scopeHash":v["scopeHash"],"metrics":v["metrics"]})).is_some_and(|h| v["sourceHash"]==h)
         && matches!(v["dataQualityStatus"].as_str(),Some("complete"|"partial"|"blocked"))
@@ -100,7 +100,13 @@ pub(super) fn permits(v: &Value, scope: &AuthorizationScope, kind: &str) -> bool
                                 .is_some_and(|s| scope.business_unit_ids.contains(s))
                         })
                 })))
-        && scope.warehouse_ids.is_empty()
+        && (scope.warehouse_ids.is_empty()
+            || (v["input"].get("warehouseIds").is_some()
+                && v["scope"]["warehouseIds"].as_array().is_some_and(|a| {
+                    !a.is_empty()
+                        && a.iter()
+                            .all(|id| id.as_str().is_some_and(|s| scope.warehouse_ids.contains(s)))
+                })))
         && (scope.legal_entity_ids.is_empty()
             || v["scope"]["legalEntityIds"].as_array().is_some_and(|a| {
                 !a.is_empty()
@@ -132,12 +138,22 @@ fn selected_scope_binds(v: &Value, field: &str) -> bool {
 }
 fn valid_metrics(v: &Value, counts: &[&str], amounts: &[&str]) -> bool {
     let metrics = &v["metrics"];
-    let filtered =
-        v["input"].get("legalEntityIds").is_some() || v["input"].get("businessUnitIds").is_some();
-    if metrics
-        .as_object()
-        .is_none_or(|o| o.len() != counts.len() + amounts.len() + usize::from(filtered))
-    {
+    let by_warehouse = v["input"].get("warehouseIds").is_some();
+    let filtered = by_warehouse
+        || v["input"].get("legalEntityIds").is_some()
+        || v["input"].get("businessUnitIds").is_some();
+    if metrics.as_object().is_none_or(|o| {
+        o.len() != counts.len() + amounts.len() + usize::from(filtered) + usize::from(by_warehouse)
+    }) {
+        return false;
+    }
+    if by_warehouse {
+        if metrics["aggregationBasis"]
+            != json!({"orderAmounts":"selected_warehouse_lines","orderCounts":"distinct_orders_with_selected_warehouse_lines","businessUnitFilterApplied":v["input"].get("businessUnitIds").is_some()})
+        {
+            return false;
+        }
+    } else if metrics.get("aggregationBasis").is_some() {
         return false;
     }
     let unavailable = metrics.get("unavailableMetrics");
@@ -146,7 +162,7 @@ fn valid_metrics(v: &Value, counts: &[&str], amounts: &[&str]) -> bool {
             return false;
         };
         let by_unit = v["input"].get("businessUnitIds").is_some();
-        if by_unit && map.len() != 4 {
+        if (by_unit || by_warehouse) && map.len() != 4 {
             return false;
         }
         if !map.is_empty()
@@ -160,7 +176,9 @@ fn valid_metrics(v: &Value, counts: &[&str], amounts: &[&str]) -> bool {
                         "averageResolutionHours",
                     ]
                     .contains(&k.as_str())
-                        && r == if by_unit {
+                        && r == if by_warehouse {
+                            "not_attributable_to_selected_warehouses"
+                        } else if by_unit {
                             "not_attributable_to_selected_business_units"
                         } else {
                             "not_attributable_to_selected_legal_entities"

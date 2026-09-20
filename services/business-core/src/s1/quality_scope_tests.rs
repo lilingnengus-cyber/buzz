@@ -36,11 +36,11 @@ async fn business_unit_quality_uses_source_order_and_warehouse_ownership() {
             .unwrap()
     };
     let stock_before = service
-        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[stock_unit]))
+        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[stock_unit]), None)
         .await
         .unwrap();
     let sales_before = service
-        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[sales_unit]))
+        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[sales_unit]), None)
         .await
         .unwrap();
     sqlx::query(
@@ -53,11 +53,11 @@ async fn business_unit_quality_uses_source_order_and_warehouse_ownership() {
     let receivable: Uuid=sqlx::query_scalar("SELECT t.id FROM trade_receivables t JOIN sales_orders o ON o.id=t.sales_order_id WHERE o.business_unit_id=$1 AND t.open_amount>=1 AND t.status<>'reversed' LIMIT 1").bind(sales_unit).fetch_one(&mut *tx).await.unwrap();
     sqlx::query("UPDATE trade_receivables SET settled_amount=settled_amount+1,open_amount=open_amount-1 WHERE id=$1").bind(receivable).execute(&mut *tx).await.unwrap();
     let stock_after = service
-        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[stock_unit]))
+        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[stock_unit]), None)
         .await
         .unwrap();
     let sales_after = service
-        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[sales_unit]))
+        .data_quality_for_snapshot_on(&mut tx, actor, None, Some(&[sales_unit]), None)
         .await
         .unwrap();
     assert!(count(&stock_after, "inventory") > count(&stock_before, "inventory"));

@@ -24,6 +24,8 @@ mod operating_snapshot_legal_filters;
 mod operating_snapshot_preview;
 #[path = "support/operating_snapshot_timezone.rs"]
 mod operating_snapshot_timezone;
+#[path = "support/operating_snapshot_warehouses.rs"]
+mod operating_snapshot_warehouses;
 #[path = "support/projection_health_scope.rs"]
 mod projection_health_scope;
 use business_core::{
@@ -438,6 +440,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
                 currency: "CNY".into(),
                 period_start: date,
                 business_unit_ids: None,
+                warehouse_ids: None,
                 legal_entity_ids: None,
                 utc_offset_minutes: 480,
             },
@@ -455,6 +458,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
                 currency: "CNY".into(),
                 period_start: date,
                 business_unit_ids: None,
+                warehouse_ids: None,
                 legal_entity_ids: None,
                 utc_offset_minutes: 480,
             },
@@ -711,6 +715,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     operating_snapshot_legal_filters::verify(&pool, &operations, &f).await;
     operating_snapshot_business_units::verify(&pool, &operations, &f).await;
     projection_health_scope::verify(&pool, &operations, f.actor).await;
+    operating_snapshot_warehouses::verify(&pool, &operations, &f).await;
 }
 
 #[allow(clippy::too_many_arguments)]

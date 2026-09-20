@@ -83,6 +83,11 @@ export function OperatingSnapshotDetail({ id }: { id: string }) {
               }
             </small>
           </div>
+          {detail.metrics.aggregationBasis && (
+            <p>
+              仓库口径：订单金额仅含所选仓库的明细；订单数按单据去重，同一订单跨仓库时，各仓库订单数不能直接相加。
+            </p>
+          )}
           <table>
             <thead>
               <tr>

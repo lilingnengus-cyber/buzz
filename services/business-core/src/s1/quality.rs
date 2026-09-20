@@ -17,7 +17,7 @@ impl OperationsService {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         actor: Uuid,
     ) -> Result<Value, DomainError> {
-        self.data_quality_for_snapshot_on(tx, actor, None, None)
+        self.data_quality_for_snapshot_on(tx, actor, None, None, None)
             .await
     }
     pub(super) async fn data_quality_for_snapshot_on(
@@ -26,6 +26,7 @@ impl OperationsService {
         actor: Uuid,
         selected: Option<&[Uuid]>,
         selected_units: Option<&[Uuid]>,
+        selected_warehouses: Option<&[Uuid]>,
     ) -> Result<Value, DomainError> {
         let overall_started = Instant::now();
         let mut stages = Vec::with_capacity(8);
@@ -52,6 +53,12 @@ impl OperationsService {
             }
             auth.scopes.business_unit_ids = ids.iter().copied().collect();
         }
+        if let Some(ids) = selected_warehouses {
+            if ids.is_empty() || ids.iter().any(|id| !auth.scopes.warehouse_ids.contains(id)) {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
+            auth.scopes.warehouse_ids = ids.iter().copied().collect();
+        }
         record_stage(&mut stages, "authorization", stage_started);
         let legal_entities = auth.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>();
         let warehouses = auth.scopes.warehouse_ids.into_iter().collect::<Vec<_>>();
@@ -76,21 +83,23 @@ impl OperationsService {
         record_stage(&mut stages, "inventoryReconciliation", stage_started);
         let stage_started = Instant::now();
         let receivables: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM receivable_balance_reconciliation r JOIN trade_receivables t ON t.id=r.receivable_id JOIN sales_orders o ON o.id=t.sales_order_id WHERE t.legal_entity_id=ANY($1) AND t.customer_id=ANY($2) AND ($3::uuid[] IS NULL OR o.business_unit_id=ANY($3)) AND (r.settled_difference<>0 OR r.open_difference<>0)",
+            "SELECT count(*) FROM receivable_balance_reconciliation r JOIN trade_receivables t ON t.id=r.receivable_id JOIN sales_orders o ON o.id=t.sales_order_id JOIN shipments s ON s.id=t.shipment_id WHERE t.legal_entity_id=ANY($1) AND t.customer_id=ANY($2) AND ($3::uuid[] IS NULL OR o.business_unit_id=ANY($3)) AND ($4::uuid[] IS NULL OR s.warehouse_id=ANY($4)) AND (r.settled_difference<>0 OR r.open_difference<>0)",
         )
         .bind(&legal_entities)
         .bind(&customers)
         .bind(selected_units)
+        .bind(selected_warehouses)
         .fetch_one(&mut **tx)
         .await?;
         record_stage(&mut stages, "receivablesReconciliation", stage_started);
         let stage_started = Instant::now();
         let payables: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM payable_balance_reconciliation r JOIN trade_payables p ON p.id=r.payable_id JOIN purchase_orders o ON o.id=p.purchase_order_id WHERE p.legal_entity_id=ANY($1) AND p.supplier_id=ANY($2) AND ($3::uuid[] IS NULL OR o.business_unit_id=ANY($3)) AND (r.settled_difference<>0 OR r.open_difference<>0)",
+            "SELECT count(*) FROM payable_balance_reconciliation r JOIN trade_payables p ON p.id=r.payable_id JOIN purchase_orders o ON o.id=p.purchase_order_id JOIN goods_receipts s ON s.id=p.goods_receipt_id WHERE p.legal_entity_id=ANY($1) AND p.supplier_id=ANY($2) AND ($3::uuid[] IS NULL OR o.business_unit_id=ANY($3)) AND ($4::uuid[] IS NULL OR s.warehouse_id=ANY($4)) AND (r.settled_difference<>0 OR r.open_difference<>0)",
         )
         .bind(&legal_entities)
         .bind(&suppliers)
         .bind(selected_units)
+        .bind(selected_warehouses)
         .fetch_one(&mut **tx)
         .await?;
         record_stage(&mut stages, "payablesReconciliation", stage_started);

@@ -74,12 +74,12 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
         } else {
             &v["preview"]
         };
-        if preview["schemaVersion"] == 2
+        if matches!(preview["schemaVersion"].as_u64(), Some(2 | 3))
             && preview["metrics"]["unavailableMetrics"]
                 .as_object()
                 .is_some_and(|o| !o.is_empty())
         {
-            for mutation in 0..6 {
+            for mutation in 0..8 {
                 let mut bad = preview.clone();
                 match mutation {
                     0 => bad["metrics"]["slaBreached"] = json!(0),
@@ -98,6 +98,12 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
                         bad["metrics"]["unavailableMetrics"]["slaBreached"] =
                             json!("not_attributable_to_selected_legal_entities");
                     }
+                    6 if preview["input"].get("warehouseIds").is_some() => {
+                        bad["scope"]["warehouseIds"] = json!([Uuid::new_v4()])
+                    }
+                    7 if preview["input"].get("warehouseIds").is_some() => {
+                        bad["metrics"]["aggregationBasis"]["orderAmounts"] = json!("whole_order")
+                    }
                     _ => continue,
                 }
                 bad["sourceHash"]=json!(hex::encode(Sha256::digest(serde_json::to_vec(&json!({"cadence":bad["input"]["cadence"],"utcOffsetMinutes":bad["input"]["utcOffsetMinutes"],"periodStartUtc":bad["periodStartUtc"],"periodEndUtc":bad["periodEndUtc"],"periodStart":bad["input"]["periodStart"],"periodEnd":bad["periodEnd"],"currency":bad["input"]["currency"],"scopeHash":bad["scopeHash"],"metrics":bad["metrics"]})).unwrap())));
@@ -109,5 +115,5 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
         }
         count += 1;
     }
-    assert_eq!(count, 16);
+    assert_eq!(count, 24);
 }

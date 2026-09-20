@@ -257,6 +257,9 @@ export function OperatingTrendsView() {
                   change={item.change?.slaBreached}
                   risk={(item.metrics.slaBreached ?? 0) > 0}
                 />
+                {item.metrics.aggregationBasis && (
+                  <p>订单金额仅含所选仓库明细；跨仓库订单数不能直接相加。</p>
+                )}
                 <footer>
                   <span className={`quality-mark ${item.dataQualityStatus}`}>
                     {item.dataQualityStatus}

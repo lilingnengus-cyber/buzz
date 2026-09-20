@@ -17,6 +17,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid) {
             currency: "CNY".into(),
             period_start: NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
             business_unit_ids: None,
+            warehouse_ids: None,
             legal_entity_ids: None,
             utc_offset_minutes: 480,
         };
@@ -164,6 +165,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid) {
         currency: "CNY".into(),
         period_start: NaiveDate::MAX,
         business_unit_ids: None,
+        warehouse_ids: None,
         legal_entity_ids: None,
         utc_offset_minutes: 480,
     };

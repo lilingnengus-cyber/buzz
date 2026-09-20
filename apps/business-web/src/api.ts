@@ -343,6 +343,11 @@ export type OperatingTrendMetrics = {
   slaBreached: number | null;
   averageResolutionHours: string | null;
   unavailableMetrics?: Record<string, string>;
+  aggregationBasis?: {
+    orderAmounts: "selected_warehouse_lines";
+    orderCounts: "distinct_orders_with_selected_warehouse_lines";
+    businessUnitFilterApplied: boolean;
+  };
 };
 
 export type OperatingTrendSnapshot = {
