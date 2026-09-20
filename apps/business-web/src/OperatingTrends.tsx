@@ -221,7 +221,7 @@ export function OperatingTrendsView() {
               <article className="ruler-row" key={item.id}>
                 <div className="ruler-date">
                   <i>{String(series.items.length - index).padStart(2, "0")}</i>
-                  <strong>{item.periodStart}</strong>
+                  <a href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/operating-snapshots/${item.id}`}><strong>{item.periodStart}</strong></a>
                   <small>
                     {cadence === "daily" ? "DAY" : "WEEK"} · {formatUtcOffset(item.utcOffsetMinutes)}
                   </small>

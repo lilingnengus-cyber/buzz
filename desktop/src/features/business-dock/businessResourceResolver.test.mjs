@@ -166,6 +166,11 @@ test("parses and rebuilds B4 profit deep links", () => {
       "/embed/profit-adjustments/ADJ-001",
     ],
     [
+      "biz://operating-snapshot/RPT-001",
+      "operating_snapshot",
+      "/embed/operating-snapshots/RPT-001",
+    ],
+    [
       "biz://management-report/RPT-001",
       "management_report",
       "/embed/management-reports/RPT-001",

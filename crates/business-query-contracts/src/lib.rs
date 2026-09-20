@@ -524,6 +524,9 @@ pub fn valid_biz_uri(value: &str) -> bool {
         return false;
     };
     let suffix = segments.next();
+    if kind == "operating-snapshot" {
+        return id.len() == 36 && Uuid::parse_str(id).is_ok() && suffix.is_none();
+    }
     if kind == "master-data" {
         return matches!(
             id,
@@ -773,6 +776,13 @@ mod tests {
             "biz://profitability/customer/CUST-001/2026-08"
         ));
         assert!(valid_biz_uri("biz://management-report/MGR-001"));
+        assert!(valid_biz_uri(
+            "biz://operating-snapshot/00000000-0000-4000-8000-000000000001"
+        ));
+        assert!(!valid_biz_uri("biz://operating-snapshot/wrong"));
+        assert!(!valid_biz_uri(
+            "biz://operating-snapshot/00000000-0000-4000-8000-000000000001/extra"
+        ));
         assert!(valid_biz_uri("biz://profit-adjustment/ADJ-001"));
         assert!(valid_biz_uri("biz://shipment/SHP-001"));
         assert!(valid_biz_uri("biz://sales-return/SRET-001"));

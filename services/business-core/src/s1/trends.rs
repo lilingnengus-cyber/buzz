@@ -1,3 +1,4 @@
+mod snapshot_detail;
 mod snapshot_preview;
 use super::OperationsService;
 use crate::{
@@ -53,19 +54,21 @@ impl OperationsService {
     ) -> Result<Value, DomainError> {
         validate_cadence(cadence)?;
         crate::b2::common::validate_currency(currency)?;
-        let auth = authorize(
-            &self.store,
+        let mut tx = self.store.pool().begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *tx)
+            .await?;
+        let auth = crate::master_write_authority::snapshot(
+            &mut tx,
             actor,
             "management_report:read",
-            None,
-            None,
-            None,
-            None,
-            None,
+            false,
         )
         .await?;
-        let rows = sqlx::query("SELECT id,cadence,period_start,period_end,currency::text,payload,data_quality_status,source_hash,generated_at,trace_id,utc_offset_minutes FROM operating_report_snapshots WHERE scope_hash=$1 AND cadence=$2 AND currency=$3 ORDER BY period_start DESC,generated_at DESC,id DESC LIMIT $4")
-            .bind(&auth.effective_scope_hash).bind(cadence).bind(currency).bind(limit.clamp(2, 60)).fetch_all(self.store.pool()).await?;
+        let scopes = serde_json::to_value(&auth.scopes)?;
+        let rows = sqlx::query("SELECT id,cadence,period_start,period_end,currency::text,payload,data_quality_status,source_hash,generated_at,trace_id,utc_offset_minutes,snapshot_scope,scope_hash FROM operating_report_snapshots WHERE ((snapshot_scope IS NULL AND scope_hash=$1) OR (snapshot_scope IS NOT NULL AND generated_by_user_id=$5 AND $6::jsonb @> snapshot_scope)) AND cadence=$2 AND currency=$3 ORDER BY period_start DESC,generated_at DESC,id DESC LIMIT $4")
+            .bind(&auth.effective_scope_hash).bind(cadence).bind(currency).bind(limit.clamp(2,60)).bind(actor).bind(scopes).fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         let payloads = rows
             .iter()
             .map(|row| row.get::<Value, _>("payload"))
@@ -78,7 +81,8 @@ impl OperationsService {
                 let offset: Option<i16> = row.get("utc_offset_minutes");
                 let comparison = offset.and_then(|offset| rows.iter().enumerate().skip(index + 1)
                     .find(|(_, prior)| prior.get::<Option<i16>, _>("utc_offset_minutes") == Some(offset)
-                        && prior.get::<NaiveDate, _>("period_start") < row.get::<NaiveDate, _>("period_start")));
+                        && prior.get::<NaiveDate, _>("period_start") < row.get::<NaiveDate, _>("period_start")
+                        && snapshot_detail::same_scope(row, prior)));
 
                 json!({
                     "id": row.get::<Uuid,_>("id"),
@@ -253,6 +257,7 @@ impl OperationsService {
         let OperatingContent {
             period_end,
             scope_hash,
+            scope,
             payload,
             quality_status,
             source_hash,
@@ -263,8 +268,8 @@ impl OperationsService {
             return Ok(snapshot_result(&row, false, trace_id));
         }
         let id = Uuid::new_v4();
-        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id,utc_offset_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(cadence,period_start,currency,scope_hash,utc_offset_minutes) WHERE utc_offset_minutes IS NOT NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status,utc_offset_minutes,generated_by_user_id")
-            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?;
+        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id,utc_offset_minutes,snapshot_scope) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(cadence,period_start,currency,scope_hash,utc_offset_minutes) WHERE utc_offset_minutes IS NOT NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status,utc_offset_minutes,generated_by_user_id")
+            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).bind(input.utc_offset_minutes).bind(scope).fetch_optional(&mut **tx).await?;
         let (row, created) = if let Some(row) = inserted {
             audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"utcOffsetMinutes":input.utc_offset_minutes,"sourceHash":source_hash})).await?;
             (row, true)

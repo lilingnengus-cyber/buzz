@@ -46,6 +46,7 @@ import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
 import { NumberingRulesCenter } from "./NumberingRulesCenter";
 import { PageLoadFailure } from "./PageLoadFailure";
 import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
+import { OperatingSnapshotDetail } from "./OperatingSnapshotDetail";
 import { OperatingTrendsView } from "./OperatingTrends";
 import { GoodsReceiptConfirmation } from "./GoodsReceiptConfirmation";
 import { GoodsReceiptEntry } from "./GoodsReceiptEntry";
@@ -304,7 +305,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "dashboard") return <OperationsDashboardView />;
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
-  if (section === "trends") return <OperatingTrendsView />;
+  if (section === "trends") return id ? <OperatingSnapshotDetail key={id} id={id} /> : <OperatingTrendsView />;
   if (section === "crm") return <CrmPage key={id} initialId={id} />;
   if (section === "crmFollowups" || section === "crmContacts")
     return (

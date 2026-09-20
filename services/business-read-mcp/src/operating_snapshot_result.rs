@@ -32,6 +32,26 @@ fn bounded(v: &Value, context: &DelegationContext, max: usize) -> Result<(), Str
     }
     validate_business_value(v)
 }
+fn references(v: &Value, id: &Value) -> Result<(), String> {
+    let refs = v.as_array().ok_or("Missing operating snapshot reference")?;
+    if !uuid(id) || refs.len() != 1 {
+        return Err("Invalid operating snapshot reference".into());
+    }
+    let r = &refs[0];
+    object(r, &["type", "id", "title", "bizUri"])?;
+    if r["type"] != "operating_snapshot"
+        || r["id"] != *id
+        || r["title"].as_str().is_none_or(str::is_empty)
+        || r["bizUri"]
+            != format!(
+                "biz://operating-snapshot/{}",
+                id.as_str().ok_or("Invalid snapshot ID")?
+            )
+    {
+        return Err("Operating snapshot link mismatch".into());
+    }
+    Ok(())
+}
 mod snapshot;
 use snapshot::validate as snapshot;
 pub(super) fn prepare(
@@ -81,10 +101,14 @@ pub(super) fn prepare(
     {
         return Err("Report snapshot confirmation does not bind the preview".into());
     }
-    if v["resourceRefs"] != json!([]) {
-        return Err("Operating snapshot detail links are unavailable".into());
+    if v["document"]["existingSnapshot"].is_null() {
+        if v["resourceRefs"] != json!([]) {
+            return Err("Uncreated snapshot has no detail link".into());
+        }
+        Ok(())
+    } else {
+        references(&v["resourceRefs"], &v["document"]["existingSnapshot"]["id"])
     }
-    Ok(())
 }
 
 pub(super) fn approval(
@@ -166,11 +190,10 @@ pub(super) fn approval(
             || !snapshot::timestamp(&d["generatedAt"])
             || (!existing.is_null()
                 && (d["id"] != existing["id"] || d["generatedAt"] != existing["generatedAt"]))
-            || v["resourceRefs"] != json!([])
         {
             return Err("Invalid executed operating snapshot result".into());
         }
-        Ok(())
+        references(&v["resourceRefs"], &d["id"])
     } else {
         let status = match c.approval_decision.as_deref() {
             Some("approve") => "pending",

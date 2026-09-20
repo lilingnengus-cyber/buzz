@@ -201,3 +201,19 @@ Host 普通委托新增 operating_report_snapshot_intent:create（共 65 个 sco
 MCP 26 项测试通过，包含 /tmp/operating-adapter-proof.jsonl 的 8 份真实 Core/Read API 结果与 owner、时间、摘要、命令、链接、效果、签名意图反例；月报 6 份真实结果继续通过。Host 命令与委托测试 10 项通过（/tmp/operating-mcp-final-test.log、/tmp/operating-host-test.log）。MCP/Host all-targets 严格 Clippy、格式、差异、文件大小检查通过（/tmp/operating-mcp-clippy-final.log、/tmp/operating-mcp-size.log）。
 
 本地实际新编译 business-read-mcp + buzz-agent 二进制、模拟模型端点运行：普通会话 107 个固定工具，operating 确认会话 60 个工具且只有对应审批写入工具，两种 prompt 均完成（/tmp/operating-native-{ordinary,approval}.log）。这是工具可见性与实际程序联通证据，不是生产登录/真实聊天/Windows 验收。本批未部署、未改现有安装包、未代发消息。完整目标继续保留：报表维度过滤、历史范围身份、详情链接、配套迁移与发布，以及其他业务领域完整流程均尚有待办。
+
+## 经营快照详情链接与历史范围读取
+
+迁移 0064 为新 operating 快照保存 snapshot_scope，旧行留 NULL，不用当前授权猜测历史范围。生成保留原 auth scopeHash/幂等身份；本批解决的是历史读取，不声称已替换所有生成/事件的授权版本身份。详情读取及趋势查询在同一 repeatable-read 事务锁定当前授权版本并检查 management_report:read。已记录范围必须被当前六维范围完整覆盖；详情允许有覆盖范围的读取者访问，趋势仅列本人生成的已记录快照。旧行仍要求原 effectiveScopeHash 完全一致。
+
+趋势可跨无关授权 revision 查看已记录历史；比较要求冻结 scope 相同且时区已知且一致，不能把不同业务范围的快照混作同一基线。撤销相关范围/读取权限立即拒绝，恢复完整范围后可读取同一冻结内容。
+
+新增 /api/v1/operations/snapshots/{id} 与对应服务路由，页面 /embed/operating-snapshots/{id}（也支持非 embed）只读取指定记录。显示冻结周期、固定时区、各项指标、生成时点库存说明、质量与可展开范围/来源。趋势日期改为快照链接，未增加新的写操作按钮。Desktop 资源解析/桥接与共享 biz URI 白名单支持 biz://operating-snapshot/<UUID>。Read API 对新准备仍不返回未生成链接；复用准备和执行结果返回实际快照链接，MCP 独立验证类型、ID、URI，拒绝错误或额外链接。
+
+实际 PostgreSQL 55439：operating_detail_history 完整 B4 回归通过，覆盖记录范围、无关权限版本变化、逐个非空范围撤销/恢复、读权限撤销、不同冻结范围不比较、相同范围跨 revision 正确比较。旧 scope 缺失记录仅原身份可读。operating_detail_intents 审批并发/撤权/过期回归通过。operating_detail_http 真实 Core HTTP + Read API 验证生成链接指向实际详情，返回 metrics 与已确认预览一致；此前 operating_detail_adapter 导出 /tmp/operating-detail-proof.jsonl 的 8 份含链接实际结果，MCP 26 项测试通过。共享 URI 合约 14 项、Desktop 链接解析 27 项通过。
+
+浏览器 Playwright 实际页面、模拟会话/API：日报与周报直接访问指定 embed 快照，404 后重试成功，仅请求指定 ID、展示正确金额与 UTC+08:00，返回趋势保留 embed，详情成功状态无操作按钮。2 项通过（/tmp/operating-detail-browser-final.log）。前端 TypeScript/金额格式检查、Desktop TypeScript、四 Rust 包 all-targets 严格 Clippy、格式/差异/文件大小检查通过；未运行全仓 just ci。
+
+从真实 63 库 operating_adapter_verified 克隆 operating_detail_upgrade，手动执行 64 SQL（非应用 migrator）：2 行旧快照去除新增字段前后摘要均为 169aded2abfed5ecd0f90ea305b8caf3，snapshot_scope 全 NULL。新库测试通过正常 migrator 到 64。日志 /tmp/operating-detail-{history,http,intents,mcp,contracts,links,upgrade,clippy-final,size}.log。
+
+本批未部署、未发送真实聊天、未更新安装包。上线需配套迁移 64、Core、Read API/MCP、Web 和 Desktop；跨业务受限维度筛选仍未完成，旧行未知历史范围无法自动恢复，生成与事件统计仍存在原 auth scopeHash 身份口径，需继续处理。

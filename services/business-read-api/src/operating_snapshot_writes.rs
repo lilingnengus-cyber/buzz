@@ -55,6 +55,9 @@ fn uuid(value: &Value) -> bool {
 }
 mod validation;
 use validation::{binds, permits, valid_snapshot};
+fn resource(id: Uuid) -> Value {
+    json!({"type":"operating_snapshot","id":id,"title":"查看经营快照","bizUri":format!("biz://operating-snapshot/{id}")})
+}
 pub(super) async fn forward(
     core: &CoreClient,
     tool: &str,
@@ -127,7 +130,10 @@ pub(super) async fn forward(
         prepared["schemaVersion"] = json!(1);
         prepared["status"] = json!("ok");
         prepared["documentType"] = json!(kind);
-        prepared["resourceRefs"] = json!([]);
+        prepared["resourceRefs"] = snapshot["existingSnapshot"]["id"]
+            .as_str()
+            .and_then(|s| s.parse::<Uuid>().ok())
+            .map_or_else(|| json!([]), |id| json!([resource(id)]));
         return Json(prepared).into_response();
     }
     let Ok(command) = serde_json::from_value::<Approval>(input) else {
@@ -201,6 +207,10 @@ pub(super) async fn forward(
             || command.decision != business_core::document_approval::ApprovalDecision::Approve
         {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        let target = document["id"].as_str().and_then(|s| s.parse::<Uuid>().ok());
+        if let Some(id) = target {
+            result["resourceRefs"] = json!([resource(id)]);
         }
     }
 

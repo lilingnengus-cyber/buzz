@@ -102,6 +102,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         )
         .route("/v1/operations/trends", get(operating_trends))
         .route("/v1/operations/snapshots", post(generate_snapshot))
+        .route("/v1/operations/snapshots/{id}", get(snapshot_detail))
         .route(
             "/v1/operations/subscriptions",
             get(list_subscriptions).post(create_subscription),
@@ -124,6 +125,7 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
         )
         .route("/api/v1/operations/trends", get(operating_trends))
         .route("/api/v1/operations/snapshots", post(generate_snapshot))
+        .route("/api/v1/operations/snapshots/{id}", get(snapshot_detail))
         .route(
             "/api/v1/operations/subscriptions",
             get(list_subscriptions).post(create_subscription),
@@ -323,6 +325,19 @@ fn finish_read(
             Json(value)
         })
         .map_err(|error| S1ApiError::domain(error, context.trace_id))
+}
+
+async fn snapshot_detail(
+    State(state): State<Arc<AppState>>,
+    Extension(context): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, S1ApiError> {
+    state
+        .operations
+        .operating_snapshot_detail(context.actor_user_id, id)
+        .await
+        .map(Json)
+        .map_err(|e| S1ApiError::domain(e, context.trace_id))
 }
 
 #[cfg(test)]

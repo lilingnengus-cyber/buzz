@@ -61,6 +61,7 @@ export function route(): { section: Section; id?: string; embed: boolean } {
     ["profits", /^\/order-profits\/([^/]+)$/],
     ["adjustments", /^\/profit-adjustments\/([^/]+)$/],
     ["reports", /^\/management-reports\/([^/]+)$/],
+    ["trends", /^\/operating-snapshots\/([^/]+)$/],
     [
       "profitability",
       /^\/profitability\/(?:customer|sku|brand|salesperson)\/([^/]+)\/period\/\d{4}-\d{2}$/,

@@ -19,7 +19,7 @@ pub(super) struct OperatingSnapshotInput {
 impl BusinessReadMcp {
     #[tool(
         name = "prepare_operating_report_snapshot",
-        description = "Prepare an immutable daily or weekly operating report only on explicit human request. Ask for missing cadence, completed period start, currency and fixed UTC offset. Weekly starts Monday. Show the requester's scope, metrics, quality, inventory as of generation, and whether frozen content is reused. Display the exact returned confirmation command and wait for the human. Preparation does not generate a report. Mixed-domain dimension restrictions may be unsupported; never widen scope or retry without restrictions. No detail link is available yet. This is not financial accounting."
+        description = "Prepare an immutable daily or weekly operating report only on explicit human request. Ask for missing cadence, completed period start, currency and fixed UTC offset. Weekly starts Monday. Show the requester's scope, metrics, quality, inventory as of generation, and whether frozen content is reused. Display the exact returned confirmation command and wait for the human. Preparation does not generate a report. Mixed-domain dimension restrictions may be unsupported; never widen scope or retry without restrictions. Return only the verified detail link for an existing snapshot; a new preparation has no report link. This is not financial accounting."
     )]
     async fn prepare_operating_report_snapshot(
         &self,
@@ -35,7 +35,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "approve_operating_report_snapshot",
-        description = "Approve or reject only the operating report intent bound to the current human signed confirmation. No model-controlled business arguments. Never confirm for the human. Report generation only when executed=true; pending and rejected have no generated report. Preserve the requester and verified metrics. Do not invent a detail link."
+        description = "Approve or reject only the operating report intent bound to the current human signed confirmation. No model-controlled business arguments. Never confirm for the human. Report generation only when executed=true; pending and rejected have no generated report. Preserve the requester and verified metrics. Return the verified detail link only for an executed result."
     )]
     async fn approve_operating_report_snapshot(&self) -> Result<String, ErrorData> {
         Ok(self

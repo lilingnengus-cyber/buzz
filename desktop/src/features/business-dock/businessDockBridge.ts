@@ -100,6 +100,7 @@ const ACTION_RESOURCE_TYPES = new Set<BusinessResource["type"]>([
   "payment",
   "customer_receipt",
   "management_report",
+  "operating_snapshot",
   "anomaly",
   "action_proposal",
   "work_item",

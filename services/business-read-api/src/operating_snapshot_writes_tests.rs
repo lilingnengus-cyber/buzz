@@ -141,6 +141,22 @@ async fn operating_adapter_uses_real_core_and_checks_before_writing() {
         let done = value(forward(&core, tool, command, &c, &allowed).await).await;
         export(tool, c.trace_id, &done);
         assert_eq!(done["executed"], true);
+        let snapshot_id = done["createdDocument"]["id"].as_str().unwrap();
+        assert_eq!(
+            done["resourceRefs"][0]["bizUri"],
+            format!("biz://operating-snapshot/{snapshot_id}")
+        );
+        let detail = fetch(
+            &core,
+            &format!("v1/operations/snapshots/{snapshot_id}"),
+            None,
+            &c,
+            tool,
+        )
+        .await
+        .unwrap();
+        assert_eq!(detail["id"], done["createdDocument"]["id"]);
+        assert_eq!(detail["metrics"], prepared["document"]["metrics"]);
         assert_eq!(done["createdDocument"]["ownerUserId"], json!(f.actor));
         assert_eq!(
             done["createdDocument"]["sourceHash"],

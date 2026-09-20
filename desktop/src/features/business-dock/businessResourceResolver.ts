@@ -24,6 +24,7 @@ export type BusinessResourceType =
   | "order_profit"
   | "profitability"
   | "profit_adjustment"
+  | "operating_snapshot"
   | "management_report"
   | "operations_dashboard"
   | "data_quality"
@@ -312,6 +313,13 @@ const ROUTES: readonly RouteDefinition[] = [
     prefix: "/embed/customer-receipts/",
     entity: true,
     label: "客户收款",
+  },
+  {
+    type: "operating_snapshot",
+    deepLink: "operating-snapshot",
+    prefix: "/embed/operating-snapshots/",
+    entity: false,
+    label: "经营快照",
   },
   {
     type: "management_report",
