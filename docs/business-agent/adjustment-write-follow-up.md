@@ -92,3 +92,13 @@ MCP 独立校验准备信封、摘要、命令及请求人，审批时校验签�
 PostgreSQL 55439 新库 adjustment_chain_final 验收实际通过。Read API 测试命令的 56 项通过中，本批链路用专用环境变量实际执行；其他需要独立数据库环境变量的测试可能提前返回，不声称全部数据库场景重验。严格 all-targets Clippy、格式/差异和文件大小检查通过，未运行全仓 just ci。日志 /tmp/adjustment-chain-{final,clippy-final,size}.log。运行前必须先构建当前 MCP：cargo build -p business-read-mcp，并显式设置 BUSINESS_ADJUSTMENT_CHAIN_MCP_BINARY 绝对路径及 BUSINESS_ADJUSTMENT_CHAIN_TEST_DATABASE_URL、正常 Core 配置。
 
 费用过账签名链路已有隔离端到端证据；仍未部署、未更新安装包或完成 Windows/真实聊天验收。下一步补全费用草稿查找/详情、创建/修改和逆转，再做配套权限、发布与实际客户端验证；完整企业业务写入目标继续保持。
+
+## Core 费用详情与整单读取范围
+
+新增 AdjustmentService::detail、服务 GET /v1/profit-adjustments/{id} 及浏览器 GET /api/v1/profit-adjustments/{id}，保留已有 PUT 修改路由。当前 profit_adjustment:read 权限及授权修订锁在 repeatable-read 事务内读取；全部明细先做权限检查，之后才截取返回页。默认 20 条，上限 100 条，后续页必须提供第一页版本，版本变化返回冲突。返回批次、当前页明细、总额十进制字符串、目标订单总数、请求人当前范围及分页元数据；不返回无限展开的目标 ID 列表。
+
+检查全部明细的客户/品牌/业务单元/仓库显式引用，直接订单、订单列表与固定权重引用，未冻结草稿当前聚合目标，以及已过账分摊目标。订单当前归属、订单行仓库、历史利润事实中的法人/客户/品牌/业务单元/仓库也必须在当前范围内；今日订单迁移到可见客户不能绕开历史事实范围。已过账/逆转按存量分摊目标校验，不用今天新增订单重算冻结结果。此读取路径不会持久化分摊预览或改变批次状态。
+
+PostgreSQL 55439 独立库 adjustment_detail_verified 的真实路由验收通过：两行分页与总额 30.03、缺失后续页版本拒绝、版本变化冲突、仅第二页引用的品牌撤权后第一页也拒绝、已过账详情可读、订单移至新授权客户后撤销历史客户仍拒绝、功能关闭返回 503；读取前后分摊预览、审计及利润事实计数不变。初次测试夹具新客户遗漏必须的 credit_currency，补齐 CNY 后在新库重验。Core all-targets 严格 Clippy、格式/差异和文件大小检查通过，日志 /tmp/adjustment-detail-{verified,clippy-final,size}.log；未运行全仓 just ci。
+
+当前只完成 Core 详情基础，尚未接入助手 Read API/MCP 或浏览器详情 UI，未部署。原浏览器列表仍仅按法人过滤，本批没有把它直接暴露给助手，也不声称该旧列表已完成整单范围加固。下一步加入同等范围检查的分页查找及助手详情读取，再衔接草稿创建/修改和逆转。

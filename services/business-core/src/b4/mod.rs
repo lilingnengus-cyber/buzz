@@ -8,6 +8,6 @@ pub mod model;
 mod projection;
 mod reporting;
 
-pub use adjustments::AdjustmentService;
+pub use adjustments::{AdjustmentDetailQuery, AdjustmentService};
 pub use projection::ProfitProjectionService;
 pub use reporting::ProfitReportingService;

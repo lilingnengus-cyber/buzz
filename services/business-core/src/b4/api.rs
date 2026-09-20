@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, post},
     Extension, Json, Router,
 };
 use serde::Deserialize;
@@ -152,6 +152,7 @@ fn default_limit() -> i64 {
 
 pub fn service_routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/v1/profit-adjustments/{id}", get(get_adjustment))
         .route("/v1/order-profits", get(order_profits))
         .route("/v1/profitability", get(profitability))
         .route("/v1/management-profit-report", get(management_report))
@@ -172,7 +173,10 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
             "/api/v1/profit-adjustments",
             get(list_adjustments).post(create_adjustment),
         )
-        .route("/api/v1/profit-adjustments/{id}", put(replace_adjustment))
+        .route(
+            "/api/v1/profit-adjustments/{id}",
+            get(get_adjustment).put(replace_adjustment),
+        )
         .route(
             "/api/v1/profit-adjustments/{id}/preview",
             post(preview_adjustment),
@@ -302,6 +306,21 @@ async fn profit_evidence(
         .await
         .map(Json)
         .map_err(|e| B4ApiError::domain(e, c.trace_id))
+}
+async fn get_adjustment(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<super::AdjustmentDetailQuery>,
+) -> Result<Json<serde_json::Value>, B4ApiError> {
+    enabled(&s, 2, c.trace_id)?;
+    let mut detail = s
+        .adjustments
+        .detail(c.actor_user_id, id, &q)
+        .await
+        .map_err(|e| B4ApiError::domain(e, c.trace_id))?;
+    detail["traceId"] = json!(c.trace_id);
+    Ok(Json(detail))
 }
 async fn list_adjustments(
     State(s): State<Arc<AppState>>,
