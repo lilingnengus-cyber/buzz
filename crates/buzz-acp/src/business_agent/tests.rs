@@ -400,6 +400,10 @@ fn chat_approval_scope_requires_an_exact_structured_command() {
 fn adjustment_prompt_requires_verified_posting_and_preserves_management_boundary() {
     let prompt = include_str!("../business_agent_prompt.md");
     for required in [
+        "prepare_operational_adjustment_creation",
+        "approve_operational_adjustment_creation",
+        "prepare_operational_adjustment_update",
+        "approve_operational_adjustment_update",
         "prepare_operational_adjustment_post",
         "approve_operational_adjustment_post",
         "postedDocument.status=posted",

@@ -7,6 +7,12 @@ pub(super) fn family(tool: &str) -> Option<&'static str> {
         "prepare_operational_adjustment_post" | "approve_operational_adjustment_post" => {
             Some("operational_adjustment_post_intent")
         }
+        "prepare_operational_adjustment_creation" | "approve_operational_adjustment_creation" => {
+            Some("operational_adjustment_creation_intent")
+        }
+        "prepare_operational_adjustment_update" | "approve_operational_adjustment_update" => {
+            Some("operational_adjustment_update_intent")
+        }
         _ => None,
     }
 }
@@ -57,10 +63,40 @@ fn bounded(v: &Value, context: &DelegationContext, max: usize) -> Result<(), Str
             }
         }
     }
+    for field in ["document", "preview"] {
+        for path in ["/input", "/input/batch", "/draftPreview/preview/input"] {
+            if let Some(batch) = monetary.get_mut(field).and_then(|v| v.pointer_mut(path)) {
+                let currency = batch["currency"].clone();
+                if let Some(lines) = batch.get_mut("lines").and_then(Value::as_array_mut) {
+                    for line in lines {
+                        if let Some(line) = line.as_object_mut() {
+                            if line.contains_key("currency") {
+                                return Err("Unexpected draft line currency override".into());
+                            }
+                            line.insert("currency".into(), currency.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
     validate_business_value(&monetary)
 }
+mod drafts;
 mod snapshot;
-use snapshot::validate as snapshot;
+pub(super) fn is_draft(tool: &str) -> bool {
+    family(tool).is_some_and(|k| k != "operational_adjustment_post_intent")
+}
+pub(super) fn draft_input(tool: &str, v: &Value) -> Option<Value> {
+    drafts::canonical(tool, v)
+}
+fn snapshot(v: &Value, kind: &str) -> Result<(), String> {
+    if kind == "operational_adjustment_post_intent" {
+        snapshot::validate(v, kind)
+    } else {
+        drafts::validate(v, kind).ok_or_else(|| "Invalid adjustment draft snapshot".into())
+    }
+}
 pub(super) fn prepare(
     tool: &str,
     v: &Value,
@@ -130,7 +166,7 @@ pub(super) fn approval(
             "requestId",
             "status",
             "executed",
-            "postedDocument",
+            drafts::result_field(kind),
             "approvalCount",
             "minimumApprovers",
             "traceId",
@@ -164,7 +200,7 @@ pub(super) fn approval(
         .filter(|v| *v > 0)
         .ok_or("Invalid approval threshold")?;
     if v["executed"] == true {
-        let d = &v["postedDocument"];
+        let d = &v[drafts::result_field(kind)];
         object(
             d,
             &[
@@ -176,6 +212,16 @@ pub(super) fn approval(
                 "idempotentReplay",
             ],
         )?;
+        if kind != "operational_adjustment_post_intent" {
+            if c.approval_decision.as_deref() != Some("approve")
+                || count < minimum
+                || v["resourceRefs"] != json!([])
+                || !drafts::valid_result(v, &v["preview"], kind, c.trace_id)
+            {
+                return Err("Invalid executed adjustment draft result".into());
+            }
+            return Ok(());
+        }
         let batch = &v["preview"]["allocationPreview"]["preview"]["batch"];
         if c.approval_decision.as_deref() != Some("approve")
             || count < minimum
@@ -202,7 +248,7 @@ pub(super) fn approval(
         };
         if v["executed"] != false
             || v["status"] != status
-            || !v["postedDocument"].is_null()
+            || !v[drafts::result_field(kind)].is_null()
             || v["resourceRefs"] != json!([])
             || count >= minimum
         {
@@ -214,3 +260,6 @@ pub(super) fn approval(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod draft_tests;

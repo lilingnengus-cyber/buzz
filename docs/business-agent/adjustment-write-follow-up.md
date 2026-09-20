@@ -190,3 +190,18 @@ Read API 增加 prepare/approve_operational_adjustment_creation 与 prepare/appr
 Read API 57 项报告通过；其他依赖环境变量的集成测试可能跳过，本批只将上述显式新库与真实服务作为新增运行证据。首轮仅有工具计数断言仍为 94，改为 98 后新库重验通过。Read API all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。日志 /tmp/adjustment-draft-adapter-{final,clippy,size}.log；六份实际响应 /tmp/adjustment-draft-adapter-final-proof.jsonl，可供下一阶段 MCP 独立校验语料。
 
 未部署、未发送真实聊天，MCP 草稿工具和完整签名端到端验收仍待接入。下一步补齐 MCP 严格输入、确认工具和独立输出校验，再继续详情页面及逆转；完整业务流程目标保持未完成。
+
+
+## MCP 草稿工具与独立输出校验
+
+MCP 注册 prepare/approve_operational_adjustment_creation、prepare/approve_operational_adjustment_update。准备输入为严格对象和嵌套明细，费用类型/分摊方式使用封闭枚举，金额与权重只能是字符串；两个确认工具不接受任何模型参数。输入先独立检查并标准化，再消费委托；发送标准化内容，返回的 document.input 必须与之相同。标准化保持十进制精度，不使用浮点数。
+
+MCP 保留独立快照校验，验证完整新旧明细、金额、归属、订单集合与版本、内外摘要、effects、精确确认/拒绝命令、当前签名意图及决定。创建/修改分别使用 createdDocument / updatedDocument，核对草稿状态、版本及更新前 ID/编号；pending/rejected 不得返回业务写入结果。金额通用校验仅在副本中补上输入明细继承的批次币种，原始签名内容不变，拒绝明细自行覆盖币种。仍不返回不存在的详情链接。
+
+Host 提示更新为完整同版本读取、保留未修改字段、缺资料补问、显示完整草稿差异与精确文本确认；准备不保存业务草稿，确认保存不代表费用过账，逆转仍未接入。不增加确认按钮。
+
+实际 Read API 六份 Core 响应均通过 MCP 独立校验；错误签名字段、改决定、错误 Trace、虚假状态/版本、未执行却返回结果、敏感字段、币种覆盖、畸形嵌套结构、重新计算内层摘要后的金额/归属篡改均拒绝。新增输入用例拒绝浮点金额、零/负数、超过两位金额及未知 SQL 字段；无效输入在消费委托前返回。MCP 31 项、Host 11 项报告通过；其中本批显式加载费用草稿、过账及查询的实际响应语料，其他环境控制语料不视为新增验证。
+
+实际 MCP stdio 进程目录：普通会话 112 工具，费用创建/修改/过账确认会话各 62 工具，均低于 128 上限，确认会话仅暴露匹配的审批工具。MCP/Host all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-draft-mcp-{final,host,clippy-final,input-tests,input-clippy,size}.log，目录 /tmp/adjustment-draft-mcp-inventory.json。
+
+本批未部署或代发真实聊天；工具目录及实际响应校验不是完整签名端到端验收。下一步使用真实 Gateway/Core/Read API 和 MCP 进程完成草稿签名执行闭环，再继续详情页面、逆转及配套发布；完整目标仍未完成。

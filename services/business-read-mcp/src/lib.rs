@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod adjustment_draft_inputs;
 mod adjustment_reads;
 mod adjustment_result;
 mod adjustment_tools;
@@ -2281,6 +2282,20 @@ impl BusinessReadMcp {
     where
         T: Serialize + Send,
     {
+        let draft_input = if adjustment_result::is_draft(tool) {
+            serde_json::to_value(&input)
+                .ok()
+                .and_then(|v| adjustment_result::draft_input(tool, &v))
+        } else {
+            None
+        };
+        if adjustment_result::is_draft(tool) && draft_input.is_none() {
+            return write_error_json(
+                "invalid_input",
+                "Invalid adjustment draft input",
+                self.config.trace_id,
+            );
+        }
         if !self.config.draft_write_enabled {
             return write_error_json(
                 "draft_write_disabled",
@@ -2296,12 +2311,23 @@ impl BusinessReadMcp {
             }
         };
         let result = match self.config.adapter {
-            AdapterKind::Production => self.call_write_api(tool, &input, &context).await,
+            AdapterKind::Production => match &draft_input {
+                Some(normalized) => self.call_write_api(tool, normalized, &context).await,
+                None => self.call_write_api(tool, &input, &context).await,
+            },
             AdapterKind::Mock => Err(BusinessCallError::Unavailable),
         };
         let (payload, outcome, refs, reason) = match result {
             Ok(value) => {
-                match validate_write_result(tool, &value, &context, self.config.max_payload_bytes) {
+                let validation = if draft_input
+                    .as_ref()
+                    .is_some_and(|v| value["document"]["input"] != *v)
+                {
+                    Err("Adjustment draft result does not match requested input".into())
+                } else {
+                    validate_write_result(tool, &value, &context, self.config.max_payload_bytes)
+                };
+                match validation {
                     Ok(()) => (
                         serde_json::to_string(&value).unwrap_or_else(|_| {
                             write_error_json(
