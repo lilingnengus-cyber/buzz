@@ -57,7 +57,11 @@ pub(super) const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-pub(super) const WRITE_TOOLS: [&str; 94] = [
+pub(super) const WRITE_TOOLS: [&str; 98] = [
+    "prepare_operational_adjustment_creation",
+    "approve_operational_adjustment_creation",
+    "prepare_operational_adjustment_update",
+    "approve_operational_adjustment_update",
     "prepare_operational_adjustment_post",
     "approve_operational_adjustment_post",
     "prepare_operating_report_snapshot",
@@ -158,6 +162,18 @@ pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
         "search_operational_adjustments" | "get_operational_adjustment" => {
             Some("profit_adjustment:read")
+        }
+        "prepare_operational_adjustment_creation" => {
+            Some("operational_adjustment_creation_intent:create")
+        }
+        "approve_operational_adjustment_creation" => {
+            Some("operational_adjustment_creation_intent:approve")
+        }
+        "prepare_operational_adjustment_update" => {
+            Some("operational_adjustment_update_intent:create")
+        }
+        "approve_operational_adjustment_update" => {
+            Some("operational_adjustment_update_intent:approve")
         }
         "prepare_operational_adjustment_post" => Some("operational_adjustment_post_intent:create"),
         "approve_operational_adjustment_post" => Some("operational_adjustment_post_intent:approve"),

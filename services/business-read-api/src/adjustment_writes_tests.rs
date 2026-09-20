@@ -1,3 +1,5 @@
+#[path = "adjustment_writes_draft_tests.rs"]
+mod draft_cases;
 use super::*;
 use crate::test_fixture::adjustments as fixture;
 use crate::test_fixture::seed;
@@ -83,6 +85,7 @@ async fn adjustment_adapter_binds_real_core_preview_and_posting() {
         base_url: Url::parse(&format!("http://{address}/")).unwrap(),
         credential: config.service_credential,
     };
+    draft_cases::verify(&pool, &core, &f, order).await;
     for (decision, minimum) in [("approve", 1), ("reject", 1), ("approve", 2)] {
         sqlx::query("UPDATE business_approval_policies SET min_approvers=$1 WHERE action_code='profit_adjustment:post'").bind(minimum as i16).execute(&pool).await.unwrap();
         let batch = fixture::draft(

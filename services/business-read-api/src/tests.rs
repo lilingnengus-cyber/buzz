@@ -311,7 +311,7 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 94);
+    assert_eq!(WRITE_TOOLS.len(), 98);
     for operation in ["hold", "release_hold"] {
         assert_eq!(
             required_capability(&format!("prepare_sales_order_{operation}")).unwrap(),

@@ -8,6 +8,12 @@ pub(super) fn family(tool: &str) -> Option<&'static str> {
         "prepare_operational_adjustment_post" | "approve_operational_adjustment_post" => {
             Some("operational_adjustment_post_intent")
         }
+        "prepare_operational_adjustment_creation" | "approve_operational_adjustment_creation" => {
+            Some("operational_adjustment_creation_intent")
+        }
+        "prepare_operational_adjustment_update" | "approve_operational_adjustment_update" => {
+            Some("operational_adjustment_update_intent")
+        }
         _ => None,
     }
 }
@@ -19,7 +25,7 @@ struct Prepare {
 }
 fn canonical(tool: &str, input: &Value) -> Option<Value> {
     if tool != "prepare_operational_adjustment_post" {
-        return None;
+        return drafts::canonical(tool, input);
     }
     let v: Prepare = serde_json::from_value(input.clone()).ok()?;
     if v.batch_id.is_nil() || v.expected_version < 1 {
@@ -53,6 +59,7 @@ pub(super) fn valid(tool: &str, input: &Value) -> bool {
 fn uuid(value: &Value) -> bool {
     value.as_str().is_some_and(|s| s.parse::<Uuid>().is_ok())
 }
+mod drafts;
 mod validation;
 use validation::{binds, permits, valid_snapshot};
 pub(super) async fn forward(
@@ -184,26 +191,33 @@ pub(super) async fn forward(
     }
     result["resourceRefs"] = json!([]);
     if result["executed"] == true {
-        let document = &result["postedDocument"];
-        let batch = &preview["document"]["allocationPreview"]["preview"]["batch"];
-        if document["id"] != batch["id"]
-            || document["number"] != batch["adjustment_number"]
-            || document["traceId"] != json!(context.trace_id)
-            || document["status"] != "posted"
-            || !document["idempotentReplay"].is_boolean()
-            || batch["version"]
-                .as_i64()
-                .and_then(|v| v.checked_add(2))
-                .is_none_or(|expected| document["version"].as_i64() != Some(expected))
-            || result["status"] != "executed"
-            || command.decision != business_core::document_approval::ApprovalDecision::Approve
-        {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        if kind != "operational_adjustment_post_intent" {
+            if !drafts::valid_result(&result, &preview["document"], kind, context.trace_id)
+                || command.decision != business_core::document_approval::ApprovalDecision::Approve
+            {
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+        } else {
+            let document = &result["postedDocument"];
+            let batch = &preview["document"]["allocationPreview"]["preview"]["batch"];
+            if document["id"] != batch["id"]
+                || document["number"] != batch["adjustment_number"]
+                || document["traceId"] != json!(context.trace_id)
+                || document["status"] != "posted"
+                || !document["idempotentReplay"].is_boolean()
+                || batch["version"]
+                    .as_i64()
+                    .and_then(|v| v.checked_add(2))
+                    .is_none_or(|expected| document["version"].as_i64() != Some(expected))
+                || result["status"] != "executed"
+                || command.decision != business_core::document_approval::ApprovalDecision::Approve
+            {
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
         }
     }
-
     if result["executed"] == false
-        && (!result["postedDocument"].is_null()
+        && (!result[drafts::result_field(kind)].is_null()
             || result["status"]
                 != if command.decision == business_core::document_approval::ApprovalDecision::Reject
                 {

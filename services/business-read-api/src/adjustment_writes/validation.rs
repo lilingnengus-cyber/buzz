@@ -25,6 +25,9 @@ pub(super) fn binds(v: &Value, input: &Value) -> bool {
     v["input"] == *input
 }
 pub(super) fn valid_snapshot(v: &Value, kind: &str) -> bool {
+    if kind != "operational_adjustment_post_intent" {
+        return super::drafts::validate(v, kind).is_some();
+    }
     validate(v, kind).is_some()
 }
 fn validate(v: &Value, kind: &str) -> Option<()> {
@@ -202,6 +205,9 @@ pub(super) fn permits(v: &Value, scope: &AuthorizationScope, kind: &str) -> bool
         {
             return false;
         }
+    }
+    if kind != "operational_adjustment_post_intent" {
+        return super::drafts::attributed(v, scope);
     }
     // A brand-limited grant cannot authorize facts without a brand attribution.
     scope.brand_ids.is_empty()
