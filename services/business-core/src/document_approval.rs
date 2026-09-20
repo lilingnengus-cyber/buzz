@@ -6,6 +6,7 @@ mod financial_documents;
 mod inventory_count_creation;
 mod inventory_count_operation;
 mod master;
+mod operating_snapshot;
 /// Bound cancellation of remaining order quantities.
 pub mod order_cancellation;
 mod order_hold;
@@ -18,6 +19,7 @@ mod returns;
 pub mod reversal;
 mod settlement;
 mod snapshot;
+mod snapshot_retry;
 pub(crate) mod stock;
 mod stock_documents;
 /// Immutable stock reversal preparation and signed execution.
@@ -91,6 +93,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(master::routes())
         .merge(order_hold::routes())
         .merge(report_snapshot::routes())
+        .merge(operating_snapshot::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
         .merge(inventory_count_creation::routes())

@@ -1,4 +1,4 @@
-//! Immutable management report snapshot intents with votes and execution in one transaction.
+//! Immutable operating report snapshot intents with votes and execution in one transaction.
 use super::permission_witness as authority;
 use super::*;
 use serde_json::Value;
@@ -10,16 +10,16 @@ use command::Command;
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/v1/agent-report-snapshot-previews/{kind}",
+            "/v1/agent-operating-snapshot-previews/{kind}",
             post(dry_preview),
         )
-        .route("/v1/agent-report-snapshot-intents/{kind}", post(prepare))
+        .route("/v1/agent-operating-snapshot-intents/{kind}", post(prepare))
         .route(
-            "/v1/agent-approval-previews/report-snapshots/{kind}/{id}",
+            "/v1/agent-approval-previews/operating-snapshots/{kind}/{id}",
             get(preview),
         )
         .route(
-            "/v1/agent-approvals/report-snapshots/{kind}/{id}",
+            "/v1/agent-approvals/operating-snapshots/{kind}/{id}",
             post(approve),
         )
 }
@@ -89,15 +89,15 @@ async fn prepare_on(
         .execute(&mut *tx)
         .await?;
     let snapshot = command
-        .preview_on(&state.profit_reporting, &mut tx, actor)
+        .preview_on(&state.operations, &mut tx, actor)
         .await?;
     if expected.is_some_and(|hash| hash_json(&snapshot) != hash) {
         return Err(StoreError::Conflict);
     }
     let id = Uuid::new_v4();
-    let inserted = sqlx::query("INSERT INTO business_agent_report_snapshot_intents(id,kind,input,snapshot,created_by_user_id,idempotency_key,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(created_by_user_id,idempotency_key) DO NOTHING")
+    let inserted = sqlx::query("INSERT INTO business_agent_operating_snapshot_intents(id,kind,input,snapshot,created_by_user_id,idempotency_key,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(created_by_user_id,idempotency_key) DO NOTHING")
         .bind(id).bind(kind).bind(&input).bind(&snapshot).bind(actor).bind(key).bind(trace).execute(&mut *tx).await?.rows_affected();
-    let row = sqlx::query("SELECT id,kind,input,snapshot,expires_at>clock_timestamp() current FROM business_agent_report_snapshot_intents WHERE created_by_user_id=$1 AND idempotency_key=$2")
+    let row = sqlx::query("SELECT id,kind,input,snapshot,expires_at>clock_timestamp() current FROM business_agent_operating_snapshot_intents WHERE created_by_user_id=$1 AND idempotency_key=$2")
         .bind(actor).bind(key).fetch_one(&mut *tx).await?;
     if !row.get::<bool, _>("current")
         || row.get::<String, _>("kind") != kind
@@ -108,7 +108,7 @@ async fn prepare_on(
     }
     let id: Uuid = row.get("id");
     if inserted == 1 {
-        sqlx::query("INSERT INTO business_core_audit_events(trace_id,actor_user_id,operation,target_type,target_id,details) VALUES($1,$2,'agent_report_snapshot_intent_prepared',$3,$4,$5)")
+        sqlx::query("INSERT INTO business_core_audit_events(trace_id,actor_user_id,operation,target_type,target_id,details) VALUES($1,$2,'agent_operating_snapshot_intent_prepared',$3,$4,$5)")
             .bind(trace).bind(actor).bind(kind).bind(id.to_string()).bind(json!({"previewHash":hash_json(&snapshot)})).execute(&mut *tx).await?;
     }
     tx.commit().await?;
@@ -119,7 +119,7 @@ async fn load(
     kind: &str,
     id: Uuid,
 ) -> Result<(Command, Value, Uuid), StoreError> {
-    let row = sqlx::query("SELECT input,snapshot,created_by_user_id FROM business_agent_report_snapshot_intents WHERE id=$1 AND kind=$2 AND expires_at>clock_timestamp()")
+    let row = sqlx::query("SELECT input,snapshot,created_by_user_id FROM business_agent_operating_snapshot_intents WHERE id=$1 AND kind=$2 AND expires_at>clock_timestamp()")
         .bind(id).bind(kind).fetch_optional(&mut **tx).await?.ok_or(StoreError::NotFoundOrForbidden)?;
     Ok((
         Command::parse(kind, row.get("input"))?,
@@ -137,9 +137,10 @@ async fn preview(
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *tx)
             .await?;
-        let (command, snapshot, _) = load(&mut tx, &kind, id).await?;
+        let (command, snapshot, creator) = load(&mut tx, &kind, id).await?;
+        viewer(&mut tx, c.actor_user_id, &snapshot).await?;
         if command
-            .preview_on(&state.profit_reporting, &mut tx, c.actor_user_id)
+            .preview_on(&state.operations, &mut tx, creator)
             .await?
             != snapshot
         {
@@ -181,7 +182,7 @@ async fn dry_preview(
             .execute(&mut *tx)
             .await?;
         let snapshot = command
-            .preview_on(&state.profit_reporting, &mut tx, c.actor_user_id)
+            .preview_on(&state.operations, &mut tx, c.actor_user_id)
             .await?;
         tx.rollback().await?;
         Ok(snapshot)
@@ -191,4 +192,40 @@ async fn dry_preview(
         Ok(snapshot) => Json(json!({"document":snapshot,"traceId":c.trace_id})).into_response(),
         Err(e) => store_error(e, c.trace_id),
     }
+}
+
+async fn viewer(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor: Uuid,
+    snapshot: &Value,
+) -> Result<crate::model::AuthorizationSnapshot, StoreError> {
+    let current = crate::master_write_authority::snapshot(
+        tx,
+        actor,
+        "management_report:generate_snapshot",
+        false,
+    )
+    .await
+    .map_err(command::domain_error)?;
+    if !current.permission_keys.contains("management_report:read") {
+        return Err(StoreError::NotFoundOrForbidden);
+    }
+    let source: crate::model::DataScopes = serde_json::from_value(snapshot["scope"].clone())
+        .map_err(|_| StoreError::NotFoundOrForbidden)?;
+    if !source
+        .legal_entity_ids
+        .is_subset(&current.scopes.legal_entity_ids)
+        || !source
+            .warehouse_ids
+            .is_subset(&current.scopes.warehouse_ids)
+        || !source.customer_ids.is_subset(&current.scopes.customer_ids)
+        || !source.supplier_ids.is_subset(&current.scopes.supplier_ids)
+        || !source.brand_ids.is_subset(&current.scopes.brand_ids)
+        || !source
+            .business_unit_ids
+            .is_subset(&current.scopes.business_unit_ids)
+    {
+        return Err(StoreError::NotFoundOrForbidden);
+    }
+    Ok(current)
 }

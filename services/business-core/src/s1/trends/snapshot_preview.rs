@@ -114,7 +114,7 @@ impl OperationsService {
                 "only completed operating periods can be frozen".into(),
             ));
         }
-        if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,payload,utc_offset_minutes FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5")
+        if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,payload,utc_offset_minutes,generated_by_user_id FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5")
             .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?
         {
             return Ok(OperatingContent { period_end, period_start_utc, period_end_utc, scope, scope_hash, payload: row.get("payload"),

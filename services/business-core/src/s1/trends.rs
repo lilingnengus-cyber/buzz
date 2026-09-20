@@ -263,13 +263,13 @@ impl OperationsService {
             return Ok(snapshot_result(&row, false, trace_id));
         }
         let id = Uuid::new_v4();
-        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id,utc_offset_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(cadence,period_start,currency,scope_hash,utc_offset_minutes) WHERE utc_offset_minutes IS NOT NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status,utc_offset_minutes")
+        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id,utc_offset_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(cadence,period_start,currency,scope_hash,utc_offset_minutes) WHERE utc_offset_minutes IS NOT NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status,utc_offset_minutes,generated_by_user_id")
             .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?;
         let (row, created) = if let Some(row) = inserted {
             audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"utcOffsetMinutes":input.utc_offset_minutes,"sourceHash":source_hash})).await?;
             (row, true)
         } else {
-            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,utc_offset_minutes FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).bind(input.utc_offset_minutes).fetch_one(&mut **tx).await?, false)
+            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,utc_offset_minutes,generated_by_user_id FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).bind(input.utc_offset_minutes).fetch_one(&mut **tx).await?, false)
         };
         Ok(snapshot_result(&row, created, trace_id))
     }
@@ -575,7 +575,7 @@ fn next_run_at(cadence: &str, offset: i16, hour: i16, now: DateTime<Utc>) -> Dat
 }
 
 fn snapshot_result(row: &sqlx::postgres::PgRow, created: bool, trace_id: Uuid) -> Value {
-    json!({"id":row.get::<Uuid,_>("id"),"created":created,"utcOffsetMinutes":row.get::<Option<i16>,_>("utc_offset_minutes"),"generatedAt":row.get::<DateTime<Utc>,_>("generated_at"),"sourceHash":row.get::<String,_>("source_hash"),"dataQualityStatus":row.get::<String,_>("data_quality_status"),"traceId":trace_id})
+    json!({"id":row.get::<Uuid,_>("id"),"created":created,"ownerUserId":row.get::<Uuid,_>("generated_by_user_id"),"utcOffsetMinutes":row.get::<Option<i16>,_>("utc_offset_minutes"),"generatedAt":row.get::<DateTime<Utc>,_>("generated_at"),"sourceHash":row.get::<String,_>("source_hash"),"dataQualityStatus":row.get::<String,_>("data_quality_status"),"traceId":trace_id})
 }
 
 fn trend_change(current: &Value, previous: &Value) -> Value {

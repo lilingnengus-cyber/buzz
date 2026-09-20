@@ -159,3 +159,13 @@ operating_timezone_verified（55439）完整 B4 实测通过：覆盖偏移周�
 从此前真实 61 库 operating_preview_guarded 克隆 operating_timezone_upgrade，直接执行迁移 62 SQL（非应用 migrator 进程）：8 行旧快照的全字段摘要去掉新增列后仍为 758d22afbae559b2ebb23611d4f8cd72，新增 offset 全为 NULL。新库完整测试通过正常 PgStore migrator 应用到 62。日志 /tmp/operating-timezone-{verified,upgrade,clippy,web,size}.log；严格 Clippy、Rust 格式、文件大小、差异及前端 TypeScript/展示巡检通过，未运行全仓 just ci。
 
 此迁移必须与新 Core 配套，旧 Core 的四字段 ON CONFLICT 不适用于迁移后的索引；当前生产/旧 c186 安装包未更动。本批未部署。接下来仍须接入以请求人为报表所有者、独立校验审批人范围的不可变意图/多人审批，以及 Gateway/Read API/MCP 和实际客户端验收；历史 scopeHash 含授权 revision 的范围身份问题仍需明确处理。
+
+## 日报/周报不可变意图与独立审批人
+
+迁移 0063 增加 operating_report_snapshot_intent 的不可变表、30 分钟有效期及 create/approve 能力，不自动授权或创建策略。Core 新增纯预览、意图准备、审批预览与确认/拒绝路由；准备支持预检摘要和幂等键，事务使用 repeatable read，并与月报复用整事务重试模块。
+
+审批始终复算请求人的报表。审批人分别校验当前身份、角色、生成/读取权限和六维范围是否覆盖保存范围；审批人额外权限不改变报表内容。最终生成以请求人为 owner，审批审计记录真实审批人，返回 ownerUserId。票数、报表、幂等记录、状态与审计在同一事务提交；提交前检查意图和权限见证有效期。
+
+授权 revision 仍参与 operating scopeHash。审批策略修改会使旧预览失效，返回冲突并要求重新准备，不能把旧意图静默换成新口径。历史范围身份和跨业务指标维度过滤仍需继续处理；当前没有开放 Gateway/Read API/MCP 日报周报工具，也未部署或进行真实聊天验收。
+
+实际 PostgreSQL 55439 新库 operating_intent_final：日报/周报均验证纯预览无写入、准备重放同 ID、宽范围审批人看到同一请求人报表、无策略/自批拒绝、策略改变使旧意图冲突、两票执行、已停用的前一审批人不能提供有效见证、末尾审计故障回滚、最终 owner/摘要/存储内容一致、重复确认冲突。operating_intent_monthly_regression 月报审批竞争/过期/撤权/回滚及 operating_intent_b4_regression 完整 B4 回归均通过。日志 /tmp/operating-intent-regression.log；Core all-targets 严格 Clippy、格式、文件大小和差异检查通过（/tmp/operating-intent-{clippy,size}.log）。未运行全仓 just ci；本批尚未增加日报/周报特有的并发与过期竞争测试，不能以月报测试代替这部分验证。
