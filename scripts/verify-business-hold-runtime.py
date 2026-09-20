@@ -107,6 +107,31 @@ try:
         assert paused == 503, (path, paused)
         assert request(ports["paused"], path, {}, authenticated=False) == 401
         evidence["routes"].append({"path": path, "normal": normal, "paused": paused})
+    missing_id = "00000000-0000-4000-8000-000000000099"
+    families = [("order-holds", kind) for kind in (
+        "sales_order_hold_intent", "sales_order_release_hold_intent",
+    )] + [("master", kind) for kind in (
+        "core_master_creation_intent", "core_master_update_intent", "core_master_status_intent",
+        "product_master_creation_intent", "product_master_update_intent", "product_master_status_intent",
+    )]
+    for family, kind in families:
+        for prefix, payload, expected in [
+            ("agent-approvals", {}, 422),
+            ("agent-approval-previews", None, 404),
+        ]:
+            path = f"/v1/{prefix}/{family}/{kind}/{missing_id}"
+            normal = request(ports["normal"], path, payload)
+            paused = request(ports["paused"], path, payload)
+            assert normal == expected, (path, normal)
+            assert paused == 503, (path, paused)
+            assert request(ports["paused"], path, payload, authenticated=False) == 401
+            evidence["routes"].append({"path": path, "normal": normal, "paused": paused})
+    # Other approval families must still validate their inputs, not be paused.
+    path = f"/v1/agent-approvals/sales-orders/{missing_id}"
+    normal = request(ports["normal"], path, {})
+    paused = request(ports["paused"], path, {})
+    assert normal == paused == 422, (path, normal, paused)
+    evidence["existingApproval"] = {"normal": normal, "paused": paused}
     # Existing read routes succeed for the same minimally authorized reader.
     normal = request(ports["normal"], "/v1/sales-orders")
     paused = request(ports["paused"], "/v1/sales-orders")
