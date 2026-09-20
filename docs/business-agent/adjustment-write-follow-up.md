@@ -304,3 +304,12 @@ Mac release 构建与候选签名验证通过：/tmp/Pacioli-adjustment-99423340
 最新生产 plain SQL 备份保存到 /tmp/adjustment-production-rehearsal-994233402.sql，权限 0600，完整性结束标记检查通过；为 PG16 隔离恢复仅移除 PG17 的 SET transaction_timeout。隔离库 adjustment_production_rehearsal_994233402 恢复后从版本 57 成功迁移至 68。迁移前后 sales_orders 均 5 条，按 ID 排序的完整记录摘要同为 7d3c9dfefc05e05557cad4b238ef080d；审批请求和新增费用意图均 0。日志 /tmp/adjustment-production-{restore,gateway-build,migrate}.log。此为数据迁移兼容性证据，不代替生产同镜像演练或上线健康检查。
 
 副本确认现有操作者具有 profit_adjustment:create/update_draft/preview/post/reverse/read 与 management_report:generate_snapshot 等业务权限，但费用/报表专用助手 IAM 授权和审批策略为空。下一步准备并演练保持现有数据范围和审批约束的部署授权，完成备份与发布回退核对后再切换。当前生产未迁移、未新增授权、未修改业务记录；完整业务目标仍未完成。
+
+
+## 费用与报表发布授权演练
+
+新增 deploy/business-agent/releases/adjustment-authority.sql，仅面向已核实操作者。要求迁移 68、活跃账号和主体、现有七项 Core 业务权限及指定法人范围，锁定授权版本、来源授权、来源审批策略和目标权限。沿用现有 sales_order:approve 的单法人 restricted 数据范围、附加义务与有效期，登记六类意图的 create/approve 以及费用读取共 13 项授权；复制现有审批人数、自审、跨业务单元和金额增强校验约束，为五项业务动作建立策略。已有目标授权/策略时拒绝覆盖，结束前复查来源有效期，全部与审计同事务提交。
+
+生产副本派生隔离库 adjustment_authority_tests 验证正常路径与五类拒绝：来源过期、范围变 unrestricted、逆转确认权限停用、签名义务缺失、操作者停用。负向路径无新增授权；正常路径先 ROLLBACK 验证，再实际提交于隔离库，得到 13 项同范围授权与 5 项策略；5 笔订单完整记录摘要保持原值。日志 /tmp/adjustment-authority-final.log。原演练库包含早期 12 项授权版本，最终验收以 adjustment_authority_tests 为准。
+
+生产仍未改写，下一步将候选镜像、迁移和该授权在生产版本配置下进一步核对，备份后部署，并验证服务/Web/Mac 配套；按用户要求不再执行 Windows 安装验收。
