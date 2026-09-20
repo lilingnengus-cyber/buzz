@@ -169,3 +169,11 @@ operating_timezone_verified（55439）完整 B4 实测通过：覆盖偏移周�
 授权 revision 仍参与 operating scopeHash。审批策略修改会使旧预览失效，返回冲突并要求重新准备，不能把旧意图静默换成新口径。历史范围身份和跨业务指标维度过滤仍需继续处理；当前没有开放 Gateway/Read API/MCP 日报周报工具，也未部署或进行真实聊天验收。
 
 实际 PostgreSQL 55439 新库 operating_intent_final：日报/周报均验证纯预览无写入、准备重放同 ID、宽范围审批人看到同一请求人报表、无策略/自批拒绝、策略改变使旧意图冲突、两票执行、已停用的前一审批人不能提供有效见证、末尾审计故障回滚、最终 owner/摘要/存储内容一致、重复确认冲突。operating_intent_monthly_regression 月报审批竞争/过期/撤权/回滚及 operating_intent_b4_regression 完整 B4 回归均通过。日志 /tmp/operating-intent-regression.log；Core all-targets 严格 Clippy、格式、文件大小和差异检查通过（/tmp/operating-intent-{clippy,size}.log）。未运行全仓 just ci；本批尚未增加日报/周报特有的并发与过期竞争测试，不能以月报测试代替这部分验证。
+
+## 日报/周报审批竞争实测
+
+新增 support/operating_snapshot_races.rs，在 daily 和 weekly 两种周期下通过真实 PostgreSQL 锁等待制造重叠请求，并查询 pg_blocking_pids 确认请求确实被阻塞后再释放锁：同键并发准备返回同一意图且只有一条准备审计；两名审批人重叠确认最终两票、一份报表；同一人重叠确认只有一次成功，另一请求冲突，最终一票、一份报表、两条执行审计、一条幂等记录。
+
+前一审批人失去范围后，旧意图不能继续执行；恢复范围也不能使旧授权 revision 的意图重新有效，必须重新准备。将短有效期意图阻塞在最终审计，等待过期后释放，确认报表、请求、投票、审计、幂等计数全部保持不变。授权 revision 锁等待期间撤销生成权限，释放后重新校验并拒绝，无业务写入。
+
+实际新库 operating_intent_races_final（55439）完整 operating 意图测试通过；日志 /tmp/operating-intent-races-final.log。该测试目标严格 Clippy、格式、差异和文件大小检查通过（/tmp/operating-intent-races-{clippy,size}.log）。这些结果补齐上一节注明缺失的日报/周报竞争验证；仍不代表 Gateway/Read API/MCP、部署或真实客户端验收完成。

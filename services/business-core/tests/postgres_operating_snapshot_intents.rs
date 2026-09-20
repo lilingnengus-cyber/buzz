@@ -10,6 +10,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 #[path = "support/b2_seed.rs"]
 mod b2_seed;
+#[path = "support/operating_snapshot_races.rs"]
+mod operating_snapshot_races;
 struct Fixture {
     actor: Uuid,
     legal_entity: Uuid,
@@ -219,6 +221,9 @@ async fn operating_reports_bind_requester_scope_and_independent_reviewers() {
                 .0,
             StatusCode::CONFLICT
         );
+    }
+    for cadence in ["daily", "weekly"] {
+        operating_snapshot_races::verify(&pool, &app, &f, cadence).await;
     }
 }
 async fn counts(pool: &PgPool) -> (i64, i64, i64) {
