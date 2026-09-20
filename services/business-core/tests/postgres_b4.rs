@@ -2,6 +2,8 @@
 mod management_snapshot_authority;
 #[path = "support/management_snapshot_concurrency.rs"]
 mod management_snapshot_concurrency;
+#[path = "support/management_snapshot_late_fact.rs"]
+mod management_snapshot_late_fact;
 #[path = "support/operating_snapshot_authority.rs"]
 mod operating_snapshot_authority;
 #[path = "support/operating_snapshot_concurrency.rs"]
@@ -678,6 +680,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     operating_snapshot_concurrency::verify(&pool, &operations, f.actor, date).await;
     management_snapshot_authority::verify(&pool, &reporting, f.actor).await;
     management_snapshot_concurrency::verify(&pool, &reporting, f.actor).await;
+    management_snapshot_late_fact::verify(&pool, &reporting, f.actor).await;
 }
 
 #[allow(clippy::too_many_arguments)]

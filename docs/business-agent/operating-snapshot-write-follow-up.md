@@ -52,3 +52,13 @@ management_snapshot_authority（55439）完整 B4 回归通过：空法人参数
 management_snapshot_concurrency（55439）完整 B4 回归通过。实际 advisory lock 阻塞首个请求完成，观察两个等待者后放行：同 key 和不同 key/同报表期间两组竞争最终返回同一 ID，各只有一条 MANAGEMENT_REPORT_SNAPSHOT_GENERATED 审计；月报等待期间撤权回归继续通过。严格 Clippy、格式、文件大小及差异检查通过。日志 /tmp/management-snapshot-concurrency{,-clippy,-size}.log。
 
 仍需处理一个独立边界：profit_facts 的序列号分配顺序不保证事务提交顺序，较低序列号的事实晚提交时，max watermark 可能不变，但金额/事实数量已经变化。现有月报唯一键及 existing 查询只按 watermark 去重；必须在助手开放前补齐内容摘要去重及该并发场景，不能把本次同一期请求竞争测试当作该场景的覆盖。
+
+## 2026-09-20 晚提交事实与内容身份
+
+迁移 0060 将管理快照唯一键扩展为原六项加 source_hash，旧快照保持不可变；existing 查询及 ON CONFLICT 同时按摘要匹配。相同最大序号但金额或事实数量变化时可以生成新的内容版本，相同内容仍去重。
+
+management_snapshot_late_fact（55439）完整 B4 回归通过。测试在未提交事务中先插入较低 fact_sequence 的 7 元事实，再在另一事务提交较高序号的 11 元事实并生成第一份月报；提交较低序号事务后生成替代月报。两份 watermark 都是较高序号，source_hash 不同，旧/新金额分别 11/18 元，前驱链接正确；新请求再次生成复用第二份，旧 idempotency key 仍返回第一份不可变结果。
+
+使用实际重建 gateway --migrate-only 对已有 59 数据的独立副本 management_snapshot_upgrade 升至 60，原 management_report_snapshots 全行摘要前后一致（5ca7e5d082a4efb838b1583fe347b7f9）。严格 Clippy、格式、文件大小及差异检查通过。日志 /tmp/management-snapshot-late-fact.log、/tmp/management-snapshot-upgrade.log、/tmp/management-snapshot-late-{clippy,size}.log。
+
+迁移 60 必须与使用新冲突键的 Core 配套发布；不能把仅支持旧冲突键的报表源码作为迁移后的回退方案。当前 c186ddf01 暂停候选仍固定迁移 59，不受本批源码影响；本批未部署。质量状态单独变化时是否产生新内容版本、完整前驱链和助手意图/确认仍需明确及实现。

@@ -393,7 +393,7 @@ impl ProfitReportingService {
         let source_hash = hex::encode(Sha256::digest(serde_json::to_vec(
             &json!({"scope":scope,"watermark":watermark,"amounts":amounts}),
         )?));
-        let existing=sqlx::query("SELECT id,snapshot_number,version FROM management_report_snapshots WHERE report_type=$1 AND management_period=$2 AND currency=$3 AND scope_hash=$4 AND rule_version='management-profit-v1' AND source_watermark=$5").bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope_hash).bind(watermark).fetch_optional(&mut *tx).await?;
+        let existing=sqlx::query("SELECT id,snapshot_number,version FROM management_report_snapshots WHERE report_type=$1 AND management_period=$2 AND currency=$3 AND scope_hash=$4 AND rule_version='management-profit-v1' AND source_watermark=$5 AND source_hash=$6").bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope_hash).bind(watermark).bind(&source_hash).fetch_optional(&mut *tx).await?;
         if let Some(row) = existing {
             let result = CommandResult {
                 id: row.get("id"),
@@ -423,7 +423,7 @@ impl ProfitReportingService {
             crate::numbering::NumberingContext::default(),
         )
         .await?;
-        let inserted = sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12) ON CONFLICT (report_type,management_period,currency,scope_hash,rule_version,source_watermark) DO NOTHING").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut *tx).await?.rows_affected();
+        let inserted = sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12) ON CONFLICT (report_type,management_period,currency,scope_hash,rule_version,source_watermark,source_hash) DO NOTHING").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut *tx).await?.rows_affected();
         if inserted != 1 {
             return Err(DomainError::VersionConflict);
         }
