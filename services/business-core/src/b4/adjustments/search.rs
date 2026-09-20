@@ -113,7 +113,7 @@ impl AdjustmentService {
                     Err(e) => return Err(e),
                 };
                 let b = &detail["batch"];
-                items.push(json!({"id":id,"adjustmentNumber":b["adjustment_number"],"legalEntityId":b["legal_entity_id"],"currency":b["currency"],"managementPeriod":b["management_period"],"status":b["status"],"version":detail["version"],"totalAmount":detail["totalAmount"],"lineCount":detail["pagination"]["total"],"targetOrderCount":detail["targetOrderCount"],"createdAt":b["created_at"],"updatedAt":b["updated_at"]}));
+                items.push(json!({"id":id,"adjustmentNumber":b["adjustment_number"],"legalEntityId":b["legal_entity_id"],"currency":b["currency"],"managementPeriod":b["management_period"],"status":b["status"],"version":detail["version"],"totalAmount":detail["totalAmount"],"lineCount":detail["pagination"]["total"],"targetOrderCount":detail["targetOrderCount"],"hasUnattributedBrandTargets":detail["hasUnattributedBrandTargets"],"createdAt":b["created_at"],"updatedAt":b["updated_at"]}));
                 if items.len() > q.limit {
                     break 'scan;
                 }

@@ -112,3 +112,18 @@ PostgreSQL 55439 独立库 adjustment_detail_verified 的真实路由验收通�
 PostgreSQL 55439 独立库 adjustment_search_final 的真实服务路由验收通过：65 个不可见批次排在 3 个可见批次之前，仍能跨内部扫描窗口返回两页（2+1），顺序、hasMore、nextAfterId 正确且无隐藏总数；隐藏/随机锚点拒绝；编号百分号按字面量处理；非法分页/期间/状态/字段拒绝；未授权法人拒绝；撤销客户范围后结果为空且旧锚点拒绝；查找功能关闭返回 503。保留并重跑前一批详情、整单范围与历史事实保护测试，查询前后预览、审计及利润事实计数不变。
 
 Core all-targets 严格 Clippy、格式/差异、文件大小检查通过，日志 /tmp/adjustment-search-{final,clippy-final,size}.log；未运行全仓 just ci。本批未部署，助手 Read API/MCP 的查找和详情工具仍未接入，旧浏览器列表也未迁移到该新查找契约。下一步增加受委托约束的助手读取工具，再继续草稿创建/修改和逆转。
+
+
+## 助手费用查找与当前版本明细
+
+新增 search_operational_adjustments / get_operational_adjustment，共用严格输入合同。查找支持编号字面量、法人、管理期间、状态及可见记录游标，每页最多 20 条；明细每页最多 10 行，后续页必须带首次读取的版本。返回金额字符串及后续草稿编辑需要的字段，版本变化返回冲突。尚无实际详情页面，因此明确 detailLinkAvailable=false、resourceRefs 为空，不生成虚假链接。
+
+迁移 66 仅登记 profit_adjustment:read，不自动赋权。Gateway 白名单 112 项，Host 普通委托 67 项（纯只读 18 项），Read API 读目录 47 项、写目录 94 项。实际 MCP stdio 工具目录验证普通回合 110 项、费用过账确认回合 62 项；确认回合仍只暴露对应审批工具。Host 提示要求读全同版本明细、消歧后再继续，不把备注当作执行指令。
+
+Read API 独立验证 Core 返回的完整范围被当前委托覆盖。这是保守的全范围覆盖，并非逐条交集筛选：较窄委托可能拒绝整个请求。供应商受限委托因无费用供应商归属而拒绝；客户、业务单元、仓库或品牌受限而无目标订单时亦拒绝。Core 增加当前及历史无品牌目标标记，品牌受限委托不能将空品牌视为已授权。
+
+真实 PostgreSQL 55439 的 adjustment_read 通过 Core HTTP 适配器测试：查询及详情、六类委托范围拒绝、版本冲突、缺少后续页版本、空品牌目标拒绝，审计/持久化预览/利润事实数量不变。其实际返回值输入 MCP 独立校验，篡改 ID、金额、币种、日期、版本或分页以及超出响应预算均拒绝。adjustment_read_gateway_final 验证完整 67 项普通委托；adjustment_read_core_final 回归整单明细授权及分页查找。
+
+查询合同 15 项、Host 11 项、MCP 28 项、Read API 57 项报告通过；其中环境变量控制的其他集成测试可能跳过，本批只将上述显式新库和实际响应语料计为新增运行证据。六个相关包 all-targets 严格 Clippy 通过，真实 MCP 进程目录探针通过；未运行全仓 just ci。日志 /tmp/adjustment-read-{contract,host,mcp,test,gateway,core,clippy}.log，目录 /tmp/adjustment-read-inventory.json。
+
+本批未部署、未更新安装包、未发送真实聊天，尚未将新读取接入完整签名端到端验收。下一步补齐费用草稿创建/修改的不可变意图、签名确认与幂等保护，并完成真实详情页面及逆转；完整业务流程目标仍未完成。

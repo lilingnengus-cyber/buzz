@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod adjustments;
+pub use adjustments::{GetOperationalAdjustmentInput, SearchOperationalAdjustmentsInput};
 mod crm;
 pub use crm::{GetCrmOpportunityInput, SearchCrmOpportunitiesInput};
 mod inventory_counts;

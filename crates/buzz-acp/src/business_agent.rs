@@ -16,7 +16,8 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 66] = [
+const AGENT_SCOPES: [&str; 67] = [
+    "profit_adjustment:read",
     "operational_adjustment_post_intent:create",
     "operating_report_snapshot_intent:create",
     "management_report_snapshot_intent:create",

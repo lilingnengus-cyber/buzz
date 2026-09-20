@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod adjustment_reads;
 mod adjustment_result;
 mod adjustment_tools;
 mod crm_inputs;
@@ -2777,7 +2778,18 @@ impl BusinessReadMcp {
         };
         let (mut result, audit_event, audit_result, reason) = match result {
             Ok(result) => {
-                match master_result::read(tool, result, &context, self.config.max_payload_bytes) {
+                let verified = if adjustment_reads::handles(tool) {
+                    adjustment_reads::validate(
+                        tool,
+                        result,
+                        &normalized_input,
+                        &context,
+                        self.config.max_payload_bytes,
+                    )
+                } else {
+                    master_result::read(tool, result, &context, self.config.max_payload_bytes)
+                };
+                match verified {
                     Ok(result) => {
                         let partial = matches!(result.status, BusinessToolStatus::Partial);
                         (

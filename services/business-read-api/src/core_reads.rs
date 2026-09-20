@@ -36,6 +36,9 @@ pub(super) async fn core_read_result(
     ) {
         return master_writes::read(core, input, scope, context).await;
     }
+    if adjustment_reads::handles(tool) {
+        return adjustment_reads::read(core, tool, input, scope, context).await;
+    }
     if crm::handles(tool) {
         return crm::read(core, tool, input, scope, context).await;
     }

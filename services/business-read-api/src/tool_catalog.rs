@@ -1,4 +1,6 @@
-pub(super) const READ_TOOLS: [&str; 45] = [
+pub(super) const READ_TOOLS: [&str; 47] = [
+    "search_operational_adjustments",
+    "get_operational_adjustment",
     "get_business_master_record",
     "get_business_product_master_record",
     "search_crm_opportunities",
@@ -154,6 +156,9 @@ pub(super) const WRITE_TOOLS: [&str; 94] = [
 
 pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "search_operational_adjustments" | "get_operational_adjustment" => {
+            Some("profit_adjustment:read")
+        }
         "prepare_operational_adjustment_post" => Some("operational_adjustment_post_intent:create"),
         "approve_operational_adjustment_post" => Some("operational_adjustment_post_intent:approve"),
         "prepare_operating_report_snapshot" => Some("operating_report_snapshot_intent:create"),

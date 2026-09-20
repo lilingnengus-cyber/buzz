@@ -143,6 +143,7 @@ impl AdjustmentService {
         if outside {
             return Err(DomainError::NotFoundOrForbidden);
         }
+        let has_unattributed_brand_targets:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_orders WHERE id=ANY($1) AND brand_id IS NULL) OR EXISTS(SELECT 1 FROM profit_facts WHERE sales_order_id=ANY($1) AND brand_id IS NULL)").bind(order_ids.iter().copied().collect::<Vec<_>>()).fetch_one(&mut **tx).await?;
         let total_lines = lines.len();
         let items: Vec<Value> = lines
             .into_iter()
@@ -151,7 +152,7 @@ impl AdjustmentService {
             .map(|row| row.get("record"))
             .collect();
         let next = query.offset + items.len();
-        let result = json!({"schemaVersion":1,"batch":batch.get::<Value,_>("record"),"lines":items,"totalAmount":total.to_string(),"targetOrderCount":order_ids.len(),"scope":authorization.scopes,"pagination":{"offset":query.offset,"limit":query.limit,"total":total_lines,"nextOffset":if next<total_lines {Some(next)}else{None}},"version":version,"boundary":"management_only_not_general_ledger"});
+        let result = json!({"schemaVersion":1,"batch":batch.get::<Value,_>("record"),"lines":items,"totalAmount":total.to_string(),"targetOrderCount":order_ids.len(),"hasUnattributedBrandTargets":has_unattributed_brand_targets,"scope":authorization.scopes,"pagination":{"offset":query.offset,"limit":query.limit,"total":total_lines,"nextOffset":if next<total_lines {Some(next)}else{None}},"version":version,"boundary":"management_only_not_general_ledger"});
         Ok(result)
     }
 }

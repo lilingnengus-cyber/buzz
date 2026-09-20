@@ -98,7 +98,7 @@ async fn expect_revocation_request(
 
 #[test]
 fn agent_scope_allowlist_has_only_draft_writes() {
-    assert_eq!(AGENT_SCOPES.len(), 66);
+    assert_eq!(AGENT_SCOPES.len(), 67);
     assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
     assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
     assert!(AGENT_SCOPES.contains(&"sales_order:create"));
@@ -117,7 +117,8 @@ fn draft_write_switch_defaults_to_disabled_semantics() {
         .copied()
         .filter(|scope| !(scope.ends_with(":create") || scope.ends_with(":update_draft")))
         .collect::<Vec<_>>();
-    assert_eq!(read_only.len(), 17);
+    assert_eq!(read_only.len(), 18);
+    assert!(read_only.contains(&"profit_adjustment:read"));
     assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
 }
 

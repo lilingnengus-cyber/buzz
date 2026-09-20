@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod adjustment_reads;
 mod adjustment_writes;
 mod allocation_history;
 mod config;
@@ -300,6 +301,7 @@ async fn read_tool(
         } else if tool == "get_inventory_count_approval_preview"
             || inventory_counts::handles(&tool)
             || crm::handles(&tool)
+            || adjustment_reads::handles(&tool)
             || tool == "search_business_master_data"
             || matches!(
                 tool.as_str(),
