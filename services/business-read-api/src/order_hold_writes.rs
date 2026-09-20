@@ -266,6 +266,8 @@ pub(super) async fn forward(
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
+    result["preview"] = preview["document"].clone();
+    result["previewHash"] = preview["previewHash"].clone();
     Json(result).into_response()
 }
 

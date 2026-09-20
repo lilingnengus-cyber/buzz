@@ -1,6 +1,6 @@
 # 销售订单暂停与恢复写入
 
-状态：Core 受保护执行、不可变意图及原子审批接口已通过隔离回归；Gateway/Read API 已接入并完成隔离验证；MCP/Host 尚未接入，助手尚未开放，未部署。完整业务流程目标不因此完成。
+状态：Core 受保护执行、不可变意图及原子审批接口已通过隔离回归；Gateway/Read API、MCP/Host 已接入并完成隔离及原生进程验证；尚未部署和真实聊天验收。完整业务流程目标不因此完成。
 
 ## 已完成
 
@@ -51,3 +51,19 @@ Gateway 定向四项测试通过；Read API 49 项通过，其中本次 order ho
 同时按既有职责拆分原超过 1000 行的 Read API 主文件为 tool_catalog、core_reads、analytics_results，主入口现不足 500 行；既有读取/分析测试通过。两类测试共用同一 B2 种子模块，避免重复编译模块。
 
 MCP 固定工具、Host 确认隔离、原生进程/真实聊天、配套部署与 Windows 仍未完成。本批未部署，生产缓存清理授权仍未收到，未执行清理。
+
+## 2026-09-20 MCP/Host 与原生进程验证
+
+新增 prepare_sales_order_hold、prepare_sales_order_release_hold，以及两个无业务参数的 approve 工具。准备输入固定 UUID、正版本和用户原因，工具描述与 Host 提示明确暂停保留库存预留、恢复不代表出库；只报告 executed=true 为实际完成，不增加确认按钮。Host 普通请求范围由 61 增至 63，仅增加两项 create；审批范围只从当前人类签名的精确结构化指令提取。
+
+MCP 新增独立 order_hold_result 验证器：固定字段、预览家族/操作/状态/行范围、完整预览哈希、确认/拒绝命令、目标订单详情链接及响应限额。Read API 确认结果附带已验证 preview 和 previewHash，MCP 再与受信任委托中的签名摘要比较，逐项验证执行订单 ID、目标状态和版本递增，防止同时替换结果订单与链接。pending/rejected 不能带业务执行结果。
+
+从真实 Core + Read API 重跑获得四条响应 /tmp/order-hold-mcp-corpus-verified.jsonl（隔离库 order_hold_mcp_verified，55439）。MCP 实际消费全部四条并验证摘要、参数、状态、版本、链接、审批门槛和目标替换拒绝；模拟 pending/rejected 分支同样验证无执行效果。MCP 24 项、Host 定向 10 项、Read API 本项两项实际集成测试通过，严格 Clippy、格式及文件大小检查通过。其他需要可选语料的测试未设置语料时不能计作实际语料验证。
+
+重新构建 buzz-agent/business-read-mcp 后，原生 stdio + 模拟模型探针通过三个配置：普通会话 105 工具；sales_order_hold_intent:approve 与 sales_order_release_hold_intent:approve 各 60 工具，均只包含固定允许集合且完成 prompt。可见性回归验证确认工具零业务参数、普通会话无 approve、确认会话无 prepare/create/update，均低于 128 工具上限。此项不是用户真实聊天或真实模型推理验收。
+
+原生 SHA-256：buzz-agent d96093a3e04f7eaccbc9ca893d5cc2669745520e7e57ef18e03897488773fdc3；business-read-mcp ea762200c2f18a6282ea47ff4b638ae60e4dc5c2d69346991db9aca72c862715。
+
+日志 /tmp/order-hold-mcp-corpus-api.log、/tmp/order-hold-mcp-final.log、/tmp/order-hold-host-tests.log、/tmp/order-hold-final-clippy.log、/tmp/order-hold-mcp-final-clippy.log、/tmp/order-hold-native-{build,ordinary,pause,resume}.log。尚未安装这些原生文件；新 MCP 的确认验证要求本批配套 Read API 返回预览证明，不能单独替换线上旧 MCP。
+
+后续仍需配套 Linux/Windows 候选、迁移/受限授权及暂停回退演练、生产和客户端发布、获准真实聊天与 Windows 实机验收。已有 4796f86e3 镜像不含本批订单暂停/恢复，旧主资料暂停方案也不覆盖订单暂停路由。生产缓存清理问题仍等待此前明确授权请求的答复；本轮未清理或切换生产。

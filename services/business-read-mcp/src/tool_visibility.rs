@@ -77,6 +77,8 @@ mod tests {
                 .any(|p| t.name.starts_with(p))));
         }
         for family in [
+            "sales_order_hold",
+            "sales_order_release_hold",
             "core_master_status",
             "product_master_status",
             "core_master_creation",
