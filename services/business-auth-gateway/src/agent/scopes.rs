@@ -1,4 +1,6 @@
-pub(super) const AGENT_SCOPES: [&str; 105] = [
+pub(super) const AGENT_SCOPES: [&str; 107] = [
+    "management_report_snapshot_intent:create",
+    "management_report_snapshot_intent:approve",
     "sales_order_hold_intent:create",
     "sales_order_hold_intent:approve",
     "sales_order_release_hold_intent:create",

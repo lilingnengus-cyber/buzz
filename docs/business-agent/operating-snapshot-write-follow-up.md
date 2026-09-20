@@ -101,3 +101,13 @@ report_intent_races_full（55439）真实 Router/数据库回归通过。使用 
 - 授权 revision 被锁时发起确认，等待期间撤销生成权限，放行后重新校验返回 404；无新增报表/票/请求。
 
 日志 /tmp/report-intent-races-full.log；严格 Clippy、格式、文件大小、差异检查通过（/tmp/report-intent-races-{clippy,size}.log）。没有部署或发送真实聊天消息。下一步接通 Gateway、Read API、MCP 和 Host，保留文字确认与真实详情链接；日报/周报和其他尚缺业务领域仍在完整目标范围内。
+
+## Gateway 与 Read API 月报写入适配
+
+Gateway 登记 management_report_snapshot_intent:create/approve，解析固定 management-report-snapshot-intent 签名确认语法；普通写入委托不能获得 approve 权限。Read API 增加 prepare_management_report_snapshot / approve_management_report_snapshot 固定工具，准备先读取 Core 预览并核验全部范围，再带预览摘要写入意图；审批再次检查当前委托范围、意图 ID/版本/摘要，确认结果验证实际快照与 trace。返回复算过摘要的 preview，供后续 MCP 校验；创建成功返回 biz://management-report/<UUID>，沿用已有客户端详情解析。准备新快照不返回尚不存在的详情链接，复用已有快照则返回原链接。
+
+当前 Core 计算包含未分配品牌/仓库的事实，且没有供应商过滤。适配器因此拒绝带品牌、仓库或供应商限制的委托，不能声称这三个维度的受限报表已支持；后续须补齐准确过滤语义后开放。法人、客户、业务单元限制必须覆盖预览中的整个聚合范围，不能仅验证用户输入。
+
+真实 HTTP Core + PostgreSQL 独立库 report_snapshot_adapter_verified（55439）验收：六类不匹配/不支持范围的准备均拒绝且意图计数为零；成功准备、非法范围/摘要校验、确认前客户范围复核、实际生成及详情链接；已有快照的再次准备/审批复用原 ID，快照数保持 1。日志 /tmp/report-adapter-test-final.log。Read API 库测试 51 项通过（数据库环境未设时数据库用例跳过，不能计作 51 项真实数据库验收）；Gateway Agent 单测 4 项通过。尚未接入 MCP/Host，未部署或发送真实聊天消息。
+
+Gateway/Read API 严格 Clippy、格式、文件大小和差异检查通过；日志 /tmp/report-adapter-clippy-final.log、/tmp/report-adapter-size.log。未运行全仓 just ci。

@@ -11,6 +11,7 @@ mod inventory_counts;
 mod master_data;
 mod master_writes;
 mod order_hold_writes;
+mod report_snapshot_writes;
 mod return_documents;
 mod stock_documents;
 mod tool_catalog;
