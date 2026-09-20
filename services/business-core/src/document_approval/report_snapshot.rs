@@ -3,6 +3,7 @@ use super::permission_witness as authority;
 use super::*;
 use serde_json::Value;
 mod command;
+mod retry;
 mod vote;
 use command::Command;
 
@@ -55,15 +56,17 @@ async fn prepare(
         },
         None => None,
     };
-    match prepare_on(
-        &state,
-        c.actor_user_id,
-        c.trace_id,
-        &kind,
-        key,
-        value,
-        expected,
-    )
+    match retry::run(|| {
+        prepare_on(
+            &state,
+            c.actor_user_id,
+            c.trace_id,
+            &kind,
+            key,
+            value.clone(),
+            expected,
+        )
+    })
     .await
     {
         Ok((id, snapshot)) => Json(envelope(id, &kind, snapshot, c.trace_id)).into_response(),
@@ -157,7 +160,9 @@ async fn approve(
     Path((kind, id)): Path<(String, Uuid)>,
     Json(input): Json<ChatApprovalInput>,
 ) -> Response {
-    match vote::execute(&state, (c.actor_user_id, c.trace_id), &kind, id, &input).await {
+    match retry::run(|| vote::execute(&state, (c.actor_user_id, c.trace_id), &kind, id, &input))
+        .await
+    {
         Ok(value) => Json(value).into_response(),
         Err(e) => store_error(e, c.trace_id),
     }

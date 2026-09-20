@@ -88,3 +88,16 @@ Core 新增 agent-report-snapshot-previews、agent-report-snapshot-intents、age
 仍未部署，未接通 Gateway/Read API/MCP/Host 文本命令或真实聊天。新外层事务的序列化冲突目前安全返回数据库错误，尚需增加整个审批事务的有界重试及并发/等候过期、多审批者撤权专项验证。经营日/周报尚未接入；完整报表业务流程未完成。
 
 迁移 61 后完整 B4 流程与订单暂停/解除审批回归分别在 report_intent_b4_regression、report_intent_hold_regression 独立数据库通过；严格 Clippy、格式、文件大小及差异检查通过。未运行全仓 just ci。日志 /tmp/report-intent-{b4,hold,clippy,size}.log。
+
+## 月报审批竞争与等候后授权
+
+准备意图和执行审批现使用整个事务的有界重试：仅 PostgreSQL 40001/40P01 重试，最多两次，每次重新读取意图、预览、权限、策略、已有投票和有效期。业务冲突、过期、普通数据库故障不重试。此项补齐上一节记录的审批外层序列化冲突处理。
+
+report_intent_races_full（55439）真实 Router/数据库回归通过。使用 advisory lock 和 pg_stat_activity 中实际阻塞者确保请求重叠：
+- 同键准备同时到达，最终同一意图 ID，仅一条准备审计。
+- 两位审批人同时确认，第二位在第一位未提交时竞争请求行，最终 2 票/1 请求/1 新快照；首票返回 pending。
+- 首票后撤销该投票者客户范围，第二票冲突且计数不变；恢复范围后可完成。
+- 快照已在事务内生成后，最终审计被真实锁阻塞直至意图过期；放行后拒绝，报表/请求/票计数全部不变。
+- 授权 revision 被锁时发起确认，等待期间撤销生成权限，放行后重新校验返回 404；无新增报表/票/请求。
+
+日志 /tmp/report-intent-races-full.log；严格 Clippy、格式、文件大小、差异检查通过（/tmp/report-intent-races-{clippy,size}.log）。没有部署或发送真实聊天消息。下一步接通 Gateway、Read API、MCP 和 Host，保留文字确认与真实详情链接；日报/周报和其他尚缺业务领域仍在完整目标范围内。

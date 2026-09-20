@@ -10,6 +10,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 #[path = "support/b2_seed.rs"]
 mod b2_seed;
+#[path = "support/report_snapshot_races.rs"]
+mod report_snapshot_races;
 struct Fixture {
     actor: Uuid,
     legal_entity: Uuid,
@@ -185,6 +187,7 @@ async fn monthly_report_intent_approval_is_atomic() {
     assert_eq!(result["executed"], false);
     assert!(result["createdDocument"].is_null());
     assert_eq!(counts(&pool).await, (1, 2, 2));
+    report_snapshot_races::verify(&pool, &app, &f).await;
 }
 async fn counts(pool: &PgPool) -> (i64, i64, i64) {
     sqlx::query_as("SELECT (SELECT count(*) FROM management_report_snapshots),(SELECT count(*) FROM business_document_approval_requests),(SELECT count(*) FROM business_document_approval_votes)").fetch_one(pool).await.unwrap()
