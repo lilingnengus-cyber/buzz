@@ -8,43 +8,7 @@ pub(super) async fn write_tool(
     if !WRITE_TOOLS.contains(&tool.as_str()) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let is_approval = ((inventory_count_writes::family(&tool).is_some()
-        || crm_writes::family(&tool).is_some()
-        || master_writes::family(&tool).is_some()
-        || order_hold_writes::family(&tool).is_some()
-        || operating_snapshot_writes::family(&tool).is_some()
-        || report_snapshot_writes::family(&tool).is_some())
-        && tool.starts_with("approve_"))
-        || matches!(
-            tool.as_str(),
-            "approve_sales_order"
-                | "approve_sales_return"
-                | "approve_purchase_return"
-                | "approve_sales_return_inspection"
-                | "approve_sales_return_reversal"
-                | "approve_purchase_return_reversal"
-                | "approve_sales_return_cancellation"
-                | "approve_purchase_return_cancellation"
-                | "approve_purchase_return_dispatch"
-                | "approve_purchase_return_acknowledgment"
-                | "approve_purchase_order"
-                | "approve_shipment"
-                | "approve_goods_receipt"
-                | "approve_customer_receipt"
-                | "approve_supplier_payment"
-                | "approve_receivable_allocation"
-                | "approve_payable_allocation"
-                | "approve_customer_receipt_reversal"
-                | "approve_supplier_payment_reversal"
-                | "approve_receivable_allocation_reversal"
-                | "approve_payable_allocation_reversal"
-                | "approve_shipment_reversal"
-                | "approve_goods_receipt_reversal"
-                | "approve_inventory_opening_reversal"
-                | "approve_sales_order_cancellation"
-                | "approve_purchase_order_cancellation"
-                | "approve_inventory_opening"
-        );
+    let is_approval = is_approval_tool(&tool);
     if (is_approval && !state.chat_approval_enabled) || (!is_approval && !state.draft_write_enabled)
     {
         return StatusCode::NOT_FOUND.into_response();
@@ -83,6 +47,9 @@ pub(super) async fn write_tool(
     let Some(core) = state.core.as_ref() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
+    if adjustment_writes::family(&tool).is_some() {
+        return adjustment_writes::forward(core, &tool, input, &context, &grant).await;
+    }
     if operating_snapshot_writes::family(&tool).is_some() {
         return operating_snapshot_writes::forward(core, &tool, input, &context, &grant).await;
     }
@@ -135,6 +102,9 @@ pub(super) async fn write_tool(
 }
 
 pub(super) fn valid_write_input(tool: &str, input: &Value) -> bool {
+    if adjustment_writes::family(tool).is_some() {
+        return adjustment_writes::valid(tool, input);
+    }
     if operating_snapshot_writes::family(tool).is_some() {
         return operating_snapshot_writes::valid(tool, input);
     }

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod adjustment_writes;
 mod allocation_history;
 mod config;
 mod crm;

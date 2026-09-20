@@ -55,7 +55,9 @@ pub(super) const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-pub(super) const WRITE_TOOLS: [&str; 92] = [
+pub(super) const WRITE_TOOLS: [&str; 94] = [
+    "prepare_operational_adjustment_post",
+    "approve_operational_adjustment_post",
     "prepare_operating_report_snapshot",
     "approve_operating_report_snapshot",
     "prepare_management_report_snapshot",
@@ -152,6 +154,8 @@ pub(super) const WRITE_TOOLS: [&str; 92] = [
 
 pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_operational_adjustment_post" => Some("operational_adjustment_post_intent:create"),
+        "approve_operational_adjustment_post" => Some("operational_adjustment_post_intent:approve"),
         "prepare_operating_report_snapshot" => Some("operating_report_snapshot_intent:create"),
         "approve_operating_report_snapshot" => Some("operating_report_snapshot_intent:approve"),
         "prepare_management_report_snapshot" => Some("management_report_snapshot_intent:create"),
@@ -319,4 +323,45 @@ pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
         | "explain_profit_change" => Some("business_anomaly:read"),
         _ => None,
     }
+}
+
+pub(super) fn is_approval_tool(tool: &str) -> bool {
+    ((super::adjustment_writes::family(tool).is_some()
+        || super::inventory_count_writes::family(tool).is_some()
+        || super::crm_writes::family(tool).is_some()
+        || super::master_writes::family(tool).is_some()
+        || super::order_hold_writes::family(tool).is_some()
+        || super::operating_snapshot_writes::family(tool).is_some()
+        || super::report_snapshot_writes::family(tool).is_some())
+        && tool.starts_with("approve_"))
+        || matches!(
+            tool,
+            "approve_sales_order"
+                | "approve_sales_return"
+                | "approve_purchase_return"
+                | "approve_sales_return_inspection"
+                | "approve_sales_return_reversal"
+                | "approve_purchase_return_reversal"
+                | "approve_sales_return_cancellation"
+                | "approve_purchase_return_cancellation"
+                | "approve_purchase_return_dispatch"
+                | "approve_purchase_return_acknowledgment"
+                | "approve_purchase_order"
+                | "approve_shipment"
+                | "approve_goods_receipt"
+                | "approve_customer_receipt"
+                | "approve_supplier_payment"
+                | "approve_receivable_allocation"
+                | "approve_payable_allocation"
+                | "approve_customer_receipt_reversal"
+                | "approve_supplier_payment_reversal"
+                | "approve_receivable_allocation_reversal"
+                | "approve_payable_allocation_reversal"
+                | "approve_shipment_reversal"
+                | "approve_goods_receipt_reversal"
+                | "approve_inventory_opening_reversal"
+                | "approve_sales_order_cancellation"
+                | "approve_purchase_order_cancellation"
+                | "approve_inventory_opening"
+        )
 }

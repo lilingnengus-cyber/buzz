@@ -60,3 +60,13 @@ Gateway 固定能力清单增加 operational_adjustment_post_intent:create / app
 隔离 PostgreSQL 55439 的 adjustment_signed_final 验收：真实绑定密钥签署确认/拒绝，签发、消费及独立再次验证成功；替换文档、版本、摘要、决定，缺失审批内容或换用另一文档家族权限均拒绝。单独覆盖过旧/未来事件、签名后篡改、频道错配、命令家族错配、多余文本、裸“确认”、审批开关关闭，均不签发任何委托。原容量测试的 59 项旧子集升级为实际 66 项普通清单，数据库完整保存，129 项仍拒绝。
 
 Host 10 项针对性测试、Gateway 8 项单元测试及上述真实数据库验收通过；两包 all-targets 严格 Clippy、格式/差异和文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-signed-{final,host-final,unit,clippy-final,size}.log。未部署、未更换客户端、未代发真实聊天。下一步为 Read API 的固定入口、预检范围和独立结果校验，再接 MCP 工具与端到端签名执行验收。
+
+## Read API 固定入口与独立校验
+
+增加 prepare_operational_adjustment_post / approve_operational_adjustment_post 两项固定写入工具（Read API 写入目录 94 项）。沿用服务身份、Gateway verify_write 对精确签名字段的验证、当前 IAM 能力匹配及独立准备/审批开关。将已有审批工具分类提取到目录模块，给原 998 行 writes.rs 留出空间；既有工具语义不变。
+
+准备只接收 batchId / expectedVersion，审批只接收 documentId / expectedVersion / previewHash / decision，拒绝客户端注入来源事件或金额。先读取 Core 纯预览，再独立验证请求人与输入、内层摘要、批次状态和版本、六类快照范围、目标归属、币种、正数两位金额、分摊明细总和及零未分摊余额；检查完整请求人范围处于委托范围后，使用预检摘要保存意图。审批前重新验证预览及范围，审批后验证请求、投票门槛、决定、批次编号和版本加二、posted 状态及 traceId。品牌受限委托拒绝无品牌归属目标。本批不添加尚未完成验收的详情链接。
+
+真实 Core HTTP 服务与 PostgreSQL 55439 的 adjustment_adapter_verified 验收通过：从实际开账、订单、发货和利润投影生成源数据，验证过账成功、拒绝、多人门槛下 pending 三种结果；后两者保持草稿。同一准备请求重放返回同一意图；法人、客户、业务单元、品牌及仓库委托错配不会新增意图；错误确认摘要拒绝；篡改金额或客户后即使重算内层摘要也被语义校验拒绝。三组真实准备/审批输出保存于 /tmp/adjustment-adapter-proof.jsonl，供后续 MCP 独立验证使用。
+
+Read API 测试命令报告 55 项通过，其中本批数据库验收明确设置独立库并实际执行；其他依赖专用数据库环境变量的既有测试可能提前返回，不将该数字声称为全量数据库验收。严格 all-targets Clippy、格式/差异与文件大小检查通过，证据 /tmp/adjustment-adapter-{verified,clippy-final,size}.log；未运行全仓 just ci。当前没有部署或真实聊天，MCP 固定工具/返回校验、Host 提示词以及 Gateway→Read API→Core 端到端联调仍待完成。完整业务写入目标不缩减。
