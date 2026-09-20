@@ -2282,17 +2282,17 @@ impl BusinessReadMcp {
     where
         T: Serialize + Send,
     {
-        let draft_input = if adjustment_result::is_draft(tool) {
+        let draft_input = if adjustment_result::requires_canonical_input(tool) {
             serde_json::to_value(&input)
                 .ok()
                 .and_then(|v| adjustment_result::draft_input(tool, &v))
         } else {
             None
         };
-        if adjustment_result::is_draft(tool) && draft_input.is_none() {
+        if adjustment_result::requires_canonical_input(tool) && draft_input.is_none() {
             return write_error_json(
                 "invalid_input",
-                "Invalid adjustment draft input",
+                "Invalid adjustment input",
                 self.config.trace_id,
             );
         }

@@ -14,6 +14,7 @@ use sqlx::PgPool;
 mod drafts;
 mod gateway;
 mod mcp;
+mod reversal;
 
 async fn serve(app: Router) -> (Url, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -101,7 +102,7 @@ async fn signed_adjustment_runs_through_real_gateway_mcp_api_and_core() {
         .unwrap();
     let human = Uuid::new_v4();
     sqlx::query("INSERT INTO business_iam.principals(id,kind,external_id,display_name) VALUES($1,'human',$2,'Adjustment Chain')").bind(human).bind(f.actor.to_string()).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability IN ('operational_adjustment_post_intent:create','operational_adjustment_post_intent:approve','operational_adjustment_creation_intent:create','operational_adjustment_creation_intent:approve','operational_adjustment_update_intent:create','operational_adjustment_update_intent:approve','profit_adjustment:read')").bind(human).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability IN ('operational_adjustment_post_intent:create','operational_adjustment_post_intent:approve','operational_adjustment_creation_intent:create','operational_adjustment_creation_intent:approve','operational_adjustment_update_intent:create','operational_adjustment_update_intent:approve','profit_adjustment:read','operational_adjustment_reversal_intent:create','operational_adjustment_reversal_intent:approve')").bind(human).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_approval_policies(action_code,required_permission,eligible_role_keys,min_approvers,allow_self_approval) VALUES('profit_adjustment:post','profit_adjustment:post',ARRAY['b2_operator'],1,true)").execute(&pool).await.unwrap();
     let (gateway_url, gateway_task) = serve(business_auth_gateway::router(
         business_auth_gateway::AppState {
@@ -319,13 +320,25 @@ async fn signed_adjustment_runs_through_real_gateway_mcp_api_and_core() {
         let requests:i64=sqlx::query_scalar("SELECT count(*) FROM business_document_approval_requests WHERE document_type='operational_adjustment_post_intent' AND document_id=$1").bind(prepared["item"]["id"].as_str().unwrap().parse::<Uuid>().unwrap()).fetch_one(&pool).await.unwrap();
         assert_eq!(requests, 0, "{mode}");
     }
+    let reversal_successes = drafts::Environment {
+        pool: &pool,
+        binary: &binary,
+        gateway: &gateway_url,
+        api: &api_url,
+        credential: &credential,
+        keys: &keys,
+        fixture: &f,
+        order: source,
+    }
+    .verify_reversal()
+    .await;
     let audits: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM security_audit_events WHERE event_type='BUSINESS_MCP_TOOL_SUCCEEDED'",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(audits, 7 + draft_successes);
+    assert_eq!(audits, 7 + draft_successes + reversal_successes);
     api_task.abort();
     core_task.abort();
     gateway_task.abort();

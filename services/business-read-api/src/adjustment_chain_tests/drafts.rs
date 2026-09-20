@@ -14,7 +14,13 @@ impl Environment<'_> {
         let f = self.fixture;
         json!({"legalEntityId":f.legal_entity,"currency":"CNY","managementPeriod":"2026-08","lines":[{"metricType":"allocated_operating_expense","amount":"10.01","businessDate":"2026-08-21","allocationBasis":"direct","directSalesOrderId":self.order,"customerId":f.customer,"businessUnitId":f.business_unit,"brandId":f.brand,"warehouseId":f.warehouse,"reasonCode":"TEST"}]})
     }
-    async fn call(&self, tool: &str, scope: &str, message: &str, input: Value) -> (Value, Value) {
+    pub(super) async fn call(
+        &self,
+        tool: &str,
+        scope: &str,
+        message: &str,
+        input: Value,
+    ) -> (Value, Value) {
         let issued = issue(self.gateway, self.credential, self.keys, message, scope).await;
         let mut client = mcp::Client::start(
             self.binary,
@@ -29,7 +35,7 @@ impl Environment<'_> {
         client.stop().await;
         (result, issued)
     }
-    async fn prepare(&self, kind: &str, input: Value) -> Value {
+    pub(super) async fn prepare(&self, kind: &str, input: Value) -> Value {
         let suffix = kind.strip_suffix("_intent").unwrap();
         let (prepared, _) = self
             .call(
@@ -42,7 +48,7 @@ impl Environment<'_> {
         assert_eq!(prepared["status"], "ok", "{prepared}");
         prepared
     }
-    async fn approve(&self, kind: &str, p: &Value, decision: &str) -> Value {
+    pub(super) async fn approve(&self, kind: &str, p: &Value, decision: &str) -> Value {
         let suffix = kind.strip_suffix("_intent").unwrap();
         let command = p[if decision == "approve" {
             "approvalCommand"
@@ -95,7 +101,7 @@ impl Environment<'_> {
         assert_eq!(source, issued["sourceEventId"].as_str().unwrap());
         result
     }
-    async fn footprint(&self) -> Value {
+    pub(super) async fn footprint(&self) -> Value {
         sqlx::query_scalar("SELECT jsonb_build_object('batches',(SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM operational_adjustment_batches b),'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM operational_adjustment_lines l),'votes',(SELECT count(*) FROM business_document_approval_votes),'requests',(SELECT count(*) FROM business_document_approval_requests),'facts',(SELECT count(*) FROM profit_facts),'numbering',(SELECT sum(current_value) FROM business_numbering_sequence_pools),'idem',(SELECT count(*) FROM business_command_idempotency),'outbox',(SELECT count(*) FROM business_core_outbox))").fetch_one(self.pool).await.unwrap()
     }
     pub(super) async fn verify(&self) -> i64 {

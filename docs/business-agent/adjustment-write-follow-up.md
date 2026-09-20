@@ -262,3 +262,14 @@ Read API 新增 prepare_operational_adjustment_reversal 和 approve_operational_
 真实 PostgreSQL 55439 新库 adjustment_reversal_adapter_final 与真实 Core HTTP 服务覆盖逆转成功、拒绝、等待第二人三种结果，并回读实际批次状态；准备幂等、六类错误 IAM 范围在保存意图前拒绝、明确受限客户/业务单元/品牌正常通过、错误确认摘要拒绝。重新计算内层摘要后的金额、总和、来源关联、客户归属、原因、effects 和目标订单篡改仍拒绝；伪造 posted 执行结果拒绝。既有过账与草稿适配器回归通过。
 
 Read API 报告 57 项通过；其他未提供对应环境变量的集成测试可能跳过，本阶段新增运行证据限于上述显式新库与真实 Core 服务。all-targets 严格 Clippy、格式、差异及文件大小检查通过；未运行全仓 just ci。日志 /tmp/adjustment-reversal-adapter-{final,clippy,size}.log，三份实际响应 /tmp/adjustment-reversal-adapter-final-proof.jsonl。尚未部署或发送真实聊天；下一步接入 MCP 严格输入和独立结果校验，再验证完整签名服务链路，完整目标保持未完成。
+
+
+## 逆转 MCP 与完整签名服务链路
+
+MCP 新增 prepare_operational_adjustment_reversal 与零参数 approve_operational_adjustment_reversal。严格输入只接受批次、版本、原因，无效输入在消费委托前拒绝；返回 input 必须与请求一致。MCP 独立校验原事实与分摊关系、金额合计、范围、原因、effects、内外摘要与精确确认文本，执行结果绑定签名意图/决定、同批次、reversed 状态及版本加一。Host 提示同步要求先展示历史金额与原因并等待文本确认，保留原事实、追加抵销事实，不宣称银行退款。
+
+加载真实 Read API 三份逆转、六份草稿和三份过账响应运行 MCP 34 项测试通过；覆盖畸形结构、敏感字段、错误 Trace、签名字段/决定错配、重算摘要后事实篡改和虚假执行状态。Host 11 项定向测试通过。实际 stdio 工具目录：普通会话 113 项，四种费用审批会话各 62 项，审批会话只保留对应 approve 工具，均未超过 128 项限制。
+
+新库 adjustment_reversal_chain 在真实 Gateway/Core/Read API HTTP 服务和实际 MCP 子进程间完成签名链路。逆转批准、拒绝、待第二人审批各一例；回读批次状态，成功时原事实与抵销事实金额净和为零。投票来源事件精确匹配人类签名事件，重复确认不再执行；Gateway HTTP 撤销委托、签名错误摘要、源版本变化均拒绝，批次/明细/投票/请求/事实/编号/幂等/事件状态保持不变。既有草稿与过账链路同时通过；数据库独立回读三种逆转请求各 1 条，成功工具审计共 36 条。
+
+三包 all-targets 严格 Clippy、格式、差异、文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-reversal-mcp-{final,host,clippy,size}.log，工具清单 /tmp/adjustment-reversal-mcp-inventory.json，完整链路 /tmp/adjustment-reversal-chain-test.log。未部署或代发真实用户聊天。下一步实现费用详情页面与对应链接，再推进配套发布、Mac/Windows 真实客户端验收；完整业务流程仍未完成。

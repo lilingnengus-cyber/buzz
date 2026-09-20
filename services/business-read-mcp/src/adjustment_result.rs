@@ -4,6 +4,9 @@ use sha2::{Digest, Sha256};
 
 pub(super) fn family(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_operational_adjustment_reversal" | "approve_operational_adjustment_reversal" => {
+            Some("operational_adjustment_reversal_intent")
+        }
         "prepare_operational_adjustment_post" | "approve_operational_adjustment_post" => {
             Some("operational_adjustment_post_intent")
         }
@@ -83,16 +86,23 @@ fn bounded(v: &Value, context: &DelegationContext, max: usize) -> Result<(), Str
     validate_business_value(&monetary)
 }
 mod drafts;
+pub(super) mod reversal;
 mod snapshot;
-pub(super) fn is_draft(tool: &str) -> bool {
+pub(super) fn requires_canonical_input(tool: &str) -> bool {
     family(tool).is_some_and(|k| k != "operational_adjustment_post_intent")
 }
 pub(super) fn draft_input(tool: &str, v: &Value) -> Option<Value> {
-    drafts::canonical(tool, v)
+    if tool == "prepare_operational_adjustment_reversal" {
+        reversal::canonical(v)
+    } else {
+        drafts::canonical(tool, v)
+    }
 }
 fn snapshot(v: &Value, kind: &str) -> Result<(), String> {
     if kind == "operational_adjustment_post_intent" {
         snapshot::validate(v, kind)
+    } else if kind == "operational_adjustment_reversal_intent" {
+        reversal::validate(v).ok_or_else(|| "Invalid adjustment reversal snapshot".into())
     } else {
         drafts::validate(v, kind).ok_or_else(|| "Invalid adjustment draft snapshot".into())
     }
@@ -216,7 +226,11 @@ pub(super) fn approval(
             if c.approval_decision.as_deref() != Some("approve")
                 || count < minimum
                 || v["resourceRefs"] != json!([])
-                || !drafts::valid_result(v, &v["preview"], kind, c.trace_id)
+                || !(if kind == "operational_adjustment_reversal_intent" {
+                    reversal::valid_result(v, &v["preview"], c.trace_id)
+                } else {
+                    drafts::valid_result(v, &v["preview"], kind, c.trace_id)
+                })
             {
                 return Err("Invalid executed adjustment draft result".into());
             }
@@ -263,3 +277,6 @@ mod tests;
 
 #[cfg(test)]
 mod draft_tests;
+
+#[cfg(test)]
+mod reversal_tests;
