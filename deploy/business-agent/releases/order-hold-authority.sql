@@ -25,7 +25,7 @@ BEGIN
     FOR SHARE OF g,p;
   IF (SELECT count(*) FROM business_iam.principal_permissions g JOIN business_iam.permissions p ON p.id=g.permission_id
       WHERE g.principal_id=principal AND p.capability IN ('sales_order:approve')
-        AND p.status='active' AND g.valid_from<=now() AND (g.valid_until IS NULL OR g.valid_until>now())
+        AND p.status='active' AND g.valid_from<=clock_timestamp() AND (g.valid_until IS NULL OR g.valid_until>clock_timestamp())
         AND g.data_scope->>'mode'='restricted'
         AND g.data_scope->'dimensions'=jsonb_build_object('legal_entity',jsonb_build_array('ea9d9cef-5408-4f86-a34c-afe4604f1754'))
         AND g.data_scope->'dimensions'->'legal_entity'='["ea9d9cef-5408-4f86-a34c-afe4604f1754"]'::jsonb) <> 1 THEN
@@ -55,6 +55,9 @@ BEGIN
   INSERT INTO business_approval_policies(action_code,required_permission,eligible_role_keys,min_approvers,allow_self_approval,require_distinct_business_unit,step_up_amount_minor,status)
     SELECT target.action_code,target.action_code,eligible_role_keys,min_approvers,allow_self_approval,require_distinct_business_unit,step_up_amount_minor,status
     FROM business_approval_policies CROSS JOIN (VALUES ('sales_order:place_hold'),('sales_order:release_hold')) target(action_code) WHERE business_approval_policies.action_code='sales_order:confirm';
+  PERFORM 1 FROM business_iam.permissions
+    WHERE resource_type IN ('sales_order_hold_intent','sales_order_release_hold_intent')
+      AND action IN ('create','approve') FOR SHARE;
   INSERT INTO business_iam.principal_permissions(principal_id,permission_id,data_scope,obligations,valid_from,valid_until,reason)
     SELECT principal,target.id,jsonb_set(g.data_scope,'{dimensions}',(g.data_scope->'dimensions')||jsonb_build_object('business_unit',jsonb_build_array('e6e6045b-1b70-4270-b9b7-8439461c9b0a'),'customer',jsonb_build_array('622e0e24-2ab1-42cb-954d-2220c581accf'))),g.obligations,g.valid_from,g.valid_until,'deployment:order-hold-c186ddf01'
     FROM business_iam.permissions target
@@ -64,6 +67,13 @@ BEGIN
       AND (target.action<>'approve' OR target.obligations ? 'fresh_signed_chat_command');
   GET DIAGNOSTICS copied = ROW_COUNT;
   IF copied <> 4 THEN RAISE EXCEPTION 'expected exactly four fixed order hold grants, got %',copied; END IF;
+  -- A source grant can expire while waiting for policy or permission locks.
+  IF EXISTS(SELECT 1 FROM business_iam.principal_permissions g
+      JOIN business_iam.permissions p ON p.id=g.permission_id
+      WHERE g.principal_id=principal AND p.capability='sales_order:approve'
+        AND (g.valid_from>clock_timestamp() OR g.valid_until<=clock_timestamp())) THEN
+    RAISE EXCEPTION 'source sales approval grant expired during preparation';
+  END IF;
   SELECT jsonb_agg(jsonb_build_object('capability',p.capability,'dataScope',g.data_scope,'obligations',g.obligations,'validFrom',g.valid_from,'validUntil',g.valid_until) ORDER BY p.capability)
     INTO grant_snapshot FROM business_iam.principal_permissions g JOIN business_iam.permissions p ON p.id=g.permission_id
     WHERE g.principal_id=principal AND g.reason='deployment:order-hold-c186ddf01';

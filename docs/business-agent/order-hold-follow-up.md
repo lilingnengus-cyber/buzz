@@ -91,3 +91,9 @@ Linux 流程现在同批导出四项服务及 writes-paused Core 镜像。暂停
 将新鲜生产 pg_dump 恢复到本地 55439 独立库 order_hold_production_rehearsal，使用本批重建 gateway --migrate-only 成功执行 57→59，再原样运行 master-status-authority.sql 和 order-hold-authority.sql（本次没有替换 UUID）。最终核对八项新增授权、两项复制策略、零 hold 意图。审计 trace 分别 b87a0137-33b0-4314-a1e2-159c9a0269da、f163aa90-85b4-40a3-862b-005d57186c57。
 
 备份 /tmp/order-hold-production-rehearsal.dump 和 .sql 权限 0600。远端 custom dump 版本不被本地 PG16 pg_restore 支持，因此改用 plain SQL，仅移除 PG16 不支持的 SET transaction_timeout = 0；恢复及迁移均成功。这证明生产数据和 SQL 迁移兼容性，不代替生产同版本镜像运行验收。日志 /tmp/order-hold-production-{restore,migrate,authority}.log。生产未改写、缓存未清理。Linux 35482054779 和 Windows 35482058899 最新查询均仍 in_progress。
+
+## 授权失败与等待期间过期保护
+
+授权脚本对来源有效期改用 clock_timestamp，并在新增策略/授权后再次检查来源授权到期；同时锁定四项目标 permission 行，避免校验过程中目标停用或签名义务被并发修改。失败全部回滚。
+
+order_hold_authority_negative 为生产数据副本的独立克隆。六项负向测试均拒绝且新增授权/策略数量保持 0：enterprise user 停用、来源授权已过期、来源授权扩大为 unrestricted、目标权限停用、approve 缺失 fresh_signed_chat_command、准备中来源授权到期（200ms 有效期，校验后等待 400ms）。正常路径通过后主动 ROLLBACK，未发布到生产。本批只改部署 SQL，无需重建正在运行的候选镜像。
