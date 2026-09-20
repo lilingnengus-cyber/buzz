@@ -105,3 +105,11 @@ order_hold_authority_negative 为生产数据副本的独立克隆。六项负�
 business-images.tar.gz 68,461,921 bytes，SHA256 22d56a501f15adf748949f79e2d09692225c44c5bbe6ddc84acf8433ce500651；tar 内文件总计 187,467,617 bytes。尚未加载生产服务器，不能将归档验证当作容器运行验收。Windows 35482058899 此时仍在构建。
 
 重新编译并以临时本地端口启动 Core，连接 order_hold_production_rehearsal：/health 200、现有 /v1/sales-orders 成功、原生产草稿订单的 hold dry preview 明确 canExecute=false。测试后终止了本次进程，无生产调用或业务写入。日志 /tmp/order-hold-core-runtime-build.log、/tmp/order-hold-core-runtime.log。此为 macOS 原生 Core 运行，不替代 Linux 镜像及暂停回退测试。
+
+## Linux 镜像实际运行及暂停路由验收
+
+独立 GitHub Actions 35482589265 success，使用已校验 c186ddf01 原归档，没有重建或替换镜像。PostgreSQL 17 实际迁移到 59，正常和 writes-paused Core 均健康启动。四个 hold prepare/dry-preview 路径及两个 master status prepare 路径：正常版对空输入返回 400，暂停版返回 503；暂停路径未认证请求仍为 401。最小只读用户的 /v1/sales-orders 在两版均返回 200。
+
+首轮 35482536682 failure 是读取 fixture 未创建请求用户导致两版返回 404；没有降低断言，补充只读用户及 sales_order:read 后重跑通过。证据 /tmp/business-hold-runtime-35482589265/business-hold-runtime-evidence/runtime-evidence.json 和容器日志。该验收覆盖迁移、进程启动及选定入口隔离，不代表真实业务暂停/恢复或所有审批路径均在容器中测试。
+
+Windows 35482058899 的 Verify native Business Agent tool loading 步骤已 success，最新仍在 Build Windows NSIS installer (unsigned)。生产仍未切换。
