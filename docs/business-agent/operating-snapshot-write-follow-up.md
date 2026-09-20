@@ -28,3 +28,11 @@
 新增实际 PostgreSQL 并发 helper：外部事务对 purchase_orders 持 ACCESS EXCLUSIVE 锁，启动快照后用 pg_blocking_pids 确认它已等待，再提交 inventory_balances 的变化并释放锁。生成快照仍保留较早时间点的库存金额和质量状态。临时将生成事务降为 READ COMMITTED 后，测试准确报错“snapshot metrics must not mix in a later committed balance”；恢复代码后在全新库 operating_snapshot_consistency_restored 完整 B4 回归通过。负向库独立，未删除或复用生产数据。
 
 日志 /tmp/operating-snapshot-consistency.log、/tmp/operating-snapshot-consistency-negative.log、/tmp/operating-snapshot-consistency-restored.log；严格 Clippy、格式、文件大小和差异检查通过。并发授权撤销、同键竞争的序列化失败处理、月报接口以及 Agent 意图/确认/发布仍待完成，不能将本次时间点一致性覆盖扩展为所有并发场景。
+
+## 2026-09-20 并发重复请求与等待期间撤权
+
+手动及定时生成增加有界事务重试：只对 PostgreSQL 40001（序列化冲突）和 40P01（死锁）重开整个事务，最多重试两次；每次重新锁定授权修订并读取当前权限。业务输入错误、范围拒绝和其他数据库错误直接返回，不做泛化重试。
+
+operating_snapshot_concurrency（55439）完整 B4 回归通过。新 helper 用实际 advisory transaction lock 阻塞首次请求完成，用 pg_blocking_pids 确认两个数据库等待者后放行：同键竞争和不同键/同一期竞争均返回同一快照，只有一条生成审计，不同键后到者 created=false。另用实际授权修订行锁阻塞生成，在持锁事务内撤销生成权限再提交，生成重试后明确返回 NotFoundOrForbidden，快照/审计/幂等均无残留。
+
+日志 /tmp/operating-snapshot-concurrency.log。助手接入、管理月报快照和配套发布仍未完成；当前 c186ddf01 发布候选不含这些后续报表修复。
