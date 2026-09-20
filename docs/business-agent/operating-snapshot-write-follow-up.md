@@ -147,3 +147,15 @@ operating_preview_guarded（55439）完整 B4 回归通过，新增日报、周�
 日志 /tmp/operating-preview-guarded.log；严格 Clippy、格式、文件大小及差异检查通过（/tmp/operating-preview-{clippy,size}.log）。未部署、未增加日报/周报聊天工具。
 
 接入审批前仍须解决：operating scopeHash 当前绑定用户与授权 revision，不能直接照搬月报用不同审批人复算同一预览；事件时间统计仍使用数据库时区的 date 转换，utcOffsetMinutes 只用于完成周期检查/调度，旧快照唯一键也不包含 offset。必须明确并实现准确时区/历史身份语义，再开放完整日报/周报写入链路。
+
+## 日报/周报固定偏移时间口径
+
+迁移 0062 新增可空 utc_offset_minutes。旧快照不猜测/回填时区，使用单独 legacy 唯一索引；新快照唯一键包括 offset，Core INSERT/查找与索引配套调整。预览和 sourceHash 明确 periodStartUtc / periodEndUtc（结束不含）及固定偏移；日期型订单/业务事实仍按业务日期统计，事件时间使用显式 UTC 参数，不再依赖 PostgreSQL 会话时区。SLA 统计截断到周期末，不能把周期结束后才发生的超时提前计入。
+
+趋势只比较同 cadence/currency/scope 下相同已知 offset 的较早周期，返回 comparisonSnapshotId；旧时区未知记录不比较。网页增加每行 UTC±HH:MM/时区未知标签和无可比基线说明，无新增按钮。类型与展示检查通过，未进行浏览器视觉验收。
+
+operating_timezone_verified（55439）完整 B4 实测通过：覆盖偏移周期起点/终点、周期前发生但周期内解决、未来 SLA 超时，日报 UTC+8 与 UTC 分别 4/2 个新事件、4/2 个解决事件，周报分别 6/3 个新事件、7/4 个解决事件；切换事务时区 America/Los_Angeles 后预览一致。不同时区 ID/摘要不同，趋势只引用同偏移的前一期，legacy_unknown 不参与比较，极端日期溢出返回错误。
+
+从此前真实 61 库 operating_preview_guarded 克隆 operating_timezone_upgrade，直接执行迁移 62 SQL（非应用 migrator 进程）：8 行旧快照的全字段摘要去掉新增列后仍为 758d22afbae559b2ebb23611d4f8cd72，新增 offset 全为 NULL。新库完整测试通过正常 PgStore migrator 应用到 62。日志 /tmp/operating-timezone-{verified,upgrade,clippy,web,size}.log；严格 Clippy、Rust 格式、文件大小、差异及前端 TypeScript/展示巡检通过，未运行全仓 just ci。
+
+此迁移必须与新 Core 配套，旧 Core 的四字段 ON CONFLICT 不适用于迁移后的索引；当前生产/旧 c186 安装包未更动。本批未部署。接下来仍须接入以请求人为报表所有者、独立校验审批人范围的不可变意图/多人审批，以及 Gateway/Read API/MCP 和实际客户端验收；历史 scopeHash 含授权 revision 的范围身份问题仍需明确处理。

@@ -64,7 +64,7 @@ impl OperationsService {
             None,
         )
         .await?;
-        let rows = sqlx::query("SELECT id,cadence,period_start,period_end,currency::text,payload,data_quality_status,source_hash,generated_at,trace_id FROM operating_report_snapshots WHERE scope_hash=$1 AND cadence=$2 AND currency=$3 ORDER BY period_start DESC LIMIT $4")
+        let rows = sqlx::query("SELECT id,cadence,period_start,period_end,currency::text,payload,data_quality_status,source_hash,generated_at,trace_id,utc_offset_minutes FROM operating_report_snapshots WHERE scope_hash=$1 AND cadence=$2 AND currency=$3 ORDER BY period_start DESC,generated_at DESC,id DESC LIMIT $4")
             .bind(&auth.effective_scope_hash).bind(cadence).bind(currency).bind(limit.clamp(2, 60)).fetch_all(self.store.pool()).await?;
         let payloads = rows
             .iter()
@@ -75,7 +75,11 @@ impl OperationsService {
             .enumerate()
             .map(|(index, row)| {
                 let payload = payloads[index].clone();
-                let comparison = payloads.get(index + 1);
+                let offset: Option<i16> = row.get("utc_offset_minutes");
+                let comparison = offset.and_then(|offset| rows.iter().enumerate().skip(index + 1)
+                    .find(|(_, prior)| prior.get::<Option<i16>, _>("utc_offset_minutes") == Some(offset)
+                        && prior.get::<NaiveDate, _>("period_start") < row.get::<NaiveDate, _>("period_start")));
+
                 json!({
                     "id": row.get::<Uuid,_>("id"),
                     "cadence": row.get::<String,_>("cadence"),
@@ -83,7 +87,10 @@ impl OperationsService {
                     "periodEnd": row.get::<NaiveDate,_>("period_end"),
                     "currency": row.get::<String,_>("currency"),
                     "metrics": payload,
-                    "change": comparison.map(|previous| trend_change(&payload, previous)),
+                    "utcOffsetMinutes": offset,
+                    "timeBasis": if offset.is_some() { "fixed_utc_offset" } else { "legacy_unknown" },
+                    "comparisonSnapshotId": comparison.map(|(_, prior)| prior.get::<Uuid,_>("id")),
+                    "change": comparison.map(|(i, _)| trend_change(&payload, &payloads[i])),
                     "dataQualityStatus": row.get::<String,_>("data_quality_status"),
                     "sourceHash": row.get::<String,_>("source_hash"),
                     "generatedAt": row.get::<DateTime<Utc>,_>("generated_at"),
@@ -256,13 +263,13 @@ impl OperationsService {
             return Ok(snapshot_result(&row, false, trace_id));
         }
         let id = Uuid::new_v4();
-        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(cadence,period_start,currency,scope_hash) DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status")
-            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut **tx).await?;
+        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id,utc_offset_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(cadence,period_start,currency,scope_hash,utc_offset_minutes) WHERE utc_offset_minutes IS NOT NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status,utc_offset_minutes")
+            .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&scope_hash).bind(&payload).bind(&quality_status).bind(&source_hash).bind(actor).bind(trace_id).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?;
         let (row, created) = if let Some(row) = inserted {
-            audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"sourceHash":source_hash})).await?;
+            audit(tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"utcOffsetMinutes":input.utc_offset_minutes,"sourceHash":source_hash})).await?;
             (row, true)
         } else {
-            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).fetch_one(&mut **tx).await?, false)
+            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,utc_offset_minutes FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).bind(input.utc_offset_minutes).fetch_one(&mut **tx).await?, false)
         };
         Ok(snapshot_result(&row, created, trace_id))
     }
@@ -568,7 +575,7 @@ fn next_run_at(cadence: &str, offset: i16, hour: i16, now: DateTime<Utc>) -> Dat
 }
 
 fn snapshot_result(row: &sqlx::postgres::PgRow, created: bool, trace_id: Uuid) -> Value {
-    json!({"id":row.get::<Uuid,_>("id"),"created":created,"generatedAt":row.get::<DateTime<Utc>,_>("generated_at"),"sourceHash":row.get::<String,_>("source_hash"),"dataQualityStatus":row.get::<String,_>("data_quality_status"),"traceId":trace_id})
+    json!({"id":row.get::<Uuid,_>("id"),"created":created,"utcOffsetMinutes":row.get::<Option<i16>,_>("utc_offset_minutes"),"generatedAt":row.get::<DateTime<Utc>,_>("generated_at"),"sourceHash":row.get::<String,_>("source_hash"),"dataQualityStatus":row.get::<String,_>("data_quality_status"),"traceId":trace_id})
 }
 
 fn trend_change(current: &Value, previous: &Value) -> Value {

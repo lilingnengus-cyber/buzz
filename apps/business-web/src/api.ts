@@ -345,6 +345,9 @@ export type OperatingTrendMetrics = {
 };
 
 export type OperatingTrendSnapshot = {
+  utcOffsetMinutes?: number | null;
+  timeBasis?: "fixed_utc_offset" | "legacy_unknown";
+  comparisonSnapshotId?: string | null;
   id: string;
   cadence: "daily" | "weekly";
   periodStart: string;

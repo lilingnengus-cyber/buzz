@@ -222,7 +222,9 @@ export function OperatingTrendsView() {
                 <div className="ruler-date">
                   <i>{String(series.items.length - index).padStart(2, "0")}</i>
                   <strong>{item.periodStart}</strong>
-                  <small>{cadence === "daily" ? "DAY" : "WEEK"}</small>
+                  <small>
+                    {cadence === "daily" ? "DAY" : "WEEK"} · {formatUtcOffset(item.utcOffsetMinutes)}
+                  </small>
                 </div>
                 <TrendValue
                   value={`¥ ${compactMoney(item.metrics.salesOrderAmount)}`}
@@ -258,7 +260,7 @@ export function OperatingTrendsView() {
         ))}
       {!loadError && (
         <p className="report-warning">
-          库存价值与缺货数为快照生成时点值；趋势快照不可变，不是法定财务报表。
+          库存价值与缺货数为快照生成时点值。仅比较相同 UTC 偏移的周期；旧快照时区未知，不参与比较。趋势快照不可变，不是法定财务报表。
         </p>
       )}
     </main>
@@ -279,7 +281,7 @@ function TrendValue({
     <div className={`trend-value ${risk ? "risk" : ""}`}>
       <strong>{value}</strong>
       <small className={numeric !== null && numeric < 0 ? "down" : ""}>
-        {numeric === null ? "首个基线" : `${numeric > 0 ? "+" : ""}${change}%`}
+        {numeric === null ? "无可比基线" : `${numeric > 0 ? "+" : ""}${change}%`}
       </small>
     </div>
   );
@@ -309,4 +311,10 @@ function formatInstant(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatUtcOffset(minutes?: number | null) {
+  if (minutes == null) return "时区未知";
+  const absolute = Math.abs(minutes);
+  return `UTC${minutes >= 0 ? "+" : "-"}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
 }
