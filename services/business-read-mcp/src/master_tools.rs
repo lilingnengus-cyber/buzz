@@ -215,5 +215,6 @@ impl BusinessReadMcp {
             + order_hold_tools::router()
             + report_snapshot_tools::router()
             + operating_snapshot_tools::router()
+            + adjustment_tools::router()
     }
 }

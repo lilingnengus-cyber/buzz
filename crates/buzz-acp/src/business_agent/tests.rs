@@ -386,3 +386,17 @@ fn chat_approval_scope_requires_an_exact_structured_command() {
         None
     );
 }
+
+#[test]
+fn adjustment_prompt_requires_verified_posting_and_preserves_management_boundary() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    for required in [
+        "prepare_operational_adjustment_post",
+        "approve_operational_adjustment_post",
+        "postedDocument.status=posted",
+        "management_only_not_general_ledger",
+        "without adding buttons",
+    ] {
+        assert!(prompt.contains(required), "{required}");
+    }
+}

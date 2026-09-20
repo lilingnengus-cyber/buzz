@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod adjustment_result;
+mod adjustment_tools;
 mod crm_inputs;
 mod crm_result;
 mod master_inputs;
@@ -2397,14 +2399,22 @@ impl BusinessReadMcp {
         let started = std::time::Instant::now();
         let response = self.call_write_api(tool, &input, &context).await;
         let response = response.and_then(|value| {
-            if (operating_snapshot_result::family(tool).is_some()
-                && operating_snapshot_result::approval(
+            if (adjustment_result::family(tool).is_some()
+                && adjustment_result::approval(
                     tool,
                     &value,
                     &context,
                     self.config.max_payload_bytes,
                 )
                 .is_err())
+                || (operating_snapshot_result::family(tool).is_some()
+                    && operating_snapshot_result::approval(
+                        tool,
+                        &value,
+                        &context,
+                        self.config.max_payload_bytes,
+                    )
+                    .is_err())
                 || (report_snapshot_result::family(tool).is_some()
                     && report_snapshot_result::approval(
                         tool,

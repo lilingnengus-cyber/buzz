@@ -70,3 +70,13 @@ Host 10 项针对性测试、Gateway 8 项单元测试及上述真实数据库�
 真实 Core HTTP 服务与 PostgreSQL 55439 的 adjustment_adapter_verified 验收通过：从实际开账、订单、发货和利润投影生成源数据，验证过账成功、拒绝、多人门槛下 pending 三种结果；后两者保持草稿。同一准备请求重放返回同一意图；法人、客户、业务单元、品牌及仓库委托错配不会新增意图；错误确认摘要拒绝；篡改金额或客户后即使重算内层摘要也被语义校验拒绝。三组真实准备/审批输出保存于 /tmp/adjustment-adapter-proof.jsonl，供后续 MCP 独立验证使用。
 
 Read API 测试命令报告 55 项通过，其中本批数据库验收明确设置独立库并实际执行；其他依赖专用数据库环境变量的既有测试可能提前返回，不将该数字声称为全量数据库验收。严格 all-targets Clippy、格式/差异与文件大小检查通过，证据 /tmp/adjustment-adapter-{verified,clippy-final,size}.log；未运行全仓 just ci。当前没有部署或真实聊天，MCP 固定工具/返回校验、Host 提示词以及 Gateway→Read API→Core 端到端联调仍待完成。完整业务写入目标不缩减。
+
+## MCP 固定工具与 Host 提示词
+
+MCP 新增 prepare_operational_adjustment_post（仅 batchId、expectedVersion）和 approve_operational_adjustment_post（无模型参数）。审批内容从本轮签名委托取得；普通会话隐藏审批工具，匹配审批会话隐藏准备/创建/修改工具。Host 提示词明确展示金额、币种、分摊目标、范围及管理核算边界，只输出服务返回的原样确认/拒绝命令，不增加按钮；pending/rejected 不得报告已过账，不生成虚构详情链接。草稿查找、创建/修改与逆转仍需继续实现。
+
+MCP 独立校验准备信封、摘要、命令及请求人，审批时校验签名绑定字段、原请求人预览、门槛、执行状态、批次编号、版本加二、traceId 和空资源链接。金额使用已有工作区 rust_decimal 做精确小数及合计校验。初次真实结果测试发现通用金额校验要求每个 amount 对象有 currency，而 Core 分摊目标继承批次币种；改为仅在校验副本中补入继承币种，原结果及签名摘要不变，拒绝目标私自覆盖币种。继续检查敏感字段；畸形对象结构返回失败，不通过可变 JSON 索引触发 panic。
+
+实际使用上一批 /tmp/adjustment-adapter-proof.jsonl 三组真实 Core/Read API 返回验证 executed、pending、rejected；测试篡改单据/版本/摘要/决定/类型、结果编号/状态/版本/trace、金额/客户（重算摘要后仍拒绝）、伪造链接、敏感字段及畸形结构。MCP 测试 27 项通过（本批真实结果测试显式提供文件，其他可选数据库产物测试可能跳过）；Host 针对性测试 11 项通过。两个包严格 all-targets Clippy、格式/差异及文件大小检查通过，未运行全仓 just ci。证据 /tmp/adjustment-mcp-{safe-final,host,clippy-final,size}.log。
+
+实际 debug MCP 进程完成 stdio initialize/tools-list：普通会话 108 项，费用审批会话 60 项，准备参数严格两个字段，审批无参数；证据 /tmp/adjustment-mcp-inventory.json。该探针仅检验进程协议与目录，没有调用生产服务。源码链路的各段已接入，但尚未完成单次真实签名消息贯穿 Gateway→MCP→Read API→Core 的端到端联调，未部署、未更新安装包、未发送真实聊天。下一步完成隔离端到端验收，然后推进费用草稿与逆转及配套发布。

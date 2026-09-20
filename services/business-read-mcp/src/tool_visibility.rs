@@ -53,6 +53,25 @@ mod tests {
         assert!(ordinary.len() <= 128);
         assert!(ordinary.iter().all(|t| !t.name.starts_with("approve_")));
         assert!(ordinary.iter().any(|t| t.name == "prepare_crm_creation"));
+        let adjustment = ordinary
+            .iter()
+            .find(|t| t.name == "prepare_operational_adjustment_post")
+            .unwrap();
+        assert_eq!(
+            adjustment.input_schema["additionalProperties"],
+            json!(false)
+        );
+        assert_eq!(
+            adjustment.input_schema["properties"]
+                .as_object()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            adjustment.input_schema["properties"]["expectedVersion"]["minimum"],
+            json!(1)
+        );
         let operating = ordinary
             .iter()
             .find(|t| t.name == "prepare_operating_report_snapshot")
@@ -115,6 +134,7 @@ mod tests {
                 .any(|p| t.name.starts_with(p))));
         }
         for family in [
+            "operational_adjustment_post",
             "operating_report_snapshot",
             "management_report_snapshot",
             "sales_order_hold",
