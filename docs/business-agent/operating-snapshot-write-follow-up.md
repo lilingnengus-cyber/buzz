@@ -125,3 +125,13 @@ MCP 独立复算 scopeHash、sourceHash、previewHash，检查固定报表类型
 仍未部署；旧 c186ddf01 安装包不含本批报表功能。品牌/仓库/供应商受限报表过滤、日报/周报，以及整目标其余业务领域仍需继续；上线还需配套迁移 60/61、授权/策略、暂停回退与真实客户端验证。
 
 本批严格 Clippy（MCP、Read API、Host 全 targets）、格式、文件大小及差异检查通过；日志 /tmp/report-mcp-clippy-final.log、/tmp/report-mcp-size.log。未运行全仓 just ci。
+
+## 显式月报维度筛选与快照读取范围
+
+月报输入新增可选 filters（customerIds、businessUnitIds、brandIds、warehouseIds）。每个提供的列表必须非空且完全属于当前 Core 授权范围；Scope 中排序去重。指定品牌/仓库时排除未分配该维度的事实，分别写入 includeUnassignedBrand=false / includeUnassignedWarehouse=false，参与 scopeHash、sourceHash、预览和签名绑定。金额、水位和质量查询使用该筛选口径。不提供 filters 的请求序列化不增加字段，仍使用原五字段 scope 和原幂等哈希；旧快照保持不可变，不能用不同口径快照作为替代前驱。
+
+Read API/MCP 支持明确排除未分配事实的品牌、仓库受限委托，Suppliers 仍不支持：profit_facts 没有可直接用于正确供应商归属的字段，不能伪造过滤。get_management_report_snapshot 同时补齐整个存储范围的委托检查：受限委托不能读取范围更宽或包含未分配事实的旧快照；明确筛选的快照可读取。
+
+实际 PostgreSQL report_dimension_filters（55439）完整 B4 回归：同一组 3/5/7/11 元事实在完整/品牌/仓库/两者组合下分别为 26/8/10/3 元，快照身份不同；空筛选/越权 ID 拒绝，不同口径替代拒绝，旧请求重放原 ID 和原 26 元内容。report_filter_adapter 实际 Core HTTP + Read API：品牌/仓库受限准备及确认成功，旧宽范围快照读取 404，筛选后快照详情读取成功。导出 6 份真实结果到 /tmp/report-filter-mcp-proof.jsonl，MCP 25 项测试通过，包含新筛选返回值；report_filters_approval_regression 完整审批竞争/撤权/过期/回滚回归通过。
+
+日志 /tmp/report-filter-{test,adapter,mcp,approval}.log。三服务严格 Clippy、格式、文件大小和差异检查通过（/tmp/report-filter-{clippy,size}.log）。本批无需新迁移，未部署；生产及旧安装包仍不包含这些源码更新。下一步继续日报/周报写入链路，供应商归属与其他剩余完整业务流程仍未完成。

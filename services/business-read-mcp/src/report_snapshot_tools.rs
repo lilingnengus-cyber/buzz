@@ -6,6 +6,22 @@ enum ReportType {
 }
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReportFilters {
+    /// Exact scoped customer UUIDs; supplied arrays must be nonempty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    customer_ids: Option<Vec<Uuid>>,
+    /// Exact brand UUIDs; excludes unassigned brand facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    brand_ids: Option<Vec<Uuid>>,
+    /// Exact business unit UUIDs; supplied arrays must be nonempty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    business_unit_ids: Option<Vec<Uuid>>,
+    /// Exact warehouse UUIDs; excludes unassigned warehouse facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    warehouse_ids: Option<Vec<Uuid>>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ReportSnapshotInput {
     /// Management profit statement; this is not a statutory financial statement.
     report_type: ReportType,
@@ -20,6 +36,9 @@ pub(super) struct ReportSnapshotInput {
     legal_entity_ids: Vec<Uuid>,
     /// Optional prior snapshot UUID explicitly being superseded; old snapshots remain immutable.
     supersedes_snapshot_id: Option<Uuid>,
+    /// Optional explicit dimension subsets. Use scoped lookups; never guess UUIDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    filters: Option<ReportFilters>,
 }
 #[tool_router(router=report_snapshot_router)]
 impl BusinessReadMcp {

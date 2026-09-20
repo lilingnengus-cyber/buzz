@@ -76,6 +76,24 @@ pub struct PostAdjustment {
     pub preview_hash: String,
 }
 
+/// Optional explicit subsets of the caller's current reporting scope.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReportSnapshotFilters {
+    /// Limit customer facts to these IDs; a supplied list must not be empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer_ids: Option<Vec<Uuid>>,
+    /// Limit facts to these brands, excluding unassigned brands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brand_ids: Option<Vec<Uuid>>,
+    /// Limit facts to these business units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub business_unit_ids: Option<Vec<Uuid>>,
+    /// Limit facts to these warehouses, excluding unassigned warehouses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warehouse_ids: Option<Vec<Uuid>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GenerateReportSnapshot {
@@ -86,6 +104,9 @@ pub struct GenerateReportSnapshot {
     pub legal_entity_ids: Vec<Uuid>,
     #[serde(default)]
     pub supersedes_snapshot_id: Option<Uuid>,
+    /// Optional explicit dimensions. Omission preserves legacy request identity and scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filters: Option<ReportSnapshotFilters>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

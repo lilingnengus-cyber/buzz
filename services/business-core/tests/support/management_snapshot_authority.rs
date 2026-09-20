@@ -12,6 +12,7 @@ pub async fn verify(pool: &PgPool, service: &ProfitReportingService, actor: Uuid
         currency: "CNY".into(),
         legal_entity_ids: vec![],
         supersedes_snapshot_id: None,
+        filters: None,
     };
     let key = "monthly-snapshot-authority";
     let original = service

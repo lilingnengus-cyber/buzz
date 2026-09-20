@@ -291,6 +291,9 @@ pub(super) async fn core_read_result(
                 && permits(&scope.business_unit_ids, item, "businessUnitId")
         });
     }
+    if tool == "get_management_report_snapshot" {
+        items.retain(|item| report_snapshot_writes::permits_scope(&item["scope"], scope));
+    }
     let exact = tool.starts_with("get_");
     if exact && items.is_empty() {
         return StatusCode::NOT_FOUND.into_response();

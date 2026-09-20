@@ -30,6 +30,7 @@ pub async fn verify(pool: &PgPool, service: &ProfitReportingService, actor: Uuid
         currency: "CNY".into(),
         legal_entity_ids: vec![],
         supersedes_snapshot_id: None,
+        filters: None,
     };
     let first = service
         .generate_snapshot(actor, Uuid::new_v4(), "monthly-late-first", &input)

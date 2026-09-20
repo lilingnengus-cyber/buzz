@@ -174,6 +174,61 @@ async fn report_adapter_checks_scope_before_prepare_and_confirm() {
         .await
         .unwrap();
     assert_eq!(count, 1);
+    // Explicit dimension filtering makes a restricted aggregate safe to generate/read.
+    let tool = "prepare_management_report_snapshot";
+    let c = context(f.actor, required_capability(tool).unwrap());
+    let mut allowed = grant(&c, f.legal_entity, f.business_unit, f.customer);
+    if let DataScope::Restricted(dims) = &mut allowed.data_scope {
+        dims.insert("brand".into(), [f.brand.to_string()].into());
+        dims.insert("warehouse".into(), [f.warehouse.to_string()].into());
+    }
+    let input = json!({"reportType":"management_profit_statement","managementPeriod":"2026-08","currency":"CNY","legalEntityIds":[f.legal_entity],"filters":{"brandIds":[f.brand],"warehouseIds":[f.warehouse]}});
+    let filtered = value(forward(&core, tool, input, &c, &allowed).await).await;
+    export(tool, c.trace_id, &filtered);
+    assert_eq!(
+        filtered["document"]["scope"]["includeUnassignedBrand"],
+        false
+    );
+    assert_eq!(
+        filtered["document"]["scope"]["includeUnassignedWarehouse"],
+        false
+    );
+    let tool = "approve_management_report_snapshot";
+    let c = context(f.actor, required_capability(tool).unwrap());
+    allowed.capability = business_iam::Capability::parse(&c.required_scope).unwrap();
+    let approval = json!({"documentId":filtered["item"]["id"],"expectedVersion":1,"previewHash":filtered["previewHash"],"decision":"approve"});
+    let generated = value(forward(&core, tool, approval, &c, &allowed).await).await;
+    export(tool, c.trace_id, &generated);
+    assert_ne!(
+        generated["createdDocument"]["id"],
+        result["createdDocument"]["id"]
+    );
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) SELECT role_id,'management_report:read_snapshot' FROM business_user_roles WHERE enterprise_user_id=$1").bind(f.actor).execute(&pool).await.unwrap();
+    let scope = iam_authorization_scope(&allowed, &c.required_scope).unwrap();
+    assert_eq!(
+        core_read_result(
+            &core,
+            "get_management_report_snapshot",
+            &json!({"snapshotId":result["createdDocument"]["id"]}),
+            &scope,
+            &c
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    let read = value(
+        core_read_result(
+            &core,
+            "get_management_report_snapshot",
+            &json!({"snapshotId":generated["createdDocument"]["id"]}),
+            &scope,
+            &c,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(read["items"][0]["id"], generated["createdDocument"]["id"]);
     server.abort();
 }
 

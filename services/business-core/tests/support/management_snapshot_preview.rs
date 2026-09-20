@@ -15,6 +15,7 @@ pub async fn verify(pool: &PgPool, service: &ProfitReportingService, actor: Uuid
         currency: "CNY".into(),
         legal_entity_ids: vec![],
         supersedes_snapshot_id: None,
+        filters: None,
     };
     let before = counts(pool).await;
     let preview = service.snapshot_preview(actor, &input).await.unwrap();

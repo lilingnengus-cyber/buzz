@@ -24,7 +24,18 @@ pub(super) fn valid_snapshot(v: &Value, kind: &str) -> bool {
             == Some(&v["input"])
         && v["ruleVersion"] == "management-profit-v1"
         && v["boundary"] == "not_statutory_financial_statement"
-        && scope.as_object().is_some_and(|o| o.len() == 5)
+        && scope.as_object().is_some_and(|o| {
+            o.keys().all(|k| {
+                arrays.contains(&k.as_str())
+                    || matches!(
+                        k.as_str(),
+                        "includeUnassignedBrand" | "includeUnassignedWarehouse"
+                    )
+            })
+        })
+        && ["includeUnassignedBrand", "includeUnassignedWarehouse"]
+            .iter()
+            .all(|key| scope.get(*key).is_none_or(|v| *v == json!(false)))
         && arrays
             .iter()
             .all(|key| scope[*key].as_array().is_some_and(|a| a.iter().all(uuid)))
@@ -59,21 +70,48 @@ pub(super) fn binds(v: &Value, input: &Value) -> bool {
     v["input"] == *input
 }
 pub(super) fn permits(v: &Value, scope: &AuthorizationScope, kind: &str) -> bool {
-    // This report includes unassigned brand/warehouse facts, and has no supplier
-    // filter. A restricted grant for these dimensions cannot authorize its aggregate.
-    valid_snapshot(v, kind)
-        && scope.supplier_ids.is_empty()
-        && scope.brand_ids.is_empty()
-        && scope.warehouse_ids.is_empty()
+    valid_snapshot(v, kind) && permits_scope(&v["scope"], scope)
+}
+pub(crate) fn permits_scope(report_scope: &Value, scope: &AuthorizationScope) -> bool {
+    let dimensions = [
+        "legalEntityIds",
+        "customerIds",
+        "businessUnitIds",
+        "brandIds",
+        "warehouseIds",
+    ];
+    if !report_scope.as_object().is_some_and(|o| {
+        o.keys().all(|k| {
+            dimensions.contains(&k.as_str())
+                || matches!(
+                    k.as_str(),
+                    "includeUnassignedBrand" | "includeUnassignedWarehouse"
+                )
+        })
+    }) || !dimensions.iter().all(|k| {
+        report_scope[*k]
+            .as_array()
+            .is_some_and(|a| a.iter().all(uuid))
+    }) || !["includeUnassignedBrand", "includeUnassignedWarehouse"]
+        .iter()
+        .all(|k| report_scope.get(*k).is_none_or(|v| *v == json!(false)))
+    {
+        return false;
+    }
+    scope.supplier_ids.is_empty()
+        && (scope.brand_ids.is_empty() || report_scope["includeUnassignedBrand"] == false)
+        && (scope.warehouse_ids.is_empty() || report_scope["includeUnassignedWarehouse"] == false)
         && [
             ("legalEntityIds", &scope.legal_entity_ids),
             ("customerIds", &scope.customer_ids),
             ("businessUnitIds", &scope.business_unit_ids),
+            ("brandIds", &scope.brand_ids),
+            ("warehouseIds", &scope.warehouse_ids),
         ]
         .iter()
         .all(|(key, allowed)| {
             allowed.is_empty()
-                || v["scope"][*key].as_array().is_some_and(|ids| {
+                || report_scope[*key].as_array().is_some_and(|ids| {
                     !ids.is_empty()
                         && ids
                             .iter()

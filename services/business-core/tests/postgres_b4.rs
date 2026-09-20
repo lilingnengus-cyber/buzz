@@ -2,6 +2,8 @@
 mod management_snapshot_authority;
 #[path = "support/management_snapshot_concurrency.rs"]
 mod management_snapshot_concurrency;
+#[path = "support/management_snapshot_filters.rs"]
+mod management_snapshot_filters;
 #[path = "support/management_snapshot_late_fact.rs"]
 mod management_snapshot_late_fact;
 #[path = "support/management_snapshot_preview.rs"]
@@ -330,6 +332,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
                 currency: "CNY".into(),
                 legal_entity_ids: vec![f.legal_entity],
                 supersedes_snapshot_id: None,
+                filters: None,
             },
         )
         .await
@@ -363,6 +366,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
                 currency: "CNY".into(),
                 legal_entity_ids: vec![f.legal_entity],
                 supersedes_snapshot_id: Some(snapshot.id),
+                filters: None,
             },
         )
         .await
@@ -684,6 +688,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     management_snapshot_concurrency::verify(&pool, &reporting, f.actor).await;
     management_snapshot_late_fact::verify(&pool, &reporting, f.actor).await;
     management_snapshot_preview::verify(&pool, &reporting, f.actor).await;
+    management_snapshot_filters::verify(&pool, &reporting, &f).await;
 }
 
 #[allow(clippy::too_many_arguments)]

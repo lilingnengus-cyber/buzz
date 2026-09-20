@@ -48,6 +48,7 @@ fn uuid(value: &Value) -> bool {
     value.as_str().is_some_and(|s| s.parse::<Uuid>().is_ok())
 }
 mod validation;
+pub(super) use validation::permits_scope;
 use validation::{binds, permits, valid_snapshot};
 fn resource(id: Uuid) -> Value {
     json!({"type":"management_report","id":id,"title":"查看管理利润报表快照","bizUri":format!("biz://management-report/{id}")})

@@ -107,21 +107,22 @@ impl ProfitReportingService {
         };
         legal_entities.sort_unstable();
         legal_entities.dedup();
-        let customers = auth.scopes.customer_ids.iter().copied().collect::<Vec<_>>();
-        let brands = auth.scopes.brand_ids.iter().copied().collect::<Vec<_>>();
-        let business_units = auth
-            .scopes
-            .business_unit_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let warehouses = auth
-            .scopes
-            .warehouse_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let scope = json!({"legalEntityIds":legal_entities,"customerIds":customers,"brandIds":brands,"businessUnitIds":business_units,"warehouseIds":warehouses});
+        let filters = input.filters.clone().unwrap_or_default();
+        let customers = subset(filters.customer_ids.as_deref(), &auth.scopes.customer_ids)?;
+        let brands = subset(filters.brand_ids.as_deref(), &auth.scopes.brand_ids)?;
+        let business_units = subset(
+            filters.business_unit_ids.as_deref(),
+            &auth.scopes.business_unit_ids,
+        )?;
+        let warehouses = subset(filters.warehouse_ids.as_deref(), &auth.scopes.warehouse_ids)?;
+        let mut scope = json!({"legalEntityIds":legal_entities,"customerIds":customers,"brandIds":brands,"businessUnitIds":business_units,"warehouseIds":warehouses});
+        // Preserve legacy scope hashes unless explicit filtering changes null semantics.
+        if filters.brand_ids.is_some() {
+            scope["includeUnassignedBrand"] = json!(false);
+        }
+        if filters.warehouse_ids.is_some() {
+            scope["includeUnassignedWarehouse"] = json!(false);
+        }
         if let Some(prior_id) = input.supersedes_snapshot_id {
             let prior = sqlx::query("SELECT report_type,management_period,currency::text,scope FROM management_report_snapshots WHERE id=$1 FOR SHARE")
                 .bind(prior_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
@@ -153,13 +154,17 @@ impl ProfitReportingService {
         let brands: Vec<Uuid> = serde_json::from_value(scope["brandIds"].clone())?;
         let business_units: Vec<Uuid> = serde_json::from_value(scope["businessUnitIds"].clone())?;
         let warehouses: Vec<Uuid> = serde_json::from_value(scope["warehouseIds"].clone())?;
-        let watermark:i64=sqlx::query_scalar("SELECT COALESCE(max(fact_sequence),0) FROM profit_facts WHERE management_period=$1 AND currency=$2 AND legal_entity_id=ANY($3) AND customer_id=ANY($4) AND (brand_id IS NULL OR brand_id=ANY($5)) AND business_unit_id=ANY($6) AND (warehouse_id IS NULL OR warehouse_id=ANY($7))").bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).fetch_one(&mut **tx).await?;
-        let components=sqlx::query("SELECT metric_type,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END),0)::numeric(24,6) amount,count(*) fact_count FROM profit_facts WHERE management_period=$1 AND currency=$2 AND legal_entity_id=ANY($3) AND fact_sequence<=$4 AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7) AND (warehouse_id IS NULL OR warehouse_id=ANY($8)) GROUP BY metric_type ORDER BY metric_type").bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(watermark).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).fetch_all(&mut **tx).await?;
+        let include_brand = scope["includeUnassignedBrand"].as_bool().unwrap_or(true);
+        let include_warehouse = scope["includeUnassignedWarehouse"]
+            .as_bool()
+            .unwrap_or(true);
+        let watermark:i64=sqlx::query_scalar("SELECT COALESCE(max(fact_sequence),0) FROM profit_facts WHERE management_period=$1 AND currency=$2 AND legal_entity_id=ANY($3) AND customer_id=ANY($4) AND (($8 AND brand_id IS NULL) OR brand_id=ANY($5)) AND business_unit_id=ANY($6) AND (($9 AND warehouse_id IS NULL) OR warehouse_id=ANY($7))").bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).bind(include_brand).bind(include_warehouse).fetch_one(&mut **tx).await?;
+        let components=sqlx::query("SELECT metric_type,COALESCE(sum(CASE direction WHEN 'normal' THEN amount ELSE -amount END),0)::numeric(24,6) amount,count(*) fact_count FROM profit_facts WHERE management_period=$1 AND currency=$2 AND legal_entity_id=ANY($3) AND fact_sequence<=$4 AND customer_id=ANY($5) AND (($9 AND brand_id IS NULL) OR brand_id=ANY($6)) AND business_unit_id=ANY($7) AND (($10 AND warehouse_id IS NULL) OR warehouse_id=ANY($8)) GROUP BY metric_type ORDER BY metric_type").bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(watermark).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).bind(include_brand).bind(include_warehouse).fetch_all(&mut **tx).await?;
         let amounts:Vec<Value>=components.into_iter().map(|row|json!({"metricType":row.get::<String,_>("metric_type"),"amount":row.get::<Decimal,_>("amount").to_string(),"factCount":row.get::<i64,_>("fact_count")})).collect();
-        let facts_fresh: bool = sqlx::query_scalar("SELECT $1 AND NOT EXISTS(SELECT 1 FROM profit_projection_failures WHERE status='pending') AND COALESCE(max(data_as_of)>=now()-($2*interval '1 minute'),false) FROM profit_facts WHERE management_period=$3 AND currency=$4 AND legal_entity_id=ANY($5) AND customer_id=ANY($6) AND (brand_id IS NULL OR brand_id=ANY($7)) AND business_unit_id=ANY($8) AND (warehouse_id IS NULL OR warehouse_id=ANY($9))")
-            .bind(self.worker_enabled).bind(self.stale_after_minutes).bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).fetch_one(&mut **tx).await?;
-        let has_unallocated: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operational_adjustment_lines l JOIN operational_adjustment_batches b ON b.id=l.batch_id WHERE b.management_period=$1 AND b.currency=$2 AND b.status IN ('draft','previewed') AND b.legal_entity_id=ANY($3) AND (l.customer_id IS NULL OR l.customer_id=ANY($4)) AND (l.brand_id IS NULL OR l.brand_id=ANY($5)) AND (l.business_unit_id IS NULL OR l.business_unit_id=ANY($6)) AND (l.warehouse_id IS NULL OR l.warehouse_id=ANY($7)))")
-            .bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).fetch_one(&mut **tx).await?;
+        let facts_fresh: bool = sqlx::query_scalar("SELECT $1 AND NOT EXISTS(SELECT 1 FROM profit_projection_failures WHERE status='pending') AND COALESCE(max(data_as_of)>=now()-($2*interval '1 minute'),false) FROM profit_facts WHERE management_period=$3 AND currency=$4 AND legal_entity_id=ANY($5) AND customer_id=ANY($6) AND (($10 AND brand_id IS NULL) OR brand_id=ANY($7)) AND business_unit_id=ANY($8) AND (($11 AND warehouse_id IS NULL) OR warehouse_id=ANY($9))")
+            .bind(self.worker_enabled).bind(self.stale_after_minutes).bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).bind(include_brand).bind(include_warehouse).fetch_one(&mut **tx).await?;
+        let has_unallocated: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operational_adjustment_lines l JOIN operational_adjustment_batches b ON b.id=l.batch_id WHERE b.management_period=$1 AND b.currency=$2 AND b.status IN ('draft','previewed') AND b.legal_entity_id=ANY($3) AND (l.customer_id IS NULL OR l.customer_id=ANY($4)) AND (($8 AND l.brand_id IS NULL) OR l.brand_id=ANY($5)) AND (l.business_unit_id IS NULL OR l.business_unit_id=ANY($6)) AND (($9 AND l.warehouse_id IS NULL) OR l.warehouse_id=ANY($7)))")
+            .bind(&input.management_period).bind(&input.currency).bind(&legal_entities).bind(&customers).bind(&brands).bind(&business_units).bind(&warehouses).bind(include_brand).bind(include_warehouse).fetch_one(&mut **tx).await?;
         let data_quality_status = if facts_fresh && !has_unallocated {
             "complete"
         } else {
@@ -183,4 +188,25 @@ impl ProfitReportingService {
             existing,
         })
     }
+}
+
+fn subset(
+    requested: Option<&[Uuid]>,
+    allowed: &std::collections::BTreeSet<Uuid>,
+) -> Result<Vec<Uuid>, DomainError> {
+    let Some(requested) = requested else {
+        return Ok(allowed.iter().copied().collect());
+    };
+    if requested.is_empty() {
+        return Err(DomainError::Invalid(
+            "report filter must not be empty".into(),
+        ));
+    }
+    if requested.iter().any(|id| !allowed.contains(id)) {
+        return Err(DomainError::NotFoundOrForbidden);
+    }
+    let mut ids = requested.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
 }

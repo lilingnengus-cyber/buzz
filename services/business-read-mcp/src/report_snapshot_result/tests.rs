@@ -63,5 +63,5 @@ fn real_report_results_bind_preview_confirmation_and_snapshot_link() {
         }
         count += 1;
     }
-    assert_eq!(count, 4);
+    assert_eq!(count, 6);
 }

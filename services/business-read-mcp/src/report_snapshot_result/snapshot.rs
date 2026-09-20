@@ -24,7 +24,18 @@ fn valid_snapshot(v: &Value, kind: &str) -> bool {
             .is_ok()
         && v["ruleVersion"] == "management-profit-v1"
         && v["boundary"] == "not_statutory_financial_statement"
-        && scope.as_object().is_some_and(|o| o.len() == 5)
+        && scope.as_object().is_some_and(|o| {
+            o.keys().all(|k| {
+                arrays.contains(&k.as_str())
+                    || matches!(
+                        k.as_str(),
+                        "includeUnassignedBrand" | "includeUnassignedWarehouse"
+                    )
+            })
+        })
+        && ["includeUnassignedBrand", "includeUnassignedWarehouse"]
+            .iter()
+            .all(|key| scope.get(*key).is_none_or(|v| *v == json!(false)))
         && arrays
             .iter()
             .all(|key| scope[*key].as_array().is_some_and(|a| a.iter().all(uuid)))

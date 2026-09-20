@@ -20,6 +20,7 @@ fn input(month: i64) -> GenerateReportSnapshot {
         management_period: format!("2026-{month:02}"),
         legal_entity_ids: vec![],
         supersedes_snapshot_id: None,
+        filters: None,
     }
 }
 
