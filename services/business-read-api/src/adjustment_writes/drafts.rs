@@ -171,6 +171,7 @@ pub(super) fn result_field(kind: &str) -> &'static str {
     match kind {
         "operational_adjustment_creation_intent" => "createdDocument",
         "operational_adjustment_update_intent" => "updatedDocument",
+        "operational_adjustment_reversal_intent" => "reversedDocument",
         _ => "postedDocument",
     }
 }

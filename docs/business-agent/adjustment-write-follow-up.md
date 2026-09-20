@@ -251,3 +251,14 @@ Gateway 白名单增加逆转意图 create/approve，共 118 项；Host 普通�
 真实 PostgreSQL 55439 的 adjustment_reversal_signed 验证完整 70 项普通委托持久化、129 项限制拒绝；隔离密钥签署逆转确认及拒绝，完成签发、消费与独立 verify_write，错误文档、版本、摘要、决定、缺失绑定和错误家族均拒绝。四类费用意图均验证过旧/未来签名、签名后篡改、频道错配、跨家族、兄弟意图错配、多余文本、裸确认及审批开关关闭不签发委托。
 
 Host 11 项定向测试、Gateway 4 项单元测试和新库真实签名委托测试通过；两包 all-targets 严格 Clippy、格式、差异和文件大小检查通过。证据 /tmp/adjustment-reversal-signed-{host,unit,db,clippy,size}.log。未运行全仓 just ci，未部署或发送真实聊天。下一步接入 Read API/MCP 逆转准备与零参数确认工具、独立快照校验并验证完整签名服务链路；当前不能声称客户端已能执行费用逆转。
+
+
+## 逆转 Read API 固定工具与独立校验
+
+Read API 新增 prepare_operational_adjustment_reversal 和 approve_operational_adjustment_reversal，写目录共 100 项。准备只接受批次 ID、当前版本、非空原因，确认继续取已验证签名上下文，不接受新金额或修改原因。准备先验证 Core 纯预览及 IAM 范围，再绑定预检摘要保存意图；准备返回快照必须与预检完全相同。
+
+独立校验内层摘要、请求人、版本、原因、管理口径边界和全部 effects，验证原事实与分摊记录 ID 唯一性、来源关联、批次与法人/币种、订单集合、费用类型、日期、权重、非负两位金额以及总和。当前采用完整 Core 范围必须被委托覆盖的保守规则；供应商受限委托拒绝，客户/业务单元/仓库/品牌受限委托要求每条历史事实具有对应归属。缺失维度不视为拥有权限。执行结果必须为同批次 reversed、版本加一和同 Trace；等待/拒绝时 reversedDocument 必须为空，暂不生成不存在的详情页链接。
+
+真实 PostgreSQL 55439 新库 adjustment_reversal_adapter_final 与真实 Core HTTP 服务覆盖逆转成功、拒绝、等待第二人三种结果，并回读实际批次状态；准备幂等、六类错误 IAM 范围在保存意图前拒绝、明确受限客户/业务单元/品牌正常通过、错误确认摘要拒绝。重新计算内层摘要后的金额、总和、来源关联、客户归属、原因、effects 和目标订单篡改仍拒绝；伪造 posted 执行结果拒绝。既有过账与草稿适配器回归通过。
+
+Read API 报告 57 项通过；其他未提供对应环境变量的集成测试可能跳过，本阶段新增运行证据限于上述显式新库与真实 Core 服务。all-targets 严格 Clippy、格式、差异及文件大小检查通过；未运行全仓 just ci。日志 /tmp/adjustment-reversal-adapter-{final,clippy,size}.log，三份实际响应 /tmp/adjustment-reversal-adapter-final-proof.jsonl。尚未部署或发送真实聊天；下一步接入 MCP 严格输入和独立结果校验，再验证完整签名服务链路，完整目标保持未完成。

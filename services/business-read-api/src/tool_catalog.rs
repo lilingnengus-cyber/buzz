@@ -57,9 +57,11 @@ pub(super) const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-pub(super) const WRITE_TOOLS: [&str; 98] = [
+pub(super) const WRITE_TOOLS: [&str; 100] = [
     "prepare_operational_adjustment_creation",
     "approve_operational_adjustment_creation",
+    "prepare_operational_adjustment_reversal",
+    "approve_operational_adjustment_reversal",
     "prepare_operational_adjustment_update",
     "approve_operational_adjustment_update",
     "prepare_operational_adjustment_post",
@@ -168,6 +170,12 @@ pub(super) fn required_capability(tool: &str) -> Option<&'static str> {
         }
         "approve_operational_adjustment_creation" => {
             Some("operational_adjustment_creation_intent:approve")
+        }
+        "prepare_operational_adjustment_reversal" => {
+            Some("operational_adjustment_reversal_intent:create")
+        }
+        "approve_operational_adjustment_reversal" => {
+            Some("operational_adjustment_reversal_intent:approve")
         }
         "prepare_operational_adjustment_update" => {
             Some("operational_adjustment_update_intent:create")

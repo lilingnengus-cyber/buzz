@@ -1,5 +1,7 @@
 #[path = "adjustment_writes_draft_tests.rs"]
 mod draft_cases;
+#[path = "adjustment_writes_reversal_tests.rs"]
+mod reversal_cases;
 use super::*;
 use crate::test_fixture::adjustments as fixture;
 use crate::test_fixture::seed;
@@ -196,5 +198,6 @@ async fn adjustment_adapter_binds_real_core_preview_and_posting() {
             }
         );
     }
+    reversal_cases::verify(&pool, &core, &f, order).await;
     server.abort();
 }

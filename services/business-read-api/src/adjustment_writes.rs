@@ -5,6 +5,9 @@ use sha2::{Digest, Sha256};
 
 pub(super) fn family(tool: &str) -> Option<&'static str> {
     match tool {
+        "prepare_operational_adjustment_reversal" | "approve_operational_adjustment_reversal" => {
+            Some("operational_adjustment_reversal_intent")
+        }
         "prepare_operational_adjustment_post" | "approve_operational_adjustment_post" => {
             Some("operational_adjustment_post_intent")
         }
@@ -24,6 +27,9 @@ struct Prepare {
     expected_version: i64,
 }
 fn canonical(tool: &str, input: &Value) -> Option<Value> {
+    if tool == "prepare_operational_adjustment_reversal" {
+        return reversal::canonical(input);
+    }
     if tool != "prepare_operational_adjustment_post" {
         return drafts::canonical(tool, input);
     }
@@ -60,6 +66,7 @@ fn uuid(value: &Value) -> bool {
     value.as_str().is_some_and(|s| s.parse::<Uuid>().is_ok())
 }
 mod drafts;
+mod reversal;
 mod validation;
 use validation::{binds, permits, valid_snapshot};
 pub(super) async fn forward(
@@ -191,7 +198,13 @@ pub(super) async fn forward(
     }
     result["resourceRefs"] = json!([]);
     if result["executed"] == true {
-        if kind != "operational_adjustment_post_intent" {
+        if kind == "operational_adjustment_reversal_intent" {
+            if !reversal::valid_result(&result, &preview["document"], context.trace_id)
+                || command.decision != business_core::document_approval::ApprovalDecision::Approve
+            {
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+        } else if kind != "operational_adjustment_post_intent" {
             if !drafts::valid_result(&result, &preview["document"], kind, context.trace_id)
                 || command.decision != business_core::document_approval::ApprovalDecision::Approve
             {
