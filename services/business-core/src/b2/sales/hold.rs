@@ -37,10 +37,23 @@ impl SalesService {
         place: bool,
     ) -> Result<Value, DomainError> {
         let mut tx = self.store.pool().begin().await?;
-        let row = self.hold_row(&mut tx, actor, order_id, place).await?;
-        let result = hold_snapshot(&row, order_id, input, place);
+        let result = self
+            .hold_preview_on(&mut tx, actor, order_id, input, place)
+            .await?;
         tx.rollback().await?;
         Ok(result)
+    }
+
+    pub(crate) async fn hold_preview_on(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        actor: Uuid,
+        order_id: Uuid,
+        input: &VersionCommand,
+        place: bool,
+    ) -> Result<Value, DomainError> {
+        let row = self.hold_row(tx, actor, order_id, place).await?;
+        Ok(hold_snapshot(&row, order_id, input, place))
     }
 
     /// Execute only the exact reviewed hold transition; ordinary workbench hashes stay compatible.

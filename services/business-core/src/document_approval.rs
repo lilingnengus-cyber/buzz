@@ -8,6 +8,8 @@ mod inventory_count_operation;
 mod master;
 /// Bound cancellation of remaining order quantities.
 pub mod order_cancellation;
+mod order_hold;
+mod permission_witness;
 /// Immutable return inspection and logistics intents.
 pub mod return_disposition;
 mod returns;
@@ -86,6 +88,7 @@ pub fn service_routes() -> Router<Arc<AppState>> {
         .merge(stock::routes())
         .merge(crm::routes())
         .merge(master::routes())
+        .merge(order_hold::routes())
         .merge(returns::routes())
         .merge(return_disposition::routes())
         .merge(inventory_count_creation::routes())

@@ -1,4 +1,4 @@
-//! Immutable master intents with votes and execution in one transaction.
+//! Immutable sales-order hold intents with votes and execution in one transaction.
 use super::permission_witness as authority;
 use super::*;
 use serde_json::Value;
@@ -8,12 +8,13 @@ use command::Command;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/v1/agent-master-intents/{kind}", post(prepare))
+        .route("/v1/agent-order-hold-previews/{kind}", post(dry_preview))
+        .route("/v1/agent-order-hold-intents/{kind}", post(prepare))
         .route(
-            "/v1/agent-approval-previews/master/{kind}/{id}",
+            "/v1/agent-approval-previews/order-holds/{kind}/{id}",
             get(preview),
         )
-        .route("/v1/agent-approvals/master/{kind}/{id}", post(approve))
+        .route("/v1/agent-approvals/order-holds/{kind}/{id}", post(approve))
 }
 fn envelope(id: Uuid, kind: &str, snapshot: Value, trace: Uuid) -> Value {
     let hash = hash_json(&snapshot);
@@ -33,13 +34,13 @@ async fn prepare(
             c.trace_id,
         );
     };
-    match prepare_on(&state.store, c.actor_user_id, c.trace_id, &kind, key, value).await {
+    match prepare_on(&state, c.actor_user_id, c.trace_id, &kind, key, value).await {
         Ok((id, snapshot)) => Json(envelope(id, &kind, snapshot, c.trace_id)).into_response(),
         Err(e) => store_error(e, c.trace_id),
     }
 }
 async fn prepare_on(
-    store: &PgStore,
+    state: &AppState,
     actor: Uuid,
     trace: Uuid,
     kind: &str,
@@ -48,12 +49,12 @@ async fn prepare_on(
 ) -> Result<(Uuid, Value), StoreError> {
     let command = Command::parse(kind, value)?;
     let input = command.value()?;
-    let mut tx = store.pool().begin().await?;
-    let snapshot = command.preview_on(store, &mut tx, actor).await?;
+    let mut tx = state.store.pool().begin().await?;
+    let snapshot = command.preview_on(&state.sales, &mut tx, actor).await?;
     let id = Uuid::new_v4();
-    let inserted = sqlx::query("INSERT INTO business_agent_master_intents(id,kind,input,snapshot,created_by_user_id,idempotency_key,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(created_by_user_id,idempotency_key) DO NOTHING")
+    let inserted = sqlx::query("INSERT INTO business_agent_order_hold_intents(id,kind,input,snapshot,created_by_user_id,idempotency_key,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(created_by_user_id,idempotency_key) DO NOTHING")
         .bind(id).bind(kind).bind(&input).bind(&snapshot).bind(actor).bind(key).bind(trace).execute(&mut *tx).await?.rows_affected();
-    let row = sqlx::query("SELECT id,kind,input,snapshot,expires_at>clock_timestamp() current FROM business_agent_master_intents WHERE created_by_user_id=$1 AND idempotency_key=$2")
+    let row = sqlx::query("SELECT id,kind,input,snapshot,expires_at>clock_timestamp() current FROM business_agent_order_hold_intents WHERE created_by_user_id=$1 AND idempotency_key=$2")
         .bind(actor).bind(key).fetch_one(&mut *tx).await?;
     if !row.get::<bool, _>("current")
         || row.get::<String, _>("kind") != kind
@@ -64,7 +65,7 @@ async fn prepare_on(
     }
     let id: Uuid = row.get("id");
     if inserted == 1 {
-        sqlx::query("INSERT INTO business_core_audit_events(trace_id,actor_user_id,operation,target_type,target_id,details) VALUES($1,$2,'agent_master_intent_prepared',$3,$4,$5)")
+        sqlx::query("INSERT INTO business_core_audit_events(trace_id,actor_user_id,operation,target_type,target_id,details) VALUES($1,$2,'agent_order_hold_intent_prepared',$3,$4,$5)")
             .bind(trace).bind(actor).bind(kind).bind(id.to_string()).bind(json!({"previewHash":hash_json(&snapshot)})).execute(&mut *tx).await?;
     }
     tx.commit().await?;
@@ -75,7 +76,7 @@ async fn load(
     kind: &str,
     id: Uuid,
 ) -> Result<(Command, Value, Uuid), StoreError> {
-    let row = sqlx::query("SELECT input,snapshot,created_by_user_id FROM business_agent_master_intents WHERE id=$1 AND kind=$2 AND expires_at>clock_timestamp()")
+    let row = sqlx::query("SELECT input,snapshot,created_by_user_id FROM business_agent_order_hold_intents WHERE id=$1 AND kind=$2 AND expires_at>clock_timestamp()")
         .bind(id).bind(kind).fetch_optional(&mut **tx).await?.ok_or(StoreError::NotFoundOrForbidden)?;
     Ok((
         Command::parse(kind, row.get("input"))?,
@@ -92,7 +93,7 @@ async fn preview(
         let mut tx = state.store.pool().begin().await?;
         let (command, snapshot, _) = load(&mut tx, &kind, id).await?;
         if command
-            .preview_on(&state.store, &mut tx, c.actor_user_id)
+            .preview_on(&state.sales, &mut tx, c.actor_user_id)
             .await?
             != snapshot
         {
@@ -113,16 +114,30 @@ async fn approve(
     Path((kind, id)): Path<(String, Uuid)>,
     Json(input): Json<ChatApprovalInput>,
 ) -> Response {
-    match vote::execute(
-        &state.store,
-        (c.actor_user_id, c.trace_id),
-        &kind,
-        id,
-        &input,
-    )
-    .await
-    {
+    match vote::execute(&state, (c.actor_user_id, c.trace_id), &kind, id, &input).await {
         Ok(value) => Json(value).into_response(),
+        Err(e) => store_error(e, c.trace_id),
+    }
+}
+
+async fn dry_preview(
+    State(state): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(kind): Path<String>,
+    Json(value): Json<Value>,
+) -> Response {
+    let result = async {
+        let command = Command::parse(&kind, value)?;
+        let mut tx = state.store.pool().begin().await?;
+        let snapshot = command
+            .preview_on(&state.sales, &mut tx, c.actor_user_id)
+            .await?;
+        tx.rollback().await?;
+        Ok(snapshot)
+    }
+    .await;
+    match result {
+        Ok(snapshot) => Json(json!({"document":snapshot,"traceId":c.trace_id})).into_response(),
         Err(e) => store_error(e, c.trace_id),
     }
 }
