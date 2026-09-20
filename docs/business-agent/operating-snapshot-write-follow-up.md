@@ -70,3 +70,9 @@ management_snapshot_late_fact（55439）完整 B4 回归通过。测试在未提
 受保护生成的幂等哈希绑定 input 和完整 preview；事务内重新生成预览，任何内容/范围/来源/复用状态变化均返回 StalePreview，失败不留幂等占位。成功重放继续校验当前权限/原快照范围，但返回原不可变结果，避免因为创建后 existing 状态变化拒绝合法重试。普通生成保留原请求哈希。
 
 management_snapshot_preview_final（55439）完整 B4 回归通过：预览前后四项记录/编号计数不变；摘要篡改、加入新事实后的旧预览拒绝且无残留；新预览成功生成，原预览同键成功重放，改变预览同键返回 IdempotencyConflict；新的复用预览返回原快照，不新增快照，含历史时间信息。日志 /tmp/management-snapshot-preview-final.log。尚未增加 HTTP/Agent 意图、审批策略或 MCP 工具，不能据此声称聊天写入已开放；经营日/周报相同接口仍需接入。
+
+## 月报加入审批外层事务
+
+提取 generate_snapshot_on：由调用方持有并提交事务，内部快照、编号、审计和幂等写入均留在该事务中。原普通/受保护生成继续使用原有重试包装及独立事务；新入口显式检查 transaction_isolation，只接受 repeatable read 或 serializable，调用方负责重试整个外层事务。
+
+独立数据库 management_snapshot_outer_tx（55439）完整 B4 回归通过。新测试实际生成后撤销外层事务，确认快照、审计、幂等和编号计数全部恢复；默认 read committed 调用被拒绝且无残留。日志 /tmp/snapshot-outer-test.log。此项仅提供事务接口，尚未实现报表审批投票或 Agent 工具，未部署。

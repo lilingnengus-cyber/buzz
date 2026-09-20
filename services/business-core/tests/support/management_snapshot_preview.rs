@@ -67,6 +67,42 @@ pub async fn verify(pool: &PgPool, service: &ProfitReportingService, actor: Uuid
     );
     let current = service.snapshot_preview(actor, &input).await.unwrap();
     assert_eq!(current["components"][0]["amount"], "12.000000");
+    // A later approval failure must roll back report, numbering, audit and idempotency.
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let rolled_back = service
+        .generate_snapshot_on(
+            &mut tx,
+            actor,
+            Uuid::new_v4(),
+            "monthly-preview-outer-rollback",
+            &input,
+            Some(&current),
+        )
+        .await
+        .unwrap();
+    assert!(!rolled_back.idempotent_replay);
+    tx.rollback().await.unwrap();
+    assert_eq!(before, counts(pool).await);
+    let mut weak_tx = pool.begin().await.unwrap();
+    assert!(matches!(
+        service
+            .generate_snapshot_on(
+                &mut weak_tx,
+                actor,
+                Uuid::new_v4(),
+                "monthly-preview-weak-isolation",
+                &input,
+                Some(&current),
+            )
+            .await,
+        Err(DomainError::Invalid(_))
+    ));
+    weak_tx.rollback().await.unwrap();
+    assert_eq!(before, counts(pool).await);
     let result = service
         .generate_snapshot_guarded(
             actor,

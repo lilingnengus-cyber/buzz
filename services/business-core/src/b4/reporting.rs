@@ -291,13 +291,41 @@ impl ProfitReportingService {
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *tx)
             .await?;
-        let (auth, scope) = self.snapshot_scope_on(&mut tx, actor, input).await?;
+        let result = self
+            .generate_snapshot_on(&mut tx, actor, trace_id, key, input, expected)
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    /// Generate within the caller's repeatable-read transaction without committing it.
+    /// The caller must roll back on any error and retry the entire transaction
+    /// on serialization failure; successful calls leave the transaction open.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn generate_snapshot_on(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        actor: Uuid,
+        trace_id: Uuid,
+        key: &str,
+        input: &GenerateReportSnapshot,
+        expected: Option<&Value>,
+    ) -> Result<CommandResult, DomainError> {
+        let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
+            .fetch_one(&mut **tx)
+            .await?;
+        if isolation != "repeatable read" && isolation != "serializable" {
+            return Err(DomainError::Invalid(
+                "snapshot requires repeatable-read isolation".into(),
+            ));
+        }
+        let (auth, scope) = self.snapshot_scope_on(tx, actor, input).await?;
         let hash = match expected {
             Some(preview) => request_hash(&("guarded-management-snapshot-v1", input, preview))?,
             None => request_hash(input)?,
         };
         if let Some(mut replay) = begin_idempotent::<CommandResult>(
-            &mut tx,
+            tx,
             actor,
             "management_report:generate_snapshot",
             key,
@@ -308,17 +336,16 @@ impl ProfitReportingService {
             let prior_scope: Value =
                 sqlx::query_scalar("SELECT scope FROM management_report_snapshots WHERE id=$1")
                     .bind(replay.id)
-                    .fetch_optional(&mut *tx)
+                    .fetch_optional(&mut **tx)
                     .await?
                     .ok_or(DomainError::NotFoundOrForbidden)?;
             if !snapshot_scope_allowed(&prior_scope, &auth.scopes) {
                 return Err(DomainError::NotFoundOrForbidden);
             }
             replay.idempotent_replay = true;
-            tx.commit().await?;
             return Ok(replay);
         }
-        let content = self.snapshot_content_on(&mut tx, input, &scope).await?;
+        let content = self.snapshot_content_on(tx, input, &scope).await?;
         if expected.is_some_and(|expected| *expected != content.preview(input, &scope)) {
             return Err(DomainError::StalePreview);
         }
@@ -340,32 +367,31 @@ impl ProfitReportingService {
                 idempotent_replay: true,
             };
             finish_idempotent(
-                &mut tx,
+                tx,
                 actor,
                 "management_report:generate_snapshot",
                 key,
                 &result,
             )
             .await?;
-            tx.commit().await?;
             return Ok(result);
         }
         let id = Uuid::new_v4();
         let number = next_number(
-            &mut tx,
+            tx,
             "management_report",
             &self.snapshot_prefix,
             id,
             crate::numbering::NumberingContext::default(),
         )
         .await?;
-        let inserted = sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12) ON CONFLICT (report_type,management_period,currency,scope_hash,rule_version,source_watermark,source_hash) DO NOTHING").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut *tx).await?.rows_affected();
+        let inserted = sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12) ON CONFLICT (report_type,management_period,currency,scope_hash,rule_version,source_watermark,source_hash) DO NOTHING").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut **tx).await?.rows_affected();
         if inserted != 1 {
             return Err(DomainError::VersionConflict);
         }
-        sqlx::query("INSERT INTO management_report_snapshot_rows(id,snapshot_id,row_key,amounts,data_quality_status,warnings) VALUES($1,$2,'management_profit_statement',$3,$4,$5)").bind(Uuid::new_v4()).bind(id).bind(json!({"components":amounts})).bind(data_quality_status).bind(json!(["经营管理口径，不是法定利润"])).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO management_report_snapshot_evidence(id,snapshot_id,evidence_type,source_watermark,source_hash) VALUES($1,$2,'profit_facts',$3,$4)").bind(Uuid::new_v4()).bind(id).bind(watermark).bind(&source_hash).execute(&mut *tx).await?;
-        record(&mut tx,trace_id,actor,"MANAGEMENT_REPORT_SNAPSHOT_GENERATED","management_report_snapshot_generated","management_report_snapshot",id,json!({"snapshotNumber":number,"managementPeriod":input.management_period,"currency":input.currency,"sourceWatermark":watermark})).await?;
+        sqlx::query("INSERT INTO management_report_snapshot_rows(id,snapshot_id,row_key,amounts,data_quality_status,warnings) VALUES($1,$2,'management_profit_statement',$3,$4,$5)").bind(Uuid::new_v4()).bind(id).bind(json!({"components":amounts})).bind(data_quality_status).bind(json!(["经营管理口径，不是法定利润"])).execute(&mut **tx).await?;
+        sqlx::query("INSERT INTO management_report_snapshot_evidence(id,snapshot_id,evidence_type,source_watermark,source_hash) VALUES($1,$2,'profit_facts',$3,$4)").bind(Uuid::new_v4()).bind(id).bind(watermark).bind(&source_hash).execute(&mut **tx).await?;
+        record(tx,trace_id,actor,"MANAGEMENT_REPORT_SNAPSHOT_GENERATED","management_report_snapshot_generated","management_report_snapshot",id,json!({"snapshotNumber":number,"managementPeriod":input.management_period,"currency":input.currency,"sourceWatermark":watermark})).await?;
         let result = CommandResult {
             id,
             number,
@@ -375,14 +401,13 @@ impl ProfitReportingService {
             idempotent_replay: false,
         };
         finish_idempotent(
-            &mut tx,
+            tx,
             actor,
             "management_report:generate_snapshot",
             key,
             &result,
         )
         .await?;
-        tx.commit().await?;
         Ok(result)
     }
 
