@@ -125,3 +125,9 @@ Windows 35482058899 的 Verify native Business Agent tool loading 步骤已 succ
 当前 crates/services 与 c186ddf01119acfb545c56dee7b77304874e282b 的 git diff 已确认为空；未提交 LifeDock 改动不会进入本次构建。已启动 cargo build --release --locked -p buzz-acp -p buzz-agent -p business-read-mcp，CARGO_INCREMENTAL=0，日志 /tmp/order-hold-mac-sidecars-build.log。必须确认进程最终退出和新二进制哈希后才能制作应用候选，不能使用遗留 target/release 文件作为新构建证据。
 
 计划从已发布 /Applications/Pacioli.app 制作临时副本，只更新本批 Rust 侧程序并重新签名，MCP 单独准备版本固定目录；不安装或重载。服务器只读空间最新 1,250,328,576 bytes，仍不满足新归档加载余量，未清理缓存。Windows 35482058899 仍在安装包构建步骤。
+
+## Mac 配套候选完成
+
+release 构建退出 0，生成 /tmp/Pacioli-order-hold-c186ddf01.app（已发布 UI 基础，只替换 buzz-acp/buzz-agent）和 /tmp/business-hold-mac-c186ddf01/business-read-mcp。临时应用 ad-hoc 签名及 codesign --verify --deep --strict 通过，没有覆盖 /Applications 或代理配置。
+
+签名后 SHA256：buzz-acp 3a79d1a5991ce2f689240b85d69524859316d15e2ba8046f79dce27725e5591b；buzz-agent 35ef7bf7d67b57443f81e6c12c0e846c4821776e95c41b730fa9b627cf7e7c45；MCP 71390a04a194b2b493bbd9e3eea0a65559843d64623914baabd38c5da9d9183a。候选程序真实 stdio/模拟模型探针：普通 105，sales_order_hold_intent:approve 60，sales_order_release_hold_intent:approve 60，均固定集合且完成 prompt。日志 /tmp/order-hold-mac-sign.log、/tmp/order-hold-mac-release-{runtime,approve,resume}.log。不代表实际模型推理或真实客户端聊天。Windows 安装包及生产发布继续待完成。
