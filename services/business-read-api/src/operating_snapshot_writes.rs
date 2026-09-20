@@ -18,7 +18,8 @@ fn canonical(tool: &str, input: &Value) -> Option<Value> {
     let v: business_core::s1::GenerateOperatingSnapshot =
         serde_json::from_value(input.clone()).ok()?;
     use chrono::Datelike;
-    if !matches!(v.cadence.as_str(), "daily" | "weekly")
+    if v.legal_entity_ids.as_ref().is_some_and(Vec::is_empty)
+        || !matches!(v.cadence.as_str(), "daily" | "weekly")
         || !(-720..=840).contains(&v.utc_offset_minutes)
         || v.currency.len() != 3
         || !v.currency.bytes().all(|c| c.is_ascii_uppercase())

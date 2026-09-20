@@ -124,12 +124,29 @@ export function OperatingSnapshotDetail({ id }: { id: string }) {
                     "生成时点缺货数",
                     String(detail.metrics.stockoutCountAsOfGeneration),
                   ],
-                  ["新增异常", String(detail.metrics.incidentsOpened)],
-                  ["已解决异常", String(detail.metrics.incidentsResolved)],
-                  ["SLA 超时数", String(detail.metrics.slaBreached)],
+                  [
+                    "新增异常",
+                    detail.metrics.incidentsOpened == null
+                      ? "不可按法人拆分"
+                      : String(detail.metrics.incidentsOpened),
+                  ],
+                  [
+                    "已解决异常",
+                    detail.metrics.incidentsResolved == null
+                      ? "不可按法人拆分"
+                      : String(detail.metrics.incidentsResolved),
+                  ],
+                  [
+                    "SLA 超时数",
+                    detail.metrics.slaBreached == null
+                      ? "不可按法人拆分"
+                      : String(detail.metrics.slaBreached),
+                  ],
                   [
                     "平均解决时长（小时）",
-                    formatDecimal(detail.metrics.averageResolutionHours),
+                    detail.metrics.averageResolutionHours == null
+                      ? "不可按法人拆分"
+                      : formatDecimal(detail.metrics.averageResolutionHours),
                   ],
                 ] as const
               ).map(([label, value]) => (

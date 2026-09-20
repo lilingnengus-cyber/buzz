@@ -69,7 +69,37 @@ fn real_operating_results_bind_signed_preview_owner_and_effects() {
             c.approval_document_id = Some(Uuid::new_v4());
             assert!(approval(tool, v, &c, 65536).is_err());
         }
+        let preview = if tool.starts_with("prepare_") {
+            &v["document"]
+        } else {
+            &v["preview"]
+        };
+        if preview["schemaVersion"] == 2
+            && preview["metrics"]["unavailableMetrics"]
+                .as_object()
+                .is_some_and(|o| !o.is_empty())
+        {
+            for mutation in 0..4 {
+                let mut bad = preview.clone();
+                match mutation {
+                    0 => bad["metrics"]["slaBreached"] = json!(0),
+                    1 => {
+                        bad["metrics"]["unavailableMetrics"]
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("slaBreached");
+                    }
+                    2 => bad["dataQualityStatus"] = json!("complete"),
+                    _ => bad["scope"]["legalEntityIds"] = json!([Uuid::new_v4()]),
+                }
+                bad["sourceHash"]=json!(hex::encode(Sha256::digest(serde_json::to_vec(&json!({"cadence":bad["input"]["cadence"],"utcOffsetMinutes":bad["input"]["utcOffsetMinutes"],"periodStartUtc":bad["periodStartUtc"],"periodEndUtc":bad["periodEndUtc"],"periodStart":bad["input"]["periodStart"],"periodEnd":bad["periodEnd"],"currency":bad["input"]["currency"],"scopeHash":bad["scopeHash"],"metrics":bad["metrics"]})).unwrap())));
+                assert!(
+                    snapshot::validate(&bad, "operating_report_snapshot_intent").is_err(),
+                    "mutation {mutation}"
+                );
+            }
+        }
         count += 1;
     }
-    assert_eq!(count, 8);
+    assert_eq!(count, 12);
 }

@@ -17,10 +17,30 @@ impl OperationsService {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         actor: Uuid,
     ) -> Result<Value, DomainError> {
+        self.data_quality_for_legal_entities_on(tx, actor, None)
+            .await
+    }
+    pub(super) async fn data_quality_for_legal_entities_on(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        actor: Uuid,
+        selected: Option<&[Uuid]>,
+    ) -> Result<Value, DomainError> {
         let overall_started = Instant::now();
         let mut stages = Vec::with_capacity(8);
         let stage_started = Instant::now();
-        let auth = crate::master_write_authority::read(tx, actor, "management_report:read").await?;
+        let mut auth =
+            crate::master_write_authority::read(tx, actor, "management_report:read").await?;
+        if let Some(ids) = selected {
+            if ids.is_empty()
+                || ids
+                    .iter()
+                    .any(|id| !auth.scopes.legal_entity_ids.contains(id))
+            {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
+            auth.scopes.legal_entity_ids = ids.iter().copied().collect();
+        }
         record_stage(&mut stages, "authorization", stage_started);
         let legal_entities = auth.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>();
         let warehouses = auth.scopes.warehouse_ids.into_iter().collect::<Vec<_>>();

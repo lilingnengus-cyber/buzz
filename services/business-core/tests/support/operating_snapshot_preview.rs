@@ -16,6 +16,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid) {
             cadence: cadence.into(),
             currency: "CNY".into(),
             period_start: NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
+            legal_entity_ids: None,
             utc_offset_minutes: 480,
         };
         let before = counts(pool).await;
@@ -161,6 +162,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid) {
         cadence: "daily".into(),
         currency: "CNY".into(),
         period_start: NaiveDate::MAX,
+        legal_entity_ids: None,
         utc_offset_minutes: 480,
     };
     assert!(matches!(

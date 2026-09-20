@@ -67,16 +67,15 @@ pub(super) fn valid_snapshot(v: &Value, kind: &str) -> bool {
         "managementOperatingProfit",
         "averageResolutionHours",
     ];
-    kind == "operating_report_snapshot_intent" && v["schemaVersion"]==1 && v["kind"]=="operating_report_snapshot"
+    kind == "operating_report_snapshot_intent" && v["schemaVersion"]==if v["input"].get("legalEntityIds").is_some(){2}else{1} && v["kind"]=="operating_report_snapshot"
         && canonical("prepare_operating_report_snapshot", &v["input"]).as_ref()==Some(&v["input"])
         && uuid(&v["ownerUserId"]) && v["timeBasis"]=="fixed_utc_offset" && period(v).is_some()
         && v["boundary"]=="business_operations_only_not_financial_accounting"
         && scope.as_object().is_some_and(|o| o.len()==6 && o.keys().all(|k| arrays.contains(&k.as_str())))
         && arrays.iter().all(|k| scope[*k].as_array().is_some_and(|a| a.iter().all(uuid)))
         && scope["legalEntityIds"].as_array().is_some_and(|a| !a.is_empty()) && digest(&v["scopeHash"])
-        && v["metrics"].as_object().is_some_and(|o| o.len()==counts.len()+amounts.len())
-        && counts.iter().all(|k| v["metrics"][*k].as_i64().is_some_and(|n| n>=0))
-        && amounts.iter().all(|k| v["metrics"][*k].as_str().is_some_and(|s| s.parse::<rust_decimal::Decimal>().is_ok()))
+        && legal_scope_binds(v)
+        && valid_metrics(v,&counts,&amounts)
         && hash(&json!({"cadence":v["input"]["cadence"],"utcOffsetMinutes":v["input"]["utcOffsetMinutes"],"periodStartUtc":v["periodStartUtc"],"periodEndUtc":v["periodEndUtc"],"periodStart":v["input"]["periodStart"],"periodEnd":v["periodEnd"],"currency":v["input"]["currency"],"scopeHash":v["scopeHash"],"metrics":v["metrics"]})).is_some_and(|h| v["sourceHash"]==h)
         && matches!(v["dataQualityStatus"].as_str(),Some("complete"|"partial"|"blocked"))
         && v["effects"]["changesSourceDocuments"]==false
@@ -102,4 +101,74 @@ pub(super) fn permits(v: &Value, scope: &AuthorizationScope, kind: &str) -> bool
                             .is_some_and(|s| scope.legal_entity_ids.contains(s))
                     })
             }))
+}
+
+fn legal_scope_binds(v: &Value) -> bool {
+    let Some(input) = v["input"].get("legalEntityIds") else {
+        return true;
+    };
+    let Some(ids) = input.as_array() else {
+        return false;
+    };
+    if ids.is_empty() || !ids.iter().all(uuid) {
+        return false;
+    }
+    let wanted: std::collections::BTreeSet<_> = ids.iter().filter_map(Value::as_str).collect();
+    let actual: std::collections::BTreeSet<_> = v["scope"]["legalEntityIds"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    actual == wanted
+}
+fn valid_metrics(v: &Value, counts: &[&str], amounts: &[&str]) -> bool {
+    let metrics = &v["metrics"];
+    let filtered = v["input"].get("legalEntityIds").is_some();
+    if metrics
+        .as_object()
+        .is_none_or(|o| o.len() != counts.len() + amounts.len() + usize::from(filtered))
+    {
+        return false;
+    }
+    let unavailable = metrics.get("unavailableMetrics");
+    if filtered {
+        let Some(map) = unavailable.and_then(Value::as_object) else {
+            return false;
+        };
+        if !map.is_empty()
+            && (map.len() != 4
+                || v["dataQualityStatus"] == "complete"
+                || !map.iter().all(|(k, r)| {
+                    [
+                        "incidentsOpened",
+                        "incidentsResolved",
+                        "slaBreached",
+                        "averageResolutionHours",
+                    ]
+                    .contains(&k.as_str())
+                        && r == "not_attributable_to_selected_legal_entities"
+                }))
+        {
+            return false;
+        }
+    } else if unavailable.is_some() {
+        return false;
+    }
+    let missing = |k: &str| unavailable.is_some_and(|u| u.get(k).is_some());
+    counts.iter().all(|k| {
+        if missing(k) {
+            metrics[*k].is_null()
+        } else {
+            metrics[*k].as_i64().is_some_and(|n| n >= 0)
+        }
+    }) && amounts.iter().all(|k| {
+        if missing(k) {
+            metrics[*k].is_null()
+        } else {
+            metrics[*k]
+                .as_str()
+                .is_some_and(|s| s.parse::<rust_decimal::Decimal>().is_ok())
+        }
+    })
 }

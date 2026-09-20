@@ -221,9 +221,14 @@ export function OperatingTrendsView() {
               <article className="ruler-row" key={item.id}>
                 <div className="ruler-date">
                   <i>{String(series.items.length - index).padStart(2, "0")}</i>
-                  <a href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/operating-snapshots/${item.id}`}><strong>{item.periodStart}</strong></a>
+                  <a
+                    href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/operating-snapshots/${item.id}`}
+                  >
+                    <strong>{item.periodStart}</strong>
+                  </a>
                   <small>
-                    {cadence === "daily" ? "DAY" : "WEEK"} · {formatUtcOffset(item.utcOffsetMinutes)}
+                    {cadence === "daily" ? "DAY" : "WEEK"} ·{" "}
+                    {formatUtcOffset(item.utcOffsetMinutes)}
                   </small>
                 </div>
                 <TrendValue
@@ -243,15 +248,23 @@ export function OperatingTrendsView() {
                   change={item.change?.managementOperatingProfit}
                 />
                 <TrendValue
-                  value={`${item.metrics.slaBreached}`}
+                  value={
+                    item.metrics.slaBreached == null
+                      ? "不可用"
+                      : `${item.metrics.slaBreached}`
+                  }
                   change={item.change?.slaBreached}
-                  risk={item.metrics.slaBreached > 0}
+                  risk={(item.metrics.slaBreached ?? 0) > 0}
                 />
                 <footer>
                   <span className={`quality-mark ${item.dataQualityStatus}`}>
                     {item.dataQualityStatus}
                   </span>
-                  <span>平均解决 {item.metrics.averageResolutionHours}h</span>
+                  <span>
+                    {item.metrics.averageResolutionHours == null
+                      ? "异常指标不可按法人拆分"
+                      : `平均解决 ${item.metrics.averageResolutionHours}h`}
+                  </span>
                   <code>{item.sourceHash.slice(0, 10)}</code>
                 </footer>
               </article>
@@ -260,7 +273,8 @@ export function OperatingTrendsView() {
         ))}
       {!loadError && (
         <p className="report-warning">
-          库存价值与缺货数为快照生成时点值。仅比较相同 UTC 偏移的周期；旧快照时区未知，不参与比较。趋势快照不可变，不是法定财务报表。
+          库存价值与缺货数为快照生成时点值。仅比较相同 UTC
+          偏移的周期；旧快照时区未知，不参与比较。趋势快照不可变，不是法定财务报表。
         </p>
       )}
     </main>
@@ -281,7 +295,9 @@ function TrendValue({
     <div className={`trend-value ${risk ? "risk" : ""}`}>
       <strong>{value}</strong>
       <small className={numeric !== null && numeric < 0 ? "down" : ""}>
-        {numeric === null ? "无可比基线" : `${numeric > 0 ? "+" : ""}${change}%`}
+        {numeric === null
+          ? "无可比基线"
+          : `${numeric > 0 ? "+" : ""}${change}%`}
       </small>
     </div>
   );

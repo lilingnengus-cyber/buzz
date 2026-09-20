@@ -183,11 +183,46 @@ async fn operating_adapter_uses_real_core_and_checks_before_writing() {
         export(tool, c.trace_id, &reused);
         assert_eq!(reused["createdDocument"]["created"], false);
     }
+    let other = Uuid::new_v4();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'FILTER_OTHER','Other authorized entity','CN','CNY')").bind(other).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)").bind(f.actor).bind(other).execute(&pool).await.unwrap();
+    for cadence in ["daily", "weekly"] {
+        let tool = "prepare_operating_report_snapshot";
+        let c = context(f.actor, required_capability(tool).unwrap());
+        let mut input = json!({"cadence":cadence,"periodStart":"2026-03-02","currency":"CNY","utcOffsetMinutes":480});
+        let allowed = grant(&c, f.legal_entity);
+        assert_eq!(
+            forward(&core, tool, input.clone(), &c, &allowed)
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        input["legalEntityIds"] = json!([f.legal_entity]);
+        let prepared = value(forward(&core, tool, input, &c, &allowed).await).await;
+        assert_eq!(prepared["document"]["schemaVersion"], 2);
+        assert_eq!(
+            prepared["document"]["scope"]["legalEntityIds"],
+            json!([f.legal_entity])
+        );
+        assert!(prepared["document"]["metrics"]["slaBreached"].is_null());
+        assert!(valid_snapshot(
+            &prepared["document"],
+            "operating_report_snapshot_intent"
+        ));
+        export(tool, c.trace_id, &prepared);
+        let tool = "approve_operating_report_snapshot";
+        let c = context(f.actor, required_capability(tool).unwrap());
+        let command = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":"approve"});
+        let result =
+            value(forward(&core, tool, command, &c, &grant(&c, f.legal_entity)).await).await;
+        assert_eq!(result["executed"], true);
+        export(tool, c.trace_id, &result);
+    }
     sqlx::query("UPDATE business_approval_policies SET min_approvers=2 WHERE action_code='management_report:generate_snapshot'").execute(&pool).await.unwrap();
     for decision in ["approve", "reject"] {
         let tool = "prepare_operating_report_snapshot";
         let c = context(f.actor, required_capability(tool).unwrap());
-        let prepared=value(forward(&core,tool,json!({"cadence":"daily","periodStart":"2026-02-02","currency":"CNY","utcOffsetMinutes":480}),&c,&grant(&c,f.legal_entity)).await).await;
+        let prepared=value(forward(&core,tool,json!({"cadence":"daily","periodStart":"2026-02-02","currency":"CNY","utcOffsetMinutes":480,"legalEntityIds":[f.legal_entity]}),&c,&grant(&c,f.legal_entity)).await).await;
         let tool = "approve_operating_report_snapshot";
         let c = context(f.actor, required_capability(tool).unwrap());
         let input = json!({"documentId":prepared["item"]["id"],"expectedVersion":1,"previewHash":prepared["previewHash"],"decision":decision});

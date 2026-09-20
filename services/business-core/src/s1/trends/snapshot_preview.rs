@@ -13,7 +13,7 @@ pub(super) struct OperatingContent {
 }
 impl OperatingContent {
     pub(super) fn preview(&self, actor: Uuid, input: &GenerateOperatingSnapshot) -> Value {
-        json!({"schemaVersion":1,"kind":"operating_report_snapshot","input":input,
+        json!({"schemaVersion":if input.legal_entity_ids.is_some(){2}else{1},"kind":"operating_report_snapshot","input":input,
             "ownerUserId":actor,"periodEnd":self.period_end,
             "periodStartUtc":self.period_start_utc,"periodEndUtc":self.period_end_utc,"timeBasis":"fixed_utc_offset","scope":self.scope,"scopeHash":self.scope_hash,
             "metrics":self.payload,"sourceHash":self.source_hash,"dataQualityStatus":self.quality_status,
@@ -91,7 +91,7 @@ impl OperationsService {
         input: &GenerateOperatingSnapshot,
     ) -> Result<OperatingContent, DomainError> {
         validate_snapshot_input(input)?;
-        let auth = crate::master_write_authority::snapshot(
+        let mut auth = crate::master_write_authority::snapshot(
             tx,
             actor,
             "management_report:generate_snapshot",
@@ -105,8 +105,10 @@ impl OperationsService {
                 DomainError::Invalid("operating period is outside supported dates".into())
             })?;
         let (period_start_utc, period_end_utc) = utc_bounds(input, period_end)?;
-        let scope = serde_json::to_value(&auth.scopes)?;
-        let scope_hash = auth.effective_scope_hash.clone();
+        let (selected, scope_hash) = snapshot_scope::resolve(tx, &auth, input).await?;
+        let incident_metrics_available = selected.legal_entity_ids == auth.scopes.legal_entity_ids;
+        let scope = serde_json::to_value(&selected)?;
+        auth.scopes = selected;
         let local_today =
             (Utc::now() + Duration::minutes(i64::from(input.utc_offset_minutes))).date_naive();
         if period_end > local_today {
@@ -115,7 +117,7 @@ impl OperationsService {
             ));
         }
         if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status,payload,utc_offset_minutes,generated_by_user_id FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes=$5")
-            .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?
+            .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&scope_hash).bind(input.utc_offset_minutes).fetch_optional(&mut **tx).await?
         {
             return Ok(OperatingContent { period_end, period_start_utc, period_end_utc, scope, scope_hash, payload: row.get("payload"),
                 quality_status: row.get("data_quality_status"), source_hash: row.get("source_hash"), existing: Some(row) });
@@ -147,9 +149,18 @@ impl OperationsService {
             - profit.get::<Decimal, _>("product_cost")
             - profit.get::<Decimal, _>("operating_cost")
             + profit.get::<Decimal, _>("supplier_rebate");
-        let quality = self.data_quality_on(tx, actor).await?;
-        let quality_status = quality["status"].as_str().unwrap_or("blocked");
-        let payload = json!({
+        let quality = self
+            .data_quality_for_legal_entities_on(
+                tx,
+                actor,
+                input.legal_entity_ids.as_ref().map(|_| le.as_slice()),
+            )
+            .await?;
+        let mut quality_status = quality["status"].as_str().unwrap_or("blocked");
+        if !incident_metrics_available && quality_status == "complete" {
+            quality_status = "partial";
+        }
+        let mut payload = json!({
             "salesOrderCount": sales.get::<i64,_>("order_count"),
             "salesOrderAmount": sales.get::<Decimal,_>("order_amount").to_string(),
             "shipmentCount": shipments.get::<i64,_>("shipment_count"),
@@ -164,6 +175,21 @@ impl OperationsService {
             "slaBreached": incidents.get::<i64,_>("breached_count"),
             "averageResolutionHours": incidents.get::<Decimal,_>("average_resolution_hours").to_string()
         });
+        if input.legal_entity_ids.is_some() {
+            payload["unavailableMetrics"] = json!({});
+            if !incident_metrics_available {
+                for key in [
+                    "incidentsOpened",
+                    "incidentsResolved",
+                    "slaBreached",
+                    "averageResolutionHours",
+                ] {
+                    payload[key] = Value::Null;
+                    payload["unavailableMetrics"][key] =
+                        json!("not_attributable_to_selected_legal_entities");
+                }
+            }
+        }
         let source_hash = hex::encode(Sha256::digest(serde_json::to_vec(&json!({
             "cadence": input.cadence,
             "utcOffsetMinutes": input.utc_offset_minutes,
@@ -172,7 +198,7 @@ impl OperationsService {
             "periodStart": input.period_start,
             "periodEnd": period_end,
             "currency": input.currency,
-            "scopeHash": auth.effective_scope_hash,
+            "scopeHash": scope_hash,
             "metrics": payload
         }))?));
         Ok(OperatingContent {

@@ -53,6 +53,28 @@ mod tests {
         assert!(ordinary.len() <= 128);
         assert!(ordinary.iter().all(|t| !t.name.starts_with("approve_")));
         assert!(ordinary.iter().any(|t| t.name == "prepare_crm_creation"));
+        let operating = ordinary
+            .iter()
+            .find(|t| t.name == "prepare_operating_report_snapshot")
+            .unwrap();
+        assert!(operating
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .get("legalEntityIds")
+            .is_some());
+        assert!(operating
+            .input_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v != "legalEntityIds"));
+        assert_eq!(
+            operating.input_schema.get("additionalProperties"),
+            Some(&json!(false))
+        );
         for tool in BusinessReadMcp::all_tools()
             .list_all()
             .into_iter()

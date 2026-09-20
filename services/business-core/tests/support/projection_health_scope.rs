@@ -93,6 +93,7 @@ pub async fn verify(pool: &PgPool, service: &OperationsService, actor: Uuid) {
                 cadence: "daily".into(),
                 currency: "CNY".into(),
                 period_start: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                legal_entity_ids: None,
                 utc_offset_minutes: 480,
             },
         )

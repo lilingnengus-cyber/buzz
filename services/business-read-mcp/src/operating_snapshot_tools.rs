@@ -2,6 +2,9 @@ use super::*;
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct OperatingSnapshotInput {
+    /// Optional nonempty legal-entity UUID subset from scoped lookup. Never guess IDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) legal_entity_ids: Option<Vec<Uuid>>,
     /// Daily or weekly reporting cadence; weekly periods start on Monday.
     #[schemars(regex(pattern = r"^(daily|weekly)$"))]
     pub(super) cadence: String,
@@ -19,7 +22,7 @@ pub(super) struct OperatingSnapshotInput {
 impl BusinessReadMcp {
     #[tool(
         name = "prepare_operating_report_snapshot",
-        description = "Prepare an immutable daily or weekly operating report only on explicit human request. Ask for missing cadence, completed period start, currency and fixed UTC offset. Weekly starts Monday. Show the requester's scope, metrics, quality, inventory as of generation, and whether frozen content is reused. Display the exact returned confirmation command and wait for the human. Preparation does not generate a report. Mixed-domain dimension restrictions may be unsupported; never widen scope or retry without restrictions. Return only the verified detail link for an existing snapshot; a new preparation has no report link. This is not financial accounting."
+        description = "Prepare an immutable daily or weekly operating report only on explicit human request. Ask for missing cadence, completed period start, currency and fixed UTC offset. Weekly starts Monday. Show the requester's scope, metrics, quality, unavailable metrics and reasons (never describe unavailable as zero), inventory as of generation, and whether frozen content is reused. Display the exact returned confirmation command and wait for the human. Preparation does not generate a report. Mixed-domain dimension restrictions may be unsupported; never widen scope or retry without restrictions. Return only the verified detail link for an existing snapshot; a new preparation has no report link. This is not financial accounting."
     )]
     async fn prepare_operating_report_snapshot(
         &self,

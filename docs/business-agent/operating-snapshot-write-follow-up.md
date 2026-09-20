@@ -229,3 +229,17 @@ MCP 26 项测试通过，包含 /tmp/operating-adapter-proof.jsonl 的 8 份真�
 本批未增加用户筛选参数、未放宽 Read API 对不支持维度的拒绝；跨业务受限报表能力仍需实现，不能把此缺陷修正当作完整筛选已完成。无需新迁移，尚未部署。
 
 projection_health_approvals 实际数据库审批竞争/撤权/过期回归通过；Core all-targets 严格 Clippy、格式、差异及文件大小检查通过（/tmp/projection-health-{approvals,clippy,size}.log）。未运行全仓 just ci；完整企业助手写入目标与发布/真实客户端验收待办保持不变。
+
+## 日报/周报显式法人筛选
+
+输入新增可选 legalEntityIds，必须非空且完全属于当前 Core 授权；选择后排序去重，并将业务单元、仓库、客户、供应商范围裁剪到所选法人，避免把其他法人的关联 ID 放进预览/冻结范围。品牌保持全局已授权集合。筛选后的身份绑定原授权身份与实际选定范围，金额、库存、利润及数据质量使用所选法人；幂等重放检查同一筛选身份。省略字段时序列化不增加字段，保留原请求哈希和 schemaVersion=1。
+
+显式筛选预览为 schemaVersion=2，metrics 增加 unavailableMetrics。现有异常记录只有整份授权范围归属，不能分配给法人子集：缩小法人范围时 incidentsOpened、incidentsResolved、slaBreached、averageResolutionHours 为 null，并绑定固定原因 not_attributable_to_selected_legal_entities。质量不会声明 complete；如果投影等实际失败则仍为 blocked。选择全部已授权法人时这些指标仍可用，unavailableMetrics 为空。来源摘要包含完整 metrics（含可用性），冻结后不会被实时重算替换。此做法明确披露未知值，没有把无法归属的记录当零或宣称已完成异常归属。
+
+Read API 和 MCP 支持新字段/版本，独立核对 input 与冻结法人的一致性、可用性原因、null、质量和来源摘要。非空法人受限委托可通过明确筛选准备/确认，不能直接获取范围更宽的报表。其他客户/供应商/品牌/业务单元/仓库受限委托仍保留拒绝，尚未视为实现。MCP 要求向用户展示不可用指标及原因；详情页显示“不可按法人拆分”，趋势用“不可用”及原因说明，无新增操作按钮。
+
+真实 PostgreSQL operating_legal_scopes_final（55439）完整 B4 回归：日报/周报分别验证有业务法人和空法人金额隔离、空法人不携带其他法人的关联范围、完整/筛选身份不同、预览/冻结/详情一致、同键重放、空/越权 ID 拒绝、显式全选保留异常数、旧请求及冻结内容保持原样。operating_legal_approval_regression 审批竞争/过期/撤权回归通过（在最终关联范围裁剪前执行，裁剪后的实际单人审批由以下 adapter 覆盖）。
+
+operating_legal_adapter_final 真实 Core HTTP + Read API 验证宽范围被拒、显式法人选择的 daily/weekly 准备和确认成功；导出 12 份新旧版本结果到 /tmp/operating-legal-final-proof.jsonl。MCP 26 项测试通过，额外验证重新计算 sourceHash 也不能把未知数改零、删掉原因、谎称 complete 或偷换法人范围。输入 schema 包含可选 legalEntityIds 且不接受未知字段。原生 MCP/Agent 模拟模型会话仍为普通 107、确认 60 工具且只开放对应确认工具（/tmp/operating-legal-native-{ordinary,approval}.log）；非真实聊天验收。
+
+浏览器模拟 API 的 3 项实际页面测试通过，四个 null 指标显示不可拆分，不显示 null 或零；前端检查/构建通过（/tmp/operating-legal-browser.log）。Core/API/MCP 严格 Clippy、格式/差异/文件大小门禁通过后提交；未运行全仓 just ci。本批无需新迁移，但新筛选输入/nullable 指标需要配套 Core、Read API、MCP、Web 版本。未部署或更新安装包；完整业务写入目标和其他维度、异常归属、发布及真实客户端验收仍未完成。

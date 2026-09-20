@@ -338,10 +338,11 @@ export type OperatingTrendMetrics = {
   inventoryValueAsOfGeneration: string;
   stockoutCountAsOfGeneration: number;
   managementOperatingProfit: string;
-  incidentsOpened: number;
-  incidentsResolved: number;
-  slaBreached: number;
-  averageResolutionHours: string;
+  incidentsOpened: number | null;
+  incidentsResolved: number | null;
+  slaBreached: number | null;
+  averageResolutionHours: string | null;
+  unavailableMetrics?: Record<string, string>;
 };
 
 export type OperatingTrendSnapshot = {

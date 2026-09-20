@@ -91,3 +91,56 @@ for (const cadence of ["daily", "weekly"]) {
     ).toHaveCount(0);
   });
 }
+
+test("法人筛选快照不把无法归属的异常显示为零", async ({ page }) => {
+  const id = "54a738b6-49ad-4c5b-9a08-6a16a0a119e2";
+  await page.route("**/api/v1/operations/snapshots/*", (route) =>
+    route.fulfill({
+      json: {
+        id,
+        cadence: "daily",
+        periodStart: "2026-03-02",
+        periodEnd: "2026-03-03",
+        currency: "CNY",
+        utcOffsetMinutes: 480,
+        dataQualityStatus: "partial",
+        generatedAt: "2026-03-04T00:00:00Z",
+        sourceHash: "a".repeat(64),
+        scope: { legalEntityIds: [id] },
+        scopeBasis: "recorded",
+        metrics: {
+          salesOrderCount: 1,
+          salesOrderAmount: "123.45",
+          shipmentCount: 1,
+          shippedRevenue: "100.00",
+          purchaseOrderCount: 0,
+          purchaseOrderAmount: "0.00",
+          inventoryValueAsOfGeneration: "600.00",
+          stockoutCountAsOfGeneration: 0,
+          managementOperatingProfit: "70.00",
+          incidentsOpened: null,
+          incidentsResolved: null,
+          slaBreached: null,
+          averageResolutionHours: null,
+          unavailableMetrics: {
+            incidentsOpened: "not_attributable_to_selected_legal_entities",
+            incidentsResolved: "not_attributable_to_selected_legal_entities",
+            slaBreached: "not_attributable_to_selected_legal_entities",
+            averageResolutionHours:
+              "not_attributable_to_selected_legal_entities",
+          },
+        },
+      },
+    }),
+  );
+  await page.goto(`/embed/operating-snapshots/${id}`);
+  await expect(
+    page.getByRole("cell", { name: "不可按法人拆分", exact: true }),
+  ).toHaveCount(4);
+  await expect(page.getByTestId("operating-snapshot-detail")).toContainText(
+    "CNY 123.45",
+  );
+  await expect(page.getByTestId("operating-snapshot-detail")).not.toContainText(
+    "null",
+  );
+});

@@ -1,5 +1,6 @@
 mod snapshot_detail;
 mod snapshot_preview;
+mod snapshot_scope;
 use super::OperationsService;
 use crate::{
     b2::{
@@ -22,6 +23,9 @@ const SUBSCRIPTION_PERMISSION: &str = "management_report:manage_subscriptions";
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GenerateOperatingSnapshot {
+    /// Optional explicit legal-entity subset; omitted preserves the existing full-scope contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_entity_ids: Option<Vec<Uuid>>,
     pub cadence: String,
     pub currency: String,
     pub period_start: NaiveDate,
@@ -179,6 +183,7 @@ impl OperationsService {
             false,
         )
         .await?;
+        let (_, current_scope_hash) = snapshot_scope::resolve(tx, &auth, input).await?;
         if let Some(value) = begin_idempotent::<Value>(
             tx,
             actor,
@@ -193,7 +198,7 @@ impl OperationsService {
                 .and_then(|id| Uuid::parse_str(id).ok())
                 .ok_or(DomainError::NotFoundOrForbidden)?;
             let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operating_report_snapshots WHERE id=$1 AND scope_hash=$2)")
-                .bind(id).bind(&auth.effective_scope_hash).fetch_one(&mut **tx).await?;
+                .bind(id).bind(&current_scope_hash).fetch_one(&mut **tx).await?;
             if !visible {
                 return Err(DomainError::NotFoundOrForbidden);
             }
@@ -477,6 +482,7 @@ impl OperationsService {
                 cadence: cadence.clone(),
                 currency: row.get("currency"),
                 period_start,
+                legal_entity_ids: None,
                 utc_offset_minutes: offset,
             };
             let result = self
