@@ -2,6 +2,8 @@
 mod adjustment_allocation_preview;
 #[path = "support/adjustment_guarded_post.rs"]
 mod adjustment_guarded_post;
+#[path = "support/adjustment_reversal.rs"]
+mod adjustment_reversal;
 #[path = "support/management_snapshot_authority.rs"]
 mod management_snapshot_authority;
 #[path = "support/management_snapshot_concurrency.rs"]
@@ -722,6 +724,7 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
     operating_snapshot_warehouses::verify(&pool, &operations, &f).await;
     adjustment_allocation_preview::verify(&pool, &adjustments, &f).await;
     adjustment_guarded_post::verify(&pool, &adjustments, &f).await;
+    adjustment_reversal::verify(&pool, &adjustments, &f).await;
 }
 
 #[allow(clippy::too_many_arguments)]
