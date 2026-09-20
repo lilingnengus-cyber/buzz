@@ -19,6 +19,7 @@ pub mod product_master;
 pub mod product_master_api;
 pub mod s1;
 pub mod security;
+mod snapshot_transaction;
 pub mod store;
 
 pub use api::{router, AppState};

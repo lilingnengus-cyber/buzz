@@ -139,3 +139,9 @@ release 构建退出 0，生成 /tmp/Pacioli-order-hold-c186ddf01.app（已发�
 产物 /tmp/pacioli-windows-hold-35482058899/buzz-windows-canary-c186ddf01119acfb545c56dee7b77304874e282b/Pacioli_0.5.19-test.3_x64-setup.exe，60,631,356 bytes，SHA256 0588fcca5be7c884bfc00f6d73275954c7961c644d12ee2efab408a024d0ff5b。下载后检查 PE 标识并计算哈希。GitHub artifact 10596756712，归档服务报告 digest sha256:dbf93163495760b5cc627a5d73cba02de0bd997107c8a4422c3826988caf8bf1（这是 zip digest，不是 exe 哈希）。本地日志 /tmp/pacioli-windows-hold-35482058899.log。
 
 新增独立 Windows 安装验收运行 35483601691，消费上述同一 installer 并固定 exe 哈希，在临时 runner 静默安装，再对安装后的 buzz-agent/business-read-mcp 测试普通、暂停确认、恢复确认 profile。该运行刚启动，不能称为安装验收通过。产物为未签名测试包，无自动更新；生产配套服务仍未发布，不应视为可直接替代已上线版本的完整交付。
+
+## Windows 安装后原生验证通过
+
+独立运行 35483601691 success。固定哈希的 0.5.19-test.3 installer 在临时 Windows runner 静默安装成功；实际安装目录中的 buzz-agent.exe/business-read-mcp.exe 通过普通 105、sales_order_hold_intent:approve 60、sales_order_release_hold_intent:approve 60 三项 stdio/模拟模型探针，均只见允许工具并完成 prompt。
+
+下载证据 /tmp/windows-hold-installed-35483601691/windows-hold-installed-runtime/。安装程序清单 SHA256：business-read-mcp 2bdc34b82d2e8d0155c82e88b8fb4be521f58e36dc625ae4c1fc77cbda220405；buzz-acp 56862e08c4532ee324d72bbdd610df642ae721a3d3becd1a48df4adf1029206d；buzz-agent f74d44ce6cf32986c63d1117831ed2da613c4a78615f9bbf6d6d97c175d2c686。验证的是 CI 机器安装和原生工具加载，不是用户 Windows 登录、界面操作或真实聊天验收。生产未部署，用户机器未安装。

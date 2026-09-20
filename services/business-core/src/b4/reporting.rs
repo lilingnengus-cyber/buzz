@@ -271,6 +271,19 @@ impl ProfitReportingService {
         key: &str,
         input: &GenerateReportSnapshot,
     ) -> Result<CommandResult, DomainError> {
+        crate::snapshot_transaction::retry(|| {
+            self.generate_snapshot_once(actor, trace_id, key, input)
+        })
+        .await
+    }
+
+    async fn generate_snapshot_once(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        key: &str,
+        input: &GenerateReportSnapshot,
+    ) -> Result<CommandResult, DomainError> {
         period(&input.management_period)?;
         validate_currency(&input.currency)?;
         if !matches!(
@@ -280,6 +293,9 @@ impl ProfitReportingService {
             return Err(DomainError::Invalid("unsupported report type".into()));
         }
         let mut tx = self.store.pool().begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *tx)
+            .await?;
         let auth = crate::master_write_authority::snapshot(
             &mut tx,
             actor,
@@ -407,7 +423,10 @@ impl ProfitReportingService {
             crate::numbering::NumberingContext::default(),
         )
         .await?;
-        sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12)").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut *tx).await?;
+        let inserted = sqlx::query("INSERT INTO management_report_snapshots(id,snapshot_number,report_type,management_period,currency,scope,scope_hash,rule_version,source_watermark,source_hash,generated_by_user_id,supersedes_snapshot_id,data_as_of,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,'management-profit-v1',$8,$9,$10,$11,now(),$12) ON CONFLICT (report_type,management_period,currency,scope_hash,rule_version,source_watermark) DO NOTHING").bind(id).bind(&number).bind(&input.report_type).bind(&input.management_period).bind(&input.currency).bind(&scope).bind(&scope_hash).bind(watermark).bind(&source_hash).bind(actor).bind(input.supersedes_snapshot_id).bind(trace_id).execute(&mut *tx).await?.rows_affected();
+        if inserted != 1 {
+            return Err(DomainError::VersionConflict);
+        }
         sqlx::query("INSERT INTO management_report_snapshot_rows(id,snapshot_id,row_key,amounts,data_quality_status,warnings) VALUES($1,$2,'management_profit_statement',$3,$4,$5)").bind(Uuid::new_v4()).bind(id).bind(json!({"components":amounts})).bind(data_quality_status).bind(json!(["经营管理口径，不是法定利润"])).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO management_report_snapshot_evidence(id,snapshot_id,evidence_type,source_watermark,source_hash) VALUES($1,$2,'profit_facts',$3,$4)").bind(Uuid::new_v4()).bind(id).bind(watermark).bind(&source_hash).execute(&mut *tx).await?;
         record(&mut tx,trace_id,actor,"MANAGEMENT_REPORT_SNAPSHOT_GENERATED","management_report_snapshot_generated","management_report_snapshot",id,json!({"snapshotNumber":number,"managementPeriod":input.management_period,"currency":input.currency,"sourceWatermark":watermark})).await?;

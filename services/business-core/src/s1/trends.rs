@@ -107,7 +107,7 @@ impl OperationsService {
         idempotency_key: &str,
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
-        retry_snapshot(|| {
+        crate::snapshot_transaction::retry(|| {
             self.generate_operating_snapshot_request_once(actor, trace_id, idempotency_key, input)
         })
         .await
@@ -175,8 +175,10 @@ impl OperationsService {
         trace_id: Uuid,
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
-        retry_snapshot(|| self.generate_operating_snapshot_unkeyed_once(actor, trace_id, input))
-            .await
+        crate::snapshot_transaction::retry(|| {
+            self.generate_operating_snapshot_unkeyed_once(actor, trace_id, input)
+        })
+        .await
     }
 
     async fn generate_operating_snapshot_unkeyed_once(
@@ -645,25 +647,4 @@ async fn subscription_event(
 ) -> Result<(), DomainError> {
     sqlx::query("INSERT INTO operating_report_subscription_events(id,subscription_id,event_type,actor_user_id,trace_id,payload) VALUES($1,$2,$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(id).bind(event_type).bind(actor).bind(trace_id).bind(payload).execute(&mut **tx).await?;
     Ok(())
-}
-
-// Only retry transactions PostgreSQL guarantees were aborted. Every attempt
-// opens a fresh snapshot and rechecks current authority; business errors escape.
-async fn retry_snapshot<F, Fut>(mut operation: F) -> Result<Value, DomainError>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<Value, DomainError>>,
-{
-    let mut retries = 0;
-    loop {
-        match operation().await {
-            Err(DomainError::Database(sqlx::Error::Database(ref error)))
-                if retries < 2 && matches!(error.code().as_deref(), Some("40001" | "40P01")) =>
-            {
-                retries += 1;
-                tokio::task::yield_now().await;
-            }
-            result => return result,
-        }
-    }
 }

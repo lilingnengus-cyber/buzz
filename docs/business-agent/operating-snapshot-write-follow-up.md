@@ -44,3 +44,11 @@ operating_snapshot_concurrency（55439）完整 B4 回归通过。新 helper 用
 management_snapshot_authority（55439）完整 B4 回归通过：空法人参数代表当前范围，撤销法人后旧 key 仍不能返回历史快照；不可见旧快照与错误期间替代被拒绝，快照/审计/幂等无残留；实际锁住授权修订，pg_blocking_pids 确认生成等待后撤销权限，放行后拒绝且无成功幂等记录。该批只完成月报权限基础，尚未为助手开放写入。
 
 日志 /tmp/management-snapshot-authority.log；后续仍须核对月报冻结一致性、并发同一期竞争与前驱链，再统一接入经营日/周与管理月报意图、确认及结果链接。Windows 35482058899 最近查询仍在构建，生产保持 e51。
+
+## 月报同一期并发生成
+
+月报事务在任何读取前启用 REPEATABLE READ，生成过程中范围、事实水位、金额与质量检查使用同一数据库快照。与经营日/周报共用 snapshot_transaction::retry，只有已中止的序列化冲突/死锁最多重试两次，每次重新校验授权。快照唯一键冲突走 ON CONFLICT，避免竞争请求直接暴露重复键错误。
+
+management_snapshot_concurrency（55439）完整 B4 回归通过。实际 advisory lock 阻塞首个请求完成，观察两个等待者后放行：同 key 和不同 key/同报表期间两组竞争最终返回同一 ID，各只有一条 MANAGEMENT_REPORT_SNAPSHOT_GENERATED 审计；月报等待期间撤权回归继续通过。严格 Clippy、格式、文件大小及差异检查通过。日志 /tmp/management-snapshot-concurrency{,-clippy,-size}.log。
+
+仍需处理一个独立边界：profit_facts 的序列号分配顺序不保证事务提交顺序，较低序列号的事实晚提交时，max watermark 可能不变，但金额/事实数量已经变化。现有月报唯一键及 existing 查询只按 watermark 去重；必须在助手开放前补齐内容摘要去重及该并发场景，不能把本次同一期请求竞争测试当作该场景的覆盖。
