@@ -20,3 +20,11 @@
 - Gateway/Read API/MCP/Host、详情链接、隔离闭环、配套发布和真实客户端验收。
 
 这批源码晚于订单暂停 c186ddf01 候选，不在正在构建的 Windows 或已验证 Linux/Mac 暂停候选中。生产仍为 e51，未改写生产业务。
+
+## 2026-09-20 同一时间点读取与实际并发验证
+
+手动及定时经营快照在事务开始、任何查询之前设置 REPEATABLE READ。数据质量聚合移入 quality.rs 的 data_quality_on，共用生成事务连接，因此指标、对账、投影质量和快照保存使用同一数据库快照；独立 data_quality 调用也使用自己的可重复读事务。避免快照事务中另借连接读取质量数据。
+
+新增实际 PostgreSQL 并发 helper：外部事务对 purchase_orders 持 ACCESS EXCLUSIVE 锁，启动快照后用 pg_blocking_pids 确认它已等待，再提交 inventory_balances 的变化并释放锁。生成快照仍保留较早时间点的库存金额和质量状态。临时将生成事务降为 READ COMMITTED 后，测试准确报错“snapshot metrics must not mix in a later committed balance”；恢复代码后在全新库 operating_snapshot_consistency_restored 完整 B4 回归通过。负向库独立，未删除或复用生产数据。
+
+日志 /tmp/operating-snapshot-consistency.log、/tmp/operating-snapshot-consistency-negative.log、/tmp/operating-snapshot-consistency-restored.log；严格 Clippy、格式、文件大小和差异检查通过。并发授权撤销、同键竞争的序列化失败处理、月报接口以及 Agent 意图/确认/发布仍待完成，不能将本次时间点一致性覆盖扩展为所有并发场景。

@@ -110,6 +110,9 @@ impl OperationsService {
         validate_snapshot_input(input)?;
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *tx)
+            .await?;
         let auth = crate::master_write_authority::snapshot(
             &mut tx,
             actor,
@@ -160,6 +163,9 @@ impl OperationsService {
         input: &GenerateOperatingSnapshot,
     ) -> Result<Value, DomainError> {
         let mut tx = self.store.pool().begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *tx)
+            .await?;
         let result = self
             .generate_operating_snapshot_on(&mut tx, actor, trace_id, input)
             .await?;
@@ -223,7 +229,7 @@ impl OperationsService {
             - profit.get::<Decimal, _>("product_cost")
             - profit.get::<Decimal, _>("operating_cost")
             + profit.get::<Decimal, _>("supplier_rebate");
-        let quality = self.data_quality(actor).await?;
+        let quality = self.data_quality_on(tx, actor).await?;
         let quality_status = quality["status"].as_str().unwrap_or("blocked");
         let payload = json!({
             "salesOrderCount": sales.get::<i64,_>("order_count"),
