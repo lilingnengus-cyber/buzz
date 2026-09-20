@@ -11,6 +11,7 @@ use business_core::PgStore;
 use chrono::Utc;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind};
 use sqlx::PgPool;
+mod drafts;
 mod gateway;
 mod mcp;
 
@@ -100,7 +101,7 @@ async fn signed_adjustment_runs_through_real_gateway_mcp_api_and_core() {
         .unwrap();
     let human = Uuid::new_v4();
     sqlx::query("INSERT INTO business_iam.principals(id,kind,external_id,display_name) VALUES($1,'human',$2,'Adjustment Chain')").bind(human).bind(f.actor.to_string()).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability IN ('operational_adjustment_post_intent:create','operational_adjustment_post_intent:approve')").bind(human).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_iam.principal_permissions(principal_id,permission_id) SELECT $1,id FROM business_iam.permissions WHERE capability IN ('operational_adjustment_post_intent:create','operational_adjustment_post_intent:approve','operational_adjustment_creation_intent:create','operational_adjustment_creation_intent:approve','operational_adjustment_update_intent:create','operational_adjustment_update_intent:approve','profit_adjustment:read')").bind(human).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_approval_policies(action_code,required_permission,eligible_role_keys,min_approvers,allow_self_approval) VALUES('profit_adjustment:post','profit_adjustment:post',ARRAY['b2_operator'],1,true)").execute(&pool).await.unwrap();
     let (gateway_url, gateway_task) = serve(business_auth_gateway::router(
         business_auth_gateway::AppState {
@@ -138,6 +139,18 @@ async fn signed_adjustment_runs_through_real_gateway_mcp_api_and_core() {
         )
         .unwrap(),
     )
+    .await;
+    let draft_successes = drafts::Environment {
+        pool: &pool,
+        binary: &binary,
+        gateway: &gateway_url,
+        api: &api_url,
+        credential: &credential,
+        keys: &keys,
+        fixture: &f,
+        order: source,
+    }
+    .verify()
     .await;
     for decision in ["approve", "reject"] {
         let batch = fixture::draft(&pool, &f, source, &format!("chain-{decision}-draft")).await;
@@ -312,7 +325,7 @@ async fn signed_adjustment_runs_through_real_gateway_mcp_api_and_core() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(audits, 7);
+    assert_eq!(audits, 7 + draft_successes);
     api_task.abort();
     core_task.abort();
     gateway_task.abort();

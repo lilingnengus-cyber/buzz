@@ -205,3 +205,16 @@ Host 提示更新为完整同版本读取、保留未修改字段、缺资料补
 实际 MCP stdio 进程目录：普通会话 112 工具，费用创建/修改/过账确认会话各 62 工具，均低于 128 上限，确认会话仅暴露匹配的审批工具。MCP/Host all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-draft-mcp-{final,host,clippy-final,input-tests,input-clippy,size}.log，目录 /tmp/adjustment-draft-mcp-inventory.json。
 
 本批未部署或代发真实聊天；工具目录及实际响应校验不是完整签名端到端验收。下一步使用真实 Gateway/Core/Read API 和 MCP 进程完成草稿签名执行闭环，再继续详情页面、逆转及配套发布；完整目标仍未完成。
+
+
+## 费用草稿完整签名服务链路验收
+
+在独立 PostgreSQL 55439 的 adjustment_draft_chain_final 启动真实 Gateway、Core、Read API HTTP 路由，Read API 使用 Gateway 委托验证器；通过已构建 MCP 二进制的真实 stdio 协议调用工具。隔离密钥完成真实绑定挑战及 Nostr 签名，准备与确认分别签发委托，没有替换为 acceptance bypass，也未向真实聊天/Relay 发消息。
+
+验收贯通签名准备创建 → 签名确认 → MCP 按编号查找 → MCP 读取同版本完整详情 → 签名准备替换 → 签名确认。准备前后业务状态不变，创建结果回读为 draft v1、10.01 元，修改回读为 draft v2、20.02 元；不产生费用利润事实。创建和修改的签名拒绝均不保存业务写入，要求两人审批时单票返回 pending，草稿/明细、编号、幂等、outbox 及利润事实不变。重复调用同一确认不能重复执行，数据库投票来源事件精确对应实际签名消息 ID。
+
+创建/修改各覆盖 Gateway HTTP 撤销委托、签名内容中的错误摘要及准备后内容失效（创建引用订单版本变化；修改源批次版本变化）。失败确认后完整草稿/行、请求、投票、编号、幂等及相关业务计数保持不变。原有费用过账成功、拒绝及三类失败签名链路也同时回归通过。
+
+数据库独立回查：草稿创建和修改各有 executed/pending/rejected 一条，过账有 executed/rejected 各一条；MCP 成功审计共 27 条，与预期的 20 次草稿/读取和 7 次既有过账调用一致。Read API 57 项报告通过，其中本条明确配置新库及二进制并实际执行，其他环境控制测试不算新增运行证据。Read API all-targets 严格 Clippy、格式/差异及文件大小检查通过；未运行全仓 just ci。证据 /tmp/adjustment-draft-chain-{build,final,clippy,size}.log。
+
+本次未部署或更新客户端，未进行真实客户端聊天验收。草稿链路已有隔离完整签名服务证据，仍需费用实际详情页面、逆转、配套发布及客户端验收；完整业务流程目标仍未完成。
