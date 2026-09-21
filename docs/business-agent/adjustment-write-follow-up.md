@@ -352,3 +352,8 @@ Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/
 新增回归覆盖草稿当前品牌返回、撤销当前品牌权限后拒绝读取，以及 Read API 对缺失、越权当前品牌或越权快照品牌的拒绝。发布与真实聊天重试结果待追加；本节不代表费用草稿已经创建。
 
 本地验证：独立 PostgreSQL 数据库 business_order_brand_20260921 的 postgres_b2 全链路测试通过（102.10 秒）；Read API 品牌范围回归通过；Core/Read API all-targets clippy、workspace fmt、文件大小检查通过。未运行完整 just ci。
+
+
+发布完成：提交 581a680c9ef0e92c8ec16d9f4e313d79703b2a70；候选 CI 35608346396 成功。镜像包 SHA256 fc9da5cee360d78f61a2576c499ea0244cdd83e242b3aa03480016bf51d9f588，本机与服务器均校验通过。只更新生产 business-core，健康检查通过；其余服务仍为 994233402。没有数据库迁移或权限调整。回退 Compose 命令及原镜像记录位于 `/opt/business-platform/releases/order-brand-581a680c9/`。
+
+上线后的真实聊天重试尚未发送：Pacioli 进程存在，但 Computer Use 对精确应用路径连续返回 timeoutReached；已请用户打开并解锁客户端。之前的预览失败仍是当前最后一条实际结果，不能宣称真实预览验收或费用草稿创建成功。
