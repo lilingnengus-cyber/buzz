@@ -328,3 +328,16 @@ Web 使用 `scripts/release-business-web.sh` 发布成功，静态版本 `busine
 Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/adjustment-994233402/`，安装验收候选的 buzz-acp、buzz-agent 和独立 business-read-mcp，应用重新签名校验通过并已重启。三个组件哈希与候选 manifest 一致，重启后企业助手 MCP 路径保留。安装后实际 buzz-agent/MCP 配合模拟模型探针通过，113 个固定工具、promptCompleted=true；日志 `/tmp/adjustment-installed-mac-runtime.log`。没有代发真实聊天，因此登录恢复、实际聊天写入和链接打开仍未验收。Windows 安装验收按用户指示不执行。
 
 本阶段完成服务、Web 和 Mac 配套发布；完整业务流程目标仍未完成。下一步先验证 Mac 当前登录状态与只读查询／详情链接，再按既有授权边界进行真实写入验收；后续业务覆盖缺口见 full-workflow-coverage.md。
+
+
+## 2026-09-21 Mac 真实只读会话验收与工具发现修复
+
+本次使用安装的 Pacioli，连接生产社区。Business Dock 初始会话失效，点击 Continue SSO 后恢复并显示经营数据；订单列表读取到 5 笔。现有聊天订单链接实际打开 SO-202609-000005 对应 UUID 的嵌入详情，金额 CNY 200.00、草稿、版本 1。
+
+首次及组件路径纠正后的只读消息均回复“未提供销售订单查询工具”，不能视为验收通过。核对发现：(1) Desktop 的命令搜索优先命中了旧开发目录中的 buzz-acp，安装包组件更新并未自动改变实际启动路径；现将企业助手实际身份的 acp_command 固定为 `/Applications/Pacioli.app/Contents/MacOS/buzz-acp`，配置备份位于本机 `backups/adjustment-runtime-path-20260921/`。(2) 实际环境变量已正确从模板继承；实际身份 env_vars 为空不是缺失配置。(3) codex-acp 1.11.0 能加载 Business MCP，但运行时按需展示工具，原 Host 指令未说明允许元数据发现，模型误报没有工具。
+
+修改 business_agent_prompt.md：允许通过运行时工具发现仅加载当前 business-read-mcp 的工具结构，查询只含服务及工具名称，禁止凭据或业务内容；明确发现不增加权限或允许其他服务／通用执行。未改变业务权限、审批规则或签名校验。release buzz-acp 构建通过，安装并重新签名校验，单独重启企业助手；新组件 SHA256 `43f2565759d9a82abf8ca2b17b3b87f0cc511917e4cb0d785ac2cbe1c0da8391`。隔离诊断使用虚拟凭据及不可用的本地业务地址，在实际 gpt-5.6-terra[medium] 模型上成功发现 search_sales_orders，未调用业务工具；证据 `/tmp/business-discovery-terra-probe.log`。早期未成功切换模型的诊断不计入该模型验收。
+
+随后在已获准的私聊发送相同只读消息“查询最近五笔销售订单”，9:03 收到 5 笔真实订单与查询记录链接。事件 `5442697af417fb63f1c97e2a434d70781ef094e612b5be0ec77e4a86e91eb4f1`，Trace `84897cda-520c-44b6-91e8-afb0d05ceda0`；生产委托 used_calls=1、回合结束后 revoked，而此前两个失败回合 used_calls=0。点击新回复中的 SO-202609-000004 实际打开对应 UUID 的嵌入详情，CNY 1.00、草稿、版本 1 一致。
+
+本阶段没有创建、确认、取消或逆转业务单据；Windows 安装验收仍跳过。未运行全仓 just ci。完整业务流程目标仍未完成，下一步按具体单据和操作取得必要的真实写入验收授权，继续验证新费用、报表及确认流程；同时后续发布应核对实际启动路径，不能只验证安装包内文件哈希。
