@@ -327,6 +327,33 @@ impl Store {
         })
     }
 
+    /// Resolve a recent session only as recovery proof; it never authorizes API access.
+    /// The caller MUST additionally verify a fresh OIDC token for this issuer/subject.
+    pub async fn workbench_recovery_principal(
+        &self,
+        session_token: &str,
+        deployment_id: &str,
+    ) -> Result<SessionPrincipal, IdentityError> {
+        if session_token.is_empty() || session_token.len() > 512 {
+            return Err(IdentityError::Unauthorized);
+        }
+        let row = sqlx::query(
+            "SELECT s.id,s.workbench_user_id,s.deployment_id,u.oidc_issuer,u.oidc_subject,u.life_os_user_id
+             FROM life_workbench_sessions s JOIN life_workbench_users u ON u.id=s.workbench_user_id
+             WHERE s.token_hash=$1 AND s.deployment_id=$2 AND s.status='active'
+             AND s.expires_at > now()-interval '7 days' AND u.status='active'"
+        ).bind(hash(session_token)).bind(deployment_id).fetch_optional(&self.pool).await.map_err(database)?
+            .ok_or(IdentityError::Unauthorized)?;
+        Ok(SessionPrincipal {
+            session_id: WorkbenchSessionId::new(row.get("id")),
+            user_id: LifeWorkbenchUserId::new(row.get("workbench_user_id")),
+            deployment_id: row.get("deployment_id"),
+            issuer: row.get("oidc_issuer"),
+            subject: row.get("oidc_subject"),
+            life_os_user_id: row.get("life_os_user_id"),
+        })
+    }
+
     /// Resolves a presented session through its SHA-256 hash and fixed deployment.
     pub async fn authenticate_workbench_session(
         &self,

@@ -1,6 +1,6 @@
 import type { WorkspaceResource } from "../workspace-dock/workspaceDockTypes";
 
-type LifeWorkbenchSession = {
+export type LifeWorkbenchSession = {
   sessionId: string;
   sessionToken: string;
   expiresAt: string;
@@ -75,6 +75,25 @@ export function readBindingIssuedAt(payload: string): number | null {
   return Number.isSafeInteger(timestamp) && timestamp > 0 ? timestamp : null;
 }
 
+/** A gateway rejection, retaining its status for session recovery decisions. */
+export class LifeGatewayError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "LifeGatewayError";
+    this.status = status;
+  }
+}
+
+/** Only explicit authentication or authorization rejection invalidates a session. */
+export function isLifeSessionRejected(cause: unknown): boolean {
+  return (
+    cause instanceof LifeGatewayError &&
+    (cause.status === 401 || cause.status === 403)
+  );
+}
+
 async function readError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => null)) as unknown;
   return isRecord(body) && typeof body.error === "string"
@@ -103,7 +122,8 @@ async function postJson(
     },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(await readError(response));
+  if (!response.ok)
+    throw new LifeGatewayError(await readError(response), response.status);
   return response.status === 204 ? null : response.json();
 }
 
@@ -125,7 +145,8 @@ async function getJson(
       "X-Trace-Id": crypto.randomUUID(),
     },
   });
-  if (!response.ok) throw new Error(await readError(response));
+  if (!response.ok)
+    throw new LifeGatewayError(await readError(response), response.status);
   return response.json();
 }
 
@@ -156,18 +177,40 @@ export async function createLifeWorkbenchSession(
   oidcToken: string,
   idToken?: string | null,
   previousSessionToken?: string,
+  resume = false,
 ): Promise<LifeWorkbenchSession> {
   const nonce = readOidcNonce(idToken ?? oidcToken);
   if (!previousSessionToken && !nonce)
     throw new Error("Workbench OIDC nonce is unavailable.");
-  const value = await postJson(
-    gateway,
-    previousSessionToken
-      ? "/v1/workbench/sessions/renew"
-      : "/v1/workbench/sessions",
-    `Bearer ${oidcToken}`,
-    previousSessionToken ? { sessionToken: previousSessionToken } : { nonce },
-  );
+  let value: unknown;
+  try {
+    value = await postJson(
+      gateway,
+      previousSessionToken
+        ? resume
+          ? "/v1/workbench/sessions/resume"
+          : "/v1/workbench/sessions/renew"
+        : "/v1/workbench/sessions",
+      `Bearer ${oidcToken}`,
+      previousSessionToken ? { sessionToken: previousSessionToken } : { nonce },
+    );
+  } catch (cause) {
+    // A new interactive login can replace an old/revoked recovery proof.
+    // Refreshed nonce-free credentials never take this initial-login path.
+    if (
+      !resume ||
+      !previousSessionToken ||
+      !nonce ||
+      !isLifeSessionRejected(cause)
+    )
+      throw cause;
+    value = await postJson(
+      gateway,
+      "/v1/workbench/sessions",
+      `Bearer ${oidcToken}`,
+      { nonce },
+    );
+  }
   if (
     !isRecord(value) ||
     typeof value.sessionId !== "string" ||

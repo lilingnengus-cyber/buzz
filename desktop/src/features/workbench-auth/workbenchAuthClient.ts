@@ -78,7 +78,12 @@ export function createWorkbenchUserManager(
       prefix: storageNamespace
         ? `buzz.${storageNamespace}.oidc.user.`
         : "buzz.oidc.user.",
-      store: createWorkbenchUserStore(sessionStore),
+      store: createWorkbenchUserStore(
+        sessionStore,
+        storageNamespace
+          ? `buzz.${storageNamespace}.oidc.user.`
+          : "buzz.oidc.user.",
+      ),
     }),
   };
   return isTauri()
@@ -101,6 +106,7 @@ export function shouldRefreshWorkbenchUser(
 
 export async function getValidWorkbenchUser(
   manager: RefreshableUserManager,
+  preserveOnTransient = false,
 ): Promise<User | null> {
   const current = await manager.getUser();
   if (!current) return null;
@@ -108,18 +114,35 @@ export async function getValidWorkbenchUser(
   try {
     const refreshed = await manager.signinSilent();
     return refreshed && !refreshed.expired ? refreshed : null;
-  } catch {
+  } catch (cause) {
+    const code =
+      cause && typeof cause === "object" && "error" in cause
+        ? cause.error
+        : null;
+    if (
+      preserveOnTransient &&
+      code !== "invalid_grant" &&
+      code !== "login_required" &&
+      code !== "interaction_required"
+    ) {
+      throw cause;
+    }
     return null;
   }
 }
 
-function createWorkbenchUserStore(fallback: Storage): AsyncStorage {
+function createWorkbenchUserStore(
+  fallback: Storage,
+  prefix: string,
+): AsyncStorage {
   const web: AsyncStorage = {
     get length() {
       return Promise.resolve(fallback.length);
     },
     async clear() {
-      fallback.clear();
+      for (const key of Object.keys(fallback)) {
+        if (key.startsWith(prefix)) fallback.removeItem(key);
+      }
     },
     async getItem(key) {
       return fallback.getItem(key);
@@ -138,14 +161,23 @@ function createWorkbenchUserStore(fallback: Storage): AsyncStorage {
   return {
     get length() {
       return invoke<string[]>("workbench_oidc_user_keys")
-        .then((keys) => Math.max(keys.length, fallback.length))
+        .then((keys) =>
+          Math.max(
+            keys.filter((key) => key.startsWith(prefix)).length,
+            Object.keys(fallback).filter((key) => key.startsWith(prefix))
+              .length,
+          ),
+        )
         .catch(() => fallback.length);
     },
     async clear() {
-      fallback.clear();
+      for (const key of Object.keys(fallback)) {
+        if (key.startsWith(prefix)) fallback.removeItem(key);
+      }
       try {
         for (const key of await invoke<string[]>("workbench_oidc_user_keys"))
-          await invoke("workbench_oidc_user_delete", { key });
+          if (key.startsWith(prefix))
+            await invoke("workbench_oidc_user_delete", { key });
       } catch {
         // Provider revocation keeps a temporarily inaccessible copy unusable.
       }
@@ -162,9 +194,9 @@ function createWorkbenchUserStore(fallback: Storage): AsyncStorage {
     },
     async key(index) {
       try {
-        const secureKey = (await invoke<string[]>("workbench_oidc_user_keys"))[
-          index
-        ];
+        const secureKey = (
+          await invoke<string[]>("workbench_oidc_user_keys")
+        ).filter((key) => key.startsWith(prefix))[index];
         return secureKey ?? fallback.key(index);
       } catch {
         return fallback.key(index);
@@ -181,7 +213,8 @@ function createWorkbenchUserStore(fallback: Storage): AsyncStorage {
     async removeItem(key) {
       fallback.removeItem(key);
       try {
-        await invoke("workbench_oidc_user_delete", { key });
+        if (key.startsWith(prefix))
+          await invoke("workbench_oidc_user_delete", { key });
       } catch {
         // A locked keyring must not prevent local sign-out.
       }

@@ -1,3 +1,4 @@
+import { lifeSessionStore } from "./lifeSessionStore";
 import { watchLifeSessionRenewal } from "./lifeSessionRenewal";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as React from "react";
@@ -9,6 +10,7 @@ import {
   getLifeWorkbenchAccount,
   issueLifeEmbedSession,
   readOidcNonce,
+  isLifeSessionRejected,
   revokeLifeEmbedSession,
   verifyLifeIdentityBinding,
 } from "./lifeAuthGateway";
@@ -156,6 +158,11 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const pendingNavigationRef = React.useRef<WorkspaceResource | null>(null);
   const pendingLeaveRef = React.useRef<(() => void) | null>(null);
   const workbenchSessionTokenRef = React.useRef<string | null>(null);
+  const savedSessionStoreRef = React.useRef<ReturnType<
+    typeof lifeSessionStore
+  > | null>(null);
+  const retryableRef = React.useRef(false);
+  const recoveryGenerationRef = React.useRef(0);
   const embedSessionIdRef = React.useRef<string | null>(null);
   const recoveryAttemptsRef = React.useRef(0);
   const sessionStartingRef = React.useRef(false);
@@ -300,6 +307,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   const startLifeSession = React.useCallback(
     (automatic = false, renewExisting = false) => {
       if (!config || !gateway || sessionStartingRef.current) return;
+      const generation = recoveryGenerationRef.current;
       sessionStartingRef.current = true;
       setSessionStarting(true);
       if (!renewExisting) setAuth({ phase: "checking" });
@@ -318,8 +326,19 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           }
           throw new Error("Life OIDC session expired.");
         }
+        if (generation !== recoveryGenerationRef.current) return;
+        const identity = await getIdentity();
+        const sessionStore = lifeSessionStore(gateway, identity.pubkey);
+        savedSessionStoreRef.current = sessionStore;
         let sessionToken = workbenchSessionTokenRef.current;
-        if (!sessionToken || renewExisting) {
+        if (!sessionToken) {
+          const saved = await sessionStore.load().catch(() => null);
+          if (generation !== recoveryGenerationRef.current) return;
+          if (saved) {
+            sessionToken = saved.sessionToken;
+          }
+        }
+        {
           const idToken = await lifeAuth.getIdToken();
           if (!sessionToken && !readOidcNonce(idToken ?? oidcToken)) {
             if (!automatic) {
@@ -334,13 +353,21 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
             oidcToken,
             idToken,
             sessionToken ?? undefined,
+            true,
           );
+          if (generation !== recoveryGenerationRef.current) return;
+          await sessionStore.save(session).catch(() => undefined);
+          if (generation !== recoveryGenerationRef.current) {
+            await sessionStore.clear().catch(() => undefined);
+            return;
+          }
           sessionToken = session.sessionToken;
           workbenchSessionTokenRef.current = sessionToken;
           setSessionExpiresAt(session.expiresAt);
         }
-        const identity = await getIdentity();
+        retryableRef.current = false;
         const account = await getLifeWorkbenchAccount(gateway, sessionToken);
+        if (generation !== recoveryGenerationRef.current) return;
         const alreadyBound = account.bindings.some(
           (binding) =>
             binding.pubkey === identity.pubkey && binding.status === "active",
@@ -351,12 +378,14 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
             sessionToken,
             identity.pubkey,
           );
+          if (generation !== recoveryGenerationRef.current) return;
           const signedEvent = await signRelayEvent({
             kind: 24243,
             content: challenge.canonicalPayload,
             createdAt: challenge.createdAt,
             tags: [],
           });
+          if (generation !== recoveryGenerationRef.current) return;
           const binding = await verifyLifeIdentityBinding(
             gateway,
             sessionToken,
@@ -366,6 +395,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           if (binding.pubkey !== identity.pubkey || binding.status !== "active")
             throw new Error("Life identity binding was not activated.");
         }
+        if (generation !== recoveryGenerationRef.current) return;
         const target = stateRef.current.currentResource ?? homeResource;
         if (!target) throw new Error("LifeOS home resource is unavailable.");
         const issued = await issueLifeEmbedSession(
@@ -373,6 +403,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           sessionToken,
           target,
         );
+        if (generation !== recoveryGenerationRef.current) return;
         const embedUrl = validateLifeEmbedUrl(config, issued.embedUrl);
         if (!embedUrl) throw new Error("LifeOS bootstrap URL was rejected.");
         embedSessionIdRef.current = issued.embedSessionId;
@@ -383,8 +414,19 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         dispatch({ type: "load-frame", url: embedUrl });
       })()
         .catch((cause) => {
-          workbenchSessionTokenRef.current = null;
-          setSessionExpiresAt(null);
+          if (generation !== recoveryGenerationRef.current) return;
+          retryableRef.current =
+            !isLifeSessionRejected(cause) &&
+            !(
+              cause instanceof Error &&
+              /nonce is unavailable|OIDC session expired/.test(cause.message)
+            );
+          // Network/server failures do not invalidate the renewal credential.
+          if (isLifeSessionRejected(cause)) {
+            workbenchSessionTokenRef.current = null;
+            setSessionExpiresAt(null);
+            void savedSessionStoreRef.current?.clear().catch(() => undefined);
+          }
           setAuth({
             phase: automatic ? "expired" : "failed",
             reason:
@@ -436,7 +478,8 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
     if (
       lifeAuth.phase === "authenticated" ||
       lifeAuth.phase === "checking" ||
-      lifeAuth.phase === "signing-in"
+      lifeAuth.phase === "signing-in" ||
+      lifeAuth.phase === "failed"
     )
       return;
     pendingOidcResumeRef.current = null;
@@ -455,13 +498,43 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
   React.useEffect(() => {
     if (
       auth.phase !== "expired" ||
-      !canAttemptLifeRecovery(recoveryAttemptsRef.current)
+      sessionStarting ||
+      manuallyDisconnectedRef.current
     )
       return;
-    recoveryAttemptsRef.current += 1;
-    workbenchSessionTokenRef.current = null;
-    startLifeSession(true);
-  }, [auth.phase, startLifeSession]);
+    const attempt = () => {
+      if (sessionStartingRef.current || manuallyDisconnectedRef.current) return;
+      recoveryAttemptsRef.current += 1;
+      startLifeSession(true, true);
+    };
+    const delays = [1000, 5000, 15000, 30000, 60000];
+    const allowed = retryableRef.current
+      ? recoveryAttemptsRef.current < delays.length
+      : canAttemptLifeRecovery(recoveryAttemptsRef.current);
+    const timer = allowed
+      ? window.setTimeout(
+          attempt,
+          delays[Math.min(recoveryAttemptsRef.current, delays.length - 1)],
+        )
+      : null;
+    const wake = () => {
+      if (!retryableRef.current) return;
+      recoveryAttemptsRef.current = 0;
+      attempt();
+    };
+    const visible = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("focus", wake);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("focus", wake);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [auth.phase, sessionStarting, startLifeSession]);
   React.useEffect(() => {
     if (auth.phase !== "authenticated" || !sessionExpiresAt) return;
     return watchLifeSessionRenewal(sessionExpiresAt, () => {
@@ -581,6 +654,8 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
 
   const logout = React.useCallback(() => {
     manuallyDisconnectedRef.current = true;
+    recoveryGenerationRef.current += 1;
+    void savedSessionStoreRef.current?.clear().catch(() => undefined);
     post("LOGOUT");
     const token = workbenchSessionTokenRef.current;
     const id = embedSessionIdRef.current;
@@ -658,9 +733,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
       startSession: () => {
         manuallyDisconnectedRef.current = false;
         recoveryAttemptsRef.current = 0;
-        workbenchSessionTokenRef.current = null;
-        setSessionExpiresAt(null);
-        startLifeSession(false);
+        startLifeSession(false, true);
       },
       state,
       toggle: () => {

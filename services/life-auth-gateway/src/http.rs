@@ -246,6 +246,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/ready", get(ready))
         .route("/v1/workbench/sessions", post(create_session))
         .route("/v1/workbench/sessions/renew", post(renew_session))
+        .route("/v1/workbench/sessions/resume", post(resume_session))
         .route("/v1/workbench/membership-events", post(membership_event))
         .route("/v1/embed-sessions", post(issue_embed_session))
         .route("/v1/embed-sessions/consume", post(consume_embed_session))
@@ -777,6 +778,34 @@ async fn renew_session(
     let principal = state
         .store
         .authenticate_workbench_session(&request.session_token, &runtime.deployment_id)
+        .await?;
+    let token = bearer(&headers).ok_or(IdentityError::Unauthorized)?;
+    let oidc = runtime
+        .verifier
+        .verify_renewal(token, &principal.issuer, &principal.subject)
+        .await
+        .map_err(|_| IdentityError::Unauthorized)?;
+    let resolved = runtime
+        .resolver
+        .resolve(&oidc.issuer, &oidc.subject)
+        .await?;
+    Ok(Json(
+        state
+            .store
+            .create_workbench_session(&oidc, &resolved, &runtime.deployment_id, trace_id(&headers))
+            .await?,
+    ))
+}
+
+async fn resume_session(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<RenewSessionRequest>,
+) -> Result<Json<crate::identity::IssuedSession>, ApiError> {
+    let runtime = runtime(&state)?;
+    let principal = state
+        .store
+        .workbench_recovery_principal(&request.session_token, &runtime.deployment_id)
         .await?;
     let token = bearer(&headers).ok_or(IdentityError::Unauthorized)?;
     let oidc = runtime

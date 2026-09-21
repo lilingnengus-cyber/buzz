@@ -108,7 +108,7 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
     let cleanup: () => void = () => undefined;
     void (async () => {
       const stored = await manager.getUser();
-      const user = stored ? await getValidWorkbenchUser(manager) : null;
+      const user = stored ? await getValidWorkbenchUser(manager, true) : null;
       if (disposed) return;
       applyUser(user ?? stored);
       const unsubscribe = await subscribeToDesktopAuthCallbacks((url) => {
@@ -154,14 +154,14 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
       if (typeof injected === "string" && injected.length > 0) return injected;
     }
     if (!manager) return null;
-    const user = await getValidWorkbenchUser(manager);
+    const user = await getValidWorkbenchUser(manager, true);
     applyUser(user);
     return user?.access_token ?? null;
   }, [applyUser, manager]);
 
   const getIdToken = React.useCallback(async () => {
     if (!manager) return null;
-    const user = await getValidWorkbenchUser(manager);
+    const user = await getValidWorkbenchUser(manager, true);
     applyUser(user);
     return user?.id_token ?? null;
   }, [applyUser, manager]);

@@ -13,6 +13,7 @@ const lifeSessionStates = new WeakMap<
     embedCount: number;
     nextWorkbenchTtlMs: number;
     workbenchCount: number;
+    transientFailures: number;
   }
 >();
 
@@ -49,27 +50,38 @@ test.describe("Life Dock", () => {
       embedCount: 0,
       nextWorkbenchTtlMs: 10 * 60_000,
       workbenchCount: 0,
+      transientFailures: 0,
     };
     const bindingPayload = `life-workbench-identity-binding-v1\nfixture\nissued_at=${Math.floor(Date.now() / 1000)}`;
     lifeSessionStates.set(page, sessionState);
-    await page.route(/\/v1\/workbench\/sessions(?:\/renew)?$/, (route) => {
-      if (route.request().url().endsWith("/renew")) {
-        expect(route.request().postDataJSON()).toEqual({
-          sessionToken: "S".repeat(43),
+    await page.route(
+      /\/v1\/workbench\/sessions(?:\/(?:renew|resume))?$/,
+      (route) => {
+        if (route.request().url().endsWith("/resume")) {
+          expect(route.request().postDataJSON()).toEqual({
+            sessionToken: "S".repeat(43),
+          });
+          if (sessionState.transientFailures > 0) {
+            sessionState.transientFailures--;
+            return route.fulfill({
+              status: 503,
+              json: { error: "temporary gateway failure" },
+            });
+          }
+        }
+        sessionState.workbenchCount += 1;
+        const ttlMs = sessionState.nextWorkbenchTtlMs;
+        sessionState.nextWorkbenchTtlMs = 10 * 60_000;
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            sessionId: "123e4567-e89b-42d3-a456-426614174010",
+            sessionToken: "S".repeat(43),
+            expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+          }),
         });
-      }
-      sessionState.workbenchCount += 1;
-      const ttlMs = sessionState.nextWorkbenchTtlMs;
-      sessionState.nextWorkbenchTtlMs = 10 * 60_000;
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({
-          sessionId: "123e4567-e89b-42d3-a456-426614174010",
-          sessionToken: "S".repeat(43),
-          expiresAt: new Date(Date.now() + ttlMs).toISOString(),
-        }),
-      });
-    });
+      },
+    );
     await page.route("**/v1/embed-sessions", (route) => {
       sessionState.embedCount += 1;
       return route.fulfill({
@@ -335,6 +347,59 @@ test.describe("Life Dock", () => {
 
     await page.getByLabel("LifeOS home").click();
     await expect(page.getByTestId("life-dock-dirty-dialog")).toBeVisible();
+  });
+
+  test("retries a temporary renewal failure without losing the credential or dirty form", async ({
+    page,
+  }) => {
+    const sessionState = lifeSessionStates.get(page);
+    if (!sessionState) throw new Error("missing session fixture");
+    sessionState.nextWorkbenchTtlMs = 94_000;
+    sessionState.transientFailures = 1;
+    await page.getByTestId("life-dock-toggle").click();
+    const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
+    await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
+    await page.evaluate(() => {
+      window.__BUZZ_E2E_LIFE_ACCESS_TOKEN__ = "header.e30.signature";
+    });
+    await frame.getByRole("button", { name: "Mark Life Dirty" }).click();
+    const instance = await frame.locator("#instance").textContent();
+    await expect
+      .poll(() => sessionState.workbenchCount, { timeout: 15000 })
+      .toBe(2);
+    await expect(frame.locator("#instance")).toHaveText(instance ?? "");
+    await expect(page.getByTestId("life-auth-required")).toBeHidden();
+    await page.getByLabel("LifeOS home").click();
+    await expect(page.getByTestId("life-dock-dirty-dialog")).toBeVisible();
+  });
+
+  test("logout cancels a renewal response already in flight", async ({
+    page,
+  }) => {
+    const sessionState = lifeSessionStates.get(page);
+    if (!sessionState) throw new Error("missing session fixture");
+    sessionState.nextWorkbenchTtlMs = 94_000;
+    let pending: import("@playwright/test").Route | undefined;
+    await page.route("**/v1/workbench/sessions/resume", (route) => {
+      pending = route;
+    });
+    await page.getByTestId("life-dock-toggle").click();
+    const frame = page.frameLocator('[data-testid="life-dock-iframe"]');
+    await expect(frame.locator("#bootstrap")).toHaveText("redeemed");
+    await expect.poll(() => !!pending, { timeout: 10000 }).toBe(true);
+    await page.getByLabel("Sign out of LifeOS Dock").click();
+    if (!pending) throw new Error("missing renewal request");
+    await pending.fulfill({
+      json: {
+        sessionId: "restored",
+        sessionToken: "S".repeat(43),
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+      },
+    });
+    await expect(page.getByTestId("life-auth-required")).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(sessionState.embedCount).toBe(1);
+    await expect(page.getByLabel("Sign out of LifeOS Dock")).toBeDisabled();
   });
 
   test("ignores wrong-source messages and performs one recovery attempt per expiry", async ({

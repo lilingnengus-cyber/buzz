@@ -429,5 +429,41 @@ async fn renewal_requires_an_active_unexpired_session_in_the_same_deployment() {
         .authenticate_workbench_session(&issued.session_token, "life-test")
         .await
         .is_err());
+    assert!(store
+        .workbench_recovery_principal(&issued.session_token, "life-test")
+        .await
+        .is_ok());
+    assert!(store
+        .workbench_recovery_principal(&issued.session_token, "other-deployment")
+        .await
+        .is_err());
+    assert!(store
+        .workbench_recovery_principal("invalid", "life-test")
+        .await
+        .is_err());
+    sqlx::query("UPDATE life_workbench_sessions SET created_at=now()-interval '9 days',expires_at=now()-interval '8 days'")
+        .execute(&database.pool).await.expect("old fixture");
+    assert!(store
+        .workbench_recovery_principal(&issued.session_token, "life-test")
+        .await
+        .is_err());
+    sqlx::query("UPDATE life_workbench_sessions SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour',status='revoked'")
+        .execute(&database.pool).await.expect("revoked fixture");
+    assert!(store
+        .workbench_recovery_principal(&issued.session_token, "life-test")
+        .await
+        .is_err());
+    sqlx::query("UPDATE life_workbench_sessions SET status='active'")
+        .execute(&database.pool)
+        .await
+        .expect("active session");
+    sqlx::query("UPDATE life_workbench_users SET status='disabled'")
+        .execute(&database.pool)
+        .await
+        .expect("inactive user");
+    assert!(store
+        .workbench_recovery_principal(&issued.session_token, "life-test")
+        .await
+        .is_err());
     database.cleanup().await;
 }

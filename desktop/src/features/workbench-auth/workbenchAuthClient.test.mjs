@@ -80,3 +80,17 @@ test("failed silent refresh fails closed", async () => {
   });
   assert.equal(user, null);
 });
+
+test("Life OIDC distinguishes temporary failures from a revoked refresh grant", async () => {
+  const manager = {
+    getUser: async () => ({ expired: true, expires_at: 1 }),
+    signinSilent: async () => {
+      throw new TypeError("offline");
+    },
+  };
+  await assert.rejects(getValidWorkbenchUser(manager, true), /offline/);
+  manager.signinSilent = async () => {
+    throw { error: "invalid_grant" };
+  };
+  assert.equal(await getValidWorkbenchUser(manager, true), null);
+});
