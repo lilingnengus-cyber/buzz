@@ -107,15 +107,19 @@ export function LifeAuthProvider({ children }: React.PropsWithChildren) {
     let disposed = false;
     let cleanup: () => void = () => undefined;
     void (async () => {
+      // Always listen for interactive recovery, including an offline startup.
+      const unsubscribe = await subscribeToDesktopAuthCallbacks((url) => {
+        void consumeCallback(url);
+      });
+      if (disposed) {
+        unsubscribe();
+        return;
+      }
+      cleanup = unsubscribe;
       const stored = await manager.getUser();
       const user = stored ? await getValidWorkbenchUser(manager, true) : null;
       if (disposed) return;
       applyUser(user ?? stored);
-      const unsubscribe = await subscribeToDesktopAuthCallbacks((url) => {
-        void consumeCallback(url);
-      });
-      if (disposed) unsubscribe();
-      else cleanup = unsubscribe;
     })().catch((cause) => {
       if (disposed) return;
       setPhase("failed");
