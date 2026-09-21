@@ -932,6 +932,29 @@ async fn forward_intent_prepare(
 mod tests {
     use super::*;
     #[test]
+    fn draft_order_scope_requires_current_brand_when_snapshot_is_empty() {
+        let scope = AuthorizationScope {
+            brand_ids: ["allowed".into()].into(),
+            ..Default::default()
+        };
+        assert!(!permits_document(
+            &json!({"lines":[{"brandId":null}]}),
+            &scope
+        ));
+        assert!(permits_document(
+            &json!({"lines":[{"brandId":null,"currentBrandId":"allowed"}]}),
+            &scope
+        ));
+        assert!(!permits_document(
+            &json!({"lines":[{"brandId":"allowed","currentBrandId":"other"}]}),
+            &scope
+        ));
+        assert!(!permits_document(
+            &json!({"lines":[{"brandId":"other","currentBrandId":"allowed"}]}),
+            &scope
+        ));
+    }
+    #[test]
     fn mutation_scope_rejects_missing_dimensions_and_any_unauthorized_line() {
         let scope = AuthorizationScope {
             legal_entity_ids: ["cn".into()].into(),

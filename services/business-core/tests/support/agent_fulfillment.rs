@@ -201,6 +201,26 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     )
     .await;
     assert_eq!(detail["lines"][0]["orderedQuantity"], "2.000000");
+    assert!(detail["lines"][0]["brandId"].is_null());
+    assert_eq!(detail["lines"][0]["currentBrandId"], json!(f.brand));
+    sqlx::query("DELETE FROM business_brand_scopes WHERE enterprise_user_id=$1 AND brand_id=$2")
+        .bind(f.actor)
+        .bind(f.brand)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let (status, _) = call(
+        &app,
+        f.actor,
+        "GET",
+        &format!("/v1/agent-documents/sales-orders/{order_id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    sqlx::query("INSERT INTO business_brand_scopes(enterprise_user_id,brand_id,granted_by) VALUES($1,$2,$1)")
+        .bind(f.actor).bind(f.brand).execute(store.pool()).await.unwrap();
+
     let mut replacement = draft;
     replacement.as_object_mut().unwrap().remove("legalEntityId");
     replacement["expectedVersion"] = json!(1);
@@ -264,6 +284,17 @@ pub(super) async fn check(store: &PgStore, f: &Fixture) {
     .await;
     assert_eq!(status, StatusCode::OK, "{order}");
     let order_id = order["id"].as_str().unwrap();
+    let (status, detail) = call(
+        &app,
+        f.actor,
+        "GET",
+        &format!("/v1/agent-documents/purchase-orders/{order_id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert!(detail["lines"][0]["brandId"].is_null());
+    assert_eq!(detail["lines"][0]["currentBrandId"], json!(f.brand));
     let mut replacement = purchase;
     replacement["expectedVersion"] = json!(1);
     replacement["lines"][0]["unitPrice"] = json!("40");

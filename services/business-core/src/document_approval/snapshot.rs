@@ -26,9 +26,9 @@ pub(crate) async fn order(
         _ => return Err(StoreError::NotFoundOrForbidden),
     }
     let (header_sql, lines_sql) = if kind == "sales_order" {
-        ("SELECT to_jsonb(o) || jsonb_build_object('subtotal_amount',o.subtotal_amount::text,'discount_amount',o.discount_amount::text,'net_amount',o.net_amount::text,'tax_amount',o.tax_amount::text,'gross_amount',o.gross_amount::text) FROM sales_orders o WHERE id=$1", "SELECT to_jsonb(l) || jsonb_build_object('ordered_quantity',l.ordered_quantity::text,'cancelled_quantity',l.cancelled_quantity::text,'unit_price',l.unit_price::text,'discount_amount',l.discount_amount::text,'net_amount',l.net_amount::text,'tax_rate',l.tax_rate::text,'tax_amount',l.tax_amount::text,'gross_amount',l.gross_amount::text,'reserved_quantity',l.reserved_quantity::text,'shipped_quantity',l.shipped_quantity::text) FROM sales_order_lines l WHERE sales_order_id=$1 ORDER BY line_number")
+        ("SELECT to_jsonb(o) || jsonb_build_object('subtotal_amount',o.subtotal_amount::text,'discount_amount',o.discount_amount::text,'net_amount',o.net_amount::text,'tax_amount',o.tax_amount::text,'gross_amount',o.gross_amount::text) FROM sales_orders o WHERE id=$1", "SELECT to_jsonb(l) || jsonb_build_object('current_brand_id',p.brand_id,'ordered_quantity',l.ordered_quantity::text,'cancelled_quantity',l.cancelled_quantity::text,'unit_price',l.unit_price::text,'discount_amount',l.discount_amount::text,'net_amount',l.net_amount::text,'tax_rate',l.tax_rate::text,'tax_amount',l.tax_amount::text,'gross_amount',l.gross_amount::text,'reserved_quantity',l.reserved_quantity::text,'shipped_quantity',l.shipped_quantity::text) FROM sales_order_lines l JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE sales_order_id=$1 ORDER BY line_number")
     } else {
-        ("SELECT to_jsonb(o) || jsonb_build_object('subtotal_amount',o.subtotal_amount::text,'discount_amount',o.discount_amount::text,'net_amount',o.net_amount::text,'tax_amount',o.tax_amount::text,'gross_amount',o.gross_amount::text) FROM purchase_orders o WHERE id=$1", "SELECT to_jsonb(l) || jsonb_build_object('ordered_quantity',l.ordered_quantity::text,'cancelled_quantity',l.cancelled_quantity::text,'unit_price',l.unit_price::text,'discount_amount',l.discount_amount::text,'net_amount',l.net_amount::text,'tax_rate',l.tax_rate::text,'tax_amount',l.tax_amount::text,'gross_amount',l.gross_amount::text,'received_quantity',l.received_quantity::text) FROM purchase_order_lines l WHERE purchase_order_id=$1 ORDER BY line_number")
+        ("SELECT to_jsonb(o) || jsonb_build_object('subtotal_amount',o.subtotal_amount::text,'discount_amount',o.discount_amount::text,'net_amount',o.net_amount::text,'tax_amount',o.tax_amount::text,'gross_amount',o.gross_amount::text) FROM purchase_orders o WHERE id=$1", "SELECT to_jsonb(l) || jsonb_build_object('current_brand_id',p.brand_id,'ordered_quantity',l.ordered_quantity::text,'cancelled_quantity',l.cancelled_quantity::text,'unit_price',l.unit_price::text,'discount_amount',l.discount_amount::text,'net_amount',l.net_amount::text,'tax_rate',l.tax_rate::text,'tax_amount',l.tax_amount::text,'gross_amount',l.gross_amount::text,'received_quantity',l.received_quantity::text) FROM purchase_order_lines l JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id WHERE purchase_order_id=$1 ORDER BY line_number")
     };
     let mut value: Value = sqlx::query_scalar(header_sql)
         .bind(id)
@@ -44,10 +44,12 @@ pub(crate) async fn order(
             .as_str()
             .and_then(|id| id.parse::<Uuid>().ok())
             .is_none_or(|id| !scope.warehouse_ids.contains(&id))
-            || line["brand_id"]
-                .as_str()
-                .and_then(|id| id.parse::<Uuid>().ok())
-                .is_some_and(|id| !scope.brand_ids.contains(&id))
+            || ["brand_id", "current_brand_id"].iter().any(|key| {
+                line[*key]
+                    .as_str()
+                    .and_then(|id| id.parse::<Uuid>().ok())
+                    .is_some_and(|id| !scope.brand_ids.contains(&id))
+            })
     }) {
         return Err(StoreError::NotFoundOrForbidden);
     }

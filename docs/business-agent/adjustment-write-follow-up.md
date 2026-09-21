@@ -341,3 +341,14 @@ Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/
 随后在已获准的私聊发送相同只读消息“查询最近五笔销售订单”，9:03 收到 5 笔真实订单与查询记录链接。事件 `5442697af417fb63f1c97e2a434d70781ef094e612b5be0ec77e4a86e91eb4f1`，Trace `84897cda-520c-44b6-91e8-afb0d05ceda0`；生产委托 used_calls=1、回合结束后 revoked，而此前两个失败回合 used_calls=0。点击新回复中的 SO-202609-000004 实际打开对应 UUID 的嵌入详情，CNY 1.00、草稿、版本 1 一致。
 
 本阶段没有创建、确认、取消或逆转业务单据；Windows 安装验收仍跳过。未运行全仓 just ci。完整业务流程目标仍未完成，下一步按具体单据和操作取得必要的真实写入验收授权，继续验证新费用、报表及确认流程；同时后续发布应核对实际启动路径，不能只验证安装包内文件哈希。
+
+
+## 2026-09-21 费用创建预览：订单详情品牌上下文修复
+
+用户确认 1 元、2026-09-21、期间 2026-09、关联 SO-202609-000005 的测试费用草稿参数后，发送一次仅预览请求（事件 d4610112c31b0e228ee9a0d9ed6eb682f7c201ff3ff558792387702ee965dea8）。法人查询成功，但 get_sales_order 返回 not_found_or_forbidden；Trace bdc21427-dfc0-4bd0-a81b-371d78152956。未调用创建确认，费用批次数仍为 0。
+
+生产只读核对：订单存在且仍为 draft/v1，法人、客户、业务单元、仓库均在当前权限内；草稿行 brand_id 为 NULL，商品当前品牌 0d294915-c19d-4150-8fb1-9910453c82f8 已授权。Core agent-documents 原响应遗漏 currentBrandId，使 Read API 的现有品牌范围校验拒绝此合法草稿。修复销售/采购详情查询，返回并校验商品当前品牌，同时保留快照品牌校验；没有调整账号权限、订单或全局范围判定。
+
+新增回归覆盖草稿当前品牌返回、撤销当前品牌权限后拒绝读取，以及 Read API 对缺失、越权当前品牌或越权快照品牌的拒绝。发布与真实聊天重试结果待追加；本节不代表费用草稿已经创建。
+
+本地验证：独立 PostgreSQL 数据库 business_order_brand_20260921 的 postgres_b2 全链路测试通过（102.10 秒）；Read API 品牌范围回归通过；Core/Read API all-targets clippy、workspace fmt、文件大小检查通过。未运行完整 just ci。

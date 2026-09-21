@@ -8,6 +8,7 @@ on:
       - .github/workflows/business-candidate.yml
       - deploy/business-agent/Dockerfile.candidate
       - scripts/prepare-business-master-rollback.py
+      - services/business-core/src/document_approval/snapshot.rs
   workflow_dispatch:
 permissions:
   contents: read
