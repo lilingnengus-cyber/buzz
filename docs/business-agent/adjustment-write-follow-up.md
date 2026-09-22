@@ -373,3 +373,12 @@ Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/
 生产回读确认创建 ADJ-202609-000001（ff2ad7f4-4c68-4493-804b-16973dba9875），draft/v1，CNY1.00，日期 2026-09-21、期间 2026-09，来源 AGENT-ADJUSTMENT-ACCEPTANCE-20260921。posted_at 为 NULL、该批次分摊记录为 0；未执行分摊、过账或付款。Mac Pacioli 点击回复 biz://profit-adjustment 链接，实际打开 /embed/profit-adjustments/ff2ad7f4-4c68-4493-804b-16973dba9875，显示正确编号、草稿状态、金额、日期和一条明细／一个目标订单。
 
 本次完成预览→明确确认→保存草稿→打开详情的真实生产链路。测试草稿保留，后续可验收草稿修改及重复确认防重；本次没有擅自重放确认、过账或删除。
+
+
+## 2026-09-22 草稿修改与重复创建确认防重验收
+
+用户授权继续验收后，在同一企业助手线程重放原创建确认。实际调用 approve_operational_adjustment_creation 被拒绝，Trace 6838b39c-3ddd-4192-9c68-41fa206b9a87；助手明确回复未重复创建。生产批次数仍为 1。
+
+随后读取 ADJ-202609-000001 完整内容，准备仅在唯一明细 businessNote 末尾追加“草稿修改验收通过”的修改预览。意图 9e763e6e-0472-4e51-9654-8584f664ee5b v1，hash a9862a242386ba115fabb0002acfce9c0ac65f1a5e4aed3ee90c3947bd40e85e，预览 Trace 22d84706-40c7-4757-841d-2927cb84fed0。核对持久化意图参数后，在本次草稿修改验收授权范围内发送绑定确认。实际更新成功，Trace 76f72bf2-c7b9-4808-bbe5-b9d5a1a3f3ab。
+
+生产回读：同一批次 ff2ad7f4-4c68-4493-804b-16973dba9875 仍为 draft，版本从 1 升至 2，备注追加符合预览；金额 CNY1.00、日期 2026-09-21、来源验收标记不变。总批次数 1，该批次分摊记录 0，posted_at NULL。未分摊、未过账、未付款。未重放本次更新确认，不能将创建确认防重结果扩大表述为所有更新重放场景均已真实验收。
