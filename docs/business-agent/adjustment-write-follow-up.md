@@ -364,3 +364,12 @@ Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/
 客户端恢复后发送此前获准的同一参数请求，日期保持 2026-09-21；事件 b5f4dd42423693ef9db17f3c41ce2ecbdcaded852644b8bbfe80200b5a667694，Trace 30f1cb22-7cd8-421f-9040-3ca0b22e45b6。生产审计确认 get_sales_order、get_business_master_record、prepare_operational_adjustment_creation 全部成功，delegation 已撤销。实际回复正确返回 SO-202609-000005（draft/CNY200）及 CNY1、2026-09 期间的费用草稿预览。
 
 返回意图 e6fc7e63-d256-40e4-93e5-563a95e00334 v1，previewHash c98f39f104acf2aa3aa2c2ab2878cdb2fa13bd25077623168e8fc275ef253050。确认与拒绝命令均由服务器返回。未发送确认、未调用 approve；生产 operational_adjustment_batches 数量仍为 0。下一步向用户展示该具体预览，取得最终创建草稿授权后发送绑定的确认指令；不可将本次预览成功记为草稿保存成功。
+
+
+## 2026-09-22 真实费用草稿保存与详情链接验收通过
+
+用户确认具体预览后，在原企业助手线程发送服务器返回的完整确认指令（意图 e6fc7e63-d256-40e4-93e5-563a95e00334 v1，hash c98f39f104acf2aa3aa2c2ab2878cdb2fa13bd25077623168e8fc275ef253050）。助手调用 approve_operational_adjustment_creation 成功；Trace b5cc5e3b-8994-442e-8bf1-cdffc2c1c810，授权随后撤销。
+
+生产回读确认创建 ADJ-202609-000001（ff2ad7f4-4c68-4493-804b-16973dba9875），draft/v1，CNY1.00，日期 2026-09-21、期间 2026-09，来源 AGENT-ADJUSTMENT-ACCEPTANCE-20260921。posted_at 为 NULL、该批次分摊记录为 0；未执行分摊、过账或付款。Mac Pacioli 点击回复 biz://profit-adjustment 链接，实际打开 /embed/profit-adjustments/ff2ad7f4-4c68-4493-804b-16973dba9875，显示正确编号、草稿状态、金额、日期和一条明细／一个目标订单。
+
+本次完成预览→明确确认→保存草稿→打开详情的真实生产链路。测试草稿保留，后续可验收草稿修改及重复确认防重；本次没有擅自重放确认、过账或删除。
