@@ -357,3 +357,10 @@ Mac 已备份至 `~/Library/Application Support/com.shiyueshizi.pacioli/backups/
 发布完成：提交 581a680c9ef0e92c8ec16d9f4e313d79703b2a70；候选 CI 35608346396 成功。镜像包 SHA256 fc9da5cee360d78f61a2576c499ea0244cdd83e242b3aa03480016bf51d9f588，本机与服务器均校验通过。只更新生产 business-core，健康检查通过；其余服务仍为 994233402。没有数据库迁移或权限调整。回退 Compose 命令及原镜像记录位于 `/opt/business-platform/releases/order-brand-581a680c9/`。
 
 上线后的真实聊天重试尚未发送：Pacioli 进程存在，但 Computer Use 对精确应用路径连续返回 timeoutReached；已请用户打开并解锁客户端。之前的预览失败仍是当前最后一条实际结果，不能宣称真实预览验收或费用草稿创建成功。
+
+
+## 2026-09-22 真实费用创建预览通过
+
+客户端恢复后发送此前获准的同一参数请求，日期保持 2026-09-21；事件 b5f4dd42423693ef9db17f3c41ce2ecbdcaded852644b8bbfe80200b5a667694，Trace 30f1cb22-7cd8-421f-9040-3ca0b22e45b6。生产审计确认 get_sales_order、get_business_master_record、prepare_operational_adjustment_creation 全部成功，delegation 已撤销。实际回复正确返回 SO-202609-000005（draft/CNY200）及 CNY1、2026-09 期间的费用草稿预览。
+
+返回意图 e6fc7e63-d256-40e4-93e5-563a95e00334 v1，previewHash c98f39f104acf2aa3aa2c2ab2878cdb2fa13bd25077623168e8fc275ef253050。确认与拒绝命令均由服务器返回。未发送确认、未调用 approve；生产 operational_adjustment_batches 数量仍为 0。下一步向用户展示该具体预览，取得最终创建草稿授权后发送绑定的确认指令；不可将本次预览成功记为草稿保存成功。
