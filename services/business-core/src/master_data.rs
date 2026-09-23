@@ -126,7 +126,9 @@ pub struct CoreMasterRecord {
     pub version: i64,
     pub updated_at: chrono::DateTime<Utc>,
     pub parent_business_unit_id: Option<Uuid>,
+    #[serde(rename = "ancestorPath")]
     pub business_unit_path: Option<Vec<String>>,
+    #[serde(rename = "depth")]
     pub business_unit_depth: Option<i32>,
     pub descendant_count: Option<i64>,
 }
