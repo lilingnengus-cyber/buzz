@@ -28,3 +28,15 @@
 生产只读核对：ADJ-202609-000001 仍为 draft、version 2、金额 1.00，原备注未追加“回复格式验收”，分摊数 0，posted_at 为空。本次只生成预览，未批准新的修改意图。未运行全量 just ci 或 Windows 安装验收。
 
 23:06 预览复测事件 c0a80f9f0acf15d531f0f317998b687423b5133cefec3e0f442fa3ea1d96a72d，追踪号 ee24ebe0-06d5-44fe-940a-ab49978a45a3。审计确认依次读取费用详情并成功 prepare_operational_adjustment_update，随后回复及撤销委托，没有 approve 调用。新回复提供可点击单号、备注追加差异、金额和保留字段说明，明确“本次仅为预览，尚未修改草稿，也未分摊、过账或付款”，不再误称已影响管理报表；确认和拒绝仍为各自独立代码块。再次查询数据库仍为草稿第 2 版、无分摊、未过账。格式仍有待改进：正文未单独显示原草稿版本（确认命令中的 v1 是意图版本），不应把本次验证扩展为全部格式要求已严格满足。
+
+## 23:22–23:29 数据时点与版本区分
+
+回复合同新增两项字段映射：批量查询必须展示 Business 工具顶层 `asOf`（嵌套业务数据的 `dataAsOf` 同样显示为“数据时点”）；修改预览必须在正文展示读取结果中的当前单据版本，并与确认指令的意图版本区分。字段缺失时不得猜测。
+
+首次真实查询复测事件 9d3ab9bae3ca71101dafb8f65729e2bbd9bae918eb900ebe3d04d8af2a198ac0，追踪号 cd00b029-b73a-4542-8a2d-8597922dfebc，仍未显示数据时点。会话工具原始返回确认字段实际为顶层 `asOf`，不是最初规则误写的 `dataAsOf`；修正映射后重新构建、签名并仅重启 BizOS。
+
+修正后的真实查询事件 df80c1ddb19c0664870fa4b925acd51f42dfc2d9bf2299f14d3de9b9501c74e6，追踪号 cf2bec67-9483-4695-bcff-f61f7d05c29d。客户端回复显示“数据时点：2026-09-22 15:28 UTC”，保留五笔订单、查询记录及追踪号；审计确认只调用 `search_sales_orders`。
+
+真实修改预览事件 659d332f1e1cfe5509d84fb3a1ed75649d6c49abbaf36f8ce53a5833fa8ad45c，追踪号 b4e0a509-4733-4be9-b0b3-b354e509820d。客户端回复正文显示“当前单据版本 v2”，确认与拒绝指令显示意图版本 `v1`，并明确尚未修改草稿。审计确认只调用读取及准备工具，没有 approve 调用。
+
+最终安装 ACP SHA256：a98b0a997f326b0065af81ab7931c6f3e24d50aa7e5a595d2057ea7a723fede7。上版备份位于本机 Application Support/com.shiyueshizi.pacioli/backups/bizos-asof-field-20260922/buzz-acp；新 ACP PID 30109 于 23:27:21 启动，Pacioli 父进程保持不变。11 项 business_agent::tests 与 locked release 构建通过。未运行全量 just ci 或 Windows 安装验收。
