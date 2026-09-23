@@ -5,6 +5,7 @@ use crate::{
         AuthorizationSnapshot, DataScopes, EligibleUser, GrantOperation, GroupProfile,
         MasterDataRecord, ResourceType, RoleSummary, ScopeDimension,
     },
+    operating_units::descendant_ids,
     security::valid_key,
 };
 use chrono::Utc;
@@ -141,13 +142,17 @@ impl PgStore {
         .fetch_all(&self.pool)
         .await?;
         permissions.extend(iam_permissions);
+        let business_unit_roots = business_unit_scope_roots(&self.pool, user_id).await?;
+        let business_unit_ids = descendant_ids(&self.pool, &business_unit_roots, true)
+            .await
+            .map_err(|error| StoreError::Invalid(error.to_string()))?;
         let scopes = DataScopes {
             legal_entity_ids: legal_entity_ids(&self.pool, user_id).await?,
             warehouse_ids: warehouse_ids(&self.pool, user_id).await?,
             customer_ids: customer_ids(&self.pool, user_id).await?,
             supplier_ids: supplier_ids(&self.pool, user_id).await?,
             brand_ids: brand_ids(&self.pool, user_id).await?,
-            business_unit_ids: business_unit_ids(&self.pool, user_id).await?,
+            business_unit_ids,
         };
         let scope_version = self.authorization_revision().await?;
         let roles = roles
@@ -420,7 +425,10 @@ async fn brand_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Er
     .into_iter()
     .collect())
 }
-async fn business_unit_ids(pool: &PgPool, user: Uuid) -> Result<BTreeSet<Uuid>, sqlx::Error> {
+async fn business_unit_scope_roots(
+    pool: &PgPool,
+    user: Uuid,
+) -> Result<BTreeSet<Uuid>, sqlx::Error> {
     Ok(sqlx::query_scalar("SELECT business_unit_id FROM business_unit_scopes WHERE enterprise_user_id=$1 ORDER BY business_unit_id").bind(user).fetch_all(pool).await?.into_iter().collect())
 }
 
