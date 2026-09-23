@@ -15,6 +15,7 @@ mod master_write_authority;
 pub mod model;
 pub mod numbering;
 pub mod numbering_api;
+pub mod operating_units;
 pub mod product_master;
 pub mod product_master_api;
 pub mod s1;
