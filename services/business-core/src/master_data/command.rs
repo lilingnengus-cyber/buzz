@@ -184,7 +184,10 @@ impl CoreMasterDataService {
             .and_then(|v| v.business_unit_id)
             .or_else(|| save.and_then(|v| v.business_unit_id));
         let mut parents = serde_json::Map::new();
-        if kind != CoreMasterType::LegalEntity {
+        if !matches!(
+            kind,
+            CoreMasterType::LegalEntity | CoreMasterType::BusinessUnit
+        ) {
             let legal = legal.ok_or(DomainError::NotFoundOrForbidden)?;
             parents.insert(
                 "legalEntity".into(),
@@ -197,9 +200,6 @@ impl CoreMasterDataService {
         ) {
             let unit = unit.ok_or(DomainError::NotFoundOrForbidden)?;
             let record = parent(tx, "business_units", unit).await?;
-            if record["legal_entity_id"] != json!(legal) {
-                return Err(DomainError::NotFoundOrForbidden);
-            }
             parents.insert("businessUnit".into(), record);
         }
         // Re-read joined display fields only after all their parent rows are locked.

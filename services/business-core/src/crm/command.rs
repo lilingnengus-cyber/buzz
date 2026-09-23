@@ -136,11 +136,11 @@ impl CrmService {
         // execution commits. A disabled or moved customer cannot slip past preview.
         let entity: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'code',code,'name',name,'status',status,'version',version,'updatedAt',updated_at) FROM business_legal_entities e WHERE id=$1 AND status='active' FOR SHARE")
             .bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-        let business_unit: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'code',code,'name',name,'status',status,'version',version,'updatedAt',updated_at,'legalEntityId',legal_entity_id) FROM business_units u WHERE id=$1 AND legal_entity_id=$2 AND status='active' FOR SHARE")
-            .bind(unit).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let business_unit: Value = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'code',code,'name',name,'status',status,'version',version,'updatedAt',updated_at) FROM business_units u WHERE id=$1 AND status='active' FOR SHARE")
+            .bind(unit).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         let party: Option<Value> = if let Some(id) = customer {
-            Some(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'code',code,'name',name,'status',status,'version',version,'updatedAt',updated_at,'legalEntityId',legal_entity_id,'businessUnitId',business_unit_id) FROM business_customers c WHERE id=$1 AND legal_entity_id=$2 AND business_unit_id=$3 AND status='active' FOR SHARE")
-                .bind(id).bind(legal).bind(unit).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?)
+            Some(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'code',code,'name',name,'status',status,'version',version,'updatedAt',updated_at,'legalEntityId',legal_entity_id,'businessUnitId',business_unit_id) FROM business_customers c WHERE id=$1 AND status='active' FOR SHARE")
+                .bind(id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?)
         } else {
             None
         };
