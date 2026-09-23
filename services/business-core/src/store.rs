@@ -5,6 +5,7 @@ use crate::{
         AuthorizationSnapshot, DataScopes, EligibleUser, GrantOperation, GroupProfile,
         MasterDataRecord, ResourceType, RoleSummary, ScopeDimension,
     },
+    operating_units::descendant_ids,
     security::valid_key,
 };
 use chrono::Utc;
@@ -156,13 +157,17 @@ impl PgStore {
         .fetch_all(&mut *connection)
         .await?;
         permissions.extend(iam_permissions);
+        let business_unit_roots = business_unit_scope_roots(&mut *connection, user_id).await?;
+        let business_unit_ids = descendant_ids(&mut *connection, &business_unit_roots, true)
+            .await
+            .map_err(|error| StoreError::Invalid(error.to_string()))?;
         let scopes = DataScopes {
             legal_entity_ids: legal_entity_ids(&mut *connection, user_id).await?,
             warehouse_ids: warehouse_ids(&mut *connection, user_id).await?,
             customer_ids: customer_ids(&mut *connection, user_id).await?,
             supplier_ids: supplier_ids(&mut *connection, user_id).await?,
             brand_ids: brand_ids(&mut *connection, user_id).await?,
-            business_unit_ids: business_unit_ids(&mut *connection, user_id).await?,
+            business_unit_ids,
         };
         let scope_version = sqlx::query_scalar(
             "SELECT revision FROM business_authorization_revision WHERE singleton",
@@ -454,7 +459,7 @@ async fn brand_ids(
     .into_iter()
     .collect())
 }
-async fn business_unit_ids(
+async fn business_unit_scope_roots(
     pool: &mut sqlx::PgConnection,
     user: Uuid,
 ) -> Result<BTreeSet<Uuid>, sqlx::Error> {

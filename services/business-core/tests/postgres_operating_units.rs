@@ -1,6 +1,7 @@
 use business_core::{
     master_data::SaveCoreMasterData,
     operating_units::{descendant_ids, has_active_descendants, validate_parent},
+    PgStore,
 };
 use sqlx::{
     migrate::Migrator,
@@ -124,6 +125,134 @@ async fn operating_unit_tree_rejects_cycles_and_disabled_parents() {
         [division, team, leaf].into_iter().collect()
     );
     assert!(has_active_descendants(&pool, division).await.unwrap());
+
+    pool.close().await;
+    sqlx::query(AssertSqlSafe(format!(
+        "DROP DATABASE \"{database_name}\" WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn operating_unit_scope_includes_descendants_without_siblings_or_duplicates() {
+    let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
+        eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let admin = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    let database_name = format!("bizos_tree_{}", Uuid::new_v4().simple());
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE DATABASE \"{database_name}\""
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    let options = PgConnectOptions::from_str(&database_url)
+        .unwrap()
+        .database(&database_name);
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let migrations_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../business-auth-gateway/migrations");
+    Migrator::new(migrations_path.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+
+    let user = Uuid::new_v4();
+    let legal = Uuid::new_v4();
+    let root = Uuid::new_v4();
+    let north = Uuid::new_v4();
+    let hangzhou = Uuid::new_v4();
+    let south = Uuid::new_v4();
+    sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://identity.test','scope-user','Scope User')")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'SCOPE_GROUP','Scope Group','CNY','Asia/Shanghai')")
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'SCOPE_LEGAL','Scope Legal','CN','CNY')")
+        .bind(legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (id, parent, code, is_root) in [
+        (root, None, "SCOPE_ROOT", true),
+        (north, Some(root), "SCOPE_NORTH", false),
+        (hangzhou, Some(north), "SCOPE_HANGZHOU", false),
+        (south, Some(root), "SCOPE_SOUTH", false),
+    ] {
+        sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,is_operating_root,code,name) VALUES($1,$2,$3,$4,$5,$5)")
+            .bind(id)
+            .bind(legal)
+            .bind(parent)
+            .bind(is_root)
+            .bind(code)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(user)
+        .bind(north)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let store = PgStore::new(pool.clone());
+    let snapshot = store.snapshot(user).await.unwrap();
+    assert_eq!(
+        snapshot.scopes.business_unit_ids,
+        [north, hangzhou].into_iter().collect()
+    );
+    assert!(!snapshot.scopes.business_unit_ids.contains(&south));
+
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(user)
+        .bind(root)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let overlapping = store.snapshot(user).await.unwrap();
+    assert_eq!(overlapping.scopes.business_unit_ids.len(), 4);
+    assert_eq!(
+        overlapping.scopes.business_unit_ids,
+        [root, north, hangzhou, south].into_iter().collect()
+    );
+
+    sqlx::query("UPDATE business_units SET status='disabled' WHERE id=$1")
+        .bind(hangzhou)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(store
+        .snapshot(user)
+        .await
+        .unwrap()
+        .scopes
+        .business_unit_ids
+        .contains(&hangzhou));
+    assert!(
+        !descendant_ids(&pool, &[north].into_iter().collect(), false)
+            .await
+            .unwrap()
+            .contains(&hangzhou)
+    );
 
     pool.close().await;
     sqlx::query(AssertSqlSafe(format!(

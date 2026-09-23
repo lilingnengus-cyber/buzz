@@ -49,11 +49,14 @@ pub async fn validate_parent(
 /// Expands operating-unit roots to a deduplicated set containing every
 /// descendant. Disabled nodes are either retained for historical reads or
 /// omitted for new-write selection according to `include_disabled`.
-pub async fn descendant_ids(
-    pool: &PgPool,
+pub async fn descendant_ids<'e, E>(
+    executor: E,
     roots: &BTreeSet<Uuid>,
     include_disabled: bool,
-) -> Result<BTreeSet<Uuid>, DomainError> {
+) -> Result<BTreeSet<Uuid>, DomainError>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
     if roots.is_empty() {
         return Ok(BTreeSet::new());
     }
@@ -70,7 +73,7 @@ pub async fn descendant_ids(
     )
     .bind(roots.iter().copied().collect::<Vec<_>>())
     .bind(include_disabled)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().collect())
 }

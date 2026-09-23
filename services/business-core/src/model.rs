@@ -116,6 +116,8 @@ pub struct DataScopes {
     pub customer_ids: BTreeSet<Uuid>,
     pub supplier_ids: BTreeSet<Uuid>,
     pub brand_ids: BTreeSet<Uuid>,
+    /// Effective operating-unit scope, including every descendant of each
+    /// explicitly granted operating-unit root.
     pub business_unit_ids: BTreeSet<Uuid>,
 }
 

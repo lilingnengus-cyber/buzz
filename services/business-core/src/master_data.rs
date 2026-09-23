@@ -5,7 +5,7 @@ use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
     operating_units::{has_active_descendants, validate_parent},
-    store::PgStore,
+    store::{outbox, PgStore},
 };
 use chrono::Utc;
 pub use command::CoreMasterCommand;
@@ -613,12 +613,31 @@ async fn update_record(
             sqlx::query("UPDATE business_legal_entities SET name=$2,country_code=$3,functional_currency=$4,registration_number=$5,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.country_code.as_deref()).bind(i.functional_currency.as_deref()).bind(&i.registration_number).execute(&mut **tx).await?;
         }
         CoreMasterType::BusinessUnit => {
+            let old_parent: Option<Uuid> = sqlx::query_scalar(
+                "SELECT parent_business_unit_id FROM business_units WHERE id=$1",
+            )
+            .bind(id)
+            .fetch_one(&mut **tx)
+            .await?;
             sqlx::query("UPDATE business_units SET name=$2,parent_business_unit_id=$3,version=version+1,updated_at=now() WHERE id=$1")
             .bind(id)
             .bind(i.name.trim())
             .bind(i.parent_business_unit_id)
             .execute(&mut **tx)
             .await?;
+            if old_parent != i.parent_business_unit_id {
+                sqlx::query("UPDATE business_authorization_revision SET revision=revision+1,updated_at=now() WHERE singleton")
+                    .execute(&mut **tx)
+                    .await?;
+                outbox(
+                    tx,
+                    "business.authorization.changed",
+                    "operating_unit",
+                    &id.to_string(),
+                    json!({"reason":"operating_unit_moved","oldParentBusinessUnitId":old_parent,"newParentBusinessUnitId":i.parent_business_unit_id,"actorUserId":actor,"traceId":trace}),
+                )
+                .await?;
+            }
         }
         CoreMasterType::Customer => {
             sqlx::query("UPDATE business_customers SET name=$2,credit_currency=$3,credit_limit_minor=$4,payment_terms_days=$5,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
