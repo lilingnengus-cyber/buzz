@@ -422,20 +422,64 @@ fn adjustment_prompt_requires_verified_posting_and_preserves_management_boundary
 #[test]
 fn prompt_distinguishes_business_dates_from_operational_timestamps() {
     let prompt = include_str!("../business_agent_prompt.md");
-    for required in [
+    let documented = include_str!("../../../../docs/business-agent/date-time-field-contract.md");
+    let business_dates = [
+        "acknowledgedDate",
+        "businessDate",
+        "countDate",
+        "dispatchDate",
+        "dueBy",
+        "dueDate",
+        "expectedDeliveryDate",
+        "findingBusinessDate",
+        "inspectionDate",
+        "nextFollowUp",
+        "orderDate",
+        "orderedAt",
+        "paymentDate",
+        "receiptDate",
+        "requestedDeliveryDate",
+        "returnDate",
+        "reversalDate",
+        "shipmentDate",
+    ];
+    let timestamps = [
+        "acceptedAt",
+        "asOf",
+        "cancelledAt",
+        "clearedAt",
+        "completedAt",
+        "createdAt",
+        "dataAsOf",
+        "defaultDueAt",
+        "dismissedAt",
+        "dueAt",
+        "effectiveFrom",
+        "effectiveTo",
+        "expiresAt",
+        "firstSeenAt",
+        "generatedAt",
+        "lastSeenAt",
+        "occurredAt",
+        "postedAt",
+        "resolvedAt",
+        "reversedAt",
+        "reviewAfter",
+        "startedAt",
+        "updatedAt",
+    ];
+    for required in business_dates.into_iter().chain(timestamps).chain([
         "业务日期字段",
         "不做时区换算",
-        "orderDate",
-        "businessDate",
-        "createdAt",
-        "updatedAt",
-        "occurredAt",
+        "RFC 3339",
         "Asia/Shanghai",
         "UTC+8",
-    ] {
-        assert!(
-            prompt.contains(required),
-            "missing date/time rule: {required}"
-        );
+    ]) {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing date/time rule in {surface}: {required}"
+            );
+        }
     }
 }
