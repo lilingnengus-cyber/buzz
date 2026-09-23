@@ -163,7 +163,7 @@ impl CrmService {
             self.check_write_authority(&mut tx, actor, existing_id)
                 .await?;
         }
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units u JOIN business_legal_entities e ON e.id=u.legal_entity_id WHERE u.id=$1 AND e.id=$2 AND u.status='active' AND e.status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND legal_entity_id=$2 AND business_unit_id=$1 AND status='active'))")
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND status='active') AND EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$2 AND status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND status='active'))")
             .bind(input.business_unit_id).bind(input.legal_entity_id).bind(input.customer_id).fetch_one(&mut *tx).await?;
         if !valid {
             return Err(DomainError::NotFoundOrForbidden);

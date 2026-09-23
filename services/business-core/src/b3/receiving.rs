@@ -593,7 +593,7 @@ impl ReceivingService {
         receipt_id: Uuid,
     ) -> Result<GoodsReceiptConfirmationPreview, DomainError> {
         let receipt = sqlx::query(
-            "SELECT gr.goods_receipt_number,gr.purchase_order_id,gr.legal_entity_id,gr.supplier_id,gr.warehouse_id,gr.receipt_date,gr.currency::text currency,gr.status,gr.version,o.purchase_order_number order_number,o.lifecycle_status,o.payment_terms_days,o.business_unit_id,sup.code supplier_code,sup.name supplier_name,w.code warehouse_code,w.name warehouse_name,(sup.status='active' AND sup.legal_entity_id=gr.legal_entity_id AND w.status='active' AND w.legal_entity_id=gr.legal_entity_id AND EXISTS(SELECT 1 FROM business_legal_entities e WHERE e.id=gr.legal_entity_id AND e.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=o.business_unit_id AND u.legal_entity_id=gr.legal_entity_id AND u.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=w.business_unit_id AND u.legal_entity_id=gr.legal_entity_id AND u.status='active')) master_ready FROM goods_receipts gr JOIN purchase_orders o ON o.id=gr.purchase_order_id JOIN business_suppliers sup ON sup.id=gr.supplier_id JOIN business_warehouses w ON w.id=gr.warehouse_id WHERE gr.id=$1",
+            "SELECT gr.goods_receipt_number,gr.purchase_order_id,gr.legal_entity_id,gr.supplier_id,gr.warehouse_id,gr.receipt_date,gr.currency::text currency,gr.status,gr.version,o.purchase_order_number order_number,o.lifecycle_status,o.payment_terms_days,o.business_unit_id,sup.code supplier_code,sup.name supplier_name,w.code warehouse_code,w.name warehouse_name,(sup.status='active' AND w.status='active' AND w.legal_entity_id=gr.legal_entity_id AND EXISTS(SELECT 1 FROM business_legal_entities e WHERE e.id=gr.legal_entity_id AND e.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=o.business_unit_id AND u.status='active') AND EXISTS(SELECT 1 FROM business_units u WHERE u.id=w.business_unit_id AND u.status='active')) master_ready FROM goods_receipts gr JOIN purchase_orders o ON o.id=gr.purchase_order_id JOIN business_suppliers sup ON sup.id=gr.supplier_id JOIN business_warehouses w ON w.id=gr.warehouse_id WHERE gr.id=$1",
         )
         .bind(receipt_id)
         .fetch_optional(self.store.pool())
@@ -814,9 +814,9 @@ async fn lock_receiving_party(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     supplier: Uuid,
     unit: Uuid,
-    legal: Uuid,
+    _legal: Uuid,
 ) -> Result<(), DomainError> {
-    sqlx::query("SELECT s.id FROM business_suppliers s JOIN business_units u ON u.id=$2 WHERE s.id=$1 AND s.legal_entity_id=$3 AND u.legal_entity_id=$3 AND s.status='active' AND u.status='active' FOR SHARE OF s,u")
-        .bind(supplier).bind(unit).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    sqlx::query("SELECT s.id FROM business_suppliers s JOIN business_units u ON u.id=$2 WHERE s.id=$1 AND s.status='active' AND u.status='active' FOR SHARE OF s,u")
+        .bind(supplier).bind(unit).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     Ok(())
 }

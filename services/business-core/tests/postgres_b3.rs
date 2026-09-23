@@ -810,19 +810,28 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
     let category = Uuid::new_v4();
     let product = Uuid::new_v4();
     let role = Uuid::new_v4();
+    let compatibility_legal = Uuid::new_v4();
+    let supplier_unit = Uuid::new_v4();
     sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://issuer.test',$2,'B3 Operator')").bind(f.actor).bind(f.actor.to_string()).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'B3_GROUP','B3 Test Group','CNY','Asia/Shanghai')").bind(Uuid::new_v4()).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'LE_B3','B3 Legal','CN','CNY')").bind(f.legal_entity).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'LE_B3_COMPAT','B3 Compatibility Legal','CN','CNY')").bind(compatibility_legal).execute(pool).await.unwrap();
     sqlx::query(
         "INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,'BU_B3','B3 Trade')",
     )
     .bind(f.business_unit)
-    .bind(f.legal_entity)
+    .bind(compatibility_legal)
     .execute(pool)
     .await
     .unwrap();
+    sqlx::query("INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,'BU_B3_SUPPLIER','B3 Supplier Unit')")
+        .bind(supplier_unit)
+        .bind(f.legal_entity)
+        .execute(pool)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO business_warehouses(id,legal_entity_id,business_unit_id,code,name) VALUES($1,$2,$3,'WH_B3','B3 Warehouse')").bind(f.warehouse).bind(f.legal_entity).bind(f.business_unit).execute(pool).await.unwrap();
-    sqlx::query("INSERT INTO business_suppliers(id,legal_entity_id,business_unit_id,code,name,payment_terms_days) VALUES($1,$2,$3,'SUP_B3','B3 Supplier',30)").bind(f.supplier).bind(f.legal_entity).bind(f.business_unit).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO business_suppliers(id,legal_entity_id,business_unit_id,code,name,payment_terms_days) VALUES($1,$2,$3,'SUP_B3','B3 Supplier',30)").bind(f.supplier).bind(f.legal_entity).bind(supplier_unit).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO business_units_of_measure(id,code,name,precision_scale) VALUES($1,'UOM_B3','Each',0)").bind(f.uom).execute(pool).await.unwrap();
     sqlx::query(
         "INSERT INTO business_product_categories(id,code,name) VALUES($1,'CAT_B3','B3 Category')",

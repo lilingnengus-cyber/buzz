@@ -14,14 +14,16 @@ pub(super) async fn seed(pool: &sqlx::PgPool) -> Fixture {
     let category = Uuid::new_v4();
     let product = Uuid::new_v4();
     let role = Uuid::new_v4();
+    let compatibility_legal = Uuid::new_v4();
     sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://issuer.test',$2,'B2 Operator')").bind(fixture.actor).bind(fixture.actor.to_string()).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'B2_GROUP','B2 Test Group','CNY','Asia/Shanghai')").bind(Uuid::new_v4()).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'LE_B2','B2 Legal','CN','CNY')").bind(fixture.legal_entity).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'LE_B2_COMPAT','B2 Compatibility Legal','CN','CNY')").bind(compatibility_legal).execute(pool).await.unwrap();
     sqlx::query(
         "INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,'BU_B2','B2 Trade')",
     )
     .bind(fixture.business_unit)
-    .bind(fixture.legal_entity)
+    .bind(compatibility_legal)
     .execute(pool)
     .await
     .unwrap();

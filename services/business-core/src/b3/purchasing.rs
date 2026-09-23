@@ -736,10 +736,18 @@ async fn validate_master_data(
     tx: &mut Transaction<'_, Postgres>,
     input: &CreatePurchaseOrder,
 ) -> Result<Option<i32>, DomainError> {
-    // Hold status checks through draft insertion/replacement and recheck after waits.
-    sqlx::query("SELECT e.id FROM business_legal_entities e JOIN business_units u ON u.legal_entity_id=e.id WHERE e.id=$1 AND u.id=$2 AND e.status='active' AND u.status='active' FOR SHARE OF e,u")
-        .bind(input.legal_entity_id).bind(input.business_unit_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-    let supplier=sqlx::query("SELECT payment_terms_days FROM business_suppliers WHERE id=$1 AND legal_entity_id=$2 AND business_unit_id=$3 AND status='active' FOR SHARE").bind(input.supplier_id).bind(input.legal_entity_id).bind(input.business_unit_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+    // Hold independently selected dimensions through draft insertion/replacement.
+    sqlx::query("SELECT id FROM business_legal_entities WHERE id=$1 AND status='active' FOR SHARE")
+        .bind(input.legal_entity_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(DomainError::NotFoundOrForbidden)?;
+    sqlx::query("SELECT id FROM business_units WHERE id=$1 AND status='active' FOR SHARE")
+        .bind(input.business_unit_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(DomainError::NotFoundOrForbidden)?;
+    let supplier=sqlx::query("SELECT payment_terms_days FROM business_suppliers WHERE id=$1 AND status='active' FOR SHARE").bind(input.supplier_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
     for line in &input.lines {
         let record=sqlx::query("SELECT p.brand_id FROM business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_warehouses w ON w.id=$2 JOIN business_units_of_measure u ON u.id=p.base_uom_id JOIN business_product_categories c ON c.id=p.category_id WHERE s.id=$1 AND s.status='active' AND p.status='active' AND p.base_uom_id=$3 AND w.status='active' AND w.legal_entity_id=$4 AND u.status='active' AND c.status='active' FOR SHARE OF s,p,w,u,c")
             .bind(line.sku_id).bind(line.warehouse_id).bind(line.unit_of_measure_id).bind(input.legal_entity_id).fetch_optional(&mut **tx).await?
