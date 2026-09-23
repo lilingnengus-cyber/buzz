@@ -1,3 +1,7 @@
+use business_core::{
+    master_data::SaveCoreMasterData,
+    operating_units::{descendant_ids, has_active_descendants, validate_parent},
+};
 use sqlx::{
     migrate::Migrator,
     postgres::{PgConnectOptions, PgPoolOptions},
@@ -5,6 +9,130 @@ use sqlx::{
 };
 use std::{path::Path, str::FromStr};
 use uuid::Uuid;
+
+#[tokio::test]
+async fn operating_unit_tree_rejects_cycles_and_disabled_parents() {
+    let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
+        eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let admin = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    let database_name = format!("bizos_tree_{}", Uuid::new_v4().simple());
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE DATABASE \"{database_name}\""
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    let options = PgConnectOptions::from_str(&database_url)
+        .unwrap()
+        .database(&database_name);
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let migrations_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../business-auth-gateway/migrations");
+    Migrator::new(migrations_path.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+
+    let legal_id = Uuid::new_v4();
+    let root = Uuid::new_v4();
+    let division = Uuid::new_v4();
+    let team = Uuid::new_v4();
+    let leaf = Uuid::new_v4();
+    sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'TREE_GROUP','Tree Group','CNY','Asia/Shanghai')")
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'TREE_LEGAL','Tree Legal','CN','CNY')")
+        .bind(legal_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (id, parent, code, is_root) in [
+        (root, None, "TREE_ROOT", true),
+        (division, Some(root), "TREE_DIVISION", false),
+        (team, Some(division), "TREE_TEAM", false),
+        (leaf, Some(team), "TREE_LEAF", false),
+    ] {
+        sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,is_operating_root,code,name) VALUES($1,$2,$3,$4,$5,$5)")
+            .bind(id)
+            .bind(legal_id)
+            .bind(parent)
+            .bind(is_root)
+            .bind(code)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let parsed: SaveCoreMasterData = serde_json::from_value(serde_json::json!({
+        "resourceType":"business_unit",
+        "code":"TREE_CHILD",
+        "name":"Tree Child",
+        "parentBusinessUnitId":leaf
+    }))
+    .unwrap();
+    assert_eq!(parsed.parent_business_unit_id, Some(leaf));
+
+    let mut tx = pool.begin().await.unwrap();
+    validate_parent(&mut tx, Uuid::new_v4(), Some(leaf))
+        .await
+        .unwrap();
+    assert_eq!(
+        validate_parent(&mut tx, leaf, Some(leaf))
+            .await
+            .unwrap_err()
+            .to_string(),
+        "invalid input: OPERATING_UNIT_CYCLE"
+    );
+    assert_eq!(
+        validate_parent(&mut tx, root, Some(leaf))
+            .await
+            .unwrap_err()
+            .to_string(),
+        "invalid input: OPERATING_UNIT_CYCLE"
+    );
+    sqlx::query("UPDATE business_units SET status='disabled' WHERE id=$1")
+        .bind(team)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(
+        validate_parent(&mut tx, Uuid::new_v4(), Some(team))
+            .await
+            .unwrap_err()
+            .to_string(),
+        "not found or forbidden"
+    );
+    tx.rollback().await.unwrap();
+
+    let roots = [division].into_iter().collect();
+    assert_eq!(
+        descendant_ids(&pool, &roots, true).await.unwrap(),
+        [division, team, leaf].into_iter().collect()
+    );
+    assert!(has_active_descendants(&pool, division).await.unwrap());
+
+    pool.close().await;
+    sqlx::query(AssertSqlSafe(format!(
+        "DROP DATABASE \"{database_name}\" WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+}
 
 #[tokio::test]
 async fn migration_preserves_fact_dimensions_and_builds_one_tree() {

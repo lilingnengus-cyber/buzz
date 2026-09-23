@@ -184,6 +184,22 @@ async fn b1_postgres_authorization_flow() {
         .unwrap();
     assert_eq!(bootstrapped.group_id, fixture.input.group.id);
     assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM business_units WHERE is_operating_root",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM business_units WHERE NOT is_operating_root AND parent_business_unit_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM business_skus")
             .fetch_one(&pool)
             .await

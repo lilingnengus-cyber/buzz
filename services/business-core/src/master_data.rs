@@ -1,6 +1,7 @@
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
+    operating_units::{has_active_descendants, validate_parent},
     store::PgStore,
 };
 use chrono::Utc;
@@ -58,6 +59,8 @@ pub struct SaveCoreMasterData {
     pub legal_entity_id: Option<Uuid>,
     #[serde(default)]
     pub business_unit_id: Option<Uuid>,
+    #[serde(default)]
+    pub parent_business_unit_id: Option<Uuid>,
     #[serde(default)]
     pub country_code: Option<String>,
     #[serde(default)]
@@ -118,6 +121,10 @@ pub struct CoreMasterRecord {
     pub payment_terms_days: Option<i32>,
     pub version: i64,
     pub updated_at: chrono::DateTime<Utc>,
+    pub parent_business_unit_id: Option<Uuid>,
+    pub business_unit_path: Option<Vec<String>>,
+    pub business_unit_depth: Option<i32>,
+    pub descendant_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -215,7 +222,7 @@ impl CoreMasterDataService {
             .iter()
             .copied()
             .collect::<Vec<_>>();
-        let items=sqlx::query_as::<_,CoreMasterRecord>("SELECT resource_type,id,code,name,status,legal_entity_id,legal_entity_code,legal_entity_name,business_unit_id,business_unit_code,business_unit_name,country_code,functional_currency,registration_number,address,credit_currency,credit_limit_minor,payment_terms_days,version,updated_at FROM core_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND legal_entity_id=ANY($2) AND (business_unit_id IS NULL OR business_unit_id=ANY($3)) AND (resource_type<>'warehouse' OR id=ANY($4)) AND (resource_type<>'customer' OR id=ANY($5)) AND (resource_type<>'supplier' OR id=ANY($6)) ORDER BY CASE resource_type WHEN 'legal_entity' THEN 0 WHEN 'business_unit' THEN 1 WHEN 'customer' THEN 2 WHEN 'supplier' THEN 3 ELSE 4 END,code LIMIT $7")
+        let items=sqlx::query_as::<_,CoreMasterRecord>("SELECT resource_type,id,code,name,status,legal_entity_id,legal_entity_code,legal_entity_name,business_unit_id,business_unit_code,business_unit_name,country_code,functional_currency,registration_number,address,credit_currency,credit_limit_minor,payment_terms_days,version,updated_at,parent_business_unit_id,business_unit_path,business_unit_depth,descendant_count FROM core_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND ((resource_type='legal_entity' AND id=ANY($2)) OR (resource_type='business_unit' AND id=ANY($3)) OR (resource_type NOT IN ('legal_entity','business_unit') AND legal_entity_id=ANY($2) AND business_unit_id=ANY($3))) AND (resource_type<>'warehouse' OR id=ANY($4)) AND (resource_type<>'customer' OR id=ANY($5)) AND (resource_type<>'supplier' OR id=ANY($6)) ORDER BY CASE resource_type WHEN 'legal_entity' THEN 0 WHEN 'business_unit' THEN 1 WHEN 'customer' THEN 2 WHEN 'supplier' THEN 3 ELSE 4 END,code LIMIT $7")
             .bind(resource_type.map(CoreMasterType::as_str)).bind(entities).bind(units).bind(warehouses).bind(customers).bind(suppliers).bind(limit.clamp(1,1000)).fetch_all(self.store.pool()).await?;
         Ok(CoreMasterList {
             items,
@@ -257,6 +264,15 @@ impl CoreMasterDataService {
             .bind(format!("{}:{target_id}", kind.as_str()))
             .execute(&mut *tx)
             .await?;
+        if kind == CoreMasterType::BusinessUnit {
+            if input
+                .parent_business_unit_id
+                .is_some_and(|parent| !snapshot.scopes.business_unit_ids.contains(&parent))
+            {
+                return Err(DomainError::NotFoundOrForbidden);
+            }
+            validate_parent(&mut tx, target_id, input.parent_business_unit_id).await?;
+        }
         if let Some(existing_id) = id {
             let current=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(existing_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
             if current.get::<i64, _>("version") != input.expected_version.unwrap_or(0) {
@@ -394,6 +410,13 @@ impl CoreMasterDataService {
                     "master data has blocking operational impacts".into(),
                 ));
             }
+            if kind == CoreMasterType::BusinessUnit
+                && has_active_descendants(self.store.pool(), id).await?
+            {
+                return Err(DomainError::Invalid(
+                    "operating unit has active descendants".into(),
+                ));
+            }
         }
         update_status(&mut tx, kind, id, &input.status).await?;
         let version = input.expected_version + 1;
@@ -430,8 +453,17 @@ impl CoreMasterDataService {
         unit: Option<Uuid>,
         id: Uuid,
     ) -> Result<(), DomainError> {
-        let ok = legal.is_some_and(|v| s.scopes.legal_entity_ids.contains(&v))
-            && unit.is_none_or(|v| s.scopes.business_unit_ids.contains(&v))
+        let legal_ok = match k {
+            CoreMasterType::LegalEntity => s.scopes.legal_entity_ids.contains(&id),
+            CoreMasterType::BusinessUnit => true,
+            _ => legal.is_some_and(|v| s.scopes.legal_entity_ids.contains(&v)),
+        };
+        let unit_ok = match k {
+            CoreMasterType::BusinessUnit => s.scopes.business_unit_ids.contains(&id),
+            _ => unit.is_none_or(|v| s.scopes.business_unit_ids.contains(&v)),
+        };
+        let ok = legal_ok
+            && unit_ok
             && match k {
                 CoreMasterType::Warehouse => s.scopes.warehouse_ids.contains(&id),
                 CoreMasterType::Customer => s.scopes.customer_ids.contains(&id),
@@ -476,8 +508,15 @@ fn validate(i: &SaveCoreMasterData, k: CoreMasterType, updating: bool) -> Result
             }
         }
         CoreMasterType::BusinessUnit => {
-            if i.legal_entity_id.is_none() {
-                return Err(DomainError::Invalid("legalEntityId is required".into()));
+            if i.legal_entity_id.is_some() {
+                return Err(DomainError::Invalid(
+                    "legalEntityId is not valid for an operating unit".into(),
+                ));
+            }
+            if !updating && i.parent_business_unit_id.is_none() {
+                return Err(DomainError::Invalid(
+                    "parentBusinessUnitId is required".into(),
+                ));
             }
         }
         CoreMasterType::Customer => {
@@ -511,7 +550,10 @@ async fn ensure_parents(
     k: CoreMasterType,
     i: &SaveCoreMasterData,
 ) -> Result<(), DomainError> {
-    if k != CoreMasterType::LegalEntity {
+    if matches!(
+        k,
+        CoreMasterType::Customer | CoreMasterType::Supplier | CoreMasterType::Warehouse
+    ) {
         let legal = i
             .legal_entity_id
             .ok_or_else(|| DomainError::Invalid("legalEntityId is required".into()))?;
@@ -535,11 +577,9 @@ async fn insert_record(
             sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency,registration_number) VALUES($1,$2,$3,$4,$5,$6)").bind(id).bind(&i.code).bind(i.name.trim()).bind(i.country_code.as_deref()).bind(i.functional_currency.as_deref()).bind(&i.registration_number).execute(&mut **tx).await?;
         }
         CoreMasterType::BusinessUnit => {
-            sqlx::query(
-                "INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,$3,$4)",
-            )
+            sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,code,name) SELECT $1,parent.legal_entity_id,parent.id,$3,$4 FROM business_units parent WHERE parent.id=$2")
             .bind(id)
-            .bind(i.legal_entity_id)
+            .bind(i.parent_business_unit_id)
             .bind(&i.code)
             .bind(i.name.trim())
             .execute(&mut **tx)
@@ -572,11 +612,10 @@ async fn update_record(
             sqlx::query("UPDATE business_legal_entities SET name=$2,country_code=$3,functional_currency=$4,registration_number=$5,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.country_code.as_deref()).bind(i.functional_currency.as_deref()).bind(&i.registration_number).execute(&mut **tx).await?;
         }
         CoreMasterType::BusinessUnit => {
-            sqlx::query(
-                "UPDATE business_units SET name=$2,version=version+1,updated_at=now() WHERE id=$1",
-            )
+            sqlx::query("UPDATE business_units SET name=$2,parent_business_unit_id=$3,version=version+1,updated_at=now() WHERE id=$1")
             .bind(id)
             .bind(i.name.trim())
+            .bind(i.parent_business_unit_id)
             .execute(&mut **tx)
             .await?;
         }
@@ -690,6 +729,7 @@ mod tests {
             name: "A".into(),
             legal_entity_id: Some(Uuid::nil()),
             business_unit_id: Some(Uuid::nil()),
+            parent_business_unit_id: None,
             country_code: None,
             functional_currency: None,
             registration_number: None,

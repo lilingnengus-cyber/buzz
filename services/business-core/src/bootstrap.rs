@@ -158,10 +158,22 @@ async fn insert_master_data(
         sqlx::query("INSERT INTO business_ledger_books(id,legal_entity_id,code,name,currency,fiscal_year_start_month,is_primary) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(item.id).bind(item.legal_entity_id).bind(&item.code).bind(&item.name).bind(&item.currency).bind(item.fiscal_year_start_month).bind(item.is_primary).execute(&mut **tx).await?;
     }
+    let generated_root = (input.business_units.len() > 1).then(Uuid::new_v4);
+    if let Some(root_id) = generated_root {
+        let compatibility_legal_entity_id = input.business_units[0].legal_entity_id;
+        sqlx::query("INSERT INTO business_units(id,legal_entity_id,code,name,is_operating_root) VALUES($1,$2,'GROUP_OPERATIONS',$3,true)")
+            .bind(root_id)
+            .bind(compatibility_legal_entity_id)
+            .bind(&input.group.name)
+            .execute(&mut **tx)
+            .await?;
+    }
     for item in &input.business_units {
-        sqlx::query("INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,$3,$4)")
+        sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,is_operating_root,code,name) VALUES($1,$2,$3,$4,$5,$6)")
             .bind(item.id)
             .bind(item.legal_entity_id)
+            .bind(generated_root)
+            .bind(generated_root.is_none())
             .bind(&item.code)
             .bind(&item.name)
             .execute(&mut **tx)

@@ -57,7 +57,11 @@ impl MasterApiError {
             },
             DomainError::Invalid(message) => Self {
                 status: StatusCode::BAD_REQUEST,
-                code: "invalid_request",
+                code: if message == "OPERATING_UNIT_CYCLE" {
+                    "OPERATING_UNIT_CYCLE"
+                } else {
+                    "invalid_request"
+                },
                 message,
                 trace_id,
             },
