@@ -76,6 +76,8 @@ impl CrmService {
             .await?;
         let has_more = items.len() > 50;
         items.truncate(50);
-        Ok(json!({"items":items,"hasMore":has_more}))
+        Ok(
+            json!({"items":items,"hasMore":has_more,"businessUnitFilterMode":"subtree","businessUnitIds":scope.scopes.business_unit_ids}),
+        )
     }
 }

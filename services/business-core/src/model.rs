@@ -93,6 +93,8 @@ pub struct MasterDataRecord {
     pub supplier_id: Option<Uuid>,
     pub brand_id: Option<Uuid>,
     pub business_unit_id: Option<Uuid>,
+    #[sqlx(default)]
+    pub ancestor_path: Option<Vec<String>>,
     pub version: i64,
 }
 

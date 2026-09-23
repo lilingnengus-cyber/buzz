@@ -99,6 +99,18 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         .as_array()
         .unwrap()
         .is_empty());
+    let options = crm.options(actor).await.unwrap();
+    let operating_unit = options["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["resourceType"] == "business_unit" && item["id"] == unit.to_string())
+        .unwrap();
+    assert!(operating_unit["legalEntityId"].is_null());
+    assert_eq!(
+        operating_unit["ancestorPath"],
+        serde_json::json!(["CRM BU"])
+    );
     let note = AddFollowup {
         note: "已沟通需求，准备报价".into(),
         stage: "quoting".into(),
@@ -130,6 +142,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .register(actor, &Filters::default(), contacts)
             .await
             .unwrap();
+        assert_eq!(page["businessUnitFilterMode"], "subtree");
         assert_eq!(page["items"].as_array().unwrap().len(), 1);
         let hidden = crm
             .register(outsider, &Filters::default(), contacts)

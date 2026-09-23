@@ -23,24 +23,19 @@ pub(super) async fn resolve(
         }
         scopes.legal_entity_ids = ids.iter().copied().collect();
     }
-    for (table, ids) in [
-        ("business_units", &mut scopes.business_unit_ids),
-        ("business_warehouses", &mut scopes.warehouse_ids),
-        ("business_customers", &mut scopes.customer_ids),
-        ("business_suppliers", &mut scopes.supplier_ids),
-    ] {
-        let allowed = ids.iter().copied().collect::<Vec<_>>();
-        let legal = scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>();
-        let sql = format!(
-            "SELECT id FROM {table} WHERE id=ANY($1) AND legal_entity_id=ANY($2) ORDER BY id"
-        );
-        let selected: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
-            .bind(allowed)
-            .bind(legal)
-            .fetch_all(&mut **tx)
-            .await?;
-        *ids = selected.into_iter().collect();
-    }
+    // Warehouse ownership remains a legal boundary. The other scopes are
+    // independent dimensions and must not be narrowed by the selected legal entities.
+    let allowed_warehouses = scopes.warehouse_ids.iter().copied().collect::<Vec<_>>();
+    let legal = scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>();
+    scopes.warehouse_ids = sqlx::query_scalar(
+        "SELECT id FROM business_warehouses WHERE id=ANY($1) AND legal_entity_id=ANY($2) ORDER BY id",
+    )
+    .bind(allowed_warehouses)
+    .bind(legal)
+    .fetch_all(&mut **tx)
+    .await?
+    .into_iter()
+    .collect();
     if let Some(ids) = &input.business_unit_ids {
         if ids.is_empty() {
             return Err(DomainError::Invalid(
@@ -50,7 +45,12 @@ pub(super) async fn resolve(
         if ids.iter().any(|id| !scopes.business_unit_ids.contains(id)) {
             return Err(DomainError::NotFoundOrForbidden);
         }
-        scopes.business_unit_ids = ids.iter().copied().collect();
+        let roots = ids.iter().copied().collect();
+        let descendants = crate::operating_units::descendant_ids(&mut **tx, &roots, true).await?;
+        scopes.business_unit_ids = descendants
+            .intersection(&auth.scopes.business_unit_ids)
+            .copied()
+            .collect();
     }
     if let Some(ids) = &input.warehouse_ids {
         if ids.is_empty() {

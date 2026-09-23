@@ -58,6 +58,24 @@ pub(super) async fn check(store: &PgStore, fixture: &Fixture) {
         .await
         .unwrap();
     assert!(wrong_entity.is_empty());
+    let operating_units = store
+        .search_resources(
+            ResourceType::BusinessUnit,
+            &snapshot,
+            "B2 Trade",
+            Some(fixture.legal_entity),
+            0,
+            20,
+        )
+        .await
+        .unwrap();
+    assert_eq!(operating_units.len(), 1);
+    assert_eq!(operating_units[0].id, fixture.business_unit);
+    assert_eq!(operating_units[0].legal_entity_id, None);
+    assert_eq!(
+        operating_units[0].ancestor_path,
+        Some(vec!["B2 Trade".into()])
+    );
     // Restore the fixture's permissions for the remaining closed-loop tests.
     for id in ids {
         sqlx::query(
