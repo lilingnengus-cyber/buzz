@@ -400,6 +400,155 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
 }
 
 #[tokio::test]
+async fn subtree_reporting_reclassifies_leaf_facts_after_a_move() {
+    let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
+        eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let admin = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    let database_name = format!("bizos_tree_{}", Uuid::new_v4().simple());
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE DATABASE \"{database_name}\""
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(
+            PgConnectOptions::from_str(&database_url)
+                .unwrap()
+                .database(&database_name),
+        )
+        .await
+        .unwrap();
+    let migrations_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../business-auth-gateway/migrations");
+    Migrator::new(migrations_path.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+
+    let actor = Uuid::new_v4();
+    let legal = Uuid::new_v4();
+    let root = Uuid::new_v4();
+    let north = Uuid::new_v4();
+    let east = Uuid::new_v4();
+    let hangzhou = Uuid::new_v4();
+    let beijing = Uuid::new_v4();
+    sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://identity.test','report-user','Report User')")
+        .bind(actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'REPORT_GROUP','Report Group','CNY','Asia/Shanghai')")
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'REPORT_LEGAL','Report Legal','CN','CNY')")
+        .bind(legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (id, parent, code, is_root) in [
+        (root, None, "REPORT_ROOT", true),
+        (north, Some(root), "REPORT_NORTH", false),
+        (east, Some(root), "REPORT_EAST", false),
+        (hangzhou, Some(north), "REPORT_HANGZHOU", false),
+        (beijing, Some(north), "REPORT_BEIJING", false),
+    ] {
+        sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,is_operating_root,code,name) VALUES($1,$2,$3,$4,$5,$5)")
+            .bind(id)
+            .bind(legal)
+            .bind(parent)
+            .bind(is_root)
+            .bind(code)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(actor)
+        .bind(north)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (unit, amount, title) in [
+        (hangzhou, 100_i64, "Hangzhou fact"),
+        (beijing, 200_i64, "Beijing fact"),
+    ] {
+        sqlx::query("INSERT INTO crm_opportunities(id,legal_entity_id,business_unit_id,title,company_name,stage,expected_amount_minor,currency,owner_user_id) VALUES($1,$2,$3,$4,$4,'new',$5,'CNY',$6)")
+            .bind(Uuid::new_v4())
+            .bind(legal)
+            .bind(unit)
+            .bind(title)
+            .bind(amount)
+            .bind(actor)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let store = PgStore::new(pool.clone());
+    let north_scope = store.snapshot(actor).await.unwrap();
+    let north_total: i64 = sqlx::query_scalar("SELECT COALESCE(sum(expected_amount_minor),0)::bigint FROM crm_opportunities WHERE business_unit_id=ANY($1)")
+        .bind(north_scope.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(north_total, 300);
+
+    sqlx::query("UPDATE business_units SET parent_business_unit_id=$2 WHERE id=$1")
+        .bind(hangzhou)
+        .bind(east)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let stored_leaf: Uuid = sqlx::query_scalar(
+        "SELECT business_unit_id FROM crm_opportunities WHERE title='Hangzhou fact'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored_leaf, hangzhou);
+    let moved_north_scope = store.snapshot(actor).await.unwrap();
+    let moved_north_total: i64 = sqlx::query_scalar("SELECT COALESCE(sum(expected_amount_minor),0)::bigint FROM crm_opportunities WHERE business_unit_id=ANY($1)")
+        .bind(moved_north_scope.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(moved_north_total, 200);
+    sqlx::query("UPDATE business_unit_scopes SET business_unit_id=$2 WHERE enterprise_user_id=$1")
+        .bind(actor)
+        .bind(east)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let east_scope = store.snapshot(actor).await.unwrap();
+    let east_total: i64 = sqlx::query_scalar("SELECT COALESCE(sum(expected_amount_minor),0)::bigint FROM crm_opportunities WHERE business_unit_id=ANY($1)")
+        .bind(east_scope.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(east_total, 100);
+
+    pool.close().await;
+    sqlx::query(AssertSqlSafe(format!(
+        "DROP DATABASE \"{database_name}\" WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn migration_preserves_fact_dimensions_and_builds_one_tree() {
     let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
         eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");

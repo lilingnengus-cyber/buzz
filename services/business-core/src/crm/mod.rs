@@ -46,7 +46,7 @@ impl CrmService {
         let has_more = items.len() > 50;
         items.truncate(50);
         Ok(
-            json!({"items":items,"hasMore":has_more,"canManage":s.permission_keys.contains("crm:manage")}),
+            json!({"items":items,"hasMore":has_more,"canManage":s.permission_keys.contains("crm:manage"),"businessUnitFilterMode":"subtree","businessUnitIds":s.scopes.business_unit_ids}),
         )
     }
     async fn accessible(
@@ -76,7 +76,7 @@ impl CrmService {
     /// Return active, scoped choices without requiring unrelated master-data manage access.
     pub async fn options(&self, actor: Uuid) -> Result<Value, DomainError> {
         let s = self.scope(actor, "crm:read").await?;
-        let items:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name,'code',code,'resourceType',resource_type,'legalEntityId',legal_entity_id,'businessUnitId',business_unit_id) FROM business_master_data_directory WHERE status='active' AND ((resource_type='legal_entity' AND id=ANY($1)) OR (resource_type='business_unit' AND id=ANY($2)) OR (resource_type='customer' AND id=ANY($3))) ORDER BY name,id")
+        let items:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name,'code',code,'resourceType',resource_type,'legalEntityId',CASE WHEN resource_type='business_unit' THEN NULL ELSE legal_entity_id END,'businessUnitId',business_unit_id,'ancestorPath',CASE WHEN resource_type='business_unit' THEN (SELECT business_unit_path FROM core_master_data_maintenance tree WHERE tree.resource_type='business_unit' AND tree.id=business_master_data_directory.id) ELSE NULL END) FROM business_master_data_directory WHERE status='active' AND ((resource_type='legal_entity' AND id=ANY($1)) OR (resource_type='business_unit' AND id=ANY($2)) OR (resource_type='customer' AND id=ANY($3))) ORDER BY name,id")
             .bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>()).fetch_all(self.store.pool()).await?;
         Ok(json!({"items":items}))
     }

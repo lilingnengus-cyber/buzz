@@ -93,6 +93,8 @@ impl OperationsService {
             "items": items,
             "cadence": cadence,
             "currency": currency,
+            "businessUnitFilterMode": "subtree",
+            "businessUnitIds": auth.scopes.business_unit_ids,
             "scopeVersion": auth.scope_version,
             "effectiveScopeHash": auth.effective_scope_hash,
             "dataAsOf": Utc::now(),
@@ -198,6 +200,8 @@ impl OperationsService {
         let quality = self.data_quality(actor).await?;
         let quality_status = quality["status"].as_str().unwrap_or("blocked");
         let payload = json!({
+            "businessUnitFilterMode": "subtree",
+            "businessUnitIds": bu,
             "salesOrderCount": sales.get::<i64,_>("order_count"),
             "salesOrderAmount": sales.get::<Decimal,_>("order_amount").to_string(),
             "shipmentCount": shipments.get::<i64,_>("shipment_count"),
