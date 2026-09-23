@@ -24,9 +24,7 @@ export function CrmForm({
   const [legal, setLegal] = React.useState(
     record?.legalEntityId ?? (entities.length === 1 ? entities[0].id : ""),
   );
-  const units = options.filter(
-    (o) => o.resourceType === "business_unit" && o.legalEntityId === legal,
-  );
+  const units = options.filter((o) => o.resourceType === "business_unit");
   const [unit, setUnit] = React.useState(
     record?.businessUnitId ?? (units.length === 1 ? units[0].id : ""),
   );
@@ -95,7 +93,6 @@ export function CrmForm({
             maxLength={160}
             defaultValue={record?.title}
             placeholder="例如：杭州客户采购项目"
-            autoFocus
           />
         </label>
         <label>
@@ -118,14 +115,7 @@ export function CrmForm({
             value={legal}
             disabled={!!record}
             onChange={(e) => {
-              const id = e.target.value;
-              setLegal(id);
-              const next = options.filter(
-                (o) =>
-                  o.resourceType === "business_unit" && o.legalEntityId === id,
-              );
-              setUnit(next.length === 1 ? next[0].id : "");
-              setCustomer("");
+              setLegal(e.target.value);
             }}
           >
             <option value="">请选择</option>
@@ -144,7 +134,6 @@ export function CrmForm({
             disabled={!!record}
             onChange={(e) => {
               setUnit(e.target.value);
-              setCustomer("");
             }}
           >
             <option value="">请选择</option>
@@ -167,12 +156,7 @@ export function CrmForm({
           >
             <option value="">暂不关联（潜在客户）</option>
             {options
-              .filter(
-                (o) =>
-                  o.resourceType === "customer" &&
-                  o.legalEntityId === legal &&
-                  o.businessUnitId === unit,
-              )
+              .filter((o) => o.resourceType === "customer")
               .map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} · {o.code}

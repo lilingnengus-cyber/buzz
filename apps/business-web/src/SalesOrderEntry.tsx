@@ -88,9 +88,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
   const availableCustomers = catalog.customers.filter(
     (item) => !item.legalEntityId || item.legalEntityId === legalEntityId,
   );
-  const availableUnits = catalog.businessUnits.filter(
-    (item) => !item.legalEntityId || item.legalEntityId === legalEntityId,
-  );
+  const availableUnits = catalog.businessUnits;
   const availableWarehouses = catalog.warehouses.filter(
     (item) => !item.legalEntityId || item.legalEntityId === legalEntityId,
   );
@@ -100,14 +98,10 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     const customers = catalog.customers.filter(
       (item) => !item.legalEntityId || item.legalEntityId === value,
     );
-    const units = catalog.businessUnits.filter(
-      (item) => !item.legalEntityId || item.legalEntityId === value,
-    );
     const warehouses = catalog.warehouses.filter(
       (item) => !item.legalEntityId || item.legalEntityId === value,
     );
     setCustomerId(customers[0]?.id ?? "");
-    setBusinessUnitId(units[0]?.id ?? "");
     setLines((current) =>
       current.map((line) => ({
         ...line,

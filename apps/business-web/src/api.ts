@@ -76,6 +76,10 @@ export type CoreMasterRecord = {
   businessUnitId: string | null;
   businessUnitCode: string | null;
   businessUnitName: string | null;
+  parentBusinessUnitId: string | null;
+  ancestorPath: string[] | null;
+  depth: number | null;
+  descendantCount: number | null;
   countryCode: string | null;
   functionalCurrency: string | null;
   registrationNumber: string | null;
@@ -1292,7 +1296,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (!csrf) throw new Error("登录会话缺少 CSRF 凭据，请重新登录");
     headers.set("content-type", "application/json");
     headers.set("x-csrf-token", csrf);
-    if (!headers.has("idempotency-key")) headers.set("idempotency-key", crypto.randomUUID());
+    if (!headers.has("idempotency-key"))
+      headers.set("idempotency-key", crypto.randomUUID());
   }
   const response = await fetch(path, {
     ...init,

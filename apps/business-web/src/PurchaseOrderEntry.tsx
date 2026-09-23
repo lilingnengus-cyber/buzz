@@ -104,7 +104,7 @@ export function PurchaseOrderEntry({
           const legalEntity = legalEntities[0]?.id ?? "";
           setLegalEntityId(legalEntity);
           setSupplierId(scoped(suppliers, legalEntity)[0]?.id ?? "");
-          setBusinessUnitId(scoped(businessUnits, legalEntity)[0]?.id ?? "");
+          setBusinessUnitId(businessUnits[0]?.id ?? "");
           setLines([newLine(skus[0]?.id, scoped(warehouses, legalEntity)[0]?.id, units[0]?.id)]);
         }
       })
@@ -116,14 +116,13 @@ export function PurchaseOrderEntry({
   }, [orderId]);
 
   const availableSuppliers = scoped(catalog.suppliers, legalEntityId);
-  const availableBusinessUnits = scoped(catalog.businessUnits, legalEntityId);
+  const availableBusinessUnits = catalog.businessUnits;
   const availableWarehouses = scoped(catalog.warehouses, legalEntityId);
   const allowed = orderId ? options?.canUpdate : options?.canCreate;
 
   function changeLegalEntity(value: string) {
     setLegalEntityId(value);
     setSupplierId(scoped(catalog.suppliers, value)[0]?.id ?? "");
-    setBusinessUnitId(scoped(catalog.businessUnits, value)[0]?.id ?? "");
     const warehouseId = scoped(catalog.warehouses, value)[0]?.id ?? "";
     setLines((current) => current.map((line) => ({ ...line, warehouseId })));
   }

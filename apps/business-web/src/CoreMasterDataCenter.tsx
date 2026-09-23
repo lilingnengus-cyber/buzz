@@ -12,6 +12,10 @@ import {
 } from "./api";
 import { formatMoney } from "./formatters";
 import { PageLoadFailure } from "./PageLoadFailure";
+import {
+  buildOperatingTree,
+  type OperatingUnitNode,
+} from "./OperatingUnitTree";
 import "./core-master-data.css";
 
 const TYPES: Array<{
@@ -57,6 +61,7 @@ type FormState = {
   name: string;
   legalEntityId: string;
   businessUnitId: string;
+  parentBusinessUnitId: string;
   countryCode: string;
   functionalCurrency: string;
   registrationNumber: string;
@@ -75,6 +80,7 @@ const EMPTY_FORM: FormState = {
   name: "",
   legalEntityId: "",
   businessUnitId: "",
+  parentBusinessUnitId: "",
   countryCode: "CN",
   functionalCurrency: "CNY",
   registrationNumber: "",
@@ -118,8 +124,9 @@ export function CoreMasterDataCenter() {
       (item) =>
         item.resourceType === activeType &&
         (status === "all" || item.status === status) &&
-        (!needle ||
-          `${item.code} ${item.name} ${item.legalEntityName ?? ""} ${item.businessUnitName ?? ""}`
+        (activeType === "business_unit" ||
+          !needle ||
+          `${item.code} ${item.name} ${item.legalEntityName ?? ""} ${item.businessUnitName ?? ""} ${(item.ancestorPath ?? []).join(" ")}`
             .toLocaleLowerCase()
             .includes(needle)),
     );
@@ -159,29 +166,24 @@ export function CoreMasterDataCenter() {
       </div>
 
       {!error && (
-        <div
-          className="master-spine"
-          role="img"
-          aria-label="主数据关系结构：法定主体到经营主体，再到客户、供应商与仓库"
+        <fieldset
+          className="master-dimensions"
+          aria-label="法人主体与经营组织并列管理"
         >
-          <div>
-            <b>01</b>
-            <span>法定主体</span>
-            <small>LEGAL OWNER</small>
+          <button type="button" onClick={() => setActiveType("legal_entity")}>
+            <small>LEGAL ENTITIES</small>
+            <strong>法人主体</strong>
+            <span>{counts.legal_entity} 个签约与责任主体</span>
+          </button>
+          <div className="master-dimension-divider" aria-hidden="true">
+            ×
           </div>
-          <i>→</i>
-          <div>
-            <b>02</b>
-            <span>经营主体</span>
-            <small>OPERATING UNIT</small>
-          </div>
-          <i>→</i>
-          <div>
-            <b>03</b>
-            <span>客户 · 供应商 · 仓库</span>
-            <small>OPERATING OBJECTS</small>
-          </div>
-        </div>
+          <button type="button" onClick={() => setActiveType("business_unit")}>
+            <small>OPERATING ORGANIZATION</small>
+            <strong>经营组织树</strong>
+            <span>{counts.business_unit} 个经营单元，可持续向下分解</span>
+          </button>
+        </fieldset>
       )}
 
       {!error && (
@@ -249,6 +251,16 @@ export function CoreMasterDataCenter() {
           <h2>尚无符合条件的{selected.label}</h2>
           <p>清除筛选条件，或通过右上角按钮新增第一条权威记录。</p>
         </div>
+      ) : activeType === "business_unit" ? (
+        <OperatingTreePanel
+          records={current}
+          query={query}
+          canManage={data?.canManage === true}
+          onEdit={(record) =>
+            setModal({ kind: "form", type: "business_unit", record })
+          }
+          onStatus={(record) => setModal({ kind: "status", record })}
+        />
       ) : (
         <div className="master-register">
           <div className="master-register-head">
@@ -345,6 +357,132 @@ export function CoreMasterDataCenter() {
   );
 }
 
+function OperatingTreePanel({
+  records,
+  query,
+  canManage,
+  onEdit,
+  onStatus,
+}: {
+  records: CoreMasterRecord[];
+  query: string;
+  canManage: boolean;
+  onEdit: (record: CoreMasterRecord) => void;
+  onStatus: (record: CoreMasterRecord) => void;
+}) {
+  const tree = buildOperatingTree(records, query);
+  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const toggle = (id: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  return (
+    <div className="operating-tree" role="tree" aria-label="经营组织树">
+      <header>
+        <span>经营路径</span>
+        <span>下级</span>
+        <span>状态</span>
+        <span>操作</span>
+      </header>
+      {tree.map((node) => (
+        <OperatingTreeRow
+          key={node.id}
+          node={node}
+          byId={byId}
+          collapsed={collapsed}
+          toggle={toggle}
+          canManage={canManage}
+          onEdit={onEdit}
+          onStatus={onStatus}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OperatingTreeRow({
+  node,
+  byId,
+  collapsed,
+  toggle,
+  canManage,
+  onEdit,
+  onStatus,
+}: {
+  node: OperatingUnitNode;
+  byId: Map<string, CoreMasterRecord>;
+  collapsed: Set<string>;
+  toggle: (id: string) => void;
+  canManage: boolean;
+  onEdit: (record: CoreMasterRecord) => void;
+  onStatus: (record: CoreMasterRecord) => void;
+}) {
+  const record = byId.get(node.id);
+  const isCollapsed = collapsed.has(node.id);
+  const path = [...node.ancestorPath.slice(0, -1), node.name].join(" / ");
+  return (
+    <React.Fragment>
+      <div
+        role="treeitem"
+        tabIndex={0}
+        aria-expanded={node.children.length ? !isCollapsed : undefined}
+        className={`${node.status === "disabled" ? "disabled" : ""} ${node.orphaned ? "orphan" : ""}`}
+        style={{ "--tree-depth": node.depth } as React.CSSProperties}
+      >
+        <div className="operating-tree-name">
+          <button
+            type="button"
+            className="operating-tree-toggle"
+            disabled={node.children.length === 0}
+            aria-label={isCollapsed ? "展开下级" : "收起下级"}
+            onClick={() => toggle(node.id)}
+          >
+            {node.children.length === 0 ? "·" : isCollapsed ? "+" : "−"}
+          </button>
+          <span>
+            <code>{node.code}</code>
+            <strong>{node.name}</strong>
+            <small>{path || node.name}</small>
+          </span>
+        </div>
+        <b>{node.descendantCount}</b>
+        <span className={`master-status ${node.status}`}>
+          {node.status === "active" ? "启用" : "停用"}
+        </span>
+        <div className="master-actions">
+          {record && canManage && (
+            <>
+              <button type="button" onClick={() => onEdit(record)}>
+                编辑
+              </button>
+              <button type="button" onClick={() => onStatus(record)}>
+                {record.status === "active" ? "停用" : "启用"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {!isCollapsed &&
+        node.children.map((child) => (
+          <OperatingTreeRow
+            key={child.id}
+            node={child}
+            byId={byId}
+            collapsed={collapsed}
+            toggle={toggle}
+            canManage={canManage}
+            onEdit={onEdit}
+            onStatus={onStatus}
+          />
+        ))}
+    </React.Fragment>
+  );
+}
+
 function Hierarchy({ item }: { item: CoreMasterRecord }) {
   const steps =
     item.resourceType === "legal_entity"
@@ -396,7 +534,7 @@ function MasterFormModal({
     (item) =>
       item.resourceType === "business_unit" &&
       item.status === "active" &&
-      (!form.legalEntityId || item.legalEntityId === form.legalEntityId),
+      item.id !== record?.id,
   );
   const title = `${record ? "编辑" : "新增"}${labelFor(type)}`;
   const set = (field: keyof FormState, value: string) =>
@@ -412,6 +550,7 @@ function MasterFormModal({
       name: form.name.trim(),
       legalEntityId: form.legalEntityId || null,
       businessUnitId: form.businessUnitId || null,
+      parentBusinessUnitId: form.parentBusinessUnitId || null,
       countryCode: form.countryCode.trim().toUpperCase() || null,
       functionalCurrency: form.functionalCurrency.trim().toUpperCase() || null,
       registrationNumber: form.registrationNumber.trim() || null,
@@ -469,21 +608,39 @@ function MasterFormModal({
               onChange={(e) => set("name", e.target.value)}
             />
           </Field>
-          {type !== "legal_entity" && (
+          {type !== "legal_entity" && type !== "business_unit" && (
             <Field label="法定主体 *">
               <select
                 required
                 disabled={Boolean(record)}
                 value={form.legalEntityId}
-                onChange={(e) => {
-                  set("legalEntityId", e.target.value);
-                  set("businessUnitId", "");
-                }}
+                onChange={(e) => set("legalEntityId", e.target.value)}
               >
                 <option value="">请选择</option>
                 {entities.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.code} · {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {type === "business_unit" && (
+            <Field label="上级经营单元 *" wide>
+              <select
+                required={!record}
+                value={form.parentBusinessUnitId}
+                onChange={(e) => set("parentBusinessUnitId", e.target.value)}
+              >
+                <option value="">
+                  {record?.parentBusinessUnitId ? "设为根节点" : "请选择上级"}
+                </option>
+                {units.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {[
+                      ...(item.ancestorPath ?? []).slice(0, -1),
+                      item.name,
+                    ].join(" / ")}
                   </option>
                 ))}
               </select>
@@ -812,6 +969,7 @@ function fromRecord(record: CoreMasterRecord): FormState {
     name: record.name,
     legalEntityId: record.legalEntityId ?? "",
     businessUnitId: record.businessUnitId ?? "",
+    parentBusinessUnitId: record.parentBusinessUnitId ?? "",
     countryCode: record.countryCode ?? "CN",
     functionalCurrency: record.functionalCurrency ?? "CNY",
     registrationNumber: record.registrationNumber ?? "",
