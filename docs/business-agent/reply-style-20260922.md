@@ -40,3 +40,13 @@
 真实修改预览事件 659d332f1e1cfe5509d84fb3a1ed75649d6c49abbaf36f8ce53a5833fa8ad45c，追踪号 b4e0a509-4733-4be9-b0b3-b354e509820d。客户端回复正文显示“当前单据版本 v2”，确认与拒绝指令显示意图版本 `v1`，并明确尚未修改草稿。审计确认只调用读取及准备工具，没有 approve 调用。
 
 最终安装 ACP SHA256：a98b0a997f326b0065af81ab7931c6f3e24d50aa7e5a595d2057ea7a723fede7。上版备份位于本机 Application Support/com.shiyueshizi.pacioli/backups/bizos-asof-field-20260922/buzz-acp；新 ACP PID 30109 于 23:27:21 启动，Pacioli 父进程保持不变。11 项 business_agent::tests 与 locked release 构建通过。未运行全量 just ci 或 Windows 安装验收。
+
+## 2026-09-23 数据时点本地化
+
+中文 BizOS 回复现在将可解析的 RFC 3339 数据时点转换为 `Asia/Shanghai`，统一显示为“YYYY-MM-DD HH:mm（UTC+8）”。无法可靠解析时保留服务器原值和原始时区，不猜测转换结果；工具未提供时仍不得自行生成数据时点。
+
+隔离模型回归先以 `asOf=2026-09-22T15:06:10Z` 复现旧回复“数据时点：2026-09-22T15:06:10Z”，再验证新合同输出“数据时点：2026-09-22 23:06（UTC+8）”。11 项 `business_agent::tests` 与 locked release `buzz-acp` 构建通过，`git diff --check` 通过。
+
+仅重启 BizOS 后，新 ACP PID 76201 于 17:53:18 启动，安装 SHA256 为 `0df1d76084ba47a12d1eb457704d62f91b5408ac049ac095047e01c69241636b`；上版备份位于本机 `Application Support/com.shiyueshizi.pacioli/backups/bizos-shanghai-time-20260923/buzz-acp`，应用签名校验通过。
+
+真实只读查询事件 `3dc972eeb3eaf3d80921fe3c1e46db1b528c031ec1263c8e05081dbe4e372a2f`，追踪号 `e02f8075-f496-4da5-8f78-918b5374dde4`。客户端回复显示“数据时点：2026-09-23 17:55（UTC+8）”，并返回五笔订单。服务端审计确认唯一业务工具为 `search_sales_orders`，成功返回 5 条；其余事件仅为授权、委托、回复和撤销委托，没有业务写入。未运行全量 `just ci` 或 Windows 安装验收。
