@@ -1,5 +1,5 @@
 use business_core::{
-    master_data::{CoreMasterDataService, SaveCoreMasterData},
+    master_data::{CoreMasterDataService, CoreMasterType, SaveCoreMasterData},
     operating_units::{descendant_ids, has_active_descendants, validate_parent},
     PgStore,
 };
@@ -313,7 +313,7 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage')")
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage'),($1,'business_master_data:read')")
         .bind(role)
         .execute(&pool)
         .await
@@ -343,9 +343,10 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)")
+    sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1),($1,$3,$1)")
         .bind(actor)
         .bind(selected_legal)
+        .bind(compatibility_legal)
         .execute(&pool)
         .await
         .unwrap();
@@ -356,7 +357,8 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
         .await
         .unwrap();
 
-    let created = CoreMasterDataService::new(PgStore::new(pool.clone()))
+    let service = CoreMasterDataService::new(PgStore::new(pool.clone()));
+    let created = service
         .save(
             actor,
             Uuid::new_v4(),
@@ -389,6 +391,14 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
     .await
     .unwrap();
     assert_eq!(dimensions, (selected_legal, operating_unit));
+    let impact = service
+        .impact(actor, CoreMasterType::LegalEntity, compatibility_legal)
+        .await
+        .unwrap();
+    assert!(impact
+        .impacts
+        .iter()
+        .all(|item| item.code != "active_units"));
 
     pool.close().await;
     sqlx::query(AssertSqlSafe(format!(
@@ -718,6 +728,13 @@ async fn migration_preserves_fact_dimensions_and_builds_one_tree() {
         .await
         .unwrap();
     assert_eq!((walked, distinct), (total, total));
+    let paired_directory_units: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM business_master_data_directory WHERE resource_type='business_unit' AND legal_entity_id IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(paired_directory_units, 0);
 
     pool.close().await;
     sqlx::query(AssertSqlSafe(format!(
