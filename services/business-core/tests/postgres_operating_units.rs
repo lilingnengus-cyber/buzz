@@ -1,5 +1,5 @@
 use business_core::{
-    master_data::SaveCoreMasterData,
+    master_data::{CoreMasterDataService, SaveCoreMasterData},
     operating_units::{descendant_ids, has_active_descendants, validate_parent},
     PgStore,
 };
@@ -253,6 +253,142 @@ async fn operating_unit_scope_includes_descendants_without_siblings_or_duplicate
             .unwrap()
             .contains(&hangzhou)
     );
+
+    pool.close().await;
+    sqlx::query(AssertSqlSafe(format!(
+        "DROP DATABASE \"{database_name}\" WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing() {
+    let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
+        eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let admin = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    let database_name = format!("bizos_tree_{}", Uuid::new_v4().simple());
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE DATABASE \"{database_name}\""
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    let options = PgConnectOptions::from_str(&database_url)
+        .unwrap()
+        .database(&database_name);
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let migrations_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../business-auth-gateway/migrations");
+    Migrator::new(migrations_path.as_path())
+        .await
+        .unwrap()
+        .run(&pool)
+        .await
+        .unwrap();
+
+    let actor = Uuid::new_v4();
+    let role = Uuid::new_v4();
+    let selected_legal = Uuid::new_v4();
+    let compatibility_legal = Uuid::new_v4();
+    let operating_unit = Uuid::new_v4();
+    sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://identity.test','independent-dimensions','Independent Dimensions')")
+        .bind(actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_roles(id,role_key,name) VALUES($1,'independent_dimensions','Independent Dimensions')")
+        .bind(role)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage')")
+        .bind(role)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by) VALUES($1,$2,$1)",
+    )
+    .bind(actor)
+    .bind(role)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO business_group_profile(id,code,name,base_currency,timezone) VALUES($1,'DIM_GROUP','Dimension Group','CNY','Asia/Shanghai')")
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'DIM_SELECTED','Selected Legal','CN','CNY'),($2,'DIM_COMPAT','Compatibility Legal','CN','CNY')")
+        .bind(selected_legal)
+        .bind(compatibility_legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_units(id,legal_entity_id,is_operating_root,code,name) VALUES($1,$2,true,'DIM_UNIT','Independent Unit')")
+        .bind(operating_unit)
+        .bind(compatibility_legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)")
+        .bind(actor)
+        .bind(selected_legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)")
+        .bind(actor)
+        .bind(operating_unit)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let created = CoreMasterDataService::new(PgStore::new(pool.clone()))
+        .save(
+            actor,
+            Uuid::new_v4(),
+            None,
+            "independent-dimensions-customer",
+            &SaveCoreMasterData {
+                resource_type: "customer".into(),
+                code: "DIM_CUSTOMER".into(),
+                name: "Independent Customer".into(),
+                legal_entity_id: Some(selected_legal),
+                business_unit_id: Some(operating_unit),
+                parent_business_unit_id: None,
+                country_code: None,
+                functional_currency: None,
+                registration_number: None,
+                address: None,
+                credit_currency: Some("CNY".into()),
+                credit_limit_minor: Some(0),
+                payment_terms_days: Some(30),
+                expected_version: None,
+            },
+        )
+        .await
+        .unwrap();
+    let dimensions: (Uuid, Uuid) = sqlx::query_as(
+        "SELECT legal_entity_id,business_unit_id FROM business_customers WHERE id=$1",
+    )
+    .bind(created.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(dimensions, (selected_legal, operating_unit));
 
     pool.close().await;
     sqlx::query(AssertSqlSafe(format!(

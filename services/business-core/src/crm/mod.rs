@@ -76,7 +76,7 @@ impl CrmService {
     /// Return active, scoped choices without requiring unrelated master-data manage access.
     pub async fn options(&self, actor: Uuid) -> Result<Value, DomainError> {
         let s = self.scope(actor, "crm:read").await?;
-        let items:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name,'code',code,'resourceType',resource_type,'legalEntityId',legal_entity_id,'businessUnitId',business_unit_id) FROM business_master_data_directory WHERE status='active' AND ((resource_type='legal_entity' AND id=ANY($1)) OR (resource_type='business_unit' AND id=ANY($2) AND legal_entity_id=ANY($1)) OR (resource_type='customer' AND id=ANY($3) AND legal_entity_id=ANY($1) AND business_unit_id=ANY($2))) ORDER BY name,id")
+        let items:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name,'code',code,'resourceType',resource_type,'legalEntityId',legal_entity_id,'businessUnitId',business_unit_id) FROM business_master_data_directory WHERE status='active' AND ((resource_type='legal_entity' AND id=ANY($1)) OR (resource_type='business_unit' AND id=ANY($2)) OR (resource_type='customer' AND id=ANY($3))) ORDER BY name,id")
             .bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>()).fetch_all(self.store.pool()).await?;
         Ok(json!({"items":items}))
     }
@@ -120,7 +120,7 @@ impl CrmService {
             tx.commit().await?;
             return Ok(result);
         }
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units u JOIN business_legal_entities e ON e.id=u.legal_entity_id WHERE u.id=$1 AND e.id=$2 AND u.status='active' AND e.status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND legal_entity_id=$2 AND business_unit_id=$1 AND status='active'))")
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND status='active') AND EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$2 AND status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND status='active'))")
             .bind(input.business_unit_id).bind(input.legal_entity_id).bind(input.customer_id).fetch_one(&mut *tx).await?;
         if !valid {
             return Err(DomainError::NotFoundOrForbidden);

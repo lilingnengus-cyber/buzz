@@ -1094,9 +1094,15 @@ async fn validate_order_master_data(
     business_unit: Uuid,
     lines: &[SalesOrderLineInput],
 ) -> Result<Option<i32>, DomainError> {
-    let customer_row=sqlx::query("SELECT payment_terms_days FROM business_customers WHERE id=$1 AND legal_entity_id=$2 AND status='active'").bind(customer).bind(legal).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-    let unit_ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND legal_entity_id=$2 AND status='active')").bind(business_unit).bind(legal).fetch_one(&mut **tx).await?;
-    if !unit_ok {
+    let customer_row = sqlx::query(
+        "SELECT payment_terms_days FROM business_customers WHERE id=$1 AND status='active'",
+    )
+    .bind(customer)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(DomainError::NotFoundOrForbidden)?;
+    let dimensions_ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$1 AND status='active') AND EXISTS(SELECT 1 FROM business_units WHERE id=$2 AND status='active')").bind(legal).bind(business_unit).fetch_one(&mut **tx).await?;
+    if !dimensions_ok {
         return Err(DomainError::NotFoundOrForbidden);
     }
     for line in lines {

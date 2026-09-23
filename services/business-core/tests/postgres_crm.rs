@@ -24,6 +24,8 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     let outsider = Uuid::new_v4();
     let legal = Uuid::new_v4();
     let unit = Uuid::new_v4();
+    let customer_unit = Uuid::new_v4();
+    let compatibility_legal = Uuid::new_v4();
     let customer = Uuid::new_v4();
     let role = Uuid::new_v4();
     sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'crm-test',$1::text,'CRM User'),($2,'crm-test',$2::text,'Other User')").bind(actor).bind(outsider).execute(&pool).await.unwrap();
@@ -35,15 +37,17 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'crm:read'),($1,'crm:manage')").bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by) VALUES($1,$3,$1),($2,$3,$1)").bind(actor).bind(outsider).bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'CRM_LE','CRM LE','CN','CNY')").bind(legal).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'CRM_LE_COMPAT','CRM Compatibility LE','CN','CNY')").bind(compatibility_legal).execute(&pool).await.unwrap();
     sqlx::query(
         "INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,'CRM_BU','CRM BU')",
     )
     .bind(unit)
-    .bind(legal)
+    .bind(compatibility_legal)
     .execute(&pool)
     .await
     .unwrap();
-    sqlx::query("INSERT INTO business_customers(id,legal_entity_id,business_unit_id,code,name,credit_currency) VALUES($1,$2,$3,'CRM_C','CRM Customer','CNY')").bind(customer).bind(legal).bind(unit).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_units(id,legal_entity_id,code,name) VALUES($1,$2,'CRM_CUSTOMER_BU','CRM Customer BU')").bind(customer_unit).bind(legal).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_customers(id,legal_entity_id,business_unit_id,code,name,credit_currency) VALUES($1,$2,$3,'CRM_C','CRM Customer','CNY')").bind(customer).bind(legal).bind(customer_unit).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(legal).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(unit).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_customer_scopes(enterprise_user_id,customer_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(customer).execute(&pool).await.unwrap();

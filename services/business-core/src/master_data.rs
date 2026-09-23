@@ -558,7 +558,7 @@ async fn ensure_parents(
             .legal_entity_id
             .ok_or_else(|| DomainError::Invalid("legalEntityId is required".into()))?;
         let unit = i.business_unit_id;
-        let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_legal_entities e WHERE e.id=$1 AND e.status='active' AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM business_units u WHERE u.id=$2 AND u.legal_entity_id=e.id AND u.status='active')))").bind(legal).bind(unit).fetch_one(&mut **tx).await?;
+        let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$1 AND status='active') AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM business_units WHERE id=$2 AND status='active'))").bind(legal).bind(unit).fetch_one(&mut **tx).await?;
         if !ok {
             return Err(DomainError::NotFoundOrForbidden);
         }
