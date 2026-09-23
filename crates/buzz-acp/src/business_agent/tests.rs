@@ -483,3 +483,29 @@ fn prompt_distinguishes_business_dates_from_operational_timestamps() {
         }
     }
 }
+
+#[test]
+fn prompt_formats_monetary_values_consistently() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/money-field-contract.md");
+    for required in [
+        "ISO 4217",
+        "CNY 1,234.50",
+        "CNY 0.00",
+        "CNY -1,700.00",
+        "两位小数",
+        "千分位",
+        "缺失值",
+        "不能显示为零",
+        "expectedAmountMinor",
+        "creditLimitMinor",
+        "不能跨币种合计",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing monetary display rule in {surface}: {required}"
+            );
+        }
+    }
+}
