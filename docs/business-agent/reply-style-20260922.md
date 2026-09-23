@@ -50,3 +50,13 @@
 仅重启 BizOS 后，新 ACP PID 76201 于 17:53:18 启动，安装 SHA256 为 `0df1d76084ba47a12d1eb457704d62f91b5408ac049ac095047e01c69241636b`；上版备份位于本机 `Application Support/com.shiyueshizi.pacioli/backups/bizos-shanghai-time-20260923/buzz-acp`，应用签名校验通过。
 
 真实只读查询事件 `3dc972eeb3eaf3d80921fe3c1e46db1b528c031ec1263c8e05081dbe4e372a2f`，追踪号 `e02f8075-f496-4da5-8f78-918b5374dde4`。客户端回复显示“数据时点：2026-09-23 17:55（UTC+8）”，并返回五笔订单。服务端审计确认唯一业务工具为 `search_sales_orders`，成功返回 5 条；其余事件仅为授权、委托、回复和撤销委托，没有业务写入。未运行全量 `just ci` 或 Windows 安装验收。
+
+## 2026-09-23 业务日期与时间戳规则
+
+中文 BizOS 回复进一步区分日期语义：`orderDate`、`businessDate`、`receiptDate`、`paymentDate`、`dueDate` 等业务日期保持服务端 `YYYY-MM-DD`，不附加时间或时区，也不做时区换算；`asOf`、`dataAsOf`、`createdAt`、`updatedAt`、`occurredAt`、`postedAt`、`reversedAt` 等带时区的运行、审计和状态时间戳转换为 `Asia/Shanghai`，并显示 `UTC+8`。无法可靠解析时保留服务器原值及原始时区。
+
+先增加提示契约测试并确认旧规范失败于缺少“业务日期字段”规则；补充规则后，12 项 `business_agent::tests` 通过。隔离模型夹具同时包含 `orderDate=2026-09-19`、`createdAt=2026-09-19T01:02:03Z`、`dataAsOf=2026-09-22T15:06:10Z` 和 `occurredAt=2026-09-22T15:06:12Z`，实际回复分别显示订单日期 `2026-09-19`、创建时间 `2026-09-19 09:02（UTC+8）`、数据时点及查询时间 `2026-09-22 23:06（UTC+8）`。
+
+安装 ACP SHA256 为 `7d8d78b194d4c5ebd75a785496be44a99eae41ed25407de1c71c973bcaa1925f`；上版备份位于本机 `Application Support/com.shiyueshizi.pacioli/backups/bizos-date-time-rules-20260923/buzz-acp`。签名校验通过，仅重启 BizOS，新 ACP PID 76632 于 22:12:17 启动。
+
+真实只读查询事件 `2c89977ac729c064201612d51f52a88b40c00360e314c40efc3e8e017426791f`，追踪号 `81a7abad-d5a0-4d39-9691-5d9cf5459b31`。客户端回复中五笔订单日期保持纯日期，数据时点显示“2026-09-23 22:12（UTC+8）”。服务端审计确认唯一业务工具为 `search_sales_orders`，成功返回 5 条；没有业务写入。未运行全量 `just ci` 或 Windows 安装验收。

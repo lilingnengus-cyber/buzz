@@ -418,3 +418,24 @@ fn adjustment_prompt_requires_verified_posting_and_preserves_management_boundary
         assert!(prompt.contains(required), "{required}");
     }
 }
+
+#[test]
+fn prompt_distinguishes_business_dates_from_operational_timestamps() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    for required in [
+        "业务日期字段",
+        "不做时区换算",
+        "orderDate",
+        "businessDate",
+        "createdAt",
+        "updatedAt",
+        "occurredAt",
+        "Asia/Shanghai",
+        "UTC+8",
+    ] {
+        assert!(
+            prompt.contains(required),
+            "missing date/time rule: {required}"
+        );
+    }
+}
