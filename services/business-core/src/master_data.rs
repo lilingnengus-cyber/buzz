@@ -4,7 +4,7 @@ mod write_authority;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
-    operating_units::{has_active_descendants, validate_parent},
+    operating_units::validate_parent,
     store::{outbox, PgStore},
 };
 use chrono::Utc;
@@ -326,7 +326,7 @@ impl CoreMasterDataService {
             {
                 return Err(DomainError::NotFoundOrForbidden);
             }
-            validate_parent(&mut tx, target_id, input.parent_business_unit_id).await?;
+            validate_parent(&mut *tx, target_id, input.parent_business_unit_id).await?;
         }
         if let Some(existing_id) = id {
             snapshot = self
