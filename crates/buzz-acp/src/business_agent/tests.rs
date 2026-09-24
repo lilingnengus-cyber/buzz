@@ -539,3 +539,32 @@ fn prompt_formats_quantities_and_rates_consistently() {
         }
     }
 }
+
+#[test]
+fn prompt_localizes_business_statuses_by_context() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/status-enum-contract.md");
+    for required in [
+        "状态语义取决于字段和资源类型",
+        "`pending`",
+        "等待审批",
+        "待质检",
+        "`blocked`",
+        "数据受阻",
+        "工作受阻",
+        "`unreserved` → “未预留库存”",
+        "`partial`",
+        "部分结果",
+        "部分完整",
+        "未知枚举",
+        "保留服务器原值",
+        "不能把未完成状态说成已完成",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing status/enum display rule in {surface}: {required}"
+            );
+        }
+    }
+}
