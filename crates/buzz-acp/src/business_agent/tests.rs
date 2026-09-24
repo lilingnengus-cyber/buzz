@@ -598,3 +598,34 @@ fn prompt_explains_business_reason_codes_safely() {
         }
     }
 }
+
+#[test]
+fn prompt_reports_query_scope_order_and_pagination_honestly() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/query-pagination-contract.md");
+    for required in [
+        "`pagination.hasMore`",
+        "`nextCursor`",
+        "`summary.nextOffset`",
+        "不要向用户展示不透明游标",
+        "当前页 5 条，仍有更多结果",
+        "共 5 条",
+        "不能仅因返回条数等于 limit",
+        "排序依据未提供",
+        "保持工具返回顺序",
+        "不能自行改排",
+        "不能推断总数",
+        "唯一匹配",
+        "读取全部分页",
+        "数据时点",
+        "授权范围",
+        "部分结果",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing query pagination rule in {surface}: {required}"
+            );
+        }
+    }
+}
