@@ -8,10 +8,10 @@
 
 生产运行版本：
 
-- Business Core：`6d45e80d7bfb53442459f736afa4af663d90920a`
-- Business Web：`98cccfe182180ea36bb7fa8d0818cd508fc05121`
-- Business Core 镜像：`shiyue-business-candidate-business-core:6d45e80d7bfb53442459f736afa4af663d90920a`
-- Business Web 目录：`/opt/business-platform/shared/business-web-98cccfe18-c10204f18240`
+- Business Core：`e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
+- Business Web：`e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
+- Business Core 镜像：`shiyue-business-candidate-business-core:e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
+- Business Web 目录：`/opt/business-platform/shared/business-web-e9d2cab5f-f5ee7b98af39`
 
 ## 发布与数据保护
 
@@ -30,7 +30,7 @@
 - `cargo fmt --all -- --check`
 - `cargo check --offline -p business-core`
 - `cargo clippy --offline -p business-core --all-targets -- -D warnings`
-- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`
+- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`；业务记录归属扩展后再次通过 `postgres_b2`、`postgres_b3`
 - Business Web：34 项测试通过，`tsc --noEmit` 通过，Vite 生产构建通过
 
 ## Native 生产验收
@@ -48,6 +48,8 @@
 5. 取消未保存的商机表单，没有新增商机或业务单据。
 6. 刷新 Native 页面后，四层路径仍完整显示。
 7. 客户、供应商和仓库台账使用“法定主体 / 经营单元”并列归属块，不再以箭头表达父子关系；客户记录在 Native 生产页面完成验证。
+8. 销售订单详情使用“法定主体 / 经营单元”并列归属块，旧的单独“法定主体 ID”字段已移除；在 `SO-202609-000005` 的 Native 生产详情完成验证。
+9. 库存台账生产空态正常；当前生产库存为 0 个仓库商品组合，因此行级归属展示由 PostgreSQL B2 测试验证。采购订单生产为 0 笔，其详情归属由 PostgreSQL B3 测试和前端测试验证。
 
 三次经营单元创建将 `business_core_audit_events` 从 38 增加到 41。
 
