@@ -32,7 +32,7 @@ const TYPES: Array<{
   },
   {
     id: "business_unit",
-    label: "经营主体",
+    label: "经营单元",
     short: "BU",
     description: "经营归属与核算口径",
   },
@@ -151,8 +151,7 @@ export function CoreMasterDataCenter() {
           <p>CORE DATA / AUTHORITATIVE REGISTER</p>
           <h1>核心数据中心</h1>
           <span>
-            以法定主体 → 经营主体 →
-            业务对象为统一关系主线，维护业务闭环依赖的权威基础数据。
+            法定主体负责签约与责任，经营组织独立成树；业务分别指定法定主体与经营单元。
           </span>
         </div>
         {data?.canManage && (
@@ -168,11 +167,11 @@ export function CoreMasterDataCenter() {
       {!error && (
         <fieldset
           className="master-dimensions"
-          aria-label="法人主体与经营组织并列管理"
+          aria-label="法定主体与经营组织并列管理"
         >
           <button type="button" onClick={() => setActiveType("legal_entity")}>
             <small>LEGAL ENTITIES</small>
-            <strong>法人主体</strong>
+            <strong>法定主体</strong>
             <span>{counts.legal_entity} 个签约与责任主体</span>
           </button>
           <div className="master-dimension-divider" aria-hidden="true">
@@ -649,7 +648,7 @@ function MasterFormModal({
           {!(["legal_entity", "business_unit"] as CoreMasterType[]).includes(
             type,
           ) && (
-            <Field label="经营主体 *">
+            <Field label="经营单元 *">
               <select
                 required
                 disabled={Boolean(record)}

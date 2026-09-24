@@ -109,7 +109,7 @@ export function CrmForm({
           </select>
         </label>
         <label>
-          法人主体
+          法定主体
           <select
             required
             value={legal}

@@ -328,7 +328,7 @@ export function ReturnAnalyticsPanel({ side }: { side: "sales" | "purchase" }) {
       <div>
         <span>本月退货净额</span>
         <strong>{formatMoney("CNY", amount)}</strong>
-        <small>{items.length} 个经营主体；冲销计入冲销当月，净额可为负</small>
+        <small>{items.length} 个经营单元；冲销计入冲销当月，净额可为负</small>
       </div>
       {sales && (
         <>

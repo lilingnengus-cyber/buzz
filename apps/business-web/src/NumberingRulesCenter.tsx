@@ -592,7 +592,7 @@ function NumberingRuleEditor({
                   按法定主体独立
                 </option>
                 <option value="business_unit" disabled={!businessUnitAllowed}>
-                  按经营主体独立
+                  按经营单元独立
                 </option>
               </select>
               <small>
@@ -675,7 +675,7 @@ function NumberingRuleEditor({
                   <span className="numbering-scope-value">
                     {scopeDimension === "legal_entity"
                       ? "法定主体编码"
-                      : "经营主体编码"}
+                      : "经营单元编码"}
                   </span>
                 )}
                 {segment.type === "sequence" && (
@@ -861,7 +861,7 @@ function previewNumber(
 
 function scopeLabel(value: NumberingRule["scopeDimension"]) {
   if (value === "legal_entity") return "法定主体独立";
-  if (value === "business_unit") return "经营主体独立";
+  if (value === "business_unit") return "经营单元独立";
   return "全局序号";
 }
 
