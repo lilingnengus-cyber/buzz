@@ -509,3 +509,33 @@ fn prompt_formats_monetary_values_consistently() {
         }
     }
 }
+
+#[test]
+fn prompt_formats_quantities_and_rates_consistently() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/quantity-rate-field-contract.md");
+    for required in [
+        "1,234.50 件",
+        "+12.50",
+        "0.00",
+        "0.13 → 13%",
+        "0.075 → 7.5%",
+        "0.12345 → 12.35%",
+        "缺失值",
+        "不能显示为 0.00",
+        "不能显示为 0%",
+        "precisionScale",
+        "不能猜测单位",
+        "turnoverRate",
+        "不乘以 100",
+        "最多保留两位小数",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing quantity/rate display rule in {surface}: {required}"
+            );
+        }
+    }
+}
