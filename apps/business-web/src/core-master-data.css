@@ -393,25 +393,40 @@
   font-size: 10px;
 }
 
-.master-hierarchy {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  overflow: hidden;
+.master-assignments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  min-width: 0;
 }
 
-.master-hierarchy span {
+.master-assignment {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px 7px 10px;
+  background: #edf3f5;
+  border-left: 3px solid var(--master-navy);
+}
+
+.master-assignment.operating {
+  background: #f7f1e6;
+  border-left-color: var(--master-gold);
+}
+
+.master-assignment small {
+  color: var(--muted);
+  font:
+    9px ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
+}
+
+.master-assignment strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.master-hierarchy i {
-  color: var(--master-gold);
-  font:
-    normal 18px ui-monospace,
-    monospace;
 }
 
 .master-attribute {

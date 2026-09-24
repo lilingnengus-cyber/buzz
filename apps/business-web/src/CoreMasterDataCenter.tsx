@@ -264,7 +264,7 @@ export function CoreMasterDataCenter() {
         <div className="master-register">
           <div className="master-register-head">
             <span>编码 / 名称</span>
-            <span>权威关系</span>
+            <span>独立归属</span>
             <span>业务属性</span>
             <span>状态 / 版本</span>
             <span>操作</span>
@@ -279,7 +279,7 @@ export function CoreMasterDataCenter() {
                 <strong>{item.name}</strong>
                 <small>更新 {formatDate(item.updatedAt)}</small>
               </div>
-              <Hierarchy item={item} />
+              <AuthorityAssignments item={item} />
               <div className="master-attribute">
                 <strong>{attribute(item)}</strong>
                 <small>{attributeNote(item)}</small>
@@ -482,29 +482,27 @@ function OperatingTreeRow({
   );
 }
 
-function Hierarchy({ item }: { item: CoreMasterRecord }) {
-  const steps =
-    item.resourceType === "legal_entity"
-      ? [{ id: "legal", name: item.name }]
-      : item.resourceType === "business_unit"
-        ? [
-            { id: "legal", name: item.legalEntityName },
-            { id: "unit", name: item.name },
-          ]
-        : [
-            { id: "legal", name: item.legalEntityName },
-            { id: "unit", name: item.businessUnitName },
-            { id: "object", name: item.name },
-          ];
-  const visible = steps.filter((step) => step.name);
+function AuthorityAssignments({ item }: { item: CoreMasterRecord }) {
+  if (item.resourceType === "legal_entity") {
+    return (
+      <div className="master-assignments" aria-label="法定责任边界">
+        <div className="master-assignment legal">
+          <small>责任边界</small>
+          <strong>法定主体</strong>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="master-hierarchy">
-      {visible.map((step, index) => (
-        <React.Fragment key={step.id}>
-          <span>{step.name}</span>
-          {index < visible.length - 1 && <i>›</i>}
-        </React.Fragment>
-      ))}
+    <div className="master-assignments" aria-label="法定主体与经营单元独立归属">
+      <div className="master-assignment legal">
+        <small>法定主体</small>
+        <strong>{item.legalEntityName ?? "未指定"}</strong>
+      </div>
+      <div className="master-assignment operating">
+        <small>经营单元</small>
+        <strong>{item.businessUnitName ?? "未指定"}</strong>
+      </div>
     </div>
   );
 }
