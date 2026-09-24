@@ -629,3 +629,32 @@ fn prompt_reports_query_scope_order_and_pagination_honestly() {
         }
     }
 }
+
+#[test]
+fn prompt_distinguishes_empty_query_outcomes() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/empty-query-contract.md");
+    for required in [
+        "当前范围内没有匹配项",
+        "当前页没有可见结果，仍有更多数据待读取",
+        "部分结果暂未返回可展示数据",
+        "`not_found_or_forbidden`",
+        "未找到或无权访问",
+        "不能把空数组解释为记录不存在",
+        "`items=[]`",
+        "`pagination.hasMore=true`",
+        "继续读取下一页",
+        "不能建立唯一匹配",
+        "没有结果不等于零值",
+        "不要生成资源链接",
+        "数据时点",
+        "查询记录",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing empty-query rule in {surface}: {required}"
+            );
+        }
+    }
+}
