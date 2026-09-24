@@ -9,9 +9,9 @@
 生产运行版本：
 
 - Business Core：`6d45e80d7bfb53442459f736afa4af663d90920a`
-- Business Web：`fc748eb6257ba13d249a607d742b2cb545914968`
+- Business Web：`98cccfe182180ea36bb7fa8d0818cd508fc05121`
 - Business Core 镜像：`shiyue-business-candidate-business-core:6d45e80d7bfb53442459f736afa4af663d90920a`
-- Business Web 目录：`/opt/business-platform/shared/business-web-fc748eb62-d4d84f8d4dee`
+- Business Web 目录：`/opt/business-platform/shared/business-web-98cccfe18-c10204f18240`
 
 ## 发布与数据保护
 
@@ -47,6 +47,7 @@
 4. 打开“新建商机”，确认“法定主体”和“业务单元”是两个独立字段；经营单元下拉包含根、事业部、区域和团队。
 5. 取消未保存的商机表单，没有新增商机或业务单据。
 6. 刷新 Native 页面后，四层路径仍完整显示。
+7. 客户、供应商和仓库台账使用“法定主体 / 经营单元”并列归属块，不再以箭头表达父子关系；客户记录在 Native 生产页面完成验证。
 
 三次经营单元创建将 `business_core_audit_events` 从 38 增加到 41。
 
