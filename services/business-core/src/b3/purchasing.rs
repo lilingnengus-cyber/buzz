@@ -406,7 +406,7 @@ impl PurchasingService {
             None,
         )
         .await?;
-        Ok(sqlx::query_as::<_,PurchaseOrderView>("SELECT id,purchase_order_number,legal_entity_id,supplier_id,currency::text,lifecycle_status,receiving_status,gross_amount,order_date,updated_at,version FROM purchase_orders WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND ($3::uuid IS NULL OR supplier_id=$3) ORDER BY updated_at DESC LIMIT $4")
+        Ok(sqlx::query_as::<_,PurchaseOrderView>("SELECT id,purchase_order_number,legal_entity_id,business_unit_id,supplier_id,currency::text,lifecycle_status,receiving_status,gross_amount,order_date,updated_at,version FROM purchase_orders WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND ($3::uuid IS NULL OR supplier_id=$3) ORDER BY updated_at DESC LIMIT $4")
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier_id).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
     }
 

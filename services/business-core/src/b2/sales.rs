@@ -651,7 +651,7 @@ impl SalesService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,SalesOrderSummary>("SELECT id,order_number,legal_entity_id,customer_id,currency::text,lifecycle_status,hold_status,fulfillment_status,gross_amount,order_date,updated_at,version FROM sales_orders WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND business_unit_id=ANY($3) ORDER BY updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,SalesOrderSummary>("SELECT id,order_number,legal_entity_id,business_unit_id,customer_id,currency::text,lifecycle_status,hold_status,fulfillment_status,gross_amount,order_date,updated_at,version FROM sales_orders WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND business_unit_id=ANY($3) ORDER BY updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

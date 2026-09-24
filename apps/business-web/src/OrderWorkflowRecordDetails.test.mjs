@@ -10,6 +10,7 @@ test("builds a readable sales-order detail record", () => {
     id: "order-1",
     orderNumber: "SO-2026-001",
     legalEntityId: "entity-1",
+    businessUnitId: "unit-1",
     customerId: "customer-1",
     currency: "CNY",
     lifecycleStatus: "confirmed",
@@ -24,6 +25,10 @@ test("builds a readable sales-order detail record", () => {
   assert.equal(detail.kind, "record-detail");
   assert.equal(detail.domain, "sales");
   assert.equal(detail.title, "销售订单 · SO-2026-001");
+  assert.deepEqual(detail.assignments, {
+    legalEntityId: "entity-1",
+    businessUnitId: "unit-1",
+  });
   assert.deepEqual(
     detail.fields.slice(0, 5).map(({ label, value }) => [label, value]),
     [

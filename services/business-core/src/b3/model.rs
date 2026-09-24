@@ -137,6 +137,7 @@ pub struct PurchaseOrderView {
     pub id: Uuid,
     pub purchase_order_number: String,
     pub legal_entity_id: Uuid,
+    pub business_unit_id: Uuid,
     pub supplier_id: Uuid,
     pub currency: String,
     pub lifecycle_status: String,

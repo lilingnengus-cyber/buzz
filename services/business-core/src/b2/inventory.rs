@@ -755,11 +755,12 @@ impl InventoryService {
             None,
         )
         .await?;
-        let rows=sqlx::query("SELECT legal_entity_id,warehouse_id,sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,on_hand_quantity-reserved_quantity-quarantined_quantity available_quantity,inventory_value,average_unit_cost,last_movement_id,updated_at,version FROM inventory_balances WHERE legal_entity_id=ANY($1) AND warehouse_id=ANY($2) AND ($3::uuid IS NULL OR sku_id=$3) ORDER BY updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(sku).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query("SELECT balance.legal_entity_id,warehouse.business_unit_id,balance.warehouse_id,balance.sku_id,balance.on_hand_quantity,balance.reserved_quantity,balance.quarantined_quantity,balance.on_hand_quantity-balance.reserved_quantity-balance.quarantined_quantity available_quantity,balance.inventory_value,balance.average_unit_cost,balance.last_movement_id,balance.updated_at,balance.version FROM inventory_balances balance JOIN business_warehouses warehouse ON warehouse.id=balance.warehouse_id WHERE balance.legal_entity_id=ANY($1) AND balance.warehouse_id=ANY($2) AND ($3::uuid IS NULL OR balance.sku_id=$3) ORDER BY balance.updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(sku).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         Ok(rows
             .into_iter()
             .map(|row| InventoryBalanceView {
                 legal_entity_id: row.get("legal_entity_id"),
+                business_unit_id: row.get("business_unit_id"),
                 warehouse_id: row.get("warehouse_id"),
                 sku_id: row.get("sku_id"),
                 on_hand_quantity: DecimalString(row.get("on_hand_quantity")),
@@ -818,7 +819,7 @@ impl InventoryService {
             None,
         )
         .await?;
-        let rows = sqlx::query_as::<_, InventoryMovementView>("SELECT id,legal_entity_id,warehouse_id,sku_id,movement_type,quantity,unit_cost,total_cost,business_date,posted_at FROM inventory_movements WHERE legal_entity_id=ANY($1) AND warehouse_id=ANY($2) AND ($3::uuid IS NULL OR sku_id=$3) ORDER BY posted_at DESC,id DESC LIMIT $4")
+        let rows = sqlx::query_as::<_, InventoryMovementView>("SELECT movement.id,movement.legal_entity_id,warehouse.business_unit_id,movement.warehouse_id,movement.sku_id,movement.movement_type,movement.quantity,movement.unit_cost,movement.total_cost,movement.business_date,movement.posted_at FROM inventory_movements movement JOIN business_warehouses warehouse ON warehouse.id=movement.warehouse_id WHERE movement.legal_entity_id=ANY($1) AND movement.warehouse_id=ANY($2) AND ($3::uuid IS NULL OR movement.sku_id=$3) ORDER BY movement.posted_at DESC,movement.id DESC LIMIT $4")
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>())
             .bind(sku_id)

@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { AuthorityAssignmentPair } from "./AuthorityAssignmentPair";
 import type { RegisterModalAction } from "./OrderWorkflowRegisters";
 
 export type WorkflowModalState =
@@ -107,6 +108,9 @@ export function RecordDetail({
         <span>业务记录 / Authoritative record</span>
         <p>{state.subtitle}</p>
       </div>
+      {state.assignments && (
+        <AuthorityAssignmentPair {...state.assignments} />
+      )}
       <dl className="record-detail-grid">
         {state.fields.map((field) => (
           <div

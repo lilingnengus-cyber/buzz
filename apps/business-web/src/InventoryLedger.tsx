@@ -1,4 +1,5 @@
 import React from "react";
+import { AuthorityAssignmentPair } from "./AuthorityAssignmentPair";
 import {
   type ApiFailure,
   type Envelope,
@@ -302,6 +303,7 @@ function BalanceTable({ items }: { items: InventoryBalance[] }) {
         <thead>
           <tr>
             <th>商品 / 仓库</th>
+            <th>独立归属</th>
             <th>在手</th>
             <th>预占</th>
             <th>隔离</th>
@@ -325,6 +327,13 @@ function BalanceTable({ items }: { items: InventoryBalance[] }) {
                   <small title={item.warehouseId}>
                     仓库 {shortId(item.warehouseId)} · v{item.version}
                   </small>
+                </td>
+                <td data-label="独立归属">
+                  <AuthorityAssignmentPair
+                    compact
+                    legalEntityId={item.legalEntityId}
+                    businessUnitId={item.businessUnitId}
+                  />
                 </td>
                 <td data-label="在手">{formatQuantity(item.onHandQuantity)}</td>
                 <td data-label="预占" className={locked > 0 ? "locked" : ""}>
@@ -370,6 +379,7 @@ function MovementTable({ items }: { items: InventoryMovement[] }) {
             <th>业务日期</th>
             <th>流水类型</th>
             <th>商品 / 仓库</th>
+            <th>独立归属</th>
             <th>数量</th>
             <th>单位成本</th>
             <th>成本金额</th>
@@ -392,6 +402,13 @@ function MovementTable({ items }: { items: InventoryMovement[] }) {
                 <small title={item.warehouseId}>
                   仓库 {shortId(item.warehouseId)}
                 </small>
+              </td>
+              <td data-label="独立归属">
+                <AuthorityAssignmentPair
+                  compact
+                  legalEntityId={item.legalEntityId}
+                  businessUnitId={item.businessUnitId}
+                />
               </td>
               <td
                 data-label="数量"

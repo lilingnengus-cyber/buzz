@@ -14,7 +14,7 @@ impl SalesService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, SalesOrderSummary>("SELECT id,order_number,legal_entity_id,customer_id,currency::text,lifecycle_status,hold_status,fulfillment_status,gross_amount,order_date,updated_at,version FROM sales_orders WHERE id=$1 AND legal_entity_id=ANY($2) AND customer_id=ANY($3) AND business_unit_id=ANY($4)")
+        sqlx::query_as::<_, SalesOrderSummary>("SELECT id,order_number,legal_entity_id,business_unit_id,customer_id,currency::text,lifecycle_status,hold_status,fulfillment_status,gross_amount,order_date,updated_at,version FROM sales_orders WHERE id=$1 AND legal_entity_id=ANY($2) AND customer_id=ANY($3) AND business_unit_id=ANY($4)")
             .bind(id)
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>())

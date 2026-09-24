@@ -541,6 +541,7 @@ export type SalesOrder = {
   id: string;
   orderNumber: string;
   legalEntityId: string;
+  businessUnitId: string;
   customerId: string;
   currency: string;
   lifecycleStatus: string;
@@ -585,6 +586,7 @@ export type SalesOrderConfirmationPreview = {
 
 export type InventoryBalance = {
   legalEntityId: string;
+  businessUnitId: string;
   warehouseId: string;
   skuId: string;
   onHandQuantity: string;
@@ -898,6 +900,7 @@ export type InventoryOpening = {
 export type InventoryMovement = {
   id: string;
   legalEntityId: string;
+  businessUnitId: string;
   warehouseId: string;
   skuId: string;
   movementType: string;
@@ -912,6 +915,7 @@ export type PurchaseOrder = {
   id: string;
   purchaseOrderNumber: string;
   legalEntityId: string;
+  businessUnitId: string;
   supplierId: string;
   currency: string;
   lifecycleStatus: string;

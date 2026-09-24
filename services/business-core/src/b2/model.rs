@@ -249,6 +249,7 @@ pub struct SalesOrderSummary {
     pub id: Uuid,
     pub order_number: String,
     pub legal_entity_id: Uuid,
+    pub business_unit_id: Uuid,
     pub customer_id: Uuid,
     pub currency: String,
     pub lifecycle_status: String,
@@ -302,6 +303,7 @@ impl From<Decimal> for DecimalString {
 #[serde(rename_all = "camelCase")]
 pub struct InventoryBalanceView {
     pub legal_entity_id: Uuid,
+    pub business_unit_id: Uuid,
     pub warehouse_id: Uuid,
     pub sku_id: Uuid,
     pub on_hand_quantity: DecimalString,
@@ -470,6 +472,7 @@ pub struct InventoryOpeningView {
 pub struct InventoryMovementView {
     pub id: Uuid,
     pub legal_entity_id: Uuid,
+    pub business_unit_id: Uuid,
     pub warehouse_id: Uuid,
     pub sku_id: Uuid,
     pub movement_type: String,

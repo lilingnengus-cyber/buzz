@@ -16,6 +16,10 @@ export type RecordDetailAction = {
   domain: "sales" | "purchase";
   title: string;
   subtitle: string;
+  assignments?: {
+    legalEntityId: string;
+    businessUnitId: string;
+  };
   fields: Array<{
     label: string;
     value: string;
@@ -40,10 +44,13 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       detailField("冻结状态", statusLabel(row.holdStatus), "status"),
       detailField("订单日期", row.orderDate),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -148,10 +155,13 @@ export function purchaseOrderDetail(row: PurchaseOrder): RecordDetailAction {
       detailField("到货状态", statusLabel(row.receivingStatus), "status"),
       detailField("订单日期", row.orderDate),
       detailField("供应商 ID", row.supplierId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -323,8 +333,9 @@ function recordDetail(
   title: string,
   subtitle: string,
   fields: RecordDetailAction["fields"],
+  assignments?: RecordDetailAction["assignments"],
 ): RecordDetailAction {
-  return { kind: "record-detail", domain, title, subtitle, fields };
+  return { kind: "record-detail", domain, title, subtitle, fields, assignments };
 }
 
 function detailField(
