@@ -721,3 +721,39 @@ fn prompt_distinguishes_name_resolution_outcomes() {
         }
     }
 }
+
+#[test]
+fn prompt_consolidates_missing_business_fields() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/missing-field-follow-up-contract.md");
+    for required in [
+        "已确认",
+        "还缺",
+        "一次性",
+        "不要重复追问",
+        "最新明确值为准",
+        "冲突",
+        "客户／供应商",
+        "商品／SKU",
+        "数量",
+        "单价",
+        "币种",
+        "业务日期",
+        "仓库",
+        "计量单位",
+        "付款方式",
+        "外部参考号",
+        "不调用写入工具",
+        "确认预览",
+        "内部 UUID",
+        "受验证的当前对话",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing missing-field follow-up rule in {surface}: {required}"
+            );
+        }
+    }
+}
