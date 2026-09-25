@@ -658,3 +658,35 @@ fn prompt_distinguishes_empty_query_outcomes() {
         }
     }
 }
+
+#[test]
+fn prompt_uses_verified_business_labels_for_resource_links() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/resource-link-display-contract.md");
+    for required in [
+        "业务编号优先",
+        "不要把内部 UUID 作为链接文字",
+        "`resourceRefs`",
+        "`bizUri`",
+        "`type`",
+        "`id`",
+        "不得修改、拼接或修复",
+        "`agent_query`",
+        "查询记录",
+        "同一资源",
+        "不生成链接",
+        "裸 `biz://`",
+        "Markdown",
+        "销售订单",
+        "客户应收",
+        "供应商应付",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing resource-link display rule in {surface}: {required}"
+            );
+        }
+    }
+}
