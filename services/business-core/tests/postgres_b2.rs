@@ -453,14 +453,14 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         post_shipment_options.items[0].shippable_quantity.0,
         Decimal::from(5)
     );
-    assert_eq!(
-        sales
-            .shipments(fixture.actor, Some(shipment.id), 10)
-            .await
-            .unwrap()
-            .len(),
-        1
-    );
+    let shipment_view = sales
+        .shipments(fixture.actor, Some(shipment.id), 10)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert_eq!(shipment_view.legal_entity_id, fixture.legal_entity);
+    assert_eq!(shipment_view.business_unit_id, fixture.business_unit);
     assert_eq!(
         inventory.openings(fixture.actor, 10).await.unwrap().len(),
         1
@@ -491,6 +491,8 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .unwrap();
     assert_eq!(receivable.original_amount.0, Decimal::from(300));
     assert_eq!(receivable.due_date, date + chrono::Duration::days(30));
+    assert_eq!(receivable.legal_entity_id, fixture.legal_entity);
+    assert_eq!(receivable.business_unit_id, fixture.business_unit);
 
     let race_one = receipt(&settlement, &fixture, date, 200, "receipt-race-create-0001").await;
     let race_two = receipt(&settlement, &fixture, date, 200, "receipt-race-create-0002").await;

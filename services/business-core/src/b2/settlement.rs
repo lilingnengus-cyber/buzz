@@ -576,7 +576,7 @@ impl SettlementService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,ReceivableView>("SELECT id,receivable_number,legal_entity_id,customer_id,sales_order_id,shipment_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND current_date>due_date) is_overdue,GREATEST(current_date-due_date,0)::int overdue_days,updated_at,version FROM trade_receivables WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,ReceivableView>("SELECT r.id,r.receivable_number,r.legal_entity_id,o.business_unit_id,r.customer_id,r.sales_order_id,r.shipment_id,r.currency::text,r.original_amount,r.settled_amount,r.open_amount,r.due_date,r.status,(r.open_amount>0 AND current_date>r.due_date) is_overdue,GREATEST(current_date-r.due_date,0)::int overdue_days,r.updated_at,r.version FROM trade_receivables r JOIN sales_orders o ON o.id=r.sales_order_id WHERE r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND ($3::uuid IS NULL OR r.customer_id=$3) ORDER BY r.due_date,r.id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

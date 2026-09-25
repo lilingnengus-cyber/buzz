@@ -451,6 +451,15 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         .await
         .unwrap();
     assert_balance(&pool, &fixture, "20", "2200", "110").await;
+    let goods_receipt = receiving
+        .receipts(fixture.actor, Some(fixture.supplier), 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|item| item.id == first.id)
+        .unwrap();
+    assert_eq!(goods_receipt.legal_entity_id, fixture.legal_entity);
+    assert_eq!(goods_receipt.business_unit_id, fixture.business_unit);
     let order_status =
         sqlx::query("SELECT lifecycle_status,receiving_status FROM purchase_orders WHERE id=$1")
             .bind(order.id)
@@ -482,6 +491,15 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         payable_rows[1].get::<Decimal, _>("original_amount"),
         decimal("480")
     );
+    let payable = payables
+        .payables(fixture.actor, Some(fixture.supplier), 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|item| item.purchase_order_id == order.id)
+        .unwrap();
+    assert_eq!(payable.legal_entity_id, fixture.legal_entity);
+    assert_eq!(payable.business_unit_id, fixture.business_unit);
 
     let payment = payables
         .create_payment(

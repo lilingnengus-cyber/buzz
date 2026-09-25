@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  goodsReceiptDetail,
+  payableDetail,
   receiptDetail,
+  receivableDetail,
   returnDetail,
   salesOrderDetail,
+  shipmentDetail,
   statusLabel,
 } from "./OrderWorkflowRecordDetails.ts";
 
@@ -98,6 +102,83 @@ test("inherits return assignments from its source order", () => {
     legalEntityId: "entity-1",
     businessUnitId: "unit-1",
   });
+});
+
+test("shows source-order assignments across fulfillment documents", () => {
+  const assignments = {
+    legalEntityId: "entity-1",
+    businessUnitId: "unit-1",
+  };
+  const documents = [
+    shipmentDetail({
+      id: "shipment-1",
+      shipmentNumber: "SHP-001",
+      salesOrderId: "order-1",
+      ...assignments,
+      warehouseId: "warehouse-1",
+      shipmentDate: "2026-09-25",
+      status: "confirmed",
+      confirmedAt: "2026-09-25T08:30:00Z",
+      updatedAt: "2026-09-25T08:30:00Z",
+      version: 2,
+    }),
+    receivableDetail({
+      id: "receivable-1",
+      receivableNumber: "AR-001",
+      ...assignments,
+      customerId: "customer-1",
+      salesOrderId: "order-1",
+      shipmentId: "shipment-1",
+      currency: "CNY",
+      originalAmount: "100",
+      settledAmount: "0",
+      openAmount: "100",
+      dueDate: "2026-10-25",
+      status: "open",
+      isOverdue: false,
+      overdueDays: 0,
+      updatedAt: "2026-09-25T08:30:00Z",
+      version: 1,
+    }),
+    goodsReceiptDetail({
+      id: "receipt-1",
+      goodsReceiptNumber: "GR-001",
+      purchaseOrderId: "order-1",
+      ...assignments,
+      supplierId: "supplier-1",
+      warehouseId: "warehouse-1",
+      receiptDate: "2026-09-25",
+      status: "confirmed",
+      currency: "CNY",
+      grossAmount: "100",
+      inventoryCostAmount: "100",
+      updatedAt: "2026-09-25T08:30:00Z",
+      version: 2,
+    }),
+    payableDetail({
+      id: "payable-1",
+      payableNumber: "AP-001",
+      ...assignments,
+      supplierId: "supplier-1",
+      purchaseOrderId: "order-1",
+      goodsReceiptId: "receipt-1",
+      currency: "CNY",
+      originalAmount: "100",
+      settledAmount: "0",
+      openAmount: "100",
+      dueDate: "2026-10-25",
+      status: "open",
+      isOverdue: false,
+      overdueDays: 0,
+      updatedAt: "2026-09-25T08:30:00Z",
+      version: 1,
+    }),
+  ];
+
+  for (const detail of documents) {
+    assert.deepEqual(detail.assignments, assignments);
+    assert.equal(detail.fields.some(({ label }) => label === "法定主体 ID"), false);
+  }
 });
 
 test("keeps status labels consistent between rows and details", () => {

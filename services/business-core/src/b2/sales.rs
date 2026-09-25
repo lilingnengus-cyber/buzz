@@ -673,7 +673,7 @@ impl SalesService {
         )
         .await?;
         let rows = sqlx::query_as::<_, ShipmentView>(
-            "SELECT s.id,s.shipment_number,s.sales_order_id,s.warehouse_id,s.shipment_date,s.status,s.confirmed_at,s.updated_at,s.version FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE o.legal_entity_id=ANY($1) AND s.warehouse_id=ANY($2) AND ($3::uuid IS NULL OR s.id=$3) ORDER BY s.shipment_date DESC,s.id DESC LIMIT $4",
+            "SELECT s.id,s.shipment_number,s.sales_order_id,o.legal_entity_id,o.business_unit_id,s.warehouse_id,s.shipment_date,s.status,s.confirmed_at,s.updated_at,s.version FROM shipments s JOIN sales_orders o ON o.id=s.sales_order_id WHERE o.legal_entity_id=ANY($1) AND s.warehouse_id=ANY($2) AND ($3::uuid IS NULL OR s.id=$3) ORDER BY s.shipment_date DESC,s.id DESC LIMIT $4",
         )
         .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
         .bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>())

@@ -754,7 +754,7 @@ impl ReceivingService {
             None,
         )
         .await?;
-        Ok(sqlx::query_as::<_,GoodsReceiptView>("SELECT id,goods_receipt_number,purchase_order_id,legal_entity_id,supplier_id,warehouse_id,receipt_date,status,currency::text,gross_amount,inventory_cost_amount,updated_at,version FROM goods_receipts WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND warehouse_id=ANY($3) AND ($4::uuid IS NULL OR supplier_id=$4) ORDER BY updated_at DESC LIMIT $5").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
+        Ok(sqlx::query_as::<_,GoodsReceiptView>("SELECT gr.id,gr.goods_receipt_number,gr.purchase_order_id,gr.legal_entity_id,o.business_unit_id,gr.supplier_id,gr.warehouse_id,gr.receipt_date,gr.status,gr.currency::text,gr.gross_amount,gr.inventory_cost_amount,gr.updated_at,gr.version FROM goods_receipts gr JOIN purchase_orders o ON o.id=gr.purchase_order_id WHERE gr.legal_entity_id=ANY($1) AND gr.supplier_id=ANY($2) AND gr.warehouse_id=ANY($3) AND ($4::uuid IS NULL OR gr.supplier_id=$4) ORDER BY gr.updated_at DESC LIMIT $5").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
     }
     async fn receipt_scope(&self, id: Uuid) -> Result<(Uuid, Uuid, Uuid), DomainError> {
         let row = sqlx::query(

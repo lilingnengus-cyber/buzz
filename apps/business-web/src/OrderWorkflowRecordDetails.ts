@@ -71,6 +71,10 @@ export function shipmentDetail(row: Shipment): RecordDetailAction {
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -106,10 +110,13 @@ export function receivableDetail(row: Receivable): RecordDetailAction {
       detailField("销售订单 ID", row.salesOrderId, "id"),
       detailField("出库单 ID", row.shipmentId, "id"),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -193,10 +200,13 @@ export function goodsReceiptDetail(row: GoodsReceipt): RecordDetailAction {
       detailField("采购订单 ID", row.purchaseOrderId, "id"),
       detailField("供应商 ID", row.supplierId, "id"),
       detailField("仓库 ID", row.warehouseId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -232,10 +242,13 @@ export function payableDetail(row: Payable): RecordDetailAction {
       detailField("采购订单 ID", row.purchaseOrderId, "id"),
       detailField("收货单 ID", row.goodsReceiptId, "id"),
       detailField("供应商 ID", row.supplierId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 

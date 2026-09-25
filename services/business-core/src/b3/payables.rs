@@ -591,7 +591,7 @@ impl PayablesService {
             None,
         )
         .await?;
-        Ok(sqlx::query_as::<_,PayableView>("SELECT id,payable_number,legal_entity_id,supplier_id,purchase_order_id,goods_receipt_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND CURRENT_DATE>due_date) is_overdue,GREATEST(CURRENT_DATE-due_date,0) overdue_days,updated_at,version FROM trade_payables WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND ($3::uuid IS NULL OR supplier_id=$3) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
+        Ok(sqlx::query_as::<_,PayableView>("SELECT p.id,p.payable_number,p.legal_entity_id,o.business_unit_id,p.supplier_id,p.purchase_order_id,p.goods_receipt_id,p.currency::text,p.original_amount,p.settled_amount,p.open_amount,p.due_date,p.status,(p.open_amount>0 AND CURRENT_DATE>p.due_date) is_overdue,GREATEST(CURRENT_DATE-p.due_date,0) overdue_days,p.updated_at,p.version FROM trade_payables p JOIN purchase_orders o ON o.id=p.purchase_order_id WHERE p.legal_entity_id=ANY($1) AND p.supplier_id=ANY($2) AND ($3::uuid IS NULL OR p.supplier_id=$3) ORDER BY p.due_date,p.id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
     }
     pub async fn payments(
         &self,

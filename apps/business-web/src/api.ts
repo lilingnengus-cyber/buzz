@@ -772,6 +772,7 @@ export type Receivable = {
   id: string;
   receivableNumber: string;
   legalEntityId: string;
+  businessUnitId: string;
   customerId: string;
   salesOrderId: string;
   shipmentId: string;
@@ -807,6 +808,8 @@ export type Shipment = {
   id: string;
   shipmentNumber: string;
   salesOrderId: string;
+  legalEntityId: string;
+  businessUnitId: string;
   warehouseId: string;
   shipmentDate: string;
   status: string;
@@ -1085,6 +1088,7 @@ export type GoodsReceipt = {
   goodsReceiptNumber: string;
   purchaseOrderId: string;
   legalEntityId: string;
+  businessUnitId: string;
   supplierId: string;
   warehouseId: string;
   receiptDate: string;
@@ -1176,6 +1180,7 @@ export type Payable = {
   id: string;
   payableNumber: string;
   legalEntityId: string;
+  businessUnitId: string;
   supplierId: string;
   purchaseOrderId: string;
   goodsReceiptId: string;
