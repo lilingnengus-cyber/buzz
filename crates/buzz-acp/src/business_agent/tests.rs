@@ -893,6 +893,8 @@ fn prompt_requires_a_scannable_batch_query_list() {
         "金额／数量",
         "业务日期",
         "详情链接",
+        "逐项呈现",
+        "不能只在开头汇总",
         "返回顺序",
         "分页",
         "部分结果",
