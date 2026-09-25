@@ -7,6 +7,7 @@ import {
   lifeSessionRenewalDelay,
   parseLifeEmbedCallback,
   readLifeEmbedCode,
+  shouldRenewLifeEmbedInPlace,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession.ts";
 
@@ -82,4 +83,11 @@ test("automatic recovery is capped at one attempt", () => {
   assert.equal(canAttemptLifeRecovery(1), false);
   assert.equal(canAttemptLifeRecovery(2), false);
   assert.equal(canAttemptLifeRecovery(-1), false);
+});
+
+test("replaces an expired iframe instead of asking it to renew", () => {
+  assert.equal(shouldRenewLifeEmbedInPlace("authenticated", true), true);
+  assert.equal(shouldRenewLifeEmbedInPlace("expired", true), false);
+  assert.equal(shouldRenewLifeEmbedInPlace("failed", true), false);
+  assert.equal(shouldRenewLifeEmbedInPlace("authenticated", false), false);
 });

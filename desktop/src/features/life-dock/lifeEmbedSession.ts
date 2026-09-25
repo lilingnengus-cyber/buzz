@@ -109,3 +109,14 @@ export async function subscribeToLifeEmbedCallbacks(
 export function canAttemptLifeRecovery(attempts: number): boolean {
   return Number.isInteger(attempts) && attempts >= 0 && attempts < 1;
 }
+
+/**
+ * An iframe that has already reported expiry cannot be trusted to accept an
+ * in-place credential rotation; load a fresh bootstrap page for recovery.
+ */
+export function shouldRenewLifeEmbedInPlace(
+  phase: string,
+  bridgeReady: boolean,
+): boolean {
+  return phase === "authenticated" && bridgeReady;
+}

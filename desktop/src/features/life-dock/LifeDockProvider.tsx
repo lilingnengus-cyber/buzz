@@ -49,6 +49,7 @@ import { useLifeDockWidth } from "./useLifeDockWidth";
 import {
   canAttemptLifeRecovery,
   readLifeEmbedCode,
+  shouldRenewLifeEmbedInPlace,
   validateLifeEmbedUrl,
 } from "./lifeEmbedSession";
 import { useLifeAuth } from "../life-auth";
@@ -407,7 +408,10 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
         const embedUrl = validateLifeEmbedUrl(config, issued.embedUrl);
         if (!embedUrl) throw new Error("LifeOS bootstrap URL was rejected.");
         embedSessionIdRef.current = issued.embedSessionId;
-        if (renewExisting && bridgeReady) {
+        if (
+          renewExisting &&
+          shouldRenewLifeEmbedInPlace(auth.phase, bridgeReady)
+        ) {
           const code = readLifeEmbedCode(config, embedUrl);
           if (code && post("RENEW_SESSION", { code })) return;
         }
@@ -438,7 +442,7 @@ export function LifeDockProvider({ children }: React.PropsWithChildren) {
           setSessionStarting(false);
         });
     },
-    [bridgeReady, config, gateway, homeResource, lifeAuth, post],
+    [auth.phase, bridgeReady, config, gateway, homeResource, lifeAuth, post],
   );
 
   React.useEffect(() => {
