@@ -854,3 +854,30 @@ fn prompt_requires_a_draft_update_receipt_with_version_conflict_recovery() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_structured_non_successful_query_reply() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/query-outcome-contract.md");
+    for required in [
+        "查询结果说明",
+        "查询范围",
+        "完整性",
+        "当前范围内没有匹配项",
+        "部分结果",
+        "未找到或无权访问",
+        "已验证原因",
+        "查询记录",
+        "追踪号",
+        "下一步建议",
+        "不展示内部 UUID",
+        "不推断记录不存在",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing query-outcome rule in {surface}: {required}"
+            );
+        }
+    }
+}
