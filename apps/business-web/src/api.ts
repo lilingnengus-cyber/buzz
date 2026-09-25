@@ -478,6 +478,7 @@ export type DataQuality = {
 export type OrderProfit = {
   salesOrderId: string;
   legalEntityId: string;
+  businessUnitId: string;
   customerId: string;
   currency: string;
   netRevenue: string;
@@ -495,6 +496,8 @@ export type ProfitabilityRow = {
   dimensionOneId: string | null;
   dimensionTwo?: string | null;
   dimensionTwoId?: string | null;
+  legalEntityIds: string[];
+  businessUnitIds: string[];
   currency: string;
   netRevenue: string;
   grossProfit: string;

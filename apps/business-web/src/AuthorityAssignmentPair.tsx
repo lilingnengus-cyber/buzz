@@ -2,26 +2,41 @@ import "./authority-assignment-pair.css";
 
 export function AuthorityAssignmentPair({
   legalEntityId,
+  legalEntityIds,
   businessUnitId,
   businessUnitIds,
+  legalEntityFallback = "未指定法定主体",
   businessUnitFallback = "待核销归属",
   compact = false,
 }: {
-  legalEntityId: string;
+  legalEntityId?: string;
+  legalEntityIds?: string[];
   businessUnitId?: string;
   businessUnitIds?: string[];
+  legalEntityFallback?: string;
   businessUnitFallback?: string;
   compact?: boolean;
 }) {
   const operatingUnits =
     businessUnitIds ?? (businessUnitId ? [businessUnitId] : []);
+  const legalEntities =
+    legalEntityIds ?? (legalEntityId ? [legalEntityId] : []);
   return (
     <div
       className={`authority-assignment-pair${compact ? " compact" : ""}`}
       role="group"
       aria-label="法定主体与经营单元独立归属"
     >
-      <Assignment label="法定主体" values={[legalEntityId]} tone="legal" />
+      <Assignment
+        label={
+          legalEntities.length > 1
+            ? `法定主体 · ${legalEntities.length} 项`
+            : "法定主体"
+        }
+        values={legalEntities}
+        fallback={legalEntityFallback}
+        tone="legal"
+      />
       <Assignment
         label={
           operatingUnits.length > 1

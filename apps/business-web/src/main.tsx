@@ -1853,6 +1853,11 @@ function OrderProfits({ id }: { id?: string }) {
                 <small>{row.dataAsOf}</small>
               </div>
               <strong>{formatMoney(row.currency, row.netRevenue)}</strong>
+              <AuthorityAssignmentPair
+                compact
+                legalEntityId={row.legalEntityId}
+                businessUnitId={row.businessUnitId}
+              />
               <span>毛利 {formatAmount(row.grossProfit)}</span>
               <span>贡献利润 {formatAmount(row.contributionProfit)}</span>
               <div>
@@ -1920,6 +1925,13 @@ function Profitability() {
                 {row.dimensionOneId ? short(row.dimensionOneId) : "未归属"}
               </code>
               <strong>{formatMoney(row.currency, row.netRevenue)}</strong>
+              {(dimension === "legal_entity" || dimension === "business_unit") && (
+                <AuthorityAssignmentPair
+                  compact
+                  legalEntityIds={row.legalEntityIds}
+                  businessUnitIds={row.businessUnitIds}
+                />
+              )}
               <span>毛利 {formatAmount(row.grossProfit)}</span>
               <span>贡献利润 {formatAmount(row.contributionProfit)}</span>
               <div>

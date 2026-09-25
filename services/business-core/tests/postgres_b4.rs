@@ -322,6 +322,30 @@ async fn b4_postgres_profit_projection_adjustment_reporting_and_concurrency() {
             "{dimension}"
         );
     }
+    let legal_entity_profitability = reporting
+        .profitability(f.actor, "2026-08", "CNY", "legal_entity", None, 100)
+        .await
+        .unwrap();
+    assert_eq!(
+        legal_entity_profitability["items"][0]["legalEntityIds"],
+        serde_json::json!([f.legal_entity])
+    );
+    assert_eq!(
+        legal_entity_profitability["items"][0]["businessUnitIds"],
+        serde_json::json!([f.business_unit])
+    );
+    let business_unit_profitability = reporting
+        .profitability(f.actor, "2026-08", "CNY", "business_unit", None, 100)
+        .await
+        .unwrap();
+    assert_eq!(
+        business_unit_profitability["items"][0]["legalEntityIds"],
+        serde_json::json!([f.legal_entity])
+    );
+    assert_eq!(
+        business_unit_profitability["items"][0]["businessUnitIds"],
+        serde_json::json!([f.business_unit])
+    );
     let cross = reporting
         .profitability(f.actor, "2026-08", "CNY", "customer", Some("brand"), 100)
         .await
