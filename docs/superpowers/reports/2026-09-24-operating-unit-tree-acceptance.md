@@ -8,10 +8,10 @@
 
 生产运行版本：
 
-- Business Core：`e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
-- Business Web：`e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
-- Business Core 镜像：`shiyue-business-candidate-business-core:e9d2cab5feac70f9e2fa7343b92ddfa88bc334e8`
-- Business Web 目录：`/opt/business-platform/shared/business-web-e9d2cab5f-f5ee7b98af39`
+- Business Core：`8635c2b273ed60e69d743d94b863f461d28468ed`
+- Business Web：`8635c2b273ed60e69d743d94b863f461d28468ed`
+- Business Core 镜像：`shiyue-business-candidate-business-core:8635c2b273ed60e69d743d94b863f461d28468ed`
+- Business Web 目录：`/opt/business-platform/shared/business-web-8635c2b27-b3251e32133a`
 
 ## 发布与数据保护
 
@@ -30,8 +30,8 @@
 - `cargo fmt --all -- --check`
 - `cargo check --offline -p business-core`
 - `cargo clippy --offline -p business-core --all-targets -- -D warnings`
-- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`；业务记录归属扩展后再次通过 `postgres_b2`、`postgres_b3`
-- Business Web：34 项测试通过，`tsc --noEmit` 通过，Vite 生产构建通过
+- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`；业务记录归属扩展后再次通过 `postgres_b2`、`postgres_b3`、`postgres_adjustment_details`
+- Business Web：36 项测试通过，`tsc --noEmit` 通过，Vite 生产构建通过
 
 ## Native 生产验收
 
@@ -50,6 +50,9 @@
 7. 客户、供应商和仓库台账使用“法定主体 / 经营单元”并列归属块，不再以箭头表达父子关系；客户记录在 Native 生产页面完成验证。
 8. 销售订单详情使用“法定主体 / 经营单元”并列归属块，旧的单独“法定主体 ID”字段已移除；在 `SO-202609-000005` 的 Native 生产详情完成验证。
 9. 库存台账生产空态正常；当前生产库存为 0 个仓库商品组合，因此行级归属展示由 PostgreSQL B2 测试验证。采购订单生产为 0 笔，其详情归属由 PostgreSQL B3 测试和前端测试验证。
+10. 收付款按核销明细汇总经营单元，支持单一、多归属和“待核销归属”；生产收付款均为 0 笔，行级行为由 PostgreSQL B2、B3 测试验证。
+11. 销售、采购退货继承来源订单的法定主体与经营单元；生产退货均为 0 笔，数据契约由 PostgreSQL B2 测试验证。
+12. 经营调整允许多个经营单元。Native 生产页面验证 `ADJ-202609-000001`：列表和详情均显示并列归属，详情解析出法定主体 `ea9d9cef-5408-4f86-a34c-afe4604f1754` 与经营单元 `e6e6045b-1b70-4270-b9b7-8439461c9b0a`。
 
 三次经营单元创建将 `business_core_audit_events` 从 38 增加到 41。
 
