@@ -825,3 +825,32 @@ fn prompt_requires_a_standard_draft_save_receipt() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_draft_update_receipt_with_version_conflict_recovery() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/draft-update-receipt-contract.md");
+    for required in [
+        "草稿更新回执",
+        "实际变更字段",
+        "保持不变字段",
+        "当前版本",
+        "详情链接",
+        "追踪号",
+        "服务器返回",
+        "不展示内部 UUID",
+        "版本冲突",
+        "重新读取",
+        "不重试",
+        "不得推断更新成功",
+        "不确认、不出库、不收货、不收付款、不产生库存或资金变动",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing draft-update receipt rule in {surface}: {required}"
+            );
+        }
+    }
+}
