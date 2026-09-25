@@ -1,6 +1,6 @@
 # BizOS 法定主体与经营组织树生产验收
 
-日期：2026-09-24（Asia/Shanghai）
+日期：2026-09-25（Asia/Shanghai）
 
 ## 结果
 
@@ -8,10 +8,10 @@
 
 生产运行版本：
 
-- Business Core：`8635c2b273ed60e69d743d94b863f461d28468ed`
-- Business Web：`8635c2b273ed60e69d743d94b863f461d28468ed`
-- Business Core 镜像：`shiyue-business-candidate-business-core:8635c2b273ed60e69d743d94b863f461d28468ed`
-- Business Web 目录：`/opt/business-platform/shared/business-web-8635c2b27-b3251e32133a`
+- Business Core：`ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
+- Business Web：`ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
+- Business Core 镜像：`shiyue-business-candidate-business-core:ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
+- Business Web 目录：`/opt/business-platform/shared/business-web-ce3a7e5de-86d11dadc2ed`
 
 ## 发布与数据保护
 
@@ -30,8 +30,8 @@
 - `cargo fmt --all -- --check`
 - `cargo check --offline -p business-core`
 - `cargo clippy --offline -p business-core --all-targets -- -D warnings`
-- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`；业务记录归属扩展后再次通过 `postgres_b2`、`postgres_b3`、`postgres_adjustment_details`
-- Business Web：36 项测试通过，`tsc --noEmit` 通过，Vite 生产构建通过
+- PostgreSQL：`postgres_operating_units` 5/5，通过 `postgres_b1`、`postgres_b2`、`postgres_b3`、`postgres_crm`；业务记录归属扩展后再次通过 `postgres_b2`、`postgres_b3`、`postgres_adjustment_details`。本次进一步验证出库单、经营应收、收货单、经营应付的法定主体和经营单元均从其源订单读取。
+- Business Web：37 项测试通过，`tsc --noEmit` 通过，Vite 生产构建通过
 
 ## Native 生产验收
 
@@ -53,6 +53,7 @@
 10. 收付款按核销明细汇总经营单元，支持单一、多归属和“待核销归属”；生产收付款均为 0 笔，行级行为由 PostgreSQL B2、B3 测试验证。
 11. 销售、采购退货继承来源订单的法定主体与经营单元；生产退货均为 0 笔，数据契约由 PostgreSQL B2 测试验证。
 12. 经营调整允许多个经营单元。Native 生产页面验证 `ADJ-202609-000001`：列表和详情均显示并列归属，详情解析出法定主体 `ea9d9cef-5408-4f86-a34c-afe4604f1754` 与经营单元 `e6e6045b-1b70-4270-b9b7-8439461c9b0a`。
+13. 销售闭环的出库履约、经营应收当前均为 0 条；采购闭环当前采购订单、收货单和经营应付均为 0 条。Native 页面空态和已发布版本已验证。没有为展示而创建财务或库存凭据；四类非空详情的源订单归属由 PostgreSQL B2/B3 闭环测试及前端详情单元测试验证。
 
 三次经营单元创建将 `business_core_audit_events` 从 38 增加到 41。
 
