@@ -757,3 +757,38 @@ fn prompt_consolidates_missing_business_fields() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_verified_draft_preflight_summary() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/draft-preflight-summary-contract.md");
+    for required in [
+        "草稿预检摘要",
+        "已验证",
+        "客户／供应商",
+        "商品／SKU",
+        "数量",
+        "单价",
+        "总额",
+        "币种",
+        "业务日期",
+        "仓库",
+        "计量单位",
+        "仅保存草稿",
+        "不确认、不出库、不收付款",
+        "不调用写入工具",
+        "不生成确认预览",
+        "字段仍缺",
+        "对象歧义",
+        "部分结果",
+        "不展示内部 UUID",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing draft-preflight summary rule in {surface}: {required}"
+            );
+        }
+    }
+}
