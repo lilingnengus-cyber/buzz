@@ -881,3 +881,29 @@ fn prompt_requires_a_structured_non_successful_query_reply() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_scannable_batch_query_list() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/batch-query-list-contract.md");
+    for required in [
+        "批量查询列表",
+        "业务编号",
+        "状态",
+        "金额／数量",
+        "业务日期",
+        "详情链接",
+        "返回顺序",
+        "分页",
+        "部分结果",
+        "截断",
+        "不展示内部 UUID",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing batch-list rule in {surface}: {required}"
+            );
+        }
+    }
+}
