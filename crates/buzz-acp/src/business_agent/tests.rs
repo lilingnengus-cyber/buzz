@@ -690,3 +690,34 @@ fn prompt_uses_verified_business_labels_for_resource_links() {
         }
     }
 }
+
+#[test]
+fn prompt_distinguishes_name_resolution_outcomes() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/name-resolution-contract.md");
+    for required in [
+        "零匹配",
+        "唯一匹配",
+        "多个匹配",
+        "当前范围内没有匹配项",
+        "请从以下候选中选择",
+        "业务编号",
+        "不要求用户提供内部 UUID",
+        "不能自动选择第一条",
+        "读取全部分页",
+        "`pagination.hasMore=true`",
+        "部分结果",
+        "不能建立唯一匹配",
+        "写入前",
+        "用户明确选择",
+        "`not_found_or_forbidden`",
+        "未找到或无权访问",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing name-resolution rule in {surface}: {required}"
+            );
+        }
+    }
+}
