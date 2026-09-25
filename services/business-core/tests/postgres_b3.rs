@@ -534,6 +534,14 @@ async fn b3_postgres_purchase_cost_payable_and_concurrency() {
         .await
         .unwrap();
     assert_eq!(applied.status, "fully_allocated");
+    let payment_view = payables
+        .payments(fixture.actor, Some(fixture.supplier), 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|item| item.id == payment.id)
+        .unwrap();
+    assert_eq!(payment_view.business_unit_ids, vec![fixture.business_unit]);
     assert!(payables
         .reverse_payment(
             fixture.actor,

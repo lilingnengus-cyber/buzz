@@ -507,6 +507,7 @@ export type ProfitAdjustment = {
   id: string;
   adjustmentNumber: string;
   legalEntityId: string;
+  businessUnitIds: string[];
   managementPeriod: string;
   currency: string;
   status: string;
@@ -790,6 +791,7 @@ export type Receipt = {
   id: string;
   receiptNumber: string;
   legalEntityId: string;
+  businessUnitIds: string[];
   customerId: string;
   currency: string;
   receiptDate: string;
@@ -1193,6 +1195,7 @@ export type SupplierPayment = {
   id: string;
   supplierPaymentNumber: string;
   legalEntityId: string;
+  businessUnitIds: string[];
   supplierId: string;
   currency: string;
   paymentDate: string;
@@ -1207,6 +1210,8 @@ export type SupplierPayment = {
 export type BusinessReturn = {
   id: string;
   returnNumber: string;
+  legalEntityId: string;
+  businessUnitId: string;
   sourceId: string;
   orderId: string;
   partnerId: string;

@@ -48,6 +48,8 @@ pub struct CreateReturn {
 pub struct ReturnSummary {
     pub id: Uuid,
     pub return_number: String,
+    pub legal_entity_id: Uuid,
+    pub business_unit_id: Uuid,
     pub source_id: Uuid,
     pub order_id: Uuid,
     pub partner_id: Uuid,
@@ -193,8 +195,8 @@ impl ReturnService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, ReturnSummary>("SELECT id,return_number,shipment_id source_id,sales_order_id order_id,customer_id partner_id,warehouse_id,return_date,currency::text currency,reason_code,sales_amount amount,status,inspection_status workflow_status,version,updated_at FROM sales_returns WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND warehouse_id=ANY($3) ORDER BY return_date DESC,return_number DESC LIMIT $4")
-            .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
+        sqlx::query_as::<_, ReturnSummary>("SELECT r.id,r.return_number,r.legal_entity_id,o.business_unit_id,r.shipment_id source_id,r.sales_order_id order_id,r.customer_id partner_id,r.warehouse_id,r.return_date,r.currency::text currency,r.reason_code,r.sales_amount amount,r.status,r.inspection_status workflow_status,r.version,r.updated_at FROM sales_returns r JOIN sales_orders o ON o.id=r.sales_order_id WHERE r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND r.warehouse_id=ANY($3) AND o.business_unit_id=ANY($4) ORDER BY r.return_date DESC,r.return_number DESC LIMIT $5")
+            .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
     }
 
     pub async fn purchase_returns(
@@ -213,8 +215,8 @@ impl ReturnService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, ReturnSummary>("SELECT id,return_number,goods_receipt_id source_id,purchase_order_id order_id,supplier_id partner_id,warehouse_id,return_date,currency::text currency,reason_code,gross_amount amount,status,logistics_status workflow_status,version,updated_at FROM purchase_returns WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND warehouse_id=ANY($3) ORDER BY return_date DESC,return_number DESC LIMIT $4")
-            .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
+        sqlx::query_as::<_, ReturnSummary>("SELECT r.id,r.return_number,r.legal_entity_id,o.business_unit_id,r.goods_receipt_id source_id,r.purchase_order_id order_id,r.supplier_id partner_id,r.warehouse_id,r.return_date,r.currency::text currency,r.reason_code,r.gross_amount amount,r.status,r.logistics_status workflow_status,r.version,r.updated_at FROM purchase_returns r JOIN purchase_orders o ON o.id=r.purchase_order_id WHERE r.legal_entity_id=ANY($1) AND r.supplier_id=ANY($2) AND r.warehouse_id=ANY($3) AND o.business_unit_id=ANY($4) ORDER BY r.return_date DESC,r.return_number DESC LIMIT $5")
+            .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await.map_err(Into::into)
     }
 
     fn validate_input(input: &CreateReturn) -> Result<(), DomainError> {

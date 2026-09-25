@@ -41,6 +41,15 @@ pub(super) async fn check(app: &Router, store: &PgStore, f: &Fixture, supplier: 
         .await
         .unwrap();
     super::return_confirmation_checks::confirm(app, store, f, false, returned.id).await;
+    let summary = service
+        .purchase_returns(f.actor, 20)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|item| item.id == returned.id)
+        .unwrap();
+    assert_eq!(summary.legal_entity_id, f.legal_entity);
+    assert_eq!(summary.business_unit_id, f.business_unit);
     // No customer scope can authorize a supplier operation. Keep the fixture's
     // unrelated customer scope and assert the supplier UUID is not in it.
     let persisted_version: i64 =

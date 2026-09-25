@@ -45,6 +45,7 @@ import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
 import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
 import { NumberingRulesCenter } from "./NumberingRulesCenter";
+import { AuthorityAssignmentPair } from "./AuthorityAssignmentPair";
 import { PageLoadFailure } from "./PageLoadFailure";
 import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
 import { OperatingSnapshotDetail } from "./OperatingSnapshotDetail";
@@ -306,7 +307,12 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "dashboard") return <OperationsDashboardView />;
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
-  if (section === "trends") return id ? <OperatingSnapshotDetail key={id} id={id} /> : <OperatingTrendsView />;
+  if (section === "trends")
+    return id ? (
+      <OperatingSnapshotDetail key={id} id={id} />
+    ) : (
+      <OperatingTrendsView />
+    );
   if (section === "crm") return <CrmPage key={id} initialId={id} />;
   if (section === "crmFollowups" || section === "crmContacts")
     return (
@@ -322,7 +328,12 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "numbering") return <NumberingRulesCenter />;
   if (section === "profits") return <OrderProfits id={id} />;
   if (section === "profitability") return <Profitability />;
-  if (section === "adjustments") return id ? <LinkedAdjustmentDetail key={id} id={id} /> : <ProfitAdjustments />;
+  if (section === "adjustments")
+    return id ? (
+      <LinkedAdjustmentDetail key={id} id={id} />
+    ) : (
+      <ProfitAdjustments />
+    );
   if (section === "reports") return <ManagementReports id={id} />;
   if (section === "sales") return <SalesOrderWorkflowPage id={id} />;
   if ((section === "salesReturns" || section === "purchaseReturns") && id)
@@ -1414,6 +1425,11 @@ function ReceiptView({ id }: { id?: string }) {
       <State state={state}>
         {receipt ? (
           <div className="receipt-slip">
+            <AuthorityAssignmentPair
+              legalEntityId={receipt.legalEntityId}
+              businessUnitIds={receipt.businessUnitIds}
+              businessUnitFallback="待核销归属"
+            />
             <div>
               <span>收款金额</span>
               <strong>{formatMoney(receipt.currency, receipt.amount)}</strong>
@@ -1775,6 +1791,14 @@ function SupplierPayments({ id }: { id?: string }) {
               <strong>{formatMoney(item.currency, item.amount)}</strong>
               <Status value={item.status} />
               <span>未核销 {formatAmount(item.unappliedAmount)}</span>
+              {id && (
+                <AuthorityAssignmentPair
+                  compact
+                  legalEntityId={item.legalEntityId}
+                  businessUnitIds={item.businessUnitIds}
+                  businessUnitFallback="待核销归属"
+                />
+              )}
               <div className="row-actions">
                 <em>v{item.version}</em>
                 {item.status === "draft" && (
@@ -1958,13 +1982,21 @@ function ProfitAdjustments({ id }: { id?: string }) {
         <div className="compact-list">
           {rows.map((item) => (
             <article key={item.id}>
-              <a href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/profit-adjustments/${item.id}`}>
+              <a
+                href={`${window.location.pathname.startsWith("/embed/") ? "/embed" : ""}/profit-adjustments/${item.id}`}
+              >
                 {item.adjustmentNumber}
               </a>
               <Status value={item.status} />
               <span>
                 {item.managementPeriod} · {item.currency}
               </span>
+              <AuthorityAssignmentPair
+                compact
+                legalEntityId={item.legalEntityId}
+                businessUnitIds={item.businessUnitIds}
+                businessUnitFallback="未指定经营单元"
+              />
               <div className="row-actions">
                 <em>v{item.version}</em>
                 {item.status === "draft" && (

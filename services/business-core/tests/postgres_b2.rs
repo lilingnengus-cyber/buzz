@@ -622,6 +622,14 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         )
         .await
         .unwrap();
+    assert_eq!(
+        settlement
+            .receipt(fixture.actor, receipt_one.id)
+            .await
+            .unwrap()
+            .business_unit_ids,
+        vec![fixture.business_unit]
+    );
     let receipt_two = receipt(&settlement, &fixture, date, 200, "receipt-create-0002").await;
     let receipt_two = settlement
         .confirm_receipt(
@@ -633,6 +641,12 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         )
         .await
         .unwrap();
+    assert!(settlement
+        .receipt(fixture.actor, receipt_two.id)
+        .await
+        .unwrap()
+        .business_unit_ids
+        .is_empty());
     assert_eq!(
         settlement
             .receipts(fixture.actor, Some(fixture.customer), 10)

@@ -23,17 +23,33 @@
 
 .authority-assignment small {
   color: var(--muted);
-  font: 700 9px ui-monospace, monospace;
+  font:
+    700 9px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
 }
 
-.authority-assignment code {
+.authority-assignment-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.authority-assignment code,
+.authority-assignment-values span {
   overflow: hidden;
   color: var(--ink);
   font-size: 11px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.authority-assignment-values span {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
 }
 
 .authority-assignment-pair.compact {
@@ -53,7 +69,8 @@
   font-size: 8px;
 }
 
-.authority-assignment-pair.compact .authority-assignment code {
+.authority-assignment-pair.compact .authority-assignment code,
+.authority-assignment-pair.compact .authority-assignment-values span {
   max-width: 104px;
   font-size: 9px;
 }

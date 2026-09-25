@@ -593,7 +593,7 @@ impl SettlementService {
             None,
         )
         .await?;
-        sqlx::query_as::<_,ReceiptView>("SELECT id,receipt_number,legal_entity_id,customer_id,currency::text,receipt_date,amount,allocated_amount,unapplied_amount,status,updated_at,version FROM customer_receipts WHERE id=$1").bind(id).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)
+        sqlx::query_as::<_,ReceiptView>("SELECT r.id,r.receipt_number,r.legal_entity_id,ARRAY(SELECT DISTINCT o.business_unit_id FROM receivable_allocations a JOIN trade_receivables t ON t.id=a.receivable_id JOIN sales_orders o ON o.id=t.sales_order_id WHERE a.receipt_id=r.id ORDER BY o.business_unit_id) business_unit_ids,r.customer_id,r.currency::text,r.receipt_date,r.amount,r.allocated_amount,r.unapplied_amount,r.status,r.updated_at,r.version FROM customer_receipts r WHERE r.id=$1").bind(id).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)
     }
 
     pub async fn receipts(
@@ -613,7 +613,7 @@ impl SettlementService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,ReceiptView>("SELECT id,receipt_number,legal_entity_id,customer_id,currency::text,receipt_date,amount,allocated_amount,unapplied_amount,status,updated_at,version FROM customer_receipts WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) ORDER BY receipt_date DESC,id DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,ReceiptView>("SELECT r.id,r.receipt_number,r.legal_entity_id,ARRAY(SELECT DISTINCT o.business_unit_id FROM receivable_allocations a JOIN trade_receivables t ON t.id=a.receivable_id JOIN sales_orders o ON o.id=t.sales_order_id WHERE a.receipt_id=r.id ORDER BY o.business_unit_id) business_unit_ids,r.customer_id,r.currency::text,r.receipt_date,r.amount,r.allocated_amount,r.unapplied_amount,r.status,r.updated_at,r.version FROM customer_receipts r WHERE r.legal_entity_id=ANY($1) AND r.customer_id=ANY($2) AND ($3::uuid IS NULL OR r.customer_id=$3) ORDER BY r.receipt_date DESC,r.id DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

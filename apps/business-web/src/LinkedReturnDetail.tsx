@@ -4,10 +4,13 @@ import { request, toApiFailure, type ApiFailure } from "./api";
 import { formatAmount, formatQuantity } from "./formatters";
 import { returnReason, statusLabel } from "./OrderWorkflowRecordDetails";
 import { PageLoadFailure } from "./PageLoadFailure";
+import { AuthorityAssignmentPair } from "./AuthorityAssignmentPair";
 
 type ReturnDetail = {
   id: string;
   number: string;
+  legalEntityId: string;
+  businessUnitId: string;
   sourceId: string;
   status: string;
   workflowStatus: string;
@@ -77,6 +80,7 @@ export function LinkedReturnDetail({
             {item.status === "cancelled" ? "已取消" : statusLabel(item.status)}{" "}
             · {item.status === "reversed" ? "冲销前处置状态：" : ""}{statusLabel(item.workflowStatus)} · 版本 {item.version}
           </p>
+          <AuthorityAssignmentPair legalEntityId={item.legalEntityId} businessUnitId={item.businessUnitId} />
           <p>退货原因：{returnReason(item.reasonCode)}</p>
           {item.businessNote && <p>备注：{item.businessNote}</p>}
           <p>

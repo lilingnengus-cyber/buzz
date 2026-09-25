@@ -369,6 +369,7 @@ pub struct SupplierPaymentView {
     pub id: Uuid,
     pub supplier_payment_number: String,
     pub legal_entity_id: Uuid,
+    pub business_unit_ids: Vec<Uuid>,
     pub supplier_id: Uuid,
     pub currency: String,
     pub payment_date: NaiveDate,

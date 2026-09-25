@@ -2,6 +2,7 @@ import React from "react";
 import { request, toApiFailure, type ApiFailure } from "./api";
 import { formatMoney } from "./formatters";
 import { PageLoadFailure } from "./PageLoadFailure";
+import { AuthorityAssignmentPair } from "./AuthorityAssignmentPair";
 
 type Line = {
   id: string; metric_type: string; amount: string; currency: string;
@@ -10,7 +11,8 @@ type Line = {
 };
 type Detail = {
   schemaVersion: number;
-  batch: { id: string; adjustment_number: string; status: string; management_period: string; currency: string; version: number };
+  batch: { id: string; adjustment_number: string; legal_entity_id: string; status: string; management_period: string; currency: string; version: number };
+  businessUnitIds: string[];
   lines: Line[]; totalAmount: string; targetOrderCount: number; version: number;
   boundary: string;
   pagination: { offset: number; total: number; nextOffset: number | null };
@@ -43,7 +45,8 @@ export function LinkedAdjustmentDetail({ id }: { id: string }) {
           || page.boundary !== "management_only_not_general_ledger" || page.pagination.offset !== offset
           || !Number.isSafeInteger(page.pagination.total) || page.pagination.total < 0
           || (first && (page.version !== first.version || page.totalAmount !== first.totalAmount
-            || page.pagination.total !== first.pagination.total))) throw new Error("费用明细已变化，请重新读取。");
+            || page.pagination.total !== first.pagination.total
+            || JSON.stringify(page.businessUnitIds) !== JSON.stringify(first.businessUnitIds)))) throw new Error("费用明细已变化，请重新读取。");
         first ??= page;
         for (const line of page.lines) {
           if (ids.has(line.id)) throw new Error("费用明细重复，请重新读取。");
@@ -69,6 +72,7 @@ export function LinkedAdjustmentDetail({ id }: { id: string }) {
     {error ? <PageLoadFailure failure={error} resourceLabel="经营费用" onRetry={() => retry(n => n + 1)} />
       : !detail ? <p>正在读取完整费用明细…</p> : <>
         <p>{labels[detail.batch.status] ?? detail.batch.status} · 期间 {detail.batch.management_period} · 版本 {detail.version}</p>
+        <AuthorityAssignmentPair legalEntityId={detail.batch.legal_entity_id} businessUnitIds={detail.businessUnitIds} businessUnitFallback="未指定经营单元" />
         <p>费用合计 {formatMoney(detail.batch.currency, detail.totalAmount)} · {detail.lines.length} 条明细 · {detail.targetOrderCount} 个目标订单</p>
         <table><thead><tr><th>日期</th><th>费用类型</th><th>金额</th><th>分摊方式</th><th>原因</th><th>来源</th><th>直接归集订单</th></tr></thead>
           <tbody>{detail.lines.map(line => <tr key={line.id}>

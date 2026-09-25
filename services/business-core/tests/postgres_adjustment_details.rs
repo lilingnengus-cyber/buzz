@@ -102,6 +102,7 @@ async fn details_check_all_lines_current_and_historical_scope_and_versions() {
     assert_eq!(first["lines"].as_array().unwrap().len(), 1);
     assert_eq!(first["pagination"]["total"], 2);
     assert_eq!(first["pagination"]["nextOffset"], 1);
+    assert_eq!(first["businessUnitIds"], json!([f.business_unit]));
     assert_eq!(
         first["totalAmount"]
             .as_str()

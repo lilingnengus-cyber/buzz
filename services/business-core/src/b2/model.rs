@@ -347,6 +347,7 @@ pub struct ReceiptView {
     pub id: Uuid,
     pub receipt_number: String,
     pub legal_entity_id: Uuid,
+    pub business_unit_ids: Vec<Uuid>,
     pub customer_id: Uuid,
     pub currency: String,
     pub receipt_date: NaiveDate,

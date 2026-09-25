@@ -610,7 +610,7 @@ impl PayablesService {
             None,
         )
         .await?;
-        Ok(sqlx::query_as::<_,SupplierPaymentView>("SELECT id,supplier_payment_number,legal_entity_id,supplier_id,currency::text,payment_date,amount,allocated_amount,unapplied_amount,status,updated_at,version FROM supplier_payments WHERE legal_entity_id=ANY($1) AND supplier_id=ANY($2) AND ($3::uuid IS NULL OR supplier_id=$3) ORDER BY updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
+        Ok(sqlx::query_as::<_,SupplierPaymentView>("SELECT p.id,p.supplier_payment_number,p.legal_entity_id,ARRAY(SELECT DISTINCT o.business_unit_id FROM payable_allocations a JOIN trade_payables t ON t.id=a.payable_id JOIN purchase_orders o ON o.id=t.purchase_order_id WHERE a.supplier_payment_id=p.id ORDER BY o.business_unit_id) business_unit_ids,p.supplier_id,p.currency::text,p.payment_date,p.amount,p.allocated_amount,p.unapplied_amount,p.status,p.updated_at,p.version FROM supplier_payments p WHERE p.legal_entity_id=ANY($1) AND p.supplier_id=ANY($2) AND ($3::uuid IS NULL OR p.supplier_id=$3) ORDER BY p.updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
     }
     pub async fn reconcile(&self, actor: Uuid) -> Result<serde_json::Value, DomainError> {
         authorize(

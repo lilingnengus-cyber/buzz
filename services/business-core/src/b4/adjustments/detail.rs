@@ -78,6 +78,7 @@ impl AdjustmentService {
         }
         let lines=sqlx::query("SELECT l.*,to_jsonb(l)||jsonb_build_object('amount',l.amount::text) record FROM operational_adjustment_lines l WHERE batch_id=$1 ORDER BY line_number,id").bind(id).fetch_all(&mut **tx).await?;
         let mut order_ids = BTreeSet::new();
+        let mut business_unit_ids = BTreeSet::new();
         let mut total = Decimal::ZERO;
         let scopes = &authorization.scopes;
         for line in &lines {
@@ -93,6 +94,9 @@ impl AdjustmentService {
                 {
                     return Err(DomainError::NotFoundOrForbidden);
                 }
+            }
+            if let Some(id) = line.get::<Option<Uuid>, _>("business_unit_id") {
+                business_unit_ids.insert(id);
             }
             if let Some(id) = line.get::<Option<Uuid>, _>("direct_sales_order_id") {
                 order_ids.insert(id);
@@ -137,6 +141,13 @@ impl AdjustmentService {
         for order in &order_ids {
             visible_order(tx, *order, authorization).await?;
         }
+        let target_business_units: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT DISTINCT business_unit_id FROM sales_orders WHERE id=ANY($1) ORDER BY business_unit_id",
+        )
+        .bind(order_ids.iter().copied().collect::<Vec<_>>())
+        .fetch_all(&mut **tx)
+        .await?;
+        business_unit_ids.extend(target_business_units);
         // Order ownership can change after posting. Historical fact dimensions
         // must also remain accessible, rather than relying only on today's order.
         let outside:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM profit_facts WHERE source_type='operational_adjustment' AND source_id=$1 AND (NOT(legal_entity_id=ANY($2)) OR (customer_id IS NOT NULL AND NOT(customer_id=ANY($3))) OR (brand_id IS NOT NULL AND NOT(brand_id=ANY($4))) OR (business_unit_id IS NOT NULL AND NOT(business_unit_id=ANY($5))) OR (warehouse_id IS NOT NULL AND NOT(warehouse_id=ANY($6)))))").bind(id).bind(scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.customer_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.brand_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(scopes.warehouse_ids.iter().copied().collect::<Vec<_>>()).fetch_one(&mut **tx).await?;
@@ -152,7 +163,7 @@ impl AdjustmentService {
             .map(|row| row.get("record"))
             .collect();
         let next = query.offset + items.len();
-        let result = json!({"schemaVersion":1,"batch":batch.get::<Value,_>("record"),"lines":items,"totalAmount":total.to_string(),"targetOrderCount":order_ids.len(),"hasUnattributedBrandTargets":has_unattributed_brand_targets,"scope":authorization.scopes,"pagination":{"offset":query.offset,"limit":query.limit,"total":total_lines,"nextOffset":if next<total_lines {Some(next)}else{None}},"version":version,"boundary":"management_only_not_general_ledger"});
+        let result = json!({"schemaVersion":1,"batch":batch.get::<Value,_>("record"),"businessUnitIds":business_unit_ids,"lines":items,"totalAmount":total.to_string(),"targetOrderCount":order_ids.len(),"hasUnattributedBrandTargets":has_unattributed_brand_targets,"scope":authorization.scopes,"pagination":{"offset":query.offset,"limit":query.limit,"total":total_lines,"nextOffset":if next<total_lines {Some(next)}else{None}},"version":version,"boundary":"management_only_not_general_ledger"});
         Ok(result)
     }
 }

@@ -18,7 +18,9 @@ export type RecordDetailAction = {
   subtitle: string;
   assignments?: {
     legalEntityId: string;
-    businessUnitId: string;
+    businessUnitId?: string;
+    businessUnitIds?: string[];
+    businessUnitFallback?: string;
   };
   fields: Array<{
     label: string;
@@ -132,10 +134,14 @@ export function receiptDetail(row: Receipt): RecordDetailAction {
       ),
       detailField("收款日期", row.receiptDate),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitIds: row.businessUnitIds,
+      businessUnitFallback: "待核销归属",
+    },
   );
 }
 
@@ -254,10 +260,14 @@ export function paymentDetail(row: SupplierPayment): RecordDetailAction {
       ),
       detailField("付款日期", row.paymentDate),
       detailField("供应商 ID", row.supplierId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitIds: row.businessUnitIds,
+      businessUnitFallback: "待核销归属",
+    },
   );
 }
 
@@ -284,6 +294,10 @@ export function returnDetail(
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
+    {
+      legalEntityId: row.legalEntityId,
+      businessUnitId: row.businessUnitId,
+    },
   );
 }
 
@@ -335,7 +349,14 @@ function recordDetail(
   fields: RecordDetailAction["fields"],
   assignments?: RecordDetailAction["assignments"],
 ): RecordDetailAction {
-  return { kind: "record-detail", domain, title, subtitle, fields, assignments };
+  return {
+    kind: "record-detail",
+    domain,
+    title,
+    subtitle,
+    fields,
+    assignments,
+  };
 }
 
 function detailField(
