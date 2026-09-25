@@ -8,10 +8,10 @@
 
 生产运行版本：
 
-- Business Core：`ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
-- Business Web：`ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
-- Business Core 镜像：`shiyue-business-candidate-business-core:ce3a7e5de47bb35511a22af2cea1e0e6d077486f`
-- Business Web 目录：`/opt/business-platform/shared/business-web-ce3a7e5de-86d11dadc2ed`
+- Business Core：`ce155ddfc1afc3bc8a2361c18492cfd65f38b9d0`
+- Business Web：`ce155ddfc1afc3bc8a2361c18492cfd65f38b9d0`
+- Business Core 镜像：`shiyue-business-candidate-business-core:ce155ddfc1afc3bc8a2361c18492cfd65f38b9d0`
+- Business Web 目录：`/opt/business-platform/shared/business-web-ce155ddfc-decc65bce5bb`
 
 ## 发布与数据保护
 
@@ -54,6 +54,7 @@
 11. 销售、采购退货继承来源订单的法定主体与经营单元；生产退货均为 0 笔，数据契约由 PostgreSQL B2 测试验证。
 12. 经营调整允许多个经营单元。Native 生产页面验证 `ADJ-202609-000001`：列表和详情均显示并列归属，详情解析出法定主体 `ea9d9cef-5408-4f86-a34c-afe4604f1754` 与经营单元 `e6e6045b-1b70-4270-b9b7-8439461c9b0a`。
 13. 销售闭环的出库履约、经营应收当前均为 0 条；采购闭环当前采购订单、收货单和经营应付均为 0 条。Native 页面空态和已发布版本已验证。没有为展示而创建财务或库存凭据；四类非空详情的源订单归属由 PostgreSQL B2/B3 闭环测试及前端详情单元测试验证。
+14. 订单真实利润已显示订单的法定主体与经营单元；多维盈利分析在选择“法定主体”或“经营单元”维度时显示聚合后的双归属集合。Native 生产页面当前没有已投影订单利润或盈利分析行，已验证页面加载和空态；非空集合由 PostgreSQL B4 数据契约验证。`postgres_b4` 完整套件随后在既有 S1 快照范围断言处失败，同一断言已在发布前基线提交 `edb0d38ae` 复现，和本次 B4 改动无关。
 
 三次经营单元创建将 `business_core_audit_events` 从 38 增加到 41。
 
