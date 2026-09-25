@@ -792,3 +792,36 @@ fn prompt_requires_a_verified_draft_preflight_summary() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_standard_draft_save_receipt() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/draft-save-receipt-contract.md");
+    for required in [
+        "草稿保存回执",
+        "草稿编号",
+        "状态",
+        "金额",
+        "业务日期",
+        "详情链接",
+        "追踪号",
+        "服务器返回",
+        "仅在工具返回时展示",
+        "销售订单草稿",
+        "采购订单草稿",
+        "出库草稿",
+        "收货草稿",
+        "收款草稿",
+        "付款草稿",
+        "期初库存草稿",
+        "不确认、不出库、不收货、不收付款、不产生库存或资金变动",
+        "不展示内部 UUID",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing draft-save receipt rule in {surface}: {required}"
+            );
+        }
+    }
+}
