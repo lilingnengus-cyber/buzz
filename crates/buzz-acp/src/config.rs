@@ -772,6 +772,27 @@ pub(crate) fn default_agent_env(command: &str) -> &'static [(&'static str, &'sta
     }
 }
 
+/// Prevent Codex ACP from dropping the per-turn Business MCP server when a
+/// same-named server exists in a persistent Codex configuration. Business
+/// delegations carry a fresh, scoped credential for every turn, so retaining
+/// an older persistent server would discard that credential and leave the
+/// Business Agent without its authorized tools.
+fn codex_business_mcp_env(
+    agent_command: &str,
+    business_read_enabled: bool,
+) -> Option<(String, String)> {
+    if business_read_enabled
+        && matches!(
+            normalize_agent_command_identity(agent_command).as_str(),
+            "codex" | "codex-acp"
+        )
+    {
+        Some(("DISABLE_MCP_CONFIG_FILTERING".into(), "true".into()))
+    } else {
+        None
+    }
+}
+
 /// Build the `CODEX_CONFIG` environment variable that enables full outbound
 /// network access in Codex's macOS Seatbelt sandbox.
 ///
@@ -1104,6 +1125,15 @@ impl Config {
             } else {
                 false
             };
+        if let Some(mcp_env) = codex_business_mcp_env(
+            &agent_command,
+            std::env::var("BUSINESS_AGENT_READ_ENABLED")
+                .ok()
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case("true")),
+        ) {
+            persona_env_vars.push(mcp_env);
+        }
 
         validate_multiple_event_handling(args.multiple_event_handling, args.dedup)?;
 
@@ -1713,6 +1743,18 @@ mod tests {
                 "non-Hermes command must have no env defaults: {command}"
             );
         }
+    }
+
+    #[test]
+    fn codex_business_mcp_env_preserves_the_per_turn_server() {
+        for command in ["codex", "codex-acp", "/opt/homebrew/bin/codex-acp"] {
+            assert_eq!(
+                codex_business_mcp_env(command, true),
+                Some(("DISABLE_MCP_CONFIG_FILTERING".into(), "true".into())),
+            );
+        }
+        assert_eq!(codex_business_mcp_env("codex-acp", false), None);
+        assert_eq!(codex_business_mcp_env("buzz-agent", true), None);
     }
 
     #[test]
