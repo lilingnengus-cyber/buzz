@@ -980,3 +980,22 @@ fn prompt_requires_a_consistent_single_detail_field_order() {
         }
     }
 }
+
+#[test]
+fn prompt_orders_successful_query_metadata_after_business_fields() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/single-detail-reply-contract.md");
+    for required in [
+        "成功查询的固定末尾顺序",
+        "数据时点、查询记录、追踪号",
+        "只保留已验证且非空的字段",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing successful-query metadata ordering rule in {surface}: {required}"
+            );
+        }
+    }
+}

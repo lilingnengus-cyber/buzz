@@ -242,7 +242,7 @@ pub(crate) async fn publish(
     observation.publish_attempted = true;
     let started = Instant::now();
     let content = strip_source_identifiers_from_trace_fields(content, &source_event.content);
-    let content = strip_unhelpful_exact_read_metadata(&content);
+    let content = strip_unhelpful_response_metadata(&content);
     let event = match build_event(rest, channel_id, source_event, &content) {
         Ok(event) => event,
         Err(error) => {
@@ -324,26 +324,45 @@ fn strip_source_identifiers_from_trace_fields(content: &str, source_content: &st
     sanitized
 }
 
-/// Exact reads that collapse to `not_found_or_forbidden` do not establish a
-/// query scope or pagination completeness. Avoid publishing empty-object or
-/// generic-placeholder rows that make that boundary look like tool output.
-fn strip_unhelpful_exact_read_metadata(content: &str) -> String {
-    if !content.contains("查询结果说明：未找到或无权访问") {
-        return content.to_owned();
-    }
+/// Removes optional metadata rows whose value is a model placeholder rather
+/// than a server-provided business fact. The model controls response prose;
+/// this final guard keeps empty objects and generic placeholders out of every
+/// published query response without changing verified business fields.
+fn strip_unhelpful_response_metadata(content: &str) -> String {
+    let sanitized: String = content
+        .split_inclusive('\n')
+        .filter(|line| !is_unhelpful_optional_metadata_row(line))
+        .collect();
+    sanitized.trim_end_matches('\n').to_owned()
+}
 
-    [
-        "查询范围：{}\n",
-        "查询范围：{} ",
-        "查询范围：{}",
-        "完整性：工具未说明。\n",
-        "完整性：工具未说明。 ",
-        "完整性：工具未说明。",
-    ]
-    .into_iter()
-    .fold(content.to_owned(), |sanitized, placeholder| {
-        sanitized.replace(placeholder, "")
-    })
+fn is_unhelpful_optional_metadata_row(line: &str) -> bool {
+    const OPTIONAL_LABELS: [&str; 6] = [
+        "查询范围",
+        "完整性",
+        "数据时点",
+        "详情链接",
+        "查询记录",
+        "追踪号",
+    ];
+
+    let trimmed = line.trim();
+    let Some(value) = OPTIONAL_LABELS.iter().find_map(|label| {
+        trimmed.strip_prefix(label).and_then(|remaining| {
+            remaining
+                .strip_prefix('：')
+                .or_else(|| remaining.strip_prefix(':'))
+        })
+    }) else {
+        return false;
+    };
+
+    matches!(
+        value.trim().trim_matches(|character: char| {
+            matches!(character, '，' | '。' | '；' | ';' | ',' | '.')
+        }),
+        "{}" | "[]" | "null" | "undefined" | "\"\"" | "工具未说明"
+    )
 }
 
 fn build_event(
@@ -459,11 +478,21 @@ mod tests {
     }
 
     #[test]
+    fn successful_reply_omits_empty_optional_metadata_rows() {
+        let response = "已查到 [SO-202609-000005](biz://sales-order/server-returned-id)。\n状态：草稿。\n数据时点：2026-09-26 21:33（UTC+8）。\n查询范围：{}\n完整性：工具未说明。\n查询记录：null\n追踪号：undefined";
+
+        assert_eq!(
+            strip_unhelpful_response_metadata(response),
+            "已查到 [SO-202609-000005](biz://sales-order/server-returned-id)。\n状态：草稿。\n数据时点：2026-09-26 21:33（UTC+8）。"
+        );
+    }
+
+    #[test]
     fn exact_not_found_reply_omits_empty_scope_and_generic_completeness_rows() {
         let response = "查询结果说明：未找到或无权访问。\n查询范围：{}\n完整性：工具未说明。\n数据时点：2026-09-26 21:24（UTC+8）。\n下一步建议：核对订单标识。";
 
         assert_eq!(
-            strip_unhelpful_exact_read_metadata(response),
+            strip_unhelpful_response_metadata(response),
             "查询结果说明：未找到或无权访问。\n数据时点：2026-09-26 21:24（UTC+8）。\n下一步建议：核对订单标识。"
         );
     }
@@ -473,7 +502,7 @@ mod tests {
         let response =
             "查询结果说明：未找到或无权访问。\n查询范围：当前授权范围\n完整性：精确读取已完成。";
 
-        assert_eq!(strip_unhelpful_exact_read_metadata(response), response);
+        assert_eq!(strip_unhelpful_response_metadata(response), response);
     }
 
     #[tokio::test]
