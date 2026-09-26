@@ -84,18 +84,33 @@ for (const [name, url, type, id] of [
   });
 }
 
-test("parses and rebuilds an allowlisted biz deep link", () => {
+test("sales order deep links use the standard order page", () => {
   const resource = parseBusinessUrl("biz://sales-order/SO-001", config);
   assert.deepEqual(resource, {
     version: 1,
     type: "sales_order",
     id: "SO-001",
-    path: "/embed/sales-orders/SO-001",
+    path: "/sales/orders/SO-001",
   });
   assert.equal(buildBusinessReference(resource), "biz://sales-order/SO-001");
   assert.equal(
     buildBusinessUrl(resource, config),
-    "https://biz.example.com/embed/sales-orders/SO-001",
+    "https://biz.example.com/sales/orders/SO-001",
+  );
+});
+
+test("legacy embedded sales order links normalize to the standard order page", () => {
+  assert.deepEqual(
+    parseBusinessUrl(
+      "https://biz.example.com/embed/sales-orders/SO-001",
+      config,
+    ),
+    {
+      version: 1,
+      type: "sales_order",
+      id: "SO-001",
+      path: "/sales/orders/SO-001",
+    },
   );
 });
 

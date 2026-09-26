@@ -219,7 +219,7 @@ const ROUTES: readonly RouteDefinition[] = [
   {
     type: "sales_order",
     deepLink: "sales-order",
-    prefix: "/embed/sales-orders/",
+    prefix: "/sales/orders/",
     entity: true,
     label: "销售订单",
   },
@@ -473,6 +473,16 @@ function normalizeMetadata(value: unknown): Record<string, string> | undefined {
 }
 
 function resourceFromPath(path: string): BusinessResource {
+  const legacySalesOrder = path.match(/^\/embed\/sales-orders\/([^/]+)/);
+  if (legacySalesOrder && SAFE_SEGMENT.test(legacySalesOrder[1])) {
+    const id = legacySalesOrder[1];
+    return {
+      version: 1,
+      type: "sales_order",
+      id,
+      path: `/sales/orders/${encodeURIComponent(id)}`,
+    };
+  }
   const master = path.match(/^\/embed\/master-data\/([^/]+)\/([^/]+)$/);
   if (master) {
     const resource = masterResource(master[1], master[2]);
