@@ -200,6 +200,11 @@ pub async fn next_number(
     context: crate::numbering::NumberingContext,
 ) -> Result<String, DomainError> {
     let sql = match sequence {
+        "legal_entity" => "SELECT nextval('business_legal_entity_number_seq')",
+        "business_unit" => "SELECT nextval('business_business_unit_number_seq')",
+        "customer" => "SELECT nextval('business_customer_number_seq')",
+        "supplier" => "SELECT nextval('business_supplier_number_seq')",
+        "warehouse" => "SELECT nextval('business_warehouse_number_seq')",
         "sales_order" => "SELECT nextval('business_sales_order_number_seq')",
         "shipment" => "SELECT nextval('business_shipment_number_seq')",
         "receivable" => "SELECT nextval('business_receivable_number_seq')",

@@ -1,6 +1,7 @@
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
+    numbering::{allocate_number, NumberingContext},
     operating_units::{has_active_descendants, validate_parent},
     store::{outbox, PgStore},
 };
@@ -29,6 +30,20 @@ impl CoreMasterType {
             Self::Supplier => "supplier",
             Self::Warehouse => "warehouse",
         }
+    }
+}
+
+fn numbering_record_type(kind: CoreMasterType) -> &'static str {
+    kind.as_str()
+}
+
+fn numbering_prefix(kind: CoreMasterType) -> &'static str {
+    match kind {
+        CoreMasterType::LegalEntity => "LE",
+        CoreMasterType::BusinessUnit => "OU",
+        CoreMasterType::Customer => "CU",
+        CoreMasterType::Supplier => "SU",
+        CoreMasterType::Warehouse => "WH",
     }
 }
 
@@ -302,8 +317,10 @@ impl CoreMasterDataService {
                 return Err(DomainError::NotFoundOrForbidden);
             }
             ensure_parents(&mut tx, kind, input).await?;
-            insert_record(&mut tx, kind, target_id, input).await?;
-            grant_creator_scope(&mut tx, kind, target_id, input, actor).await?;
+            let mut generated = input.clone();
+            generated.code = allocate_core_master_code(&mut tx, kind, target_id, input).await?;
+            insert_record(&mut tx, kind, target_id, &generated).await?;
+            grant_creator_scope(&mut tx, kind, target_id, &generated, actor).await?;
         }
         let row=sqlx::query("SELECT code,status,version,legal_entity_id,business_unit_id FROM core_master_data_maintenance WHERE resource_type=$1 AND id=$2").bind(kind.as_str()).bind(target_id).fetch_one(&mut *tx).await?;
         if id.is_some() {
@@ -485,7 +502,7 @@ fn validate(i: &SaveCoreMasterData, k: CoreMasterType, updating: bool) -> Result
         && i.code
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b"_-".contains(&b));
-    if !code_ok || i.name.trim().is_empty() || i.name.chars().count() > 200 {
+    if (updating && !code_ok) || i.name.trim().is_empty() || i.name.chars().count() > 200 {
         return Err(DomainError::Invalid("code or name is invalid".into()));
     }
     if updating && i.expected_version.is_none() {
@@ -538,6 +555,36 @@ fn validate(i: &SaveCoreMasterData, k: CoreMasterType, updating: bool) -> Result
         }
     }
     Ok(())
+}
+
+async fn allocate_core_master_code(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    kind: CoreMasterType,
+    id: Uuid,
+    input: &SaveCoreMasterData,
+) -> Result<String, DomainError> {
+    let context = match kind {
+        CoreMasterType::LegalEntity => NumberingContext::default(),
+        // Operating units form their own hierarchy and have no legal-entity
+        // dimension. Keep their generated codes equally independent.
+        CoreMasterType::BusinessUnit => NumberingContext::default(),
+        CoreMasterType::Customer | CoreMasterType::Supplier | CoreMasterType::Warehouse => {
+            NumberingContext::new(
+                input
+                    .legal_entity_id
+                    .ok_or_else(|| DomainError::Invalid("legalEntityId is required".into()))?,
+                input.business_unit_id,
+            )
+        }
+    };
+    allocate_number(
+        tx,
+        numbering_record_type(kind),
+        numbering_prefix(kind),
+        id,
+        context,
+    )
+    .await
 }
 fn currency(v: Option<&str>) -> Result<(), DomainError> {
     if v.is_some_and(|v| v.len() == 3 && v.bytes().all(|b| b.is_ascii_uppercase())) {
@@ -742,8 +789,26 @@ CoreMasterType::Warehouse=>&[("stock","存在余额的库存记录","SELECT coun
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn rejects_lowercase_code() {
+    fn core_master_types_have_governed_numbering_rules() {
+        assert_eq!(
+            numbering_record_type(CoreMasterType::LegalEntity),
+            "legal_entity"
+        );
+        assert_eq!(
+            numbering_record_type(CoreMasterType::BusinessUnit),
+            "business_unit"
+        );
+        assert_eq!(numbering_record_type(CoreMasterType::Customer), "customer");
+        assert_eq!(numbering_record_type(CoreMasterType::Supplier), "supplier");
+        assert_eq!(
+            numbering_record_type(CoreMasterType::Warehouse),
+            "warehouse"
+        );
+    }
+    #[test]
+    fn rejects_lowercase_code_on_update() {
         let i = SaveCoreMasterData {
             resource_type: "warehouse".into(),
             code: "bad".into(),
@@ -758,8 +823,8 @@ mod tests {
             credit_currency: None,
             credit_limit_minor: None,
             payment_terms_days: None,
-            expected_version: None,
+            expected_version: Some(1),
         };
-        assert!(validate(&i, CoreMasterType::Warehouse, false).is_err());
+        assert!(validate(&i, CoreMasterType::Warehouse, true).is_err());
     }
 }

@@ -23,6 +23,11 @@ import "./numbering-rules.css";
 
 const RECORDS: Record<string, { label: string; group: string; code: string }> =
   {
+    legal_entity: { label: "法定主体", group: "核心数据", code: "LE" },
+    business_unit: { label: "经营主体", group: "核心数据", code: "OU" },
+    customer: { label: "客户", group: "核心数据", code: "CU" },
+    supplier: { label: "供应商", group: "核心数据", code: "SU" },
+    warehouse: { label: "仓库", group: "核心数据", code: "WH" },
     sales_order: { label: "销售订单", group: "销售闭环", code: "SO" },
     shipment: { label: "销售出库", group: "销售闭环", code: "SHP" },
     receivable: { label: "经营应收", group: "销售闭环", code: "AR" },
@@ -44,7 +49,7 @@ const RECORDS: Record<string, { label: string; group: string; code: string }> =
     },
   };
 
-const GROUPS = ["销售闭环", "采购闭环", "库存经营", "经营管理"];
+const GROUPS = ["核心数据", "销售闭环", "采购闭环", "库存经营", "经营管理"];
 
 export function NumberingRulesCenter() {
   const [view, setView] = React.useState<"rules" | "ledger">("rules");

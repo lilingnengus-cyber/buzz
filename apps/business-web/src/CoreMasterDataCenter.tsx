@@ -546,7 +546,7 @@ function MasterFormModal({
     setError(null);
     const payload = {
       resourceType: type,
-      code: form.code.trim().toUpperCase(),
+      code: record ? form.code.trim().toUpperCase() : "AUTO",
       name: form.name.trim(),
       legalEntityId: form.legalEntityId || null,
       businessUnitId: form.businessUnitId || null,
@@ -588,15 +588,15 @@ function MasterFormModal({
           <span>
             {record
               ? "编码与归属关系不可更改；保存时校验当前版本。"
-              : "编码保存后不可更改，请确认所属关系准确。"}
+              : "编码由编码规则自动生成，保存后不可更改，请确认所属关系准确。"}
           </span>
         </div>
         <div className="master-form-grid">
-          <Field label="编码 *">
+          <Field label="编码">
             <input
-              required
-              disabled={Boolean(record)}
-              value={form.code}
+              disabled
+              placeholder={record ? undefined : "按编码规则自动生成"}
+              value={record ? form.code : ""}
               onChange={(e) => set("code", e.target.value.toUpperCase())}
               pattern="[A-Z0-9][A-Z0-9_-]*"
             />

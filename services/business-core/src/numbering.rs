@@ -10,7 +10,12 @@ use sqlx::Row;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-const RECORD_TYPES: [&str; 15] = [
+const RECORD_TYPES: [&str; 20] = [
+    "legal_entity",
+    "business_unit",
+    "customer",
+    "supplier",
+    "warehouse",
     "sales_order",
     "shipment",
     "receivable",
@@ -511,11 +516,13 @@ fn validate_rule(record_type: &str, input: &SaveNumberingRule) -> Result<(), Dom
     ) {
         return Err(DomainError::Invalid("unsupported sequence scope".into()));
     }
-    if (input.scope_dimension == "business_unit"
-        && matches!(
-            record_type,
-            "opening" | "profit_adjustment" | "management_report"
-        ))
+    if (matches!(record_type, "legal_entity" | "business_unit")
+        && input.scope_dimension != "global")
+        || (input.scope_dimension == "business_unit"
+            && matches!(
+                record_type,
+                "opening" | "profit_adjustment" | "management_report"
+            ))
         || (record_type == "management_report" && input.scope_dimension != "global")
     {
         return Err(DomainError::Invalid(
@@ -671,6 +678,28 @@ mod tests {
         };
         assert!(matches!(
             validate_rule("sales_order", &input),
+            Err(DomainError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn legal_and_operating_entities_require_global_sequences() {
+        let input = SaveNumberingRule {
+            name: "经营主体编码".into(),
+            segments: vec![
+                NumberSegment::Fixed {
+                    value: "OU-".into(),
+                },
+                NumberSegment::Scope,
+                NumberSegment::Sequence { width: 4 },
+            ],
+            reset_period: "never".into(),
+            scope_dimension: "legal_entity".into(),
+            status: "active".into(),
+            expected_version: 1,
+        };
+        assert!(matches!(
+            validate_rule("business_unit", &input),
             Err(DomainError::Invalid(_))
         ));
     }
