@@ -3,7 +3,7 @@ use crate::relay::RestClient;
 use crate::turn_observer::TurnObserver;
 use nostr::Event;
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -241,7 +241,8 @@ pub(crate) async fn publish(
 ) -> BusinessResponseObservation {
     observation.publish_attempted = true;
     let started = Instant::now();
-    let event = match build_event(rest, channel_id, source_event, content) {
+    let content = strip_source_identifiers_from_trace_fields(content, &source_event.content);
+    let event = match build_event(rest, channel_id, source_event, &content) {
         Ok(event) => event,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Business Agent response build failed: {error}");
@@ -271,6 +272,55 @@ pub(crate) async fn publish(
         }
     }
     observation
+}
+
+/// Removes a model-supplied trace field when its value is an identifier copied
+/// from the source request. Trace IDs are only trustworthy when a tool result
+/// supplied them; a request identifier must never be relabeled as one.
+fn strip_source_identifiers_from_trace_fields(content: &str, source_content: &str) -> String {
+    let source_identifiers = source_content
+        .split(|character: char| {
+            !character.is_ascii_alphanumeric() && character != '-' && character != '_'
+        })
+        .filter(|identifier| identifier.len() >= 8)
+        .collect::<HashSet<_>>();
+    if source_identifiers.is_empty() {
+        return content.to_owned();
+    }
+
+    let mut sanitized = String::with_capacity(content.len());
+    let mut remaining = content;
+    while let Some(trace_start) = remaining.find("追踪号") {
+        let after_label = &remaining[trace_start + "追踪号".len()..];
+        let after_whitespace = after_label.trim_start();
+        let Some(after_colon) = after_whitespace
+            .strip_prefix('：')
+            .or_else(|| after_whitespace.strip_prefix(':'))
+        else {
+            let label_end = trace_start + "追踪号".len();
+            sanitized.push_str(&remaining[..label_end]);
+            remaining = &remaining[label_end..];
+            continue;
+        };
+        let trace_value = after_colon.trim_start();
+        let trace_value_end = trace_value
+            .find(char::is_whitespace)
+            .unwrap_or(trace_value.len());
+        let raw_value = &trace_value[..trace_value_end];
+        let identifier = raw_value.trim_matches(|character: char| {
+            matches!(character, '，' | '。' | '；' | ';' | ',' | '.')
+        });
+        if identifier.len() >= 8 && source_identifiers.contains(identifier) {
+            sanitized.push_str(&remaining[..trace_start]);
+            remaining = &trace_value[trace_value_end..];
+        } else {
+            let label_end = trace_start + "追踪号".len();
+            sanitized.push_str(&remaining[..label_end]);
+            remaining = &remaining[label_end..];
+        }
+    }
+    sanitized.push_str(remaining);
+    sanitized
 }
 
 fn build_event(
@@ -362,6 +412,27 @@ mod tests {
                 .and_then(|v| v.as_str())
                 == Some(expected_source.as_str())
         }));
+    }
+
+    #[test]
+    fn response_never_relabels_a_source_identifier_as_a_trace_id() {
+        let source = "查询销售订单 00000000-0000-0000-0000-000000000000";
+        let response = "查询结果说明：未找到或无权访问。\n追踪号：00000000-0000-0000-0000-000000000000\n下一步建议：核对订单标识。";
+
+        assert_eq!(
+            strip_source_identifiers_from_trace_fields(response, source),
+            "查询结果说明：未找到或无权访问。\n\n下一步建议：核对订单标识。"
+        );
+    }
+
+    #[test]
+    fn response_keeps_a_trace_id_not_present_in_the_source_request() {
+        let response = "追踪号：service-trace-20260926\n下一步建议：核对订单标识。";
+
+        assert_eq!(
+            strip_source_identifiers_from_trace_fields(response, "查询销售订单 SO-1"),
+            response
+        );
     }
 
     #[tokio::test]
