@@ -914,6 +914,7 @@ fn prompt_requires_a_structured_non_successful_query_reply() {
         "下一步建议",
         "不展示内部 UUID",
         "不推断记录不存在",
+        "绝不显示 `{}`、`null`、`undefined`、“工具未说明”等占位值",
     ] {
         for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
             assert!(

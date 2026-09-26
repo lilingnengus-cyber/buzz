@@ -242,6 +242,7 @@ pub(crate) async fn publish(
     observation.publish_attempted = true;
     let started = Instant::now();
     let content = strip_source_identifiers_from_trace_fields(content, &source_event.content);
+    let content = strip_unhelpful_exact_read_metadata(&content);
     let event = match build_event(rest, channel_id, source_event, &content) {
         Ok(event) => event,
         Err(error) => {
@@ -321,6 +322,28 @@ fn strip_source_identifiers_from_trace_fields(content: &str, source_content: &st
     }
     sanitized.push_str(remaining);
     sanitized
+}
+
+/// Exact reads that collapse to `not_found_or_forbidden` do not establish a
+/// query scope or pagination completeness. Avoid publishing empty-object or
+/// generic-placeholder rows that make that boundary look like tool output.
+fn strip_unhelpful_exact_read_metadata(content: &str) -> String {
+    if !content.contains("查询结果说明：未找到或无权访问") {
+        return content.to_owned();
+    }
+
+    [
+        "查询范围：{}\n",
+        "查询范围：{} ",
+        "查询范围：{}",
+        "完整性：工具未说明。\n",
+        "完整性：工具未说明。 ",
+        "完整性：工具未说明。",
+    ]
+    .into_iter()
+    .fold(content.to_owned(), |sanitized, placeholder| {
+        sanitized.replace(placeholder, "")
+    })
 }
 
 fn build_event(
@@ -433,6 +456,24 @@ mod tests {
             strip_source_identifiers_from_trace_fields(response, "查询销售订单 SO-1"),
             response
         );
+    }
+
+    #[test]
+    fn exact_not_found_reply_omits_empty_scope_and_generic_completeness_rows() {
+        let response = "查询结果说明：未找到或无权访问。\n查询范围：{}\n完整性：工具未说明。\n数据时点：2026-09-26 21:24（UTC+8）。\n下一步建议：核对订单标识。";
+
+        assert_eq!(
+            strip_unhelpful_exact_read_metadata(response),
+            "查询结果说明：未找到或无权访问。\n数据时点：2026-09-26 21:24（UTC+8）。\n下一步建议：核对订单标识。"
+        );
+    }
+
+    #[test]
+    fn exact_not_found_reply_keeps_meaningful_verified_scope() {
+        let response =
+            "查询结果说明：未找到或无权访问。\n查询范围：当前授权范围\n完整性：精确读取已完成。";
+
+        assert_eq!(strip_unhelpful_exact_read_metadata(response), response);
     }
 
     #[tokio::test]
