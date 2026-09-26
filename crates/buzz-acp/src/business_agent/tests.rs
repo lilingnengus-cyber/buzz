@@ -909,3 +909,31 @@ fn prompt_requires_a_scannable_batch_query_list() {
         }
     }
 }
+
+#[test]
+fn prompt_requires_a_consistent_single_detail_field_order() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented =
+        include_str!("../../../../docs/business-agent/single-detail-reply-contract.md");
+    for required in [
+        "单条详情回复",
+        "业务编号",
+        "状态",
+        "金额／数量",
+        "业务日期",
+        "关键归属",
+        "详情链接",
+        "查询记录",
+        "追踪号",
+        "固定顺序",
+        "实际返回且适用",
+        "不补造",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing single-detail reply rule in {surface}: {required}"
+            );
+        }
+    }
+}
