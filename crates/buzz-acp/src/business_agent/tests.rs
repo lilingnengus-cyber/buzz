@@ -631,6 +631,27 @@ fn prompt_reports_query_scope_order_and_pagination_honestly() {
 }
 
 #[test]
+fn prompt_routes_sales_order_uuids_to_exact_reads() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/empty-query-contract.md");
+    for required in [
+        "销售订单的 UUID",
+        "`get_sales_order`",
+        "不得改用 `search_sales_orders`",
+        "`not_found_or_forbidden`",
+        "未找到或无权访问",
+        "搜索范围内没有匹配项",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing exact sales-order routing rule in {surface}: {required}"
+            );
+        }
+    }
+}
+
+#[test]
 fn prompt_distinguishes_empty_query_outcomes() {
     let prompt = include_str!("../business_agent_prompt.md");
     let documented = include_str!("../../../../docs/business-agent/empty-query-contract.md");
