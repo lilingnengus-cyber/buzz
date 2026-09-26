@@ -652,6 +652,27 @@ fn prompt_routes_sales_order_uuids_to_exact_reads() {
 }
 
 #[test]
+fn prompt_never_relabels_resource_identifiers_as_trace_ids() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    let documented = include_str!("../../../../docs/business-agent/empty-query-contract.md");
+    for required in [
+        "“追踪号”",
+        "当前工具结果明确提供的 trace ID",
+        "订单 UUID",
+        "资源 ID",
+        "工具没有返回 trace ID 时省略整行",
+        "不要猜测、回填或复用",
+    ] {
+        for (surface, contract) in [("prompt", prompt), ("documentation", documented)] {
+            assert!(
+                contract.contains(required),
+                "missing trace-id display rule in {surface}: {required}"
+            );
+        }
+    }
+}
+
+#[test]
 fn prompt_distinguishes_empty_query_outcomes() {
     let prompt = include_str!("../business_agent_prompt.md");
     let documented = include_str!("../../../../docs/business-agent/empty-query-contract.md");
