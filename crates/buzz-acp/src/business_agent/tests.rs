@@ -860,9 +860,9 @@ fn prompt_requires_a_structured_non_successful_query_reply() {
     let prompt = include_str!("../business_agent_prompt.md");
     let documented = include_str!("../../../../docs/business-agent/query-outcome-contract.md");
     for required in [
-        "查询结果说明",
-        "查询范围",
-        "完整性",
+        "查询结果说明：",
+        "查询范围：",
+        "完整性：",
         "当前范围内没有匹配项",
         "部分结果",
         "未找到或无权访问",
