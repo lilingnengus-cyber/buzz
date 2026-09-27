@@ -106,12 +106,17 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   const dialog = page.getByRole("dialog", { name: "新增客户" });
   const tree = dialog.getByRole("tree", { name: "经营主体 *" });
   await expect(tree.getByRole("treeitem")).toHaveCount(5);
-  await dialog
-    .getByRole("searchbox", { name: "经营主体 *搜索" })
-    .fill("OU-0004");
+  const search = dialog.getByRole("searchbox", { name: "经营主体 *搜索" });
+  await search.fill("OU-0004");
   await expect(tree.getByRole("treeitem")).toHaveCount(4);
   await expect(tree.getByText("北京单元")).toHaveCount(0);
-  await tree.getByRole("button", { name: /OU-0004.*杭州单元/ }).click();
+  await search.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  const hangzhou = tree.getByRole("button", { name: /OU-0004.*杭州单元/ });
+  await expect(hangzhou).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(
     dialog.getByText("集团 / 中国区 / 华东区 / 杭州单元"),
   ).toBeVisible();

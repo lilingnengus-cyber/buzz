@@ -24,6 +24,7 @@ export function OperatingUnitPicker({
   emptyLabel?: string;
 }) {
   const labelId = React.useId();
+  const pickerRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState("");
   const tree = React.useMemo(
     () => buildOperatingTree(records, query),
@@ -41,11 +42,35 @@ export function OperatingUnitPicker({
       else next.add(id);
       return next;
     });
+  const moveChoiceFocus = (
+    current: HTMLButtonElement | null,
+    direction: -1 | 1,
+  ) => {
+    const choices = Array.from(
+      pickerRef.current?.querySelectorAll<HTMLButtonElement>(
+        ".master-tree-option.root:not(:disabled), .master-tree-choice:not(:disabled)",
+      ) ?? [],
+    );
+    if (choices.length === 0) return;
+    const currentIndex = current
+      ? choices.indexOf(current)
+      : direction === 1
+        ? -1
+        : choices.length;
+    const nextIndex = Math.max(
+      0,
+      Math.min(choices.length - 1, currentIndex + direction),
+    );
+    choices[nextIndex]?.focus();
+  };
 
   return (
     <div className="master-tree-field wide">
       <span id={labelId}>{label}</span>
-      <div className={`master-tree-picker ${disabled ? "disabled" : ""}`}>
+      <div
+        ref={pickerRef}
+        className={`master-tree-picker ${disabled ? "disabled" : ""}`}
+      >
         <div className="master-tree-selection" aria-live="polite">
           <small>当前选择</small>
           <strong>{selectedPath}</strong>
@@ -59,6 +84,11 @@ export function OperatingUnitPicker({
             value={query}
             disabled={disabled}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+              event.preventDefault();
+              moveChoiceFocus(null, event.key === "ArrowDown" ? 1 : -1);
+            }}
           />
         </div>
         <div role="tree" aria-labelledby={labelId}>
@@ -70,6 +100,16 @@ export function OperatingUnitPicker({
               className={`master-tree-option root ${!value ? "selected" : ""}`}
               disabled={disabled}
               onClick={() => onChange("")}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                  return;
+                }
+                event.preventDefault();
+                moveChoiceFocus(
+                  event.currentTarget,
+                  event.key === "ArrowDown" ? 1 : -1,
+                );
+              }}
             >
               <span>ROOT</span>
               <b>{emptyLabel}</b>
@@ -84,6 +124,7 @@ export function OperatingUnitPicker({
               disabled={disabled}
               onChange={onChange}
               onToggle={toggle}
+              onNavigate={moveChoiceFocus}
               searching={Boolean(query.trim())}
             />
           ))}
@@ -103,6 +144,7 @@ function OperatingUnitPickerNode({
   disabled,
   onChange,
   onToggle,
+  onNavigate,
   searching,
 }: {
   node: OperatingUnitNode;
@@ -111,6 +153,7 @@ function OperatingUnitPickerNode({
   disabled: boolean;
   onChange: (value: string) => void;
   onToggle: (id: string) => void;
+  onNavigate: (current: HTMLButtonElement | null, direction: -1 | 1) => void;
   searching: boolean;
 }) {
   const isCollapsed = !searching && collapsed.has(node.id);
@@ -139,6 +182,11 @@ function OperatingUnitPickerNode({
           className="master-tree-choice"
           disabled={disabled || !selectable}
           onClick={() => onChange(node.id)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+            event.preventDefault();
+            onNavigate(event.currentTarget, event.key === "ArrowDown" ? 1 : -1);
+          }}
         >
           <code>{node.code}</code>
           <span>{node.name}</span>
@@ -154,6 +202,7 @@ function OperatingUnitPickerNode({
             disabled={disabled}
             onChange={onChange}
             onToggle={onToggle}
+            onNavigate={onNavigate}
             searching={searching}
           />
         ))}
