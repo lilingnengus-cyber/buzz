@@ -233,21 +233,21 @@ const ROUTES: readonly RouteDefinition[] = [
   {
     type: "shipment",
     deepLink: "shipment",
-    prefix: "/embed/shipments/",
+    prefix: "/shipments/",
     entity: true,
     label: "销售出库",
   },
   {
     type: "purchase_order",
     deepLink: "purchase-order",
-    prefix: "/embed/purchase-orders/",
+    prefix: "/purchase-orders/",
     entity: true,
     label: "采购订单",
   },
   {
     type: "goods_receipt",
     deepLink: "goods-receipt",
-    prefix: "/embed/goods-receipts/",
+    prefix: "/goods-receipts/",
     entity: true,
     label: "采购收货",
   },
@@ -289,7 +289,7 @@ const ROUTES: readonly RouteDefinition[] = [
   {
     type: "supplier_payment",
     deepLink: "supplier-payment",
-    prefix: "/embed/supplier-payments/",
+    prefix: "/supplier-payments/",
     entity: true,
     label: "供应商付款",
   },
@@ -310,7 +310,7 @@ const ROUTES: readonly RouteDefinition[] = [
   {
     type: "customer_receipt",
     deepLink: "customer-receipt",
-    prefix: "/embed/customer-receipts/",
+    prefix: "/customer-receipts/",
     entity: true,
     label: "客户收款",
   },
@@ -364,6 +364,16 @@ const ROUTE_BY_TYPE = new Map<
 const ROUTE_BY_DEEP_LINK = new Map(
   ROUTES.map((route) => [route.deepLink, route]),
 );
+const LEGACY_EMBEDDED_DETAIL_ROUTES = [
+  ["sales_order", "/embed/sales-orders/", "/sales/orders/"],
+  ["shipment", "/embed/shipments/", "/shipments/"],
+  ["purchase_order", "/embed/purchase-orders/", "/purchase-orders/"],
+  ["goods_receipt", "/embed/goods-receipts/", "/goods-receipts/"],
+  ["customer_receipt", "/embed/customer-receipts/", "/customer-receipts/"],
+  ["supplier_payment", "/embed/supplier-payments/", "/supplier-payments/"],
+] as const satisfies ReadonlyArray<
+  readonly [BusinessResourceType, string, string]
+>;
 const SINGLETON_DEEP_LINKS = new Set([
   "operations-dashboard",
   "data-quality",
@@ -473,15 +483,21 @@ function normalizeMetadata(value: unknown): Record<string, string> | undefined {
 }
 
 function resourceFromPath(path: string): BusinessResource {
-  const legacySalesOrder = path.match(/^\/embed\/sales-orders\/([^/]+)/);
-  if (legacySalesOrder && SAFE_SEGMENT.test(legacySalesOrder[1])) {
-    const id = legacySalesOrder[1];
-    return {
-      version: 1,
-      type: "sales_order",
-      id,
-      path: `/sales/orders/${encodeURIComponent(id)}`,
-    };
+  for (const [
+    type,
+    legacyPrefix,
+    standardPrefix,
+  ] of LEGACY_EMBEDDED_DETAIL_ROUTES) {
+    if (!path.startsWith(legacyPrefix)) continue;
+    const id = path.slice(legacyPrefix.length).split("/")[0];
+    if (id && SAFE_SEGMENT.test(id)) {
+      return {
+        version: 1,
+        type,
+        id,
+        path: `${standardPrefix}${encodeURIComponent(id)}`,
+      };
+    }
   }
   const master = path.match(/^\/embed\/master-data\/([^/]+)\/([^/]+)$/);
   if (master) {

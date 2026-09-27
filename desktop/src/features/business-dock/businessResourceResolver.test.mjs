@@ -145,27 +145,65 @@ test("parses and rebuilds V6 lifecycle deep links without query data", () => {
   );
 });
 
-test("parses B2 shipment and customer receipt deep links", () => {
-  const shipment = parseBusinessUrl("biz://shipment/SHP-001", config);
-  assert.equal(shipment?.type, "shipment");
-  assert.equal(shipment?.path, "/embed/shipments/SHP-001");
-  assert.equal(buildBusinessReference(shipment), "biz://shipment/SHP-001");
-  const receipt = parseBusinessUrl("biz://customer-receipt/RCPT-001", config);
-  assert.equal(receipt?.type, "customer_receipt");
-  assert.equal(receipt?.path, "/embed/customer-receipts/RCPT-001");
-  assert.equal(
-    buildBusinessReference(receipt),
-    "biz://customer-receipt/RCPT-001",
-  );
+test("transaction deep links use their standard detail pages", () => {
+  for (const [reference, type, path] of [
+    ["biz://shipment/SHP-001", "shipment", "/shipments/SHP-001"],
+    [
+      "biz://purchase-order/PO-001",
+      "purchase_order",
+      "/purchase-orders/PO-001",
+    ],
+    ["biz://goods-receipt/GR-001", "goods_receipt", "/goods-receipts/GR-001"],
+    [
+      "biz://customer-receipt/RCPT-001",
+      "customer_receipt",
+      "/customer-receipts/RCPT-001",
+    ],
+    [
+      "biz://supplier-payment/PAY-001",
+      "supplier_payment",
+      "/supplier-payments/PAY-001",
+    ],
+  ]) {
+    const resource = parseBusinessUrl(reference, config);
+    assert.equal(resource?.type, type);
+    assert.equal(resource?.path, path);
+    assert.equal(buildBusinessReference(resource), reference);
+  }
 });
 
-test("parses B3 receipt and supplier payment deep links", () => {
-  const receipt = parseBusinessUrl("biz://goods-receipt/GR-001", config);
-  assert.equal(receipt?.type, "goods_receipt");
-  assert.equal(receipt?.path, "/embed/goods-receipts/GR-001");
-  const payment = parseBusinessUrl("biz://supplier-payment/PAY-001", config);
-  assert.equal(payment?.type, "supplier_payment");
-  assert.equal(payment?.path, "/embed/supplier-payments/PAY-001");
+test("legacy embedded transaction links normalize to standard detail pages", () => {
+  for (const [url, type, path] of [
+    [
+      "https://biz.example.com/embed/shipments/SHP-001",
+      "shipment",
+      "/shipments/SHP-001",
+    ],
+    [
+      "https://biz.example.com/embed/purchase-orders/PO-001",
+      "purchase_order",
+      "/purchase-orders/PO-001",
+    ],
+    [
+      "https://biz.example.com/embed/goods-receipts/GR-001",
+      "goods_receipt",
+      "/goods-receipts/GR-001",
+    ],
+    [
+      "https://biz.example.com/embed/customer-receipts/RCPT-001",
+      "customer_receipt",
+      "/customer-receipts/RCPT-001",
+    ],
+    [
+      "https://biz.example.com/embed/supplier-payments/PAY-001",
+      "supplier_payment",
+      "/supplier-payments/PAY-001",
+    ],
+  ]) {
+    const resource = parseBusinessUrl(url, config);
+    assert.equal(resource?.type, type);
+    assert.equal(resource?.path, path);
+  }
 });
 
 test("parses and rebuilds B4 profit deep links", () => {
