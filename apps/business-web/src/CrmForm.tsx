@@ -1,7 +1,7 @@
 import React from "react";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
-  rememberRecentOperatingUnit,
+  rememberSyncedRecentOperatingUnit,
   resolveRecentOperatingUnit,
 } from "./recentOperatingUnit";
 import { useCrmCommand } from "./useCrmCommand";
@@ -77,7 +77,7 @@ export function CrmForm({
           }),
         },
       );
-      rememberRecentOperatingUnit("crm-opportunity", unit);
+      void rememberSyncedRecentOperatingUnit("crm-opportunity", unit);
       onSaved(result.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败，请重试");
@@ -147,6 +147,8 @@ export function CrmForm({
           value={unit}
           onChange={setUnit}
           disabled={Boolean(record)}
+          preferenceContext={record ? undefined : "crm-opportunity"}
+          preferenceFallback={units.length === 1 ? units[0].id : ""}
         />
         <label>
           关联已有客户

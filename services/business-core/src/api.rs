@@ -58,6 +58,7 @@ pub struct AppState {
     pub(crate) master_data: crate::master_data::CoreMasterDataService,
     pub(crate) product_master: crate::product_master::ProductMasterService,
     pub(crate) numbering: crate::numbering::NumberingRuleService,
+    pub(crate) user_preferences: crate::user_preferences::UserPreferenceService,
     pub(crate) business_web_origins: [String; 2],
     pub(crate) business_session_cookie_name: String,
     pub(crate) command_rate_limit_per_minute: u32,
@@ -132,6 +133,7 @@ impl AppState {
         let master_data = crate::master_data::CoreMasterDataService::new(store.clone());
         let product_master = crate::product_master::ProductMasterService::new(store.clone());
         let numbering = crate::numbering::NumberingRuleService::new(store.clone());
+        let user_preferences = crate::user_preferences::UserPreferenceService::new(store.clone());
         Self {
             store,
             authenticator: ServiceAuthenticator::new(
@@ -158,6 +160,7 @@ impl AppState {
             master_data,
             product_master,
             numbering,
+            user_preferences,
             business_web_origins: [
                 config.business_web_origin.clone(),
                 config.business_web_embed_origin.clone(),

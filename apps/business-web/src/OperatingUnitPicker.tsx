@@ -4,6 +4,7 @@ import {
   type OperatingUnitNode,
   type OperatingUnitRecord,
 } from "./OperatingUnitTree";
+import { resolveSyncedRecentOperatingUnit } from "./recentOperatingUnit";
 import "./operating-unit-picker.css";
 
 export function OperatingUnitPicker({
@@ -14,6 +15,8 @@ export function OperatingUnitPicker({
   disabled = false,
   allowEmpty = false,
   emptyLabel = "设为根节点",
+  preferenceContext,
+  preferenceFallback = "",
 }: {
   label: string;
   records: OperatingUnitRecord[];
@@ -22,15 +25,47 @@ export function OperatingUnitPicker({
   disabled?: boolean;
   allowEmpty?: boolean;
   emptyLabel?: string;
+  preferenceContext?: string;
+  preferenceFallback?: string;
 }) {
   const labelId = React.useId();
   const pickerRef = React.useRef<HTMLDivElement>(null);
+  const valueRef = React.useRef(value);
+  const onChangeRef = React.useRef(onChange);
+  const recordsRef = React.useRef(records);
   const [query, setQuery] = React.useState("");
   const tree = React.useMemo(
     () => buildOperatingTree(records, query),
     [records, query],
   );
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  valueRef.current = value;
+  onChangeRef.current = onChange;
+  recordsRef.current = records;
+  const recordsSignature = records
+    .map((record) => `${record.id}:${record.status}`)
+    .join("|");
+  React.useEffect(() => {
+    if (!preferenceContext || disabled || !recordsSignature) return;
+    let active = true;
+    const initialValue = valueRef.current;
+    void resolveSyncedRecentOperatingUnit(
+      preferenceContext,
+      recordsRef.current,
+      preferenceFallback,
+    ).then((next) => {
+      if (
+        active &&
+        valueRef.current === initialValue &&
+        next !== initialValue
+      ) {
+        onChangeRef.current(next);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [disabled, preferenceContext, preferenceFallback, recordsSignature]);
   const selected = records.find((record) => record.id === value);
   const selectedPath = selected
     ? [...(selected.ancestorPath ?? []).slice(0, -1), selected.name].join(" / ")

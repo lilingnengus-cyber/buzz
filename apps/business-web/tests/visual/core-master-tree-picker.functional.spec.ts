@@ -60,6 +60,7 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
     ]),
   ];
   let submitted: Record<string, unknown> | null = null;
+  let serverPreference: string | null = null;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/session") {
@@ -69,6 +70,22 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
           subject: "tree-picker-test",
           displayName: "树形选择验收",
           csrfToken: "tree-picker-csrf",
+        },
+      });
+    } else if (
+      path === "/api/v1/preferences/operating-unit/core-master-customer"
+    ) {
+      if (route.request().method() === "PUT") {
+        serverPreference = (
+          route.request().postDataJSON() as {
+            businessUnitId: string;
+          }
+        ).businessUnitId;
+      }
+      await route.fulfill({
+        json: {
+          context: "core-master-customer",
+          businessUnitId: serverPreference,
         },
       });
     } else if (path === "/api/v1/core-master-data") {
@@ -133,6 +150,12 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   await dialog.getByRole("button", { name: "确认新增" }).click();
   await expect.poll(() => submitted?.businessUnitId).toBe("hangzhou");
   await expect(dialog).toHaveCount(0);
+  await expect.poll(() => serverPreference).toBe("hangzhou");
+  await page.evaluate(() =>
+    localStorage.removeItem(
+      "business.recent-operating-unit.core-master-customer",
+    ),
+  );
   await page.getByRole("button", { name: "＋ 新增客户" }).click();
   await expect(
     page

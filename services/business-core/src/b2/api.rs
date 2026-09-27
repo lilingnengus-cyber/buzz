@@ -368,6 +368,7 @@ pub fn browser_routes(state: Arc<AppState>) -> Router {
         .merge(crate::product_master_api::browser_routes())
         .merge(crate::numbering_api::browser_routes())
         .merge(crate::crm::api::browser_routes())
+        .merge(super::user_preferences_api::browser_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             business_session_auth,

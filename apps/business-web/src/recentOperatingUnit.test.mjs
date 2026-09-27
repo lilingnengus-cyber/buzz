@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   rememberRecentOperatingUnit,
   resolveRecentOperatingUnit,
+  resolveSyncedRecentOperatingUnit,
 } from "./recentOperatingUnit.ts";
 
 const units = [
@@ -15,6 +16,7 @@ const storage = () => {
   return {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
   };
 };
 
@@ -43,4 +45,27 @@ test("ignores missing and inactive remembered operating units", () => {
     resolveRecentOperatingUnit("sales-order", units, "east", memory),
     "east",
   );
+});
+
+test("uses the account preference ahead of the local fallback", async () => {
+  const memory = storage();
+  rememberRecentOperatingUnit("sales-order", "west", memory);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ businessUnitId: "east" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  try {
+    assert.equal(
+      await resolveSyncedRecentOperatingUnit("sales-order", units, "", memory),
+      "east",
+    );
+    assert.equal(
+      memory.getItem("business.recent-operating-unit.sales-order"),
+      "east",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

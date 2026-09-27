@@ -18,7 +18,7 @@ import {
 } from "./OperatingUnitTree";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
-  rememberRecentOperatingUnit,
+  rememberSyncedRecentOperatingUnit,
   resolveRecentOperatingUnit,
 } from "./recentOperatingUnit";
 import "./core-master-data.css";
@@ -593,7 +593,10 @@ function MasterFormModal({
         body: JSON.stringify(payload),
       });
       if (form.businessUnitId) {
-        rememberRecentOperatingUnit(`core-master-${type}`, form.businessUnitId);
+        void rememberSyncedRecentOperatingUnit(
+          `core-master-${type}`,
+          form.businessUnitId,
+        );
       }
       await onSaved();
     } catch (reason) {
@@ -670,6 +673,7 @@ function MasterFormModal({
               value={form.businessUnitId}
               onChange={(value) => set("businessUnitId", value)}
               disabled={Boolean(record)}
+              preferenceContext={record ? undefined : `core-master-${type}`}
             />
           )}
           {type === "legal_entity" && (

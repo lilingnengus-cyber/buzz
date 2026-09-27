@@ -10,7 +10,7 @@ import { formatAmount } from "./formatters";
 import { loadOperatingUnits } from "./operatingUnitOptions";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
-  rememberRecentOperatingUnit,
+  rememberSyncedRecentOperatingUnit,
   resolveRecentOperatingUnit,
 } from "./recentOperatingUnit";
 
@@ -202,7 +202,7 @@ export function PurchaseOrderEntry({
       );
       setVersion(result.version);
       setNotice(`采购订单 ${result.number} 已保存为草稿。`);
-      rememberRecentOperatingUnit("purchase-order", businessUnitId);
+      void rememberSyncedRecentOperatingUnit("purchase-order", businessUnitId);
       if (!orderId) {
         setSupplierReference("");
         setBusinessNote("");
@@ -249,7 +249,7 @@ export function PurchaseOrderEntry({
           <div className="entry-fields purchase-fields">
             <Field label="法律主体"><select value={legalEntityId} onChange={(event) => changeLegalEntity(event.target.value)} disabled={Boolean(orderId) || !allowed} required>{catalog.legalEntities.map(option)}</select></Field>
             <Field label="供应商"><select value={supplierId} onChange={(event) => setSupplierId(event.target.value)} disabled={!allowed} required>{availableSuppliers.map(option)}</select></Field>
-            <OperatingUnitPicker label="经营主体" records={availableBusinessUnits} value={businessUnitId} onChange={setBusinessUnitId} disabled={!allowed} />
+            <OperatingUnitPicker label="经营主体" records={availableBusinessUnits} value={businessUnitId} onChange={setBusinessUnitId} disabled={!allowed} preferenceContext={orderId ? undefined : "purchase-order"} preferenceFallback={availableBusinessUnits[0]?.id ?? ""} />
             <Field label="订单日期"><input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} disabled={!allowed} required /></Field>
             <Field label="预计交付日"><input type="date" min={orderDate} value={expectedDeliveryDate} onChange={(event) => setExpectedDeliveryDate(event.target.value)} disabled={!allowed} /></Field>
             <Field label="账期天数"><input type="number" min="0" max="3650" step="1" value={paymentTermsDays} onChange={(event) => setPaymentTermsDays(event.target.value)} disabled={!allowed} required /></Field>

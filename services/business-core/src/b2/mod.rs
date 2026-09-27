@@ -11,6 +11,7 @@ mod return_disposition_api;
 mod returns;
 mod sales;
 mod settlement;
+mod user_preferences_api;
 
 pub use common::DomainError;
 pub use inventory::InventoryService;

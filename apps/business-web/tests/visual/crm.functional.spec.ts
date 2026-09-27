@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 import { waitForAnimations } from "../../../../desktop/tests/helpers/animations";
 
 test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
-  let records: any[] = [];
-  let notes: any[] = [];
+  const records: any[] = [];
+  const notes: any[] = [];
   let writes = 0;
+  let operatingUnitPreference: string | null = null;
   await page.route("**/api/**", async (route) => {
     const req = route.request(),
       url = new URL(req.url()),
@@ -63,6 +64,17 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
           ],
         },
       });
+    if (path === "/api/v1/preferences/operating-unit/crm-opportunity") {
+      if (req.method() === "PUT") {
+        operatingUnitPreference = req.postDataJSON().businessUnitId;
+      }
+      return route.fulfill({
+        json: {
+          context: "crm-opportunity",
+          businessUnitId: operatingUnitPreference,
+        },
+      });
+    }
     if (req.method() !== "GET") {
       expect(req.headers()["x-csrf-token"]).toBe("test-csrf");
       expect(req.headers()["idempotency-key"]).toBeTruthy();
@@ -168,6 +180,7 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   ).toBeVisible();
   expect(records[0].expectedAmountMinor).toBe(125050);
   expect(writes).toBe(1);
+  await expect.poll(() => operatingUnitPreference).toBe("unit");
   await detail.getByLabel("本次沟通").fill("客户确认需求，准备报价。");
   await detail.getByLabel("更新阶段").selectOption("quoting");
   await detail.getByLabel("下一步", { exact: true }).fill("提交报价单");

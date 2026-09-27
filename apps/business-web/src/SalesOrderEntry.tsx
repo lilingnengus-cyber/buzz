@@ -9,7 +9,7 @@ import { formatAmount } from "./formatters";
 import { loadOperatingUnits } from "./operatingUnitOptions";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
-  rememberRecentOperatingUnit,
+  rememberSyncedRecentOperatingUnit,
   resolveRecentOperatingUnit,
 } from "./recentOperatingUnit";
 import {
@@ -167,7 +167,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
         }),
       });
       setNotice(`销售订单 ${output.number} 已保存为草稿。`);
-      rememberRecentOperatingUnit("sales-order", businessUnitId);
+      void rememberSyncedRecentOperatingUnit("sales-order", businessUnitId);
       setCustomerReference("");
       setBusinessNote("");
       setLines([
@@ -239,6 +239,8 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
               records={availableUnits}
               value={businessUnitId}
               onChange={setBusinessUnitId}
+              preferenceContext="sales-order"
+              preferenceFallback={availableUnits[0]?.id ?? ""}
             />
             <Field label="订单日期">
               <input

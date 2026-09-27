@@ -19,6 +19,7 @@ pub mod product_master_api;
 pub mod s1;
 pub mod security;
 pub mod store;
+pub mod user_preferences;
 
 pub use api::{router, AppState};
 pub use config::Config;
