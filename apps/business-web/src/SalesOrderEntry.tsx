@@ -1,6 +1,13 @@
 import React from "react";
-import { type MasterDataList, type MasterDataRecord, request } from "./api";
+import {
+  type CoreMasterRecord,
+  type MasterDataList,
+  type MasterDataRecord,
+  request,
+} from "./api";
 import { formatAmount } from "./formatters";
+import { loadOperatingUnits } from "./operatingUnitOptions";
+import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
   isCompleteSalesOrderLine,
   newSalesOrderLine,
@@ -10,7 +17,7 @@ import {
 type Catalog = {
   legalEntities: MasterDataRecord[];
   customers: MasterDataRecord[];
-  businessUnits: MasterDataRecord[];
+  businessUnits: CoreMasterRecord[];
   skus: MasterDataRecord[];
   warehouses: MasterDataRecord[];
   units: MasterDataRecord[];
@@ -46,7 +53,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     Promise.all([
       loadMaster("legal_entity"),
       loadMaster("customer"),
-      loadMaster("business_unit"),
+      loadOperatingUnits(),
       loadMaster("sku"),
       loadMaster("warehouse"),
       loadMaster("unit_of_measure"),
@@ -216,15 +223,12 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
                 {availableCustomers.map(option)}
               </select>
             </Field>
-            <Field label="业务单元">
-              <select
-                value={businessUnitId}
-                onChange={(event) => setBusinessUnitId(event.target.value)}
-                required
-              >
-                {availableUnits.map(option)}
-              </select>
-            </Field>
+            <OperatingUnitPicker
+              label="经营主体"
+              records={availableUnits}
+              value={businessUnitId}
+              onChange={setBusinessUnitId}
+            />
             <Field label="订单日期">
               <input
                 type="date"

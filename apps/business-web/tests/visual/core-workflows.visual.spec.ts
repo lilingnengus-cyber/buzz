@@ -134,6 +134,24 @@ async function installBusinessFixtures(page: Page, zoom: number) {
         scopeVersion: 1,
         effectiveScopeHash: "visual-fixture",
       };
+    } else if (path === "/api/v1/core-master-data") {
+      body = {
+        items: [
+          {
+            id: "business-unit-1",
+            code: "BU-01",
+            name: "商贸业务部",
+            resourceType: "business_unit",
+            status: "active",
+            parentBusinessUnitId: null,
+            ancestorPath: ["商贸业务部"],
+            depth: 0,
+            descendantCount: 0,
+          },
+        ],
+        canManage: true,
+        dataAsOf: "2026-08-23T01:30:00Z",
+      };
     } else if (path === "/api/v1/inventory-balances") {
       body = envelope([inventoryBalance]);
     } else if (path === "/api/v1/inventory-movements") {
@@ -239,10 +257,11 @@ async function expectDialogInsideViewport(page: Page, dialog: Locator) {
 
 async function expectIndentedNavigation(page: Page, activeLabel: string) {
   const navigation = page.getByRole("navigation", { name: "业务导航" });
-  await expect(navigation.locator(".rail-group")).toHaveCount(4);
+  await expect(navigation.locator(".rail-group")).toHaveCount(5);
   await expect(navigation.locator(".rail-group-head strong")).toHaveText([
     "经营控制",
     "基础资料",
+    "售前 CRM",
     "业务闭环",
     "经营分析",
   ]);

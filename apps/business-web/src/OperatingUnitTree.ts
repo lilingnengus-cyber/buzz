@@ -47,13 +47,15 @@ export function buildOperatingTree(
       else orphans.push({ ...node, orphaned: true });
     }
   }
-  const sort = (node: OperatingUnitNode) => {
+  const sort = (node: OperatingUnitNode, depth: number) => {
+    node.depth = depth;
     node.children.sort(compare);
-    node.children.forEach(sort);
+    node.children.forEach((child) => sort(child, depth + 1));
   };
   roots.sort(compare);
-  roots.forEach(sort);
+  roots.forEach((root) => sort(root, 0));
   orphans.sort(compare);
+  orphans.forEach((orphan) => sort(orphan, 1));
   const needle = query.trim().toLocaleLowerCase();
   const retainMatches = (node: OperatingUnitNode): OperatingUnitNode | null => {
     const children = node.children

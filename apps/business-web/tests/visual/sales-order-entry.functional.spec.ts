@@ -46,6 +46,28 @@ async function installFixtures(page: Page) {
       });
       return;
     }
+    if (url.pathname === "/api/v1/core-master-data") {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              id: "business-unit-1",
+              code: "BU-01",
+              name: "业务单元",
+              resourceType: "business_unit",
+              status: "active",
+              parentBusinessUnitId: null,
+              ancestorPath: ["业务单元"],
+              depth: 0,
+              descendantCount: 0,
+            },
+          ],
+          canManage: true,
+          dataAsOf: "2026-09-27T10:00:00Z",
+        },
+      });
+      return;
+    }
     await route.fulfill({ json: { items: [] } });
   });
 }

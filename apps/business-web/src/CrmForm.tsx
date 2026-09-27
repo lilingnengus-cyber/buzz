@@ -1,4 +1,5 @@
 import React from "react";
+import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import { useCrmCommand } from "./useCrmCommand";
 import {
   amountMinor,
@@ -37,6 +38,10 @@ export function CrmForm({
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (lock.current) return;
+    if (!legal || !unit) {
+      setError("请选择法人主体和经营主体");
+      return;
+    }
     const form = new FormData(event.currentTarget);
     lock.current = true;
     setBusy(true);
@@ -126,24 +131,13 @@ export function CrmForm({
             ))}
           </select>
         </label>
-        <label>
-          业务单元
-          <select
-            required
-            value={unit}
-            disabled={!!record}
-            onChange={(e) => {
-              setUnit(e.target.value);
-            }}
-          >
-            <option value="">请选择</option>
-            {units.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <OperatingUnitPicker
+          label="经营主体"
+          records={units}
+          value={unit}
+          onChange={setUnit}
+          disabled={Boolean(record)}
+        />
         <label>
           关联已有客户
           <select

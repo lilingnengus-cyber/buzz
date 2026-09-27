@@ -31,6 +31,11 @@ export type CrmOption = {
   resourceType: string;
   legalEntityId: string | null;
   businessUnitId: string | null;
+  status: string;
+  parentBusinessUnitId: string | null;
+  ancestorPath: string[] | null;
+  depth: number | null;
+  descendantCount: number | null;
 };
 export type Followup = {
   id: string;

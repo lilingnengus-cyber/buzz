@@ -101,6 +101,8 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         .find(|item| item["resourceType"] == "business_unit" && item["id"] == unit.to_string())
         .unwrap();
     assert!(operating_unit["legalEntityId"].is_null());
+    assert!(operating_unit["parentBusinessUnitId"].is_null());
+    assert_eq!(operating_unit["status"], "active");
     assert_eq!(
         operating_unit["ancestorPath"],
         serde_json::json!(["CRM BU"])

@@ -1,9 +1,10 @@
 import React from "react";
-import type { CoreMasterRecord } from "./api";
 import {
   buildOperatingTree,
   type OperatingUnitNode,
+  type OperatingUnitRecord,
 } from "./OperatingUnitTree";
+import "./operating-unit-picker.css";
 
 export function OperatingUnitPicker({
   label,
@@ -15,7 +16,7 @@ export function OperatingUnitPicker({
   emptyLabel = "设为根节点",
 }: {
   label: string;
-  records: CoreMasterRecord[];
+  records: OperatingUnitRecord[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;

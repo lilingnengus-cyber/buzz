@@ -39,6 +39,8 @@ test("builds a sorted four-level tree from unordered records", () => {
   );
   assert.equal(tree[0].children[0].children[0].status, "disabled");
   assert.equal(tree[0].children[0].children[1].children[0].id, "hz");
+  assert.equal(tree[0].depth, 0);
+  assert.equal(tree[0].children[0].children[1].children[0].depth, 3);
 });
 
 test("search retains ancestors and malformed parents stay visible", () => {
