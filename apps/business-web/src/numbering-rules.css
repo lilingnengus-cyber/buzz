@@ -242,6 +242,12 @@
   border-color: #d8a19b;
   background: #fff4f1;
 }
+.numbering-message.success {
+  margin-top: -10px;
+  color: var(--numbering-green);
+  border-color: #8ab6a5;
+  background: #eef8f3;
+}
 .numbering-ledger {
   display: grid;
   gap: 28px;

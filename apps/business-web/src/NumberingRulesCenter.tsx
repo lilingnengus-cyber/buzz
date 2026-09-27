@@ -60,6 +60,7 @@ export function NumberingRulesCenter() {
   const [error, setError] = React.useState<ApiFailure | null>(null);
   const [ledgerError, setLedgerError] = React.useState<ApiFailure | null>(null);
   const [editing, setEditing] = React.useState<NumberingRule | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -136,6 +137,12 @@ export function NumberingRulesCenter() {
         </button>
       </div>
 
+      {notice && (
+        <div className="numbering-message success" role="status">
+          {notice}
+        </div>
+      )}
+
       <div hidden={view !== "rules"}>
         {error ? (
           <PageLoadFailure
@@ -205,7 +212,10 @@ export function NumberingRulesCenter() {
                               {data?.canManage && (
                                 <button
                                   type="button"
-                                  onClick={() => setEditing(rule)}
+                                  onClick={() => {
+                                    setNotice(null);
+                                    setEditing(rule);
+                                  }}
                                 >
                                   编辑规则
                                 </button>
@@ -237,8 +247,11 @@ export function NumberingRulesCenter() {
           <NumberingRuleEditor
             rule={editing}
             onClose={() => setEditing(null)}
-            onSaved={async () => {
+            onSaved={async (result) => {
               setEditing(null);
+              setNotice(
+                `${RECORDS[result.recordType]?.label ?? result.recordType}编码规则已保存，当前版本 ${result.version}。`,
+              );
               await load();
             }}
           />,
@@ -461,7 +474,7 @@ function NumberingRuleEditor({
 }: {
   rule: NumberingRule;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (result: NumberingRuleCommandResult) => Promise<void>;
 }) {
   const [name, setName] = React.useState(rule.name);
   const [status, setStatus] = React.useState(rule.status);
@@ -482,12 +495,19 @@ function NumberingRuleEditor({
     resetPeriod,
     scopeDimension,
   );
-  const businessUnitAllowed = !matchesRecord(rule.recordType, [
-    "opening",
-    "profit_adjustment",
-    "management_report",
+  const globalScopeOnly = matchesRecord(rule.recordType, [
+    "legal_entity",
+    "business_unit",
   ]);
-  const legalEntityAllowed = rule.recordType !== "management_report";
+  const businessUnitAllowed =
+    !globalScopeOnly &&
+    !matchesRecord(rule.recordType, [
+      "opening",
+      "profit_adjustment",
+      "management_report",
+    ]);
+  const legalEntityAllowed =
+    !globalScopeOnly && rule.recordType !== "management_report";
 
   React.useEffect(() => {
     const close = (event: KeyboardEvent) => {
@@ -513,7 +533,7 @@ function NumberingRuleEditor({
     setSaving(true);
     setError(null);
     try {
-      await request<NumberingRuleCommandResult>(
+      const result = await request<NumberingRuleCommandResult>(
         `/api/v1/numbering-rules/${rule.recordType}`,
         {
           method: "PUT",
@@ -527,7 +547,7 @@ function NumberingRuleEditor({
           }),
         },
       );
-      await onSaved();
+      await onSaved(result);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "编码规则保存失败");
     } finally {
@@ -601,7 +621,9 @@ function NumberingRuleEditor({
                 </option>
               </select>
               <small>
-                {scopeDimension === "global"
+                {globalScopeOnly
+                  ? "主体自身编码采用全局唯一序号。"
+                  : scopeDimension === "global"
                   ? "所有主体共享连续序号。"
                   : "系统自动加入主体编码片段，避免跨主体重号。"}
               </small>
