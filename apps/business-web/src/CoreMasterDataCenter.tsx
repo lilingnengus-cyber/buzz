@@ -16,6 +16,7 @@ import {
   buildOperatingTree,
   type OperatingUnitNode,
 } from "./OperatingUnitTree";
+import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import "./core-master-data.css";
 
 const TYPES: Array<{
@@ -542,6 +543,19 @@ function MasterFormModal({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (
+      !(["legal_entity", "business_unit"] as CoreMasterType[]).includes(
+        type,
+      ) &&
+      !form.businessUnitId
+    ) {
+      setError("请选择经营主体");
+      return;
+    }
+    if (type === "business_unit" && !record && !form.parentBusinessUnitId) {
+      setError("请选择上级经营单元");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
@@ -626,44 +640,24 @@ function MasterFormModal({
             </Field>
           )}
           {type === "business_unit" && (
-            <Field label="上级经营单元 *" wide>
-              <select
-                required={!record}
-                value={form.parentBusinessUnitId}
-                onChange={(e) => set("parentBusinessUnitId", e.target.value)}
-              >
-                <option value="">
-                  {record?.parentBusinessUnitId ? "设为根节点" : "请选择上级"}
-                </option>
-                {units.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {[
-                      ...(item.ancestorPath ?? []).slice(0, -1),
-                      item.name,
-                    ].join(" / ")}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <OperatingUnitPicker
+              label="上级经营单元 *"
+              records={units}
+              value={form.parentBusinessUnitId}
+              onChange={(value) => set("parentBusinessUnitId", value)}
+              allowEmpty={Boolean(record)}
+            />
           )}
           {!(["legal_entity", "business_unit"] as CoreMasterType[]).includes(
             type,
           ) && (
-            <Field label="经营主体 *">
-              <select
-                required
-                disabled={Boolean(record)}
-                value={form.businessUnitId}
-                onChange={(e) => set("businessUnitId", e.target.value)}
-              >
-                <option value="">请选择</option>
-                {units.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.code} · {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <OperatingUnitPicker
+              label="经营主体 *"
+              records={units}
+              value={form.businessUnitId}
+              onChange={(value) => set("businessUnitId", value)}
+              disabled={Boolean(record)}
+            />
           )}
           {type === "legal_entity" && (
             <>
