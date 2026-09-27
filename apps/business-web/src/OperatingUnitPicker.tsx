@@ -24,13 +24,15 @@ export function OperatingUnitPicker({
   emptyLabel?: string;
 }) {
   const labelId = React.useId();
-  const tree = React.useMemo(() => buildOperatingTree(records), [records]);
+  const [query, setQuery] = React.useState("");
+  const tree = React.useMemo(
+    () => buildOperatingTree(records, query),
+    [records, query],
+  );
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
   const selected = records.find((record) => record.id === value);
   const selectedPath = selected
-    ? [...(selected.ancestorPath ?? []).slice(0, -1), selected.name].join(
-        " / ",
-      )
+    ? [...(selected.ancestorPath ?? []).slice(0, -1), selected.name].join(" / ")
     : "尚未选择";
   const toggle = (id: string) =>
     setCollapsed((current) => {
@@ -48,6 +50,16 @@ export function OperatingUnitPicker({
           <small>当前选择</small>
           <strong>{selectedPath}</strong>
           {selected && <code>{selected.code}</code>}
+        </div>
+        <div className="master-tree-search">
+          <input
+            type="search"
+            aria-label={`${label}搜索`}
+            placeholder="搜索名称或编码"
+            value={query}
+            disabled={disabled}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
         <div role="tree" aria-labelledby={labelId}>
           {allowEmpty && (
@@ -72,8 +84,12 @@ export function OperatingUnitPicker({
               disabled={disabled}
               onChange={onChange}
               onToggle={toggle}
+              searching={Boolean(query.trim())}
             />
           ))}
+          {tree.length === 0 && (
+            <p className="master-tree-empty">没有匹配的经营主体</p>
+          )}
         </div>
       </div>
     </div>
@@ -87,6 +103,7 @@ function OperatingUnitPickerNode({
   disabled,
   onChange,
   onToggle,
+  searching,
 }: {
   node: OperatingUnitNode;
   value: string;
@@ -94,13 +111,15 @@ function OperatingUnitPickerNode({
   disabled: boolean;
   onChange: (value: string) => void;
   onToggle: (id: string) => void;
+  searching: boolean;
 }) {
-  const isCollapsed = collapsed.has(node.id);
+  const isCollapsed = !searching && collapsed.has(node.id);
   const selectable = node.id !== "__orphans__" && node.status === "active";
   return (
     <React.Fragment>
       <div
         role="treeitem"
+        tabIndex={-1}
         aria-expanded={node.children.length ? !isCollapsed : undefined}
         aria-selected={value === node.id}
         className={`master-tree-option ${value === node.id ? "selected" : ""}`}
@@ -135,6 +154,7 @@ function OperatingUnitPickerNode({
             disabled={disabled}
             onChange={onChange}
             onToggle={onToggle}
+            searching={searching}
           />
         ))}
     </React.Fragment>

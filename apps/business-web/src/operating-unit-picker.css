@@ -6,7 +6,9 @@
 
 .master-tree-field > span {
   color: var(--muted);
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
 }
 
@@ -32,7 +34,9 @@
 .master-tree-selection small {
   grid-column: 1 / -1;
   color: var(--muted);
-  font: 9px ui-monospace, monospace;
+  font:
+    9px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
 }
 
@@ -46,9 +50,28 @@
   font-size: 10px;
 }
 
+.master-tree-search {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #f5f8f9;
+}
+
+.master-tree-search input {
+  width: 100%;
+  min-height: 34px;
+}
+
 .master-tree-picker [role="tree"] {
   max-height: 230px;
   overflow: auto;
+}
+
+.master-tree-empty {
+  margin: 0;
+  padding: 18px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .master-tree-option {
@@ -113,5 +136,7 @@
 
 .master-tree-option.root span {
   color: var(--blue);
-  font: 9px ui-monospace, monospace;
+  font:
+    9px ui-monospace,
+    monospace;
 }
