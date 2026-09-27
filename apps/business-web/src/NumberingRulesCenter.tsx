@@ -482,9 +482,12 @@ function NumberingRuleEditor({
   const [scopeDimension, setScopeDimension] = React.useState(
     rule.scopeDimension,
   );
-  const [segmentRows, setSegmentRows] = React.useState(() =>
-    createEditableSegments(rule.segments),
-  );
+  const [segmentRows, setSegmentRows] = React.useState(() => {
+    const rows = createEditableSegments(rule.segments);
+    const hasScope = rule.segments.some((segment) => segment.type === "scope");
+    if (rule.scopeDimension === "global" || hasScope) return rows;
+    return changeEditableScope(rows, rule.scopeDimension);
+  });
   const segments = segmentRows.map((row) => row.segment);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
