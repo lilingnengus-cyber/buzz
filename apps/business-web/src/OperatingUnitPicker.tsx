@@ -183,9 +183,22 @@ function OperatingUnitPickerNode({
           disabled={disabled || !selectable}
           onClick={() => onChange(node.id)}
           onKeyDown={(event) => {
-            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-            event.preventDefault();
-            onNavigate(event.currentTarget, event.key === "ArrowDown" ? 1 : -1);
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              onNavigate(
+                event.currentTarget,
+                event.key === "ArrowDown" ? 1 : -1,
+              );
+              return;
+            }
+            if (searching || node.children.length === 0) return;
+            if (event.key === "ArrowLeft" && !isCollapsed) {
+              event.preventDefault();
+              onToggle(node.id);
+            } else if (event.key === "ArrowRight" && isCollapsed) {
+              event.preventDefault();
+              onToggle(node.id);
+            }
           }}
         >
           <code>{node.code}</code>

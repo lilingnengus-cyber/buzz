@@ -107,6 +107,13 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   const tree = dialog.getByRole("tree", { name: "经营主体 *" });
   await expect(tree.getByRole("treeitem")).toHaveCount(5);
   const search = dialog.getByRole("searchbox", { name: "经营主体 *搜索" });
+  const group = tree.getByRole("button", { name: /OU-0001.*集团/ });
+  await search.press("ArrowDown");
+  await expect(group).toBeFocused();
+  await group.press("ArrowLeft");
+  await expect(tree.getByRole("treeitem")).toHaveCount(1);
+  await group.press("ArrowRight");
+  await expect(tree.getByRole("treeitem")).toHaveCount(5);
   await search.fill("OU-0004");
   await expect(tree.getByRole("treeitem")).toHaveCount(4);
   await expect(tree.getByText("北京单元")).toHaveCount(0);
