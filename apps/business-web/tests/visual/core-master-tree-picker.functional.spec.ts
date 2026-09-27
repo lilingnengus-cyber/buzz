@@ -132,4 +132,11 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   await dialog.getByLabel("法定主体 *").selectOption("legal");
   await dialog.getByRole("button", { name: "确认新增" }).click();
   await expect.poll(() => submitted?.businessUnitId).toBe("hangzhou");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "＋ 新增客户" }).click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "新增客户" })
+      .getByText("集团 / 中国区 / 华东区 / 杭州单元"),
+  ).toBeVisible();
 });

@@ -9,6 +9,10 @@ import {
 import { formatAmount } from "./formatters";
 import { loadOperatingUnits } from "./operatingUnitOptions";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
+import {
+  rememberRecentOperatingUnit,
+  resolveRecentOperatingUnit,
+} from "./recentOperatingUnit";
 
 type LineDraft = {
   key: string;
@@ -107,7 +111,13 @@ export function PurchaseOrderEntry({
           const legalEntity = legalEntities[0]?.id ?? "";
           setLegalEntityId(legalEntity);
           setSupplierId(scoped(suppliers, legalEntity)[0]?.id ?? "");
-          setBusinessUnitId(businessUnits[0]?.id ?? "");
+          setBusinessUnitId(
+            resolveRecentOperatingUnit(
+              "purchase-order",
+              businessUnits,
+              businessUnits[0]?.id ?? "",
+            ),
+          );
           setLines([newLine(skus[0]?.id, scoped(warehouses, legalEntity)[0]?.id, units[0]?.id)]);
         }
       })
@@ -192,6 +202,7 @@ export function PurchaseOrderEntry({
       );
       setVersion(result.version);
       setNotice(`采购订单 ${result.number} 已保存为草稿。`);
+      rememberRecentOperatingUnit("purchase-order", businessUnitId);
       if (!orderId) {
         setSupplierReference("");
         setBusinessNote("");

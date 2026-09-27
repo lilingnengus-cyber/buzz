@@ -9,6 +9,10 @@ import { formatAmount } from "./formatters";
 import { loadOperatingUnits } from "./operatingUnitOptions";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
+  rememberRecentOperatingUnit,
+  resolveRecentOperatingUnit,
+} from "./recentOperatingUnit";
+import {
   isCompleteSalesOrderLine,
   newSalesOrderLine,
   type SalesOrderLineDraft,
@@ -79,7 +83,13 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
           setCatalog(next);
           setLegalEntityId(legalEntities[0]?.id ?? "");
           setCustomerId(customers[0]?.id ?? "");
-          setBusinessUnitId(businessUnits[0]?.id ?? "");
+          setBusinessUnitId(
+            resolveRecentOperatingUnit(
+              "sales-order",
+              businessUnits,
+              businessUnits[0]?.id ?? "",
+            ),
+          );
           setLines([
             newSalesOrderLine(skus[0]?.id, warehouses[0]?.id, units[0]?.id),
           ]);
@@ -157,6 +167,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
         }),
       });
       setNotice(`销售订单 ${output.number} 已保存为草稿。`);
+      rememberRecentOperatingUnit("sales-order", businessUnitId);
       setCustomerReference("");
       setBusinessNote("");
       setLines([

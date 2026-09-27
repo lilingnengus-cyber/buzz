@@ -1,5 +1,9 @@
 import React from "react";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
+import {
+  rememberRecentOperatingUnit,
+  resolveRecentOperatingUnit,
+} from "./recentOperatingUnit";
 import { useCrmCommand } from "./useCrmCommand";
 import {
   amountMinor,
@@ -27,7 +31,12 @@ export function CrmForm({
   );
   const units = options.filter((o) => o.resourceType === "business_unit");
   const [unit, setUnit] = React.useState(
-    record?.businessUnitId ?? (units.length === 1 ? units[0].id : ""),
+    record?.businessUnitId ??
+      resolveRecentOperatingUnit(
+        "crm-opportunity",
+        units,
+        units.length === 1 ? units[0].id : "",
+      ),
   );
   const [customer, setCustomer] = React.useState(record?.customerId ?? "");
   const [company, setCompany] = React.useState(record?.companyName ?? "");
@@ -68,6 +77,7 @@ export function CrmForm({
           }),
         },
       );
+      rememberRecentOperatingUnit("crm-opportunity", unit);
       onSaved(result.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败，请重试");

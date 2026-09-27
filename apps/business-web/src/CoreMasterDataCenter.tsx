@@ -17,6 +17,10 @@ import {
   type OperatingUnitNode,
 } from "./OperatingUnitTree";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
+import {
+  rememberRecentOperatingUnit,
+  resolveRecentOperatingUnit,
+} from "./recentOperatingUnit";
 import "./core-master-data.css";
 
 const TYPES: Array<{
@@ -523,11 +527,6 @@ function MasterFormModal({
   onSaved: () => Promise<void>;
 }) {
   const { record, type } = state;
-  const [form, setForm] = React.useState<FormState>(() =>
-    record ? fromRecord(record) : EMPTY_FORM,
-  );
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
   const entities = items.filter(
     (item) => item.resourceType === "legal_entity" && item.status === "active",
   );
@@ -537,6 +536,19 @@ function MasterFormModal({
       item.status === "active" &&
       item.id !== record?.id,
   );
+  const [form, setForm] = React.useState<FormState>(() =>
+    record
+      ? fromRecord(record)
+      : {
+          ...EMPTY_FORM,
+          businessUnitId: resolveRecentOperatingUnit(
+            `core-master-${type}`,
+            units,
+          ),
+        },
+  );
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const title = `${record ? "编辑" : "新增"}${labelFor(type)}`;
   const set = (field: keyof FormState, value: string) =>
     setForm((current) => ({ ...current, [field]: value }));
@@ -544,9 +556,7 @@ function MasterFormModal({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (
-      !(["legal_entity", "business_unit"] as CoreMasterType[]).includes(
-        type,
-      ) &&
+      !(["legal_entity", "business_unit"] as CoreMasterType[]).includes(type) &&
       !form.businessUnitId
     ) {
       setError("请选择经营主体");
@@ -582,6 +592,9 @@ function MasterFormModal({
         method: record ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
+      if (form.businessUnitId) {
+        rememberRecentOperatingUnit(`core-master-${type}`, form.businessUnitId);
+      }
       await onSaved();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "保存失败");
