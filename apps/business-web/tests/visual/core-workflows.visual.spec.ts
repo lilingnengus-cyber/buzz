@@ -257,13 +257,14 @@ async function expectDialogInsideViewport(page: Page, dialog: Locator) {
 
 async function expectIndentedNavigation(page: Page, activeLabel: string) {
   const navigation = page.getByRole("navigation", { name: "业务导航" });
-  await expect(navigation.locator(".rail-group")).toHaveCount(5);
+  await expect(navigation.locator(".rail-group")).toHaveCount(6);
   await expect(navigation.locator(".rail-group-head strong")).toHaveText([
     "经营控制",
     "基础资料",
     "售前 CRM",
     "业务闭环",
     "经营分析",
+    "个人设置",
   ]);
   const groupLabel = navigation.locator(".rail-group-head strong").first();
   const childLabel = navigation.locator(".rail-item-label").first();

@@ -5,6 +5,12 @@ type OperatingUnitStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const STORAGE_PREFIX = "business.recent-operating-unit.";
 
+export type AccountPreference = {
+  context: string;
+  businessUnitId: string | null;
+  pinned: boolean;
+};
+
 export function resolveRecentOperatingUnit(
   context: string,
   records: OperatingUnitRecord[],
@@ -45,9 +51,7 @@ export async function resolveSyncedRecentOperatingUnit(
   storage: OperatingUnitStorage | null = browserStorage(),
 ) {
   try {
-    const response = await request<{ businessUnitId: string | null }>(
-      `/api/v1/preferences/operating-unit/${encodeURIComponent(context)}`,
-    );
+    const response = await loadAccountOperatingUnitPreference(context);
     const remote = response.businessUnitId;
     if (
       remote &&
@@ -76,16 +80,46 @@ export async function rememberSyncedRecentOperatingUnit(
 ) {
   rememberRecentOperatingUnit(context, id, storage);
   try {
-    await request(
-      `/api/v1/preferences/operating-unit/${encodeURIComponent(context)}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ businessUnitId: id }),
-      },
-    );
+    await saveAccountOperatingUnitPreference(context, id);
   } catch {
     // The local value remains available until a later successful server sync.
   }
+}
+
+export function loadAccountOperatingUnitPreference(context: string) {
+  return request<AccountPreference>(
+    `/api/v1/preferences/operating-unit/${encodeURIComponent(context)}`,
+  );
+}
+
+export function saveAccountOperatingUnitPreference(
+  context: string,
+  businessUnitId: string,
+  pinned = false,
+) {
+  return request<AccountPreference>(
+    `/api/v1/preferences/operating-unit/${encodeURIComponent(context)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ businessUnitId, pinned }),
+    },
+  );
+}
+
+export async function clearAccountOperatingUnitPreference(
+  context: string,
+  storage: OperatingUnitStorage | null = browserStorage(),
+) {
+  const response = await request<AccountPreference>(
+    `/api/v1/preferences/operating-unit/${encodeURIComponent(context)}`,
+    { method: "DELETE" },
+  );
+  try {
+    storage?.removeItem(`${STORAGE_PREFIX}${context}`);
+  } catch {
+    // The account preference is already cleared even if local storage is blocked.
+  }
+  return response;
 }
 
 function browserStorage(): Storage | null {

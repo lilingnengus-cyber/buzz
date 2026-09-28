@@ -1,6 +1,14 @@
 use crate::{b2::DomainError, security::valid_key, store::PgStore};
 use uuid::Uuid;
 
+/// One active operating-unit preference visible to its owning user.
+pub struct OperatingUnitPreference {
+    /// The selected active operating unit.
+    pub business_unit_id: Uuid,
+    /// Whether automatic recent-use updates must preserve this selection.
+    pub pinned: bool,
+}
+
 #[derive(Clone)]
 /// Persists per-user Business workspace defaults after validating current scope.
 pub struct UserPreferenceService {
@@ -20,13 +28,26 @@ impl UserPreferenceService {
         context: &str,
     ) -> Result<Option<Uuid>, DomainError> {
         validate_context(context)?;
+        Ok(self
+            .operating_unit_preference(actor, context)
+            .await?
+            .map(|preference| preference.business_unit_id))
+    }
+
+    /// Returns the active preference together with its fixed/default mode.
+    pub async fn operating_unit_preference(
+        &self,
+        actor: Uuid,
+        context: &str,
+    ) -> Result<Option<OperatingUnitPreference>, DomainError> {
+        validate_context(context)?;
         let snapshot = self
             .store
             .snapshot(actor)
             .await
             .map_err(|_| DomainError::NotFoundOrForbidden)?;
-        let unit = sqlx::query_scalar::<_, Uuid>(
-            "SELECT preference.business_unit_id
+        let preference = sqlx::query_as::<_, (Uuid, bool)>(
+            "SELECT preference.business_unit_id,preference.is_pinned
              FROM business_user_operating_unit_preferences preference
              JOIN business_units unit ON unit.id=preference.business_unit_id
              WHERE preference.enterprise_user_id=$1
@@ -37,7 +58,12 @@ impl UserPreferenceService {
         .bind(context)
         .fetch_optional(self.store.pool())
         .await?;
-        Ok(unit.filter(|id| snapshot.scopes.business_unit_ids.contains(id)))
+        Ok(preference
+            .filter(|(id, _)| snapshot.scopes.business_unit_ids.contains(id))
+            .map(|(business_unit_id, pinned)| OperatingUnitPreference {
+                business_unit_id,
+                pinned,
+            }))
     }
 
     /// Saves an operating-unit preference when the actor can access the unit.
@@ -46,7 +72,8 @@ impl UserPreferenceService {
         actor: Uuid,
         context: &str,
         business_unit_id: Uuid,
-    ) -> Result<(), DomainError> {
+        pinned: bool,
+    ) -> Result<OperatingUnitPreference, DomainError> {
         validate_context(context)?;
         let snapshot = self
             .store
@@ -72,17 +99,51 @@ impl UserPreferenceService {
         if !active {
             return Err(DomainError::NotFoundOrForbidden);
         }
-        sqlx::query(
+        let preference = sqlx::query_as::<_, (Uuid, bool)>(
             "INSERT INTO business_user_operating_unit_preferences(
-                enterprise_user_id,context,business_unit_id
-             ) VALUES($1,$2,$3)
+                enterprise_user_id,context,business_unit_id,is_pinned
+             ) VALUES($1,$2,$3,$4)
              ON CONFLICT(enterprise_user_id,context) DO UPDATE SET
-                business_unit_id=EXCLUDED.business_unit_id,
-                updated_at=now()",
+                business_unit_id=CASE
+                    WHEN business_user_operating_unit_preferences.is_pinned
+                         AND NOT EXCLUDED.is_pinned
+                    THEN business_user_operating_unit_preferences.business_unit_id
+                    ELSE EXCLUDED.business_unit_id
+                END,
+                is_pinned=business_user_operating_unit_preferences.is_pinned
+                          OR EXCLUDED.is_pinned,
+                updated_at=now()
+             RETURNING business_unit_id,is_pinned",
         )
         .bind(actor)
         .bind(context)
         .bind(business_unit_id)
+        .bind(pinned)
+        .fetch_one(self.store.pool())
+        .await?;
+        Ok(OperatingUnitPreference {
+            business_unit_id: preference.0,
+            pinned: preference.1,
+        })
+    }
+
+    /// Clears one workflow's operating-unit preference for the actor.
+    pub async fn clear_operating_unit(
+        &self,
+        actor: Uuid,
+        context: &str,
+    ) -> Result<(), DomainError> {
+        validate_context(context)?;
+        self.store
+            .snapshot(actor)
+            .await
+            .map_err(|_| DomainError::NotFoundOrForbidden)?;
+        sqlx::query(
+            "DELETE FROM business_user_operating_unit_preferences
+             WHERE enterprise_user_id=$1 AND context=$2",
+        )
+        .bind(actor)
+        .bind(context)
         .execute(self.store.pool())
         .await?;
         Ok(())

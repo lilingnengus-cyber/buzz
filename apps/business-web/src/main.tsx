@@ -40,6 +40,7 @@ import { InventoryLedger } from "./InventoryLedger";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
 import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
 import { NumberingRulesCenter } from "./NumberingRulesCenter";
+import { OperatingUnitPreferences } from "./OperatingUnitPreferences";
 import { PageLoadFailure } from "./PageLoadFailure";
 import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
 import { OperatingTrendsView } from "./OperatingTrends";
@@ -312,6 +313,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "coreData") return <CoreMasterDataCenter />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;
+  if (section === "preferences") return <OperatingUnitPreferences />;
   if (section === "profits") return <OrderProfits id={id} />;
   if (section === "profitability") return <Profitability />;
   if (section === "adjustments") return <ProfitAdjustments id={id} />;

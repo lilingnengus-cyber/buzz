@@ -22,7 +22,8 @@ export type Section =
   | "profits"
   | "profitability"
   | "adjustments"
-  | "reports";
+  | "reports"
+  | "preferences";
 type NavItem = { id: Section; label: string; index: string };
 
 export const NAV_GROUPS: Array<{
@@ -82,6 +83,12 @@ export const NAV_GROUPS: Array<{
       { id: "adjustments", label: "经营费用归集", index: "ADJ" },
       { id: "reports", label: "管理利润报表", index: "RPT" },
     ],
+  },
+  {
+    id: "personal",
+    label: "个人设置",
+    index: "06",
+    items: [{ id: "preferences", label: "默认经营主体", index: "ORG" }],
   },
 ];
 export const NAV = NAV_GROUPS.flatMap((group) => group.items);
