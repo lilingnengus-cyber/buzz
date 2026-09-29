@@ -103,6 +103,7 @@ test("用户可以固定并清除各业务场景的默认经营主体", async ({
     page.getByRole("heading", { name: "默认经营主体" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /采购订单/ }).click();
+  await page.getByRole("button", { name: /当前选择.*尚未选择/ }).click();
   await page
     .getByRole("tree", { name: "采购订单默认经营主体" })
     .getByRole("button", { name: /OU-0003.*杭州经营单元/ })

@@ -121,6 +121,11 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   await page.getByRole("button", { name: "＋ 新增客户" }).click();
 
   const dialog = page.getByRole("dialog", { name: "新增客户" });
+  await expect(dialog.getByRole("tree", { name: "经营主体 *" })).toHaveCount(0);
+  await expect(
+    dialog.getByRole("searchbox", { name: "经营主体 *搜索" }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: /当前选择.*尚未选择/ }).click();
   const tree = dialog.getByRole("tree", { name: "经营主体 *" });
   await expect(tree.getByRole("treeitem")).toHaveCount(5);
   const search = dialog.getByRole("searchbox", { name: "经营主体 *搜索" });

@@ -30,10 +30,12 @@ export function OperatingUnitPicker({
 }) {
   const labelId = React.useId();
   const pickerRef = React.useRef<HTMLDivElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
   const valueRef = React.useRef(value);
   const onChangeRef = React.useRef(onChange);
   const recordsRef = React.useRef(records);
   const [query, setQuery] = React.useState("");
+  const [open, setOpen] = React.useState(false);
   const tree = React.useMemo(
     () => buildOperatingTree(records, query),
     [records, query],
@@ -66,6 +68,9 @@ export function OperatingUnitPicker({
       active = false;
     };
   }, [disabled, preferenceContext, preferenceFallback, recordsSignature]);
+  React.useEffect(() => {
+    if (open) searchRef.current?.focus();
+  }, [open]);
   const selected = records.find((record) => record.id === value);
   const selectedPath = selected
     ? [...(selected.ancestorPath ?? []).slice(0, -1), selected.name].join(" / ")
@@ -98,6 +103,11 @@ export function OperatingUnitPicker({
     );
     choices[nextIndex]?.focus();
   };
+  const select = (id: string) => {
+    onChange(id);
+    setQuery("");
+    setOpen(false);
+  };
 
   return (
     <div className="master-tree-field wide">
@@ -106,67 +116,84 @@ export function OperatingUnitPicker({
         ref={pickerRef}
         className={`master-tree-picker ${disabled ? "disabled" : ""}`}
       >
-        <div className="master-tree-selection" aria-live="polite">
+        <button
+          type="button"
+          className={`master-tree-selection ${open ? "open" : ""}`}
+          aria-expanded={open}
+          aria-controls={`${labelId}-options`}
+          disabled={disabled}
+          onClick={() => setOpen((current) => !current)}
+        >
           <small>当前选择</small>
           <strong>{selectedPath}</strong>
           {selected && <code>{selected.code}</code>}
-        </div>
-        <div className="master-tree-search">
-          <input
-            type="search"
-            aria-label={`${label}搜索`}
-            placeholder="搜索名称或编码"
-            value={query}
-            disabled={disabled}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-              event.preventDefault();
-              moveChoiceFocus(null, event.key === "ArrowDown" ? 1 : -1);
-            }}
-          />
-        </div>
-        <div role="tree" aria-labelledby={labelId}>
-          {allowEmpty && (
-            <button
-              type="button"
-              role="treeitem"
-              aria-selected={!value}
-              className={`master-tree-option root ${!value ? "selected" : ""}`}
-              disabled={disabled}
-              onClick={() => onChange("")}
-              onKeyDown={(event) => {
-                if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
-                  return;
-                }
-                event.preventDefault();
-                moveChoiceFocus(
-                  event.currentTarget,
-                  event.key === "ArrowDown" ? 1 : -1,
-                );
-              }}
-            >
-              <span>ROOT</span>
-              <b>{emptyLabel}</b>
-            </button>
-          )}
-          {tree.map((node) => (
-            <OperatingUnitPickerNode
-              key={node.id}
-              node={node}
-              value={value}
-              collapsed={collapsed}
-              disabled={disabled}
-              onChange={onChange}
-              onToggle={toggle}
-              onNavigate={moveChoiceFocus}
-              searching={Boolean(query.trim())}
-            />
-          ))}
-          {tree.length === 0 && (
-            <p className="master-tree-empty">没有匹配的经营主体</p>
-          )}
-        </div>
+          <span className="master-tree-disclosure" aria-hidden="true">
+            {open ? "−" : "+"}
+          </span>
+        </button>
+        {open && (
+          <div id={`${labelId}-options`}>
+            <div className="master-tree-search">
+              <input
+                ref={searchRef}
+                type="search"
+                aria-label={`${label}搜索`}
+                placeholder="搜索名称或编码"
+                value={query}
+                disabled={disabled}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                    return;
+                  }
+                  event.preventDefault();
+                  moveChoiceFocus(null, event.key === "ArrowDown" ? 1 : -1);
+                }}
+              />
+            </div>
+            <div role="tree" aria-labelledby={labelId}>
+              {allowEmpty && (
+                <button
+                  type="button"
+                  role="treeitem"
+                  aria-selected={!value}
+                  className={`master-tree-option root ${!value ? "selected" : ""}`}
+                  disabled={disabled}
+                  onClick={() => select("")}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                      return;
+                    }
+                    event.preventDefault();
+                    moveChoiceFocus(
+                      event.currentTarget,
+                      event.key === "ArrowDown" ? 1 : -1,
+                    );
+                  }}
+                >
+                  <span>ROOT</span>
+                  <b>{emptyLabel}</b>
+                </button>
+              )}
+              {tree.map((node) => (
+                <OperatingUnitPickerNode
+                  key={node.id}
+                  node={node}
+                  value={value}
+                  collapsed={collapsed}
+                  disabled={disabled}
+                  onChange={select}
+                  onToggle={toggle}
+                  onNavigate={moveChoiceFocus}
+                  searching={Boolean(query.trim())}
+                />
+              ))}
+              {tree.length === 0 && (
+                <p className="master-tree-empty">没有匹配的经营主体</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
