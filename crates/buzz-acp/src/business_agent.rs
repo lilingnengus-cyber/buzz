@@ -1000,6 +1000,8 @@ mod tests {
         }
         assert!(prompt.contains("Never guess identifiers"));
         assert!(prompt.contains("When required fields are missing"));
+        assert!(prompt.contains("tool-discovery interface"));
+        assert!(prompt.contains("do not describe that condition as a user authorization failure"));
         assert!(
             prompt.contains("shipment/receipt/payment approvals, reversals, allocations, posting, payment execution")
         );
