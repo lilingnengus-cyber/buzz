@@ -1450,7 +1450,7 @@ impl BusinessReadMcp {
     }
     #[tool(
         name = "prepare_crm_creation",
-        description = "Prepare a CRM opportunity creation using exact authorized legal entity, business unit and optional customer. Ask for missing title, company, stage, currency or amount/date intent. expectedAmountMinor is integer minor currency units. No opportunity exists until signed confirmation; show the exact returned confirmation command."
+        description = "Prepare a CRM opportunity creation using exact authorized legal entity, business unit and optional customer. For a company-only request, its name may be used as both title and companyName; stage may be new and expectedAmountMinor null only after the agent has read one unambiguous legal entity, its one unambiguous business unit, and the legal entity's functional currency. Ask about unresolved or ambiguous fields; never guess IDs. expectedAmountMinor is integer minor currency units. No opportunity exists until signed confirmation; show the exact returned confirmation command."
     )]
     async fn prepare_crm_creation(
         &self,

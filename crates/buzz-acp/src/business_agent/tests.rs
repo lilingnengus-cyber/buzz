@@ -151,6 +151,46 @@ fn action_prompt_limits_chat_approval_to_signed_sales_and_purchase_commands() {
     }
 }
 
+#[test]
+fn prompt_resolves_company_only_crm_creation_from_verified_defaults() {
+    let prompt = include_str!("../business_agent_prompt.md");
+    for required in [
+        "companyName and title",
+        "expectedAmountMinor null",
+        "stage `new`",
+        "search_business_master_data",
+        "exactly one active match",
+        "functional currency",
+        "do not associate an existing customer",
+    ] {
+        assert!(
+            prompt.contains(required),
+            "missing CRM default rule: {required}"
+        );
+    }
+}
+
+#[test]
+fn business_workbench_persona_supports_verified_company_only_crm_defaults() {
+    let persona =
+        include_str!("../../../../examples/business-workbench-agent/agents/business-workbench.md");
+    for required in [
+        "同时作为商机标题和潜在客户公司",
+        "预计金额留空",
+        "阶段为 new",
+        "search_business_master_data",
+        "仅有一个有效结果",
+        "本位币",
+        "不关联已有客户",
+        "普通“确认”不会创建商机",
+    ] {
+        assert!(
+            persona.contains(required),
+            "missing workbench CRM default rule: {required}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn normal_turn_revocation_is_synchronous_and_idempotent() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
