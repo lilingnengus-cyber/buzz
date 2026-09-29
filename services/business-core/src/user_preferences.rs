@@ -66,6 +66,60 @@ impl UserPreferenceService {
             }))
     }
 
+    /// Resolves an explicit unit, an account preference, or the sole active unit.
+    pub async fn resolve_operating_unit(
+        &self,
+        actor: Uuid,
+        context: &str,
+        explicit: Option<Uuid>,
+    ) -> Result<Uuid, DomainError> {
+        validate_context(context)?;
+        let snapshot = self
+            .store
+            .snapshot(actor)
+            .await
+            .map_err(|_| DomainError::NotFoundOrForbidden)?;
+        if let Some(id) = explicit {
+            if snapshot.scopes.business_unit_ids.contains(&id) {
+                let active = sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND status='active')",
+                )
+                .bind(id)
+                .fetch_one(self.store.pool())
+                .await?;
+                if active {
+                    return Ok(id);
+                }
+            }
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        if let Some(preference) = self.operating_unit(actor, context).await? {
+            return Ok(preference);
+        }
+        let candidates = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM business_units
+             WHERE status='active' AND id=ANY($1)
+             ORDER BY id LIMIT 2",
+        )
+        .bind(
+            snapshot
+                .scopes
+                .business_unit_ids
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+        )
+        .fetch_all(self.store.pool())
+        .await?;
+        match candidates.as_slice() {
+            [id] => Ok(*id),
+            [] => Err(DomainError::NotFoundOrForbidden),
+            _ => Err(DomainError::Invalid(
+                "businessUnitId is required when no unique account default is available".into(),
+            )),
+        }
+    }
+
     /// Saves an operating-unit preference when the actor can access the unit.
     pub async fn save_operating_unit(
         &self,

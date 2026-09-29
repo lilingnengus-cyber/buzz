@@ -94,6 +94,29 @@ pub struct SaveCoreMasterData {
     pub expected_version: Option<i64>,
 }
 
+/// Customer fields accepted from the fixed Business Agent create tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateAgentCustomer {
+    /// Customer name supplied by the user.
+    pub name: String,
+    /// Explicit legal entity, required only when the actor can access several.
+    #[serde(default)]
+    pub legal_entity_id: Option<Uuid>,
+    /// Explicit operating unit; otherwise the account preference or sole unit is used.
+    #[serde(default)]
+    pub business_unit_id: Option<Uuid>,
+    /// Optional credit currency; defaults to the legal entity functional currency.
+    #[serde(default)]
+    pub credit_currency: Option<String>,
+    /// Optional credit limit in minor currency units.
+    #[serde(default)]
+    pub credit_limit_minor: Option<i64>,
+    /// Optional payment terms; defaults to 30 days.
+    #[serde(default)]
+    pub payment_terms_days: Option<i32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeCoreMasterStatus {
@@ -199,6 +222,44 @@ impl CoreMasterDataService {
             Ok(snapshot)
         } else {
             Err(DomainError::NotFoundOrForbidden)
+        }
+    }
+
+    /// Resolves an explicit legal entity or the actor's sole active legal entity.
+    pub async fn resolve_legal_entity(
+        &self,
+        actor: Uuid,
+        explicit: Option<Uuid>,
+    ) -> Result<(Uuid, String), DomainError> {
+        let snapshot = self.snapshot(actor, "business_master_data:manage").await?;
+        if explicit.is_some_and(|id| !snapshot.scopes.legal_entity_ids.contains(&id)) {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
+        let candidates = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id,functional_currency::text
+             FROM business_legal_entities
+             WHERE status='active' AND id=ANY($1)
+               AND ($2::uuid IS NULL OR id=$2)
+             ORDER BY id
+             LIMIT 2",
+        )
+        .bind(
+            snapshot
+                .scopes
+                .legal_entity_ids
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+        )
+        .bind(explicit)
+        .fetch_all(self.store.pool())
+        .await?;
+        match candidates.as_slice() {
+            [candidate] => Ok(candidate.clone()),
+            [] => Err(DomainError::NotFoundOrForbidden),
+            _ => Err(DomainError::Invalid(
+                "legalEntityId is required when multiple legal entities are accessible".into(),
+            )),
         }
     }
 

@@ -1,7 +1,9 @@
 use crate::{
     api::AppState,
     b2::common::DomainError,
-    master_data::{ChangeCoreMasterStatus, CoreMasterType, SaveCoreMasterData},
+    master_data::{
+        ChangeCoreMasterStatus, CoreMasterType, CreateAgentCustomer, SaveCoreMasterData,
+    },
     security::RequestContext,
 };
 use axum::{
@@ -99,7 +101,12 @@ fn default_limit() -> i64 {
 }
 
 pub fn service_routes() -> Router<Arc<AppState>> {
-    Router::new().route("/v1/core-master-data", get(list))
+    Router::new()
+        .route("/v1/core-master-data", get(list))
+        .route(
+            "/v1/agent-master-data/customers",
+            post(create_agent_customer),
+        )
 }
 
 pub fn browser_routes() -> Router<Arc<AppState>> {
@@ -148,6 +155,56 @@ async fn create(
             None,
             key(&headers, context.trace_id)?,
             &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|error| MasterApiError::domain(error, context.trace_id))
+}
+
+async fn create_agent_customer(
+    State(state): State<Arc<AppState>>,
+    Extension(context): Extension<RequestContext>,
+    headers: HeaderMap,
+    Json(input): Json<CreateAgentCustomer>,
+) -> Result<Json<impl serde::Serialize>, MasterApiError> {
+    let (legal_entity_id, functional_currency) = state
+        .master_data
+        .resolve_legal_entity(context.actor_user_id, input.legal_entity_id)
+        .await
+        .map_err(|error| MasterApiError::domain(error, context.trace_id))?;
+    let business_unit_id = state
+        .user_preferences
+        .resolve_operating_unit(
+            context.actor_user_id,
+            "core-master-customer",
+            input.business_unit_id,
+        )
+        .await
+        .map_err(|error| MasterApiError::domain(error, context.trace_id))?;
+    let command = SaveCoreMasterData {
+        resource_type: "customer".into(),
+        code: "AUTO".into(),
+        name: input.name,
+        legal_entity_id: Some(legal_entity_id),
+        business_unit_id: Some(business_unit_id),
+        parent_business_unit_id: None,
+        country_code: None,
+        functional_currency: None,
+        registration_number: None,
+        address: None,
+        credit_currency: Some(input.credit_currency.unwrap_or(functional_currency)),
+        credit_limit_minor: input.credit_limit_minor,
+        payment_terms_days: input.payment_terms_days,
+        expected_version: None,
+    };
+    state
+        .master_data
+        .save(
+            context.actor_user_id,
+            context.trace_id,
+            None,
+            key(&headers, context.trace_id)?,
+            &command,
         )
         .await
         .map(Json)

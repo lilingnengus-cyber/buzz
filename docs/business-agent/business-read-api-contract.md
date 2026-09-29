@@ -5,7 +5,7 @@ implements a desensitized acceptance reference for the contract; it is not an
 ERP connector.
 
 `business-read-mcp` sends `POST /v1/read/{fixed-tool-name}` for reads and
-`POST /v1/write/{fixed-tool-name}` for one of six draft creates. JSON must match
+`POST /v1/write/{fixed-tool-name}` for the customer-master create or one of six draft creates. JSON must match
 the strict tool schema. The request carries:
 
 - `x-business-service-credential` (service identity);
@@ -24,7 +24,7 @@ resource links and evidence. It returns exact-id miss/denial identically and
 must not expose existence through timing or error detail where practical.
 
 The fourteen Business Core reads, eight anomaly reads, six action-lifecycle
-reads and six draft creates are fixed allowlists. Missing read fields use `partial` plus warnings;
+reads, one customer-master create and six draft creates are fixed allowlists. Missing read fields use `partial` plus warnings;
 invented data is forbidden. Response max is 100 rows/128 KiB and the server
 must use decimal strings for monetary amounts and quantities.
 

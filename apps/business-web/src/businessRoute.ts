@@ -27,6 +27,13 @@ export function route(): { section: Section; id?: string; embed: boolean } {
   if (clean === "/crm/followups") return { section: "crmFollowups", embed };
   if (clean === "/crm/contacts") return { section: "crmContacts", embed };
   if (clean === "/crm") return { section: "crm", embed };
+  const customer = clean.match(/^\/customers\/([^/]+)$/);
+  if (customer)
+    return {
+      section: "coreData",
+      id: decodeURIComponent(customer[1]),
+      embed,
+    };
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
   if (clean === "/preferences") return { section: "preferences", embed };

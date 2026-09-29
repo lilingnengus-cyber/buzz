@@ -65,7 +65,8 @@ const ANOMALY_TOOLS: [&str; 8] = [
     "analyze_cross_domain_risks",
     "explain_profit_change",
 ];
-const WRITE_TOOLS: [&str; 8] = [
+const WRITE_TOOLS: [&str; 9] = [
+    "create_customer",
     "create_sales_order_draft",
     "create_shipment_draft",
     "create_purchase_order_draft",
@@ -296,6 +297,10 @@ async fn write_tool(
 
 fn valid_write_input(tool: &str, input: &Value) -> bool {
     match tool {
+        "create_customer" => {
+            serde_json::from_value::<business_core::master_data::CreateAgentCustomer>(input.clone())
+                .is_ok()
+        }
         "create_sales_order_draft" => {
             serde_json::from_value::<business_core::b2::model::CreateSalesOrder>(input.clone())
                 .is_ok()
@@ -395,6 +400,7 @@ async fn forward_draft_write(
     context: &RequestContext,
 ) -> Response {
     let (endpoint, resource_type, uri_type) = match tool {
+        "create_customer" => ("v1/agent-master-data/customers", "customer", "customer"),
         "create_sales_order_draft" => {
             ("v1/agent-drafts/sales-orders", "sales_order", "sales-order")
         }
@@ -455,7 +461,12 @@ async fn forward_draft_write(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     let expected_trace_id = context.trace_id.to_string();
-    if value.get("status").and_then(Value::as_str) != Some("draft")
+    let expected_status = if tool == "create_customer" {
+        "active"
+    } else {
+        "draft"
+    };
+    if value.get("status").and_then(Value::as_str) != Some(expected_status)
         || value.get("traceId").and_then(Value::as_str) != Some(expected_trace_id.as_str())
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -467,7 +478,7 @@ async fn forward_draft_write(
         "resourceRefs": [{
             "type": resource_type,
             "id": id,
-            "title": "打开已创建的业务草稿",
+            "title": if tool == "create_customer" { "打开已创建的客户" } else { "打开已创建的业务草稿" },
             "bizUri": format!("biz://{uri_type}/{id}")
         }],
         "traceId": context.trace_id
@@ -933,6 +944,7 @@ fn parse_context(headers: &HeaderMap) -> Option<RequestContext> {
 fn required_capability(tool: &str) -> Option<&'static str> {
     match tool {
         "search_business_master_data" => Some("business_master_data:read"),
+        "create_customer" => Some("business_master_data:manage"),
         "create_sales_order_draft" => Some("sales_order:create"),
         "create_shipment_draft" => Some("shipment:create"),
         "create_purchase_order_draft" => Some("purchase_order:create"),

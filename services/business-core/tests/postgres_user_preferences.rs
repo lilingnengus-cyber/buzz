@@ -1,4 +1,7 @@
-use business_core::{b2::DomainError, user_preferences::UserPreferenceService, PgStore};
+use business_core::{
+    b2::DomainError, master_data::CoreMasterDataService, user_preferences::UserPreferenceService,
+    PgStore,
+};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -15,9 +18,11 @@ async fn operating_unit_preferences_follow_the_user_and_current_scope() {
         .unwrap();
     let store = PgStore::new(pool.clone());
     store.migrate().await.unwrap();
-    let preferences = UserPreferenceService::new(store);
+    let preferences = UserPreferenceService::new(store.clone());
+    let master_data = CoreMasterDataService::new(store);
     let actor = Uuid::new_v4();
     let outsider = Uuid::new_v4();
+    let role = Uuid::new_v4();
     let legal_entity = Uuid::new_v4();
     let unit = Uuid::new_v4();
     let alternate_unit = Uuid::new_v4();
@@ -32,6 +37,29 @@ async fn operating_unit_preferences_follow_the_user_and_current_scope() {
     .execute(&pool)
     .await
     .unwrap();
+    sqlx::query("INSERT INTO business_roles(id,role_key,name) VALUES($1,$2,'Preference Role')")
+        .bind(role)
+        .bind(format!("preference_{}", role.simple()))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO business_role_permissions(role_id,permission_key)
+         VALUES($1,'business_master_data:manage')",
+    )
+    .bind(role)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by)
+         VALUES($1,$2,$1)",
+    )
+    .bind(actor)
+    .bind(role)
+    .execute(&pool)
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO business_legal_entities(
             id,code,name,country_code,functional_currency
@@ -42,6 +70,16 @@ async fn operating_unit_preferences_follow_the_user_and_current_scope() {
         "PREF_LE_{}",
         &legal_entity.simple().to_string()[..8]
     ))
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO business_legal_entity_scopes(
+            enterprise_user_id,legal_entity_id,granted_by
+         ) VALUES($1,$2,$1)",
+    )
+    .bind(actor)
+    .bind(legal_entity)
     .execute(&pool)
     .await
     .unwrap();
@@ -80,6 +118,15 @@ async fn operating_unit_preferences_follow_the_user_and_current_scope() {
     .await
     .unwrap();
 
+    let resolved_legal = master_data.resolve_legal_entity(actor, None).await.unwrap();
+    assert_eq!(resolved_legal, (legal_entity, "CNY".into()));
+    assert!(matches!(
+        preferences
+            .resolve_operating_unit(actor, "core-master-customer", None)
+            .await,
+        Err(DomainError::Invalid(_))
+    ));
+
     preferences
         .save_operating_unit(actor, "sales-order", unit, false)
         .await
@@ -113,6 +160,20 @@ async fn operating_unit_preferences_follow_the_user_and_current_scope() {
         .unwrap();
     assert_eq!(pinned.business_unit_id, unit);
     assert!(pinned.pinned);
+    assert_eq!(
+        preferences
+            .resolve_operating_unit(actor, "sales-order", None)
+            .await
+            .unwrap(),
+        unit
+    );
+    assert_eq!(
+        preferences
+            .resolve_operating_unit(actor, "sales-order", Some(alternate_unit))
+            .await
+            .unwrap(),
+        alternate_unit
+    );
     preferences
         .clear_operating_unit(actor, "sales-order")
         .await

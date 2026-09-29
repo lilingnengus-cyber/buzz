@@ -1,6 +1,6 @@
 # Business Agent
 
-Business Agent provides a dedicated query path, six fixed draft-creation
+Business Agent provides a dedicated query path, one fixed customer-master create, six fixed draft-creation
 commands, and a canary signed chat approval path for sales and purchase orders.
 It does not change Nostr kinds, Relay behavior, or Business Dock authentication.
 Shipment, receipt, payment, reverse, allocate, post and payment-execution

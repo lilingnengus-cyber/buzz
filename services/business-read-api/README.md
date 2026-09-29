@@ -18,8 +18,8 @@ and Business Core's own actor permission/scope checks are mandatory; there is
 no authorization or fixture bypass in a normal build.
 
 The fixed routes are `POST /v1/read/{tool}` and `POST /v1/write/{tool}`.
-Fourteen authoritative reads, eight anomaly reads, six action-lifecycle reads
-and six draft creates form the allowlist. Drafts pass through Business Core's
+Fourteen authoritative reads, eight anomaly reads, six action-lifecycle reads,
+one customer-master create and six draft creates form the allowlist. Writes pass through Business Core's
 current-user permission and scope checks with a server-derived idempotency key.
 The process never exposes generic SQL, HTTP, arbitrary resources, confirmation,
 approval, reversal, posting or payment execution.

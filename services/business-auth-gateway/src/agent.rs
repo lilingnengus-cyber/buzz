@@ -12,8 +12,9 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 17] = [
+const AGENT_SCOPES: [&str; 18] = [
     "business_master_data:read",
+    "business_master_data:manage",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
@@ -34,8 +35,13 @@ const AGENT_SCOPES: [&str; 17] = [
 
 fn scope_is_allowed(scope: &str, draft_write_enabled: bool, chat_approval_enabled: bool) -> bool {
     AGENT_SCOPES.contains(&scope)
-        && (draft_write_enabled || !scope.ends_with(":create"))
+        && (draft_write_enabled
+            || (!scope.ends_with(":create") && scope != "business_master_data:manage"))
         && (chat_approval_enabled || !scope.ends_with(":approve"))
+}
+
+fn is_agent_write_scope(scope: &str) -> bool {
+    scope.ends_with(":create") || scope == "business_master_data:manage"
 }
 
 #[derive(Debug, Clone)]
@@ -518,7 +524,7 @@ impl Store {
             let denied_event = match request.required_scope.as_str() {
                 "business_anomaly:read" => "BUSINESS_ANOMALY_AUTHORIZATION_DENIED",
                 "business_action:read" => "BUSINESS_ACTION_AUTHORIZATION_DENIED",
-                scope if scope.ends_with(":create") => "BUSINESS_WRITE_AUTHORIZATION_DENIED",
+                scope if is_agent_write_scope(scope) => "BUSINESS_WRITE_AUTHORIZATION_DENIED",
                 _ => "BUSINESS_READ_AUTHORIZATION_DENIED",
             };
             let mut audit = Audit::event(denied_event, "failure", facts);
@@ -631,7 +637,7 @@ impl Store {
             effective_grant(row.get("effective_grants"), &request.required_scope)
                 .ok_or(Rejection::Database)
         } else {
-            let denied_event = if request.required_scope.ends_with(":create") {
+            let denied_event = if is_agent_write_scope(&request.required_scope) {
                 "BUSINESS_WRITE_AUTHORIZATION_DENIED"
             } else {
                 "BUSINESS_READ_AUTHORIZATION_DENIED"
@@ -781,11 +787,18 @@ mod tests {
     fn only_fixed_agent_scopes_are_accepted() {
         assert!(AGENT_SCOPES.contains(&"inventory:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
+        assert!(AGENT_SCOPES.contains(&"business_master_data:manage"));
         assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
         assert!(!AGENT_SCOPES.contains(&"payment:execute"));
         assert!(scope_is_allowed("sales_order:read", false, false));
         assert!(!scope_is_allowed("sales_order:create", false, false));
         assert!(scope_is_allowed("sales_order:create", true, false));
+        assert!(!scope_is_allowed(
+            "business_master_data:manage",
+            false,
+            false
+        ));
+        assert!(scope_is_allowed("business_master_data:manage", true, false));
         assert!(!scope_is_allowed("sales_order:approve", true, false));
         assert!(scope_is_allowed("sales_order:approve", false, true));
     }

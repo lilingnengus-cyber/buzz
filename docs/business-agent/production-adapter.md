@@ -6,7 +6,7 @@ reject mock at startup; there is no fallback from production to fixtures.
 
 ## Request behavior
 
-- fixed `POST /v1/read/{tool}` and six `POST /v1/write/{tool}` routes only;
+- fixed `POST /v1/read/{tool}` and seven `POST /v1/write/{tool}` routes only;
 - shared-secret reference authentication plus exact service audience;
 - opaque Agent Delegation consumed only at the Gateway, never sent upstream;
 - enterprise user, binding, delegation, Agent/Turn, used-call and Trace context

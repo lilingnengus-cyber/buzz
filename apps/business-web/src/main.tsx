@@ -310,7 +310,8 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
         view={section === "crmFollowups" ? "followups" : "contacts"}
       />
     );
-  if (section === "coreData") return <CoreMasterDataCenter />;
+  if (section === "coreData")
+    return <CoreMasterDataCenter initialCustomerId={id} />;
   if (section === "productData") return <ProductMasterDataCenter />;
   if (section === "numbering") return <NumberingRulesCenter />;
   if (section === "preferences") return <OperatingUnitPreferences />;

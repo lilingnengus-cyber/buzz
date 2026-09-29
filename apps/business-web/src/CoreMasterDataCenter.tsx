@@ -95,7 +95,11 @@ const EMPTY_FORM: FormState = {
   paymentTermsDays: "30",
 };
 
-export function CoreMasterDataCenter() {
+export function CoreMasterDataCenter({
+  initialCustomerId,
+}: {
+  initialCustomerId?: string;
+}) {
   const [activeType, setActiveType] =
     React.useState<CoreMasterType>("legal_entity");
   const [data, setData] = React.useState<CoreMasterList | null>(null);
@@ -122,6 +126,17 @@ export function CoreMasterDataCenter() {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  React.useEffect(() => {
+    if (!initialCustomerId || !data) return;
+    const customer = data.items.find(
+      (item) => item.resourceType === "customer" && item.id === initialCustomerId,
+    );
+    if (!customer) return;
+    setActiveType("customer");
+    setStatus("all");
+    setQuery(customer.code);
+  }, [data, initialCustomerId]);
 
   const current = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();

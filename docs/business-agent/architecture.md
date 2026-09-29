@@ -12,7 +12,7 @@
 - A proxy executor is one common runtime mechanism, not an IAM principal. It
   receives the event author's current Business IAM authority only for the Turn;
   `agent_id` binds the credential and identifies the executor in audit.
-- `business-read-mcp` exposes 30 fixed reads, six draft creates, and two
+- `business-read-mcp` exposes 30 fixed reads, one customer-master create, six draft creates, and two
   zero-argument signed chat approval tools, validates inputs,
   consumes one call, invokes the API with service identity, validates the
   response, and emits sanitized audit facts.

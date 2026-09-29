@@ -16,8 +16,9 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 15] = [
+const AGENT_SCOPES: [&str; 16] = [
     "business_master_data:read",
+    "business_master_data:manage",
     "sales_order:read",
     "purchase_order:read",
     "inventory:read",
@@ -572,7 +573,10 @@ impl BusinessAgentHostConfig {
         let mut requested_scopes = AGENT_SCOPES
             .iter()
             .copied()
-            .filter(|scope| self.draft_write_enabled || !scope.ends_with(":create"))
+            .filter(|scope| {
+                self.draft_write_enabled
+                    || (!scope.ends_with(":create") && *scope != "business_master_data:manage")
+            })
             .collect::<Vec<_>>();
         if self.chat_approval_enabled {
             if let Some(scope) = chat_approval_scope(&source_event.content) {
@@ -824,8 +828,9 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 15);
+        assert_eq!(AGENT_SCOPES.len(), 16);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
+        assert!(AGENT_SCOPES.contains(&"business_master_data:manage"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
         assert!(AGENT_SCOPES.contains(&"sales_order:create"));
         assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
@@ -837,7 +842,7 @@ mod tests {
         let read_only = AGENT_SCOPES
             .iter()
             .copied()
-            .filter(|scope| !scope.ends_with(":create"))
+            .filter(|scope| !scope.ends_with(":create") && *scope != "business_master_data:manage")
             .collect::<Vec<_>>();
         assert_eq!(read_only.len(), 9);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
@@ -921,8 +926,11 @@ mod tests {
     }
 
     #[test]
-    fn prompt_limits_writes_to_six_draft_tools_and_keeps_form_fallbacks() {
+    fn prompt_limits_writes_to_customer_and_six_draft_tools() {
         let prompt = include_str!("business_agent_prompt.md");
+        assert!(prompt.contains("`create_customer`"));
+        assert!(prompt.contains("code is generated"));
+        assert!(prompt.contains("address is not a required"));
         for tool in [
             "create_sales_order_draft",
             "create_shipment_draft",

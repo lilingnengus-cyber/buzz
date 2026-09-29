@@ -86,8 +86,9 @@ Buzz agents continue unchanged. Enabling with a missing credential/API URL
 fails startup instead of using fixtures.
 
 Deploy code and migration `0025` with `BUSINESS_AGENT_DRAFT_WRITE_ENABLED=false`
-at the Agent Host, Gateway and Business Agent API. Grant only the six fixed
-`*:create` capabilities to the canary human and Agent principals, then set the
+at the Agent Host, Gateway and Business Agent API. Grant only
+`business_master_data:manage` and the six fixed `*:create` capabilities needed
+by the canary human and Agent principals, then set the
 switch to `true` on the canary deployment. Switching it back to `false` stops
 new write delegations and makes both MCP invocation and the API write route
 fail closed; existing read tools continue normally.
@@ -103,8 +104,8 @@ receives no approval scope.
 
 When deploying with `buzz-agent`, run `just business-agent-runtime-acceptance`. The probe uses
 the real `buzz-agent -> session/new -> business-read-mcp` path and a loopback
-model stub, then asserts that the model sees exactly 30 fixed reads, six fixed
-draft creates, two bound approval tools, and no general-purpose tool. It does not call a model, consume a real
+model stub, then asserts that the model sees exactly 30 fixed reads, one fixed
+customer-master create, six fixed draft creates, two bound approval tools, and no general-purpose tool. It does not call a model, consume a real
 Delegation, or read business data.
 
 ## Debug fixture

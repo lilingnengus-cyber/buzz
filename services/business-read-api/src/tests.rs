@@ -292,6 +292,7 @@ async fn in_process_acceptance_cross_domain_p95_is_below_target() {
 #[test]
 fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
     let expected = [
+        ("create_customer", "business_master_data:manage"),
         ("create_sales_order_draft", "sales_order:create"),
         ("create_shipment_draft", "shipment:create"),
         ("create_purchase_order_draft", "purchase_order:create"),
@@ -311,13 +312,21 @@ fn write_allowlist_separates_draft_create_and_chat_approval_capabilities() {
         required_capability("approve_purchase_order"),
         Some("purchase_order:approve")
     );
-    assert_eq!(WRITE_TOOLS.len(), 8);
+    assert_eq!(WRITE_TOOLS.len(), 9);
     assert_eq!(required_capability("confirm_sales_order"), None);
     assert_eq!(required_capability("execute_payment"), None);
 }
 
 #[test]
 fn draft_write_inputs_are_strict_and_typed() {
+    assert!(valid_write_input(
+        "create_customer",
+        &json!({"name":"杭州示例客户"})
+    ));
+    assert!(!valid_write_input(
+        "create_customer",
+        &json!({"name":"杭州示例客户","code":"MANUAL"})
+    ));
     let valid = json!({
         "legalEntityId": Uuid::new_v4(),
         "customerId": Uuid::new_v4(),
