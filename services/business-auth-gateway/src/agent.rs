@@ -314,6 +314,8 @@ impl Store {
         }
 
         let mut tx = self.pool().begin().await.map_err(|_| Rejection::Database)?;
+        // This is an account-level Buzz identity link. Device metadata is
+        // legacy audit data and never participates in Agent authorization.
         let binding = sqlx::query(
             "SELECT b.id,b.enterprise_user_id FROM buzz_identity_bindings b
              JOIN enterprise_users u ON u.id=b.enterprise_user_id

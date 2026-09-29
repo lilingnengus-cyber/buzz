@@ -86,6 +86,11 @@ struct IssueResponse {
     trace_id: Uuid,
 }
 
+#[derive(Debug, Deserialize)]
+struct GatewayErrorResponse {
+    error: String,
+}
+
 pub(crate) struct BusinessTurnAccess {
     mcp_server: McpServer,
     policy: TurnPolicy,
@@ -177,8 +182,16 @@ impl TurnExtension for BusinessAgentHostConfig {
 
 fn business_begin_error_message(error: &str) -> &'static str {
     match error {
-        "Business Agent turn was not authorized for this user or device" =>
-            "本次企业工作台授权未通过，尚未执行查询或写入。下一步：打开企业工作台检查聊天身份绑定与账号权限；已登录不代表已完成绑定。",
+        "Business Agent enterprise account link is missing or inactive" =>
+            "本次企业账号关联无效，尚未执行查询或写入。授权按企业账号与 Buzz 身份公钥关联，不与设备或当前登录会话绑定。下一步：请管理员检查该 Buzz 身份关联的企业账号是否有效。",
+        "Business Agent enterprise account permission was denied" =>
+            "本次企业账号权限不足，尚未执行查询或写入。下一步：请管理员为该企业账号补充所需业务权限。",
+        "Business Agent service authorization is unavailable" =>
+            "企业助手授权服务配置异常，本次尚未执行查询或写入。下一步：请管理员检查 Agent 服务凭据和网关开关。",
+        "Business Agent authorization request was rejected" =>
+            "企业助手提交的授权请求格式无效，本次尚未执行查询或写入。下一步：请更新企业助手后重试。",
+        "Business Agent turn was not authorized for this enterprise account" =>
+            "本次企业账号授权未通过，尚未执行查询或写入。授权不与设备或当前登录会话绑定。下一步：请管理员按 Trace ID 检查账号状态与 IAM 审计。",
         "Business Agent query rate limit exceeded" =>
             "企业助手请求过于频繁，本次尚未执行查询或写入。下一步：稍后重试。",
         "This Buzz event has already started a Business Agent turn" =>
@@ -601,10 +614,37 @@ impl BusinessAgentHostConfig {
             .await
             .map_err(|_| "Business Agent authorization gateway is unavailable")?;
         if !response.status().is_success() {
-            return Err(match response.status().as_u16() {
-                409 => "This Buzz event has already started a Business Agent turn".into(),
-                429 => "Business Agent query rate limit exceeded".into(),
-                _ => "Business Agent turn was not authorized for this user or device".into(),
+            let status = response.status();
+            let body = response.bytes().await.unwrap_or_default();
+            let reason = (body.len() <= 4096)
+                .then(|| serde_json::from_slice::<GatewayErrorResponse>(&body).ok())
+                .flatten()
+                .map(|error| error.error);
+            tracing::warn!(
+                status = status.as_u16(),
+                reason = reason.as_deref().unwrap_or("unavailable"),
+                "Business Agent authorization was rejected"
+            );
+            return Err(match (status.as_u16(), reason.as_deref()) {
+                (409, _) => "This Buzz event has already started a Business Agent turn".into(),
+                (429, _) => "Business Agent query rate limit exceeded".into(),
+                (403, Some("binding_or_user_inactive")) => {
+                    "Business Agent enterprise account link is missing or inactive".into()
+                }
+                (
+                    403,
+                    Some(
+                        "business_iam_denied"
+                        | "iam_human_not_registered"
+                        | "no_effective_permission",
+                    ),
+                ) => "Business Agent enterprise account permission was denied".into(),
+                (
+                    401 | 403,
+                    Some("agent_service_rejected" | "business_agent_disabled_or_service_rejected"),
+                ) => "Business Agent service authorization is unavailable".into(),
+                (400 | 422, _) => "Business Agent authorization request was rejected".into(),
+                _ => "Business Agent turn was not authorized for this enterprise account".into(),
             });
         }
         let bytes = response
@@ -733,10 +773,14 @@ mod tests {
     #[test]
     fn rejected_turn_feedback_is_safe_and_actionable() {
         let denied = business_begin_error_message(
-            "Business Agent turn was not authorized for this user or device",
+            "Business Agent turn was not authorized for this enterprise account",
         );
-        assert!(denied.contains("聊天身份绑定"));
+        assert!(denied.contains("不与设备"));
         assert!(denied.contains("尚未执行"));
+        let missing_link = business_begin_error_message(
+            "Business Agent enterprise account link is missing or inactive",
+        );
+        assert!(missing_link.contains("企业账号与 Buzz 身份公钥关联"));
         let unknown = business_begin_error_message("secret=must-not-appear");
         assert!(!unknown.contains("must-not-appear"));
         assert!(unknown.contains("下一步"));

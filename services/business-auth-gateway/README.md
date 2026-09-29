@@ -3,9 +3,11 @@
 The production boundary for account-scoped Workbench authentication, one-time
 Desktop embed sessions, server-side Business sessions, logout, and append-only
 security audit. It uses Authentik access tokens only on Workbench-to-Gateway
-calls and never sends them to the Business iframe. Interactive Business Dock
-sessions do not require a Buzz identity or device binding; legacy bindings are
-retained for Agent delegation and historical audit.
+calls and never sends them to the Business iframe. Business Dock sessions and
+Agent delegation are not tied to a device. Agent delegation resolves the signed
+Buzz public key to an active enterprise account, then evaluates that account's
+IAM grants for every turn. Legacy device fields are retained only as historical
+audit metadata and never participate in authorization.
 
 V4 adds internal Agent Delegation endpoints. They are disabled unless
 `BUSINESS_AGENT_READ_ENABLED=true` and require the server-only
