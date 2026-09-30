@@ -252,7 +252,8 @@
 }
 
 .master-register {
-  overflow: hidden;
+  max-height: min(68vh, 720px);
+  overflow: auto;
   background: var(--paper);
   border: 1px solid var(--line);
   box-shadow: 8px 8px 0 #d7e1e5;
@@ -350,6 +351,9 @@
 }
 
 .master-register-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   padding: 10px 16px;
   color: #5e7480;
   font:
@@ -739,7 +743,7 @@
     grid-template-columns: repeat(3, 1fr);
   }
   .master-register {
-    overflow-x: auto;
+    overflow: auto;
   }
   .master-register-head,
   .master-register article {

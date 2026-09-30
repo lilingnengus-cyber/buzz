@@ -34,7 +34,7 @@ const record = (
   updatedAt: "2026-09-27T10:00:00Z",
 });
 
-async function expectScrollableRegisterWithStickyActions(
+async function expectScrollableRegisterWithStickyHeaderAndActions(
   page: Page,
   selector: string,
 ) {
@@ -46,6 +46,7 @@ async function expectScrollableRegisterWithStickyActions(
     )
     .toBe(true);
   const actions = register.locator("article .master-actions").first();
+  const header = register.locator(".master-register-head");
   const registerBox = await register.boundingBox();
   expect(registerBox).not.toBeNull();
   await register.evaluate((element) => {
@@ -64,11 +65,36 @@ async function expectScrollableRegisterWithStickyActions(
   await register.evaluate((element) => {
     element.scrollLeft = 0;
   });
+  await expect
+    .poll(() =>
+      register.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await register.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(async () => {
+      const headerBox = await header.boundingBox();
+      if (!headerBox || !registerBox) return false;
+      return Math.abs(headerBox.y - registerBox.y) <= 1;
+    })
+    .toBe(true);
 }
 
 test("新增客户通过经营组织树选择经营主体", async ({ page }) => {
   const items = [
     record("legal", "LE-0001", "示例法人", "legal_entity"),
+    ...Array.from({ length: 10 }, (_, index) =>
+      record(
+        `legal-${index + 2}`,
+        `LE-${String(index + 2).padStart(4, "0")}`,
+        `示例法人 ${index + 2}`,
+        "legal_entity",
+      ),
+    ),
     record("group", "OU-0001", "集团", "business_unit", null, ["集团"]),
     record("china", "OU-0002", "中国区", "business_unit", "group", [
       "集团",
@@ -153,7 +179,10 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   await expect(header.getByText("编码", { exact: true })).toBeVisible();
   await expect(header.getByText("名称", { exact: true })).toBeVisible();
   await expect(header.getByText("权威关系", { exact: true })).toHaveCount(0);
-  await expectScrollableRegisterWithStickyActions(page, ".master-register");
+  await expectScrollableRegisterWithStickyHeaderAndActions(
+    page,
+    ".master-register",
+  );
   await page
     .locator("article")
     .filter({ hasText: "LE-0001" })
@@ -329,27 +358,25 @@ test("商品主数据编码与名称独立展示", async ({ page }) => {
     } else if (path === "/api/v1/product-master-data") {
       await route.fulfill({
         json: {
-          items: [
-            {
-              resourceType: "product",
-              id: "product-1",
-              code: "SPU-0001",
-              name: "示例商品",
-              status: "active",
-              categoryId: "category-1",
-              categoryCode: "CAT-0001",
-              categoryName: "示例分类",
-              brandId: "brand-1",
-              brandCode: "BRD-0001",
-              brandName: "示例品牌",
-              unitOfMeasureId: "uom-1",
-              unitOfMeasureCode: "PCS",
-              unitOfMeasureName: "件",
-              allowZeroCost: false,
-              version: 1,
-              updatedAt: "2026-10-01T09:00:00Z",
-            },
-          ],
+          items: Array.from({ length: 12 }, (_, index) => ({
+            resourceType: "product",
+            id: `product-${index + 1}`,
+            code: `SPU-${String(index + 1).padStart(4, "0")}`,
+            name: `示例商品 ${index + 1}`,
+            status: "active",
+            categoryId: "category-1",
+            categoryCode: "CAT-0001",
+            categoryName: "示例分类",
+            brandId: "brand-1",
+            brandCode: "BRD-0001",
+            brandName: "示例品牌",
+            unitOfMeasureId: "uom-1",
+            unitOfMeasureCode: "PCS",
+            unitOfMeasureName: "件",
+            allowZeroCost: false,
+            version: 1,
+            updatedAt: "2026-10-01T09:00:00Z",
+          })),
           canManage: true,
           dataAsOf: "2026-10-01T09:00:00Z",
         },
@@ -370,7 +397,12 @@ test("商品主数据编码与名称独立展示", async ({ page }) => {
     "操作",
   ]);
   const row = page.locator(".product-register article");
-  await expect(row.locator(".master-code")).toHaveText("SPU-0001");
-  await expect(row.locator(".master-name strong")).toHaveText("示例商品");
-  await expectScrollableRegisterWithStickyActions(page, ".product-register");
+  await expect(row.first().locator(".master-code")).toHaveText("SPU-0001");
+  await expect(row.first().locator(".master-name strong")).toHaveText(
+    "示例商品 1",
+  );
+  await expectScrollableRegisterWithStickyHeaderAndActions(
+    page,
+    ".product-register",
+  );
 });
