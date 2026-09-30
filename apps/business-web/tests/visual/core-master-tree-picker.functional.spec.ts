@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const record = (
   id: string,
@@ -33,6 +33,38 @@ const record = (
   version: 1,
   updatedAt: "2026-09-27T10:00:00Z",
 });
+
+async function expectScrollableRegisterWithStickyActions(
+  page: Page,
+  selector: string,
+) {
+  await page.setViewportSize({ width: 900, height: 768 });
+  const register = page.locator(selector);
+  await expect
+    .poll(() =>
+      register.evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+  const actions = register.locator("article .master-actions").first();
+  const registerBox = await register.boundingBox();
+  expect(registerBox).not.toBeNull();
+  await register.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect
+    .poll(async () => {
+      const actionBox = await actions.boundingBox();
+      if (!actionBox || !registerBox) return false;
+      return (
+        actionBox.x >= registerBox.x &&
+        actionBox.x + actionBox.width <= registerBox.x + registerBox.width + 1
+      );
+    })
+    .toBe(true);
+  await register.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+}
 
 test("新增客户通过经营组织树选择经营主体", async ({ page }) => {
   const items = [
@@ -121,6 +153,7 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   await expect(header.getByText("编码", { exact: true })).toBeVisible();
   await expect(header.getByText("名称", { exact: true })).toBeVisible();
   await expect(header.getByText("权威关系", { exact: true })).toHaveCount(0);
+  await expectScrollableRegisterWithStickyActions(page, ".master-register");
   await page
     .locator("article")
     .filter({ hasText: "LE-0001" })
@@ -339,4 +372,5 @@ test("商品主数据编码与名称独立展示", async ({ page }) => {
   const row = page.locator(".product-register article");
   await expect(row.locator(".master-code")).toHaveText("SPU-0001");
   await expect(row.locator(".master-name strong")).toHaveText("示例商品");
+  await expectScrollableRegisterWithStickyActions(page, ".product-register");
 });

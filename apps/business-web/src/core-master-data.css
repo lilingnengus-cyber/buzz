@@ -745,6 +745,24 @@
   .master-register article {
     min-width: 980px;
   }
+  .master-register-head > :last-child,
+  .master-register article > :last-child {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    box-shadow: -10px 0 14px -14px rgb(23 61 79 / 65%);
+  }
+  .master-register-head > :last-child {
+    background: #dbe6ea;
+  }
+  .master-register article > :last-child {
+    align-self: stretch;
+    align-items: center;
+    background: var(--paper);
+  }
+  .master-register article.disabled > :last-child {
+    background: #f0f3f4;
+  }
 }
 
 @media (max-width: 700px) {
