@@ -6,6 +6,12 @@ export type BusinessHostAuthMessage = {
   payload?: unknown;
 };
 
+export type BusinessHostNavigationMessage = {
+  version: 1;
+  type: "NAVIGATE";
+  payload: { url: string };
+};
+
 export type BusinessSession = {
   authenticated: true;
   subject: string;
@@ -14,6 +20,7 @@ export type BusinessSession = {
 
 const MAX_REQUEST_ID = 128;
 const MAX_SESSION_NONCE = 256;
+const MAX_NAVIGATION_URL = 2048;
 
 function boundedText(value: unknown, max: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
@@ -41,6 +48,48 @@ export function parseBusinessHostAuthMessage(
     sessionNonce: message.sessionNonce,
     payload: message.payload,
   };
+}
+
+export function parseBusinessHostNavigationMessage(
+  value: unknown,
+  businessOrigin: string,
+): BusinessHostNavigationMessage | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return null;
+  const message = value as Record<string, unknown>;
+  if (
+    message.version !== 1 ||
+    message.type !== "NAVIGATE" ||
+    typeof message.payload !== "object" ||
+    message.payload === null ||
+    Array.isArray(message.payload)
+  )
+    return null;
+  const url = (message.payload as Record<string, unknown>).url;
+  if (typeof url !== "string" || url.length === 0 || url.length > MAX_NAVIGATION_URL)
+    return null;
+  try {
+    const target = new URL(url);
+    const decodedPath = decodeURIComponent(target.pathname);
+    if (
+      target.origin !== businessOrigin ||
+      target.username ||
+      target.password ||
+      target.search ||
+      target.hash ||
+      !target.pathname.startsWith("/embed/") ||
+      decodedPath.includes("\\") ||
+      decodedPath.split("/").some((segment) => segment === "." || segment === "..")
+    )
+      return null;
+    return {
+      version: 1,
+      type: "NAVIGATE",
+      payload: { url: target.href },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parentOrigin(): string | null {
@@ -185,6 +234,15 @@ export function connectBusinessDockAuthBridge(): () => void {
         : event.origin !== "null" && !isAllowedBusinessHostOrigin(event.origin)
     )
       return;
+    const navigation = parseBusinessHostNavigationMessage(
+      event.data,
+      window.location.origin,
+    );
+    if (navigation) {
+      window.history.pushState(null, "", navigation.payload.url);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      return;
+    }
     const request = parseBusinessHostAuthMessage(event.data);
     if (!request) return;
     if (request.type === "HOST_INIT" || request.type === "CHECK_AUTH")

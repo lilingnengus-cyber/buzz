@@ -4,6 +4,7 @@ import {
   isAllowedBusinessHostProtocol,
   logoutBusinessSession,
   parseBusinessHostAuthMessage,
+  parseBusinessHostNavigationMessage,
   readBusinessSession,
 } from "./businessDockBridge.ts";
 
@@ -33,6 +34,47 @@ test("allows the packaged Tauri host but rejects unrelated schemes", () => {
   assert.equal(isAllowedBusinessHostProtocol("https:"), true);
   assert.equal(isAllowedBusinessHostProtocol("file:"), false);
   assert.equal(isAllowedBusinessHostProtocol("javascript:"), false);
+});
+
+test("accepts same-origin embedded customer navigation", () => {
+  assert.deepEqual(
+    parseBusinessHostNavigationMessage(
+      {
+        version: 1,
+        type: "NAVIGATE",
+        payload: {
+          url: "https://business.example.com/embed/customers/customer-1",
+        },
+      },
+      "https://business.example.com",
+    ),
+    {
+      version: 1,
+      type: "NAVIGATE",
+      payload: {
+        url: "https://business.example.com/embed/customers/customer-1",
+      },
+    },
+  );
+});
+
+test("rejects external, non-embed, and state-bearing navigation", () => {
+  for (const url of [
+    "https://evil.example/embed/customers/customer-1",
+    "https://business.example.com/core-data",
+    "https://business.example.com/embed/customers/customer-1?token=no",
+    "https://business.example.com/embed/customers/customer-1#details",
+    "javascript:alert(1)",
+  ]) {
+    assert.equal(
+      parseBusinessHostNavigationMessage(
+        { version: 1, type: "NAVIGATE", payload: { url } },
+        "https://business.example.com",
+      ),
+      null,
+      url,
+    );
+  }
 });
 
 test("reads the current Business session identity", async () => {
