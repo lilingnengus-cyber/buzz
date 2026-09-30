@@ -47,6 +47,11 @@ test("business HTTPS and biz links open in Business Dock", () => {
     prevented: true,
     result: "business",
   });
+  assert.deepEqual(run("biz://master-data/customer/C-1"), {
+    calls: [["dock", "C-1"]],
+    prevented: true,
+    result: "business",
+  });
 });
 
 test("command or control click opens the allowlisted HTTPS URL externally", () => {

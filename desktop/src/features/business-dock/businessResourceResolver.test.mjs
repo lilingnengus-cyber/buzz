@@ -92,6 +92,23 @@ test("parses and rebuilds an allowlisted biz deep link", () => {
   );
 });
 
+test("opens customer master-data links emitted by business agents", () => {
+  const resource = parseBusinessUrl(
+    "biz://master-data/customer/b95f52f1-526e-49e7-accb-06a3296a1b01",
+    config,
+  );
+  assert.deepEqual(resource, {
+    version: 1,
+    type: "customer",
+    id: "b95f52f1-526e-49e7-accb-06a3296a1b01",
+    path: "/embed/customers/b95f52f1-526e-49e7-accb-06a3296a1b01",
+  });
+  assert.equal(
+    buildBusinessUrl(resource, config),
+    "https://biz.example.com/embed/customers/b95f52f1-526e-49e7-accb-06a3296a1b01",
+  );
+});
+
 test("parses and rebuilds an agent query receipt deep link", () => {
   const reference = "biz://agent-query/fc84644d-43ac-462f-8a30-456e04a2e9a3";
   const resource = parseBusinessUrl(reference, config);

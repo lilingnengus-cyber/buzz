@@ -301,6 +301,10 @@ const ACCOUNT_DEEP_LINKS = new Map([
   ["customer/receivables", ROUTE_BY_TYPE.get("receivable")],
   ["supplier/payables", ROUTE_BY_TYPE.get("payable")],
 ] as const);
+const MASTER_DATA_DEEP_LINKS = new Map([
+  ["customer", ROUTE_BY_TYPE.get("customer")],
+  ["supplier", ROUTE_BY_TYPE.get("supplier")],
+] as const);
 const RESOURCE_TYPES = new Set<BusinessResourceType>([
   ...ROUTES.map((route) => route.type),
   "generic",
@@ -492,9 +496,18 @@ export function parseBusinessUrl(
               | "supplier/payables",
           )
         : undefined;
-    const route = accountRoute ?? ROUTE_BY_DEEP_LINK.get(url.hostname);
-    if (!route || rawSegments.length !== (accountRoute ? 2 : 1)) return null;
-    const decodedId = decodePath(rawSegments[0]);
+    const masterDataRoute =
+      url.hostname === "master-data" && rawSegments.length === 2
+        ? MASTER_DATA_DEEP_LINKS.get(rawSegments[0] as "customer" | "supplier")
+        : undefined;
+    const route =
+      accountRoute ?? masterDataRoute ?? ROUTE_BY_DEEP_LINK.get(url.hostname);
+    if (
+      !route ||
+      rawSegments.length !== (accountRoute || masterDataRoute ? 2 : 1)
+    )
+      return null;
+    const decodedId = decodePath(rawSegments[masterDataRoute ? 1 : 0]);
     if (!decodedId || !SAFE_SEGMENT.test(decodedId)) return null;
     const id = decodedId;
     return {
@@ -688,10 +701,15 @@ export function isBusinessDeepLinkCandidate(value: string): boolean {
               | "supplier/payables",
           )
         : undefined;
-    const route = accountRoute ?? ROUTE_BY_DEEP_LINK.get(url.hostname);
+    const masterDataRoute =
+      url.hostname === "master-data" && segments.length === 2
+        ? MASTER_DATA_DEEP_LINKS.get(segments[0] as "customer" | "supplier")
+        : undefined;
+    const route =
+      accountRoute ?? masterDataRoute ?? ROUTE_BY_DEEP_LINK.get(url.hostname);
     const id =
-      segments.length === (accountRoute ? 2 : 1)
-        ? decodePath(segments[0])
+      segments.length === (accountRoute || masterDataRoute ? 2 : 1)
+        ? decodePath(segments[masterDataRoute ? 1 : 0])
         : null;
     return Boolean(
       route &&
