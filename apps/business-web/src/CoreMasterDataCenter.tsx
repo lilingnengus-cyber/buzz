@@ -130,7 +130,8 @@ export function CoreMasterDataCenter({
   React.useEffect(() => {
     if (!initialCustomerId || !data) return;
     const customer = data.items.find(
-      (item) => item.resourceType === "customer" && item.id === initialCustomerId,
+      (item) =>
+        item.resourceType === "customer" && item.id === initialCustomerId,
     );
     if (!customer) return;
     setActiveType("customer");
@@ -348,7 +349,7 @@ export function CoreMasterDataCenter({
       <footer className="master-footnote">
         <span>DATA AS OF {data ? formatDate(data.dataAsOf) : "—"}</span>
         <p>
-          编码与归属关系创建后保持不变；停用前实时检查库存、订单、往来对象等业务影响。
+          编码与法定主体创建后保持不变；客户经营主体可受控调整，停用前实时检查业务影响。
         </p>
       </footer>
 
@@ -632,7 +633,9 @@ function MasterFormModal({
           <b>{record ? "受控修订" : "建立权威记录"}</b>
           <span>
             {record
-              ? "编码与归属关系不可更改；保存时校验当前版本。"
+              ? type === "customer"
+                ? "编码与法定主体不可更改；可调整经营主体，保存时校验当前版本。"
+                : "编码与归属关系不可更改；保存时校验当前版本。"
               : "编码由编码规则自动生成，保存后不可更改，请确认所属关系准确。"}
           </span>
         </div>
@@ -687,7 +690,7 @@ function MasterFormModal({
               records={units}
               value={form.businessUnitId}
               onChange={(value) => set("businessUnitId", value)}
-              disabled={Boolean(record)}
+              disabled={Boolean(record) && type !== "customer"}
               preferenceContext={record ? undefined : `core-master-${type}`}
             />
           )}

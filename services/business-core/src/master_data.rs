@@ -342,6 +342,7 @@ impl CoreMasterDataService {
             .bind(format!("{}:{target_id}", kind.as_str()))
             .execute(&mut *tx)
             .await?;
+        let mut operating_unit_change = None;
         if kind == CoreMasterType::BusinessUnit {
             if input
                 .parent_business_unit_id
@@ -363,6 +364,26 @@ impl CoreMasterDataService {
                 current.get("business_unit_id"),
                 existing_id,
             )?;
+            if kind == CoreMasterType::Customer {
+                let current_legal_entity_id = current.get::<Option<Uuid>, _>("legal_entity_id");
+                let current_business_unit_id = current.get::<Option<Uuid>, _>("business_unit_id");
+                if input.legal_entity_id != current_legal_entity_id {
+                    return Err(DomainError::Invalid(
+                        "legalEntityId cannot be changed for a customer".into(),
+                    ));
+                }
+                if input
+                    .business_unit_id
+                    .is_none_or(|value| !snapshot.scopes.business_unit_ids.contains(&value))
+                {
+                    return Err(DomainError::NotFoundOrForbidden);
+                }
+                ensure_parents(&mut tx, kind, input).await?;
+                if input.business_unit_id != current_business_unit_id {
+                    operating_unit_change =
+                        Some((current_business_unit_id, input.business_unit_id));
+                }
+            }
             update_record(&mut tx, kind, existing_id, input, actor, trace_id).await?;
         } else {
             if input.expected_version.is_some() {
@@ -394,7 +415,22 @@ impl CoreMasterDataService {
             )?;
         }
         let version: i64 = row.get("version");
-        record(&mut tx,trace_id,actor,"CORE_MASTER_DATA_SAVED","core_master_data_saved",kind.as_str(),target_id,json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}})).await?;
+        let mut audit_detail = json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}});
+        if let Some((old_business_unit_id, new_business_unit_id)) = operating_unit_change {
+            audit_detail["oldBusinessUnitId"] = json!(old_business_unit_id);
+            audit_detail["newBusinessUnitId"] = json!(new_business_unit_id);
+        }
+        record(
+            &mut tx,
+            trace_id,
+            actor,
+            "CORE_MASTER_DATA_SAVED",
+            "core_master_data_saved",
+            kind.as_str(),
+            target_id,
+            audit_detail,
+        )
+        .await?;
         let result = CoreMasterCommandResult {
             id: target_id,
             resource_type: kind.as_str().into(),
@@ -749,7 +785,7 @@ async fn update_record(
             }
         }
         CoreMasterType::Customer => {
-            sqlx::query("UPDATE business_customers SET name=$2,credit_currency=$3,credit_limit_minor=$4,payment_terms_days=$5,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
+            sqlx::query("UPDATE business_customers SET name=$2,business_unit_id=$3,credit_currency=$4,credit_limit_minor=$5,payment_terms_days=$6,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.business_unit_id).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
         }
         CoreMasterType::Supplier => {
             sqlx::query("UPDATE business_suppliers SET name=$2,payment_terms_days=$3,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;

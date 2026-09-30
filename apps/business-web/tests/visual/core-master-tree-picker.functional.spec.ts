@@ -168,3 +168,103 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
       .getByText("集团 / 中国区 / 华东区 / 杭州单元"),
   ).toBeVisible();
 });
+
+test("编辑客户可以重新选择经营主体", async ({ page }) => {
+  const legal = record("legal", "LE-0001", "示例法人", "legal_entity");
+  const group = record("group", "OU-0001", "集团", "business_unit", null, [
+    "集团",
+  ]);
+  const hangzhou = record(
+    "hangzhou",
+    "OU-0002",
+    "杭州单元",
+    "business_unit",
+    "group",
+    ["集团", "杭州单元"],
+  );
+  const beijing = record(
+    "beijing",
+    "OU-0003",
+    "北京单元",
+    "business_unit",
+    "group",
+    ["集团", "北京单元"],
+  );
+  const customer = {
+    ...legal,
+    id: "customer",
+    code: "CU-000001",
+    name: "示例客户",
+    resourceType: "customer",
+    legalEntityId: "legal",
+    legalEntityCode: "LE-0001",
+    legalEntityName: "示例法人",
+    businessUnitId: "hangzhou",
+    businessUnitCode: "OU-0002",
+    businessUnitName: "杭州单元",
+    creditCurrency: "CNY",
+    creditLimitMinor: 0,
+    paymentTermsDays: 30,
+  };
+  const items = [legal, group, hangzhou, beijing, customer];
+  let submitted: Record<string, unknown> | null = null;
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/session") {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          subject: "customer-edit-test",
+          displayName: "客户编辑验收",
+          csrfToken: "customer-edit-csrf",
+        },
+      });
+    } else if (path === "/api/v1/core-master-data/customer/customer") {
+      submitted = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: {
+          id: "customer",
+          resourceType: "customer",
+          code: "CU-000001",
+          status: "active",
+          version: 2,
+          traceId: "customer-edit-trace",
+          idempotentReplay: false,
+        },
+      });
+    } else if (path === "/api/v1/core-master-data") {
+      await route.fulfill({
+        json: { items, canManage: true, dataAsOf: "2026-09-30T10:00:00Z" },
+      });
+    } else {
+      await route.fulfill({ json: { items: [] } });
+    }
+  });
+
+  await page.goto("/#coreData");
+  await page.getByRole("tab", { name: /客户/ }).click();
+  await page
+    .locator("article")
+    .filter({ hasText: "CU-000001" })
+    .getByRole("button", { name: "编辑" })
+    .click();
+
+  const dialog = page.getByRole("dialog", { name: "编辑客户" });
+  await expect(
+    dialog.getByText("可调整经营主体，保存时校验当前版本"),
+  ).toBeVisible();
+  const selection = dialog.getByRole("button", {
+    name: /当前选择.*集团 \/ 杭州单元/,
+  });
+  await expect(selection).toBeEnabled();
+  await selection.click();
+  await dialog
+    .getByRole("tree", { name: "经营主体 *" })
+    .getByRole("button", { name: /OU-0003.*北京单元/ })
+    .click();
+  await dialog.getByRole("button", { name: "保存修订" }).click();
+
+  await expect.poll(() => submitted?.businessUnitId).toBe("beijing");
+  await expect.poll(() => submitted?.legalEntityId).toBe("legal");
+  await expect(dialog).toHaveCount(0);
+});

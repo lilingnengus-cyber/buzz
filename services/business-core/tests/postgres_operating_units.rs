@@ -303,6 +303,7 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
     let selected_legal = Uuid::new_v4();
     let compatibility_legal = Uuid::new_v4();
     let operating_unit = Uuid::new_v4();
+    let reassigned_unit = Uuid::new_v4();
     sqlx::query("INSERT INTO enterprise_users(id,oidc_issuer,oidc_subject,display_name) VALUES($1,'https://identity.test','independent-dimensions','Independent Dimensions')")
         .bind(actor)
         .execute(&pool)
@@ -340,6 +341,13 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
     sqlx::query("INSERT INTO business_units(id,legal_entity_id,is_operating_root,code,name) VALUES($1,$2,true,'DIM_UNIT','Independent Unit')")
         .bind(operating_unit)
         .bind(compatibility_legal)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO business_units(id,legal_entity_id,parent_business_unit_id,code,name) VALUES($1,$2,$3,'DIM_REASSIGNED','Reassigned Unit')")
+        .bind(reassigned_unit)
+        .bind(compatibility_legal)
+        .bind(operating_unit)
         .execute(&pool)
         .await
         .unwrap();
@@ -391,6 +399,40 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
     .await
     .unwrap();
     assert_eq!(dimensions, (selected_legal, operating_unit));
+    let updated = service
+        .save(
+            actor,
+            Uuid::new_v4(),
+            Some(created.id),
+            "independent-dimensions-customer-reassignment",
+            &SaveCoreMasterData {
+                resource_type: "customer".into(),
+                code: created.code.clone(),
+                name: "Independent Customer".into(),
+                legal_entity_id: Some(selected_legal),
+                business_unit_id: Some(reassigned_unit),
+                parent_business_unit_id: None,
+                country_code: None,
+                functional_currency: None,
+                registration_number: None,
+                address: None,
+                credit_currency: Some("CNY".into()),
+                credit_limit_minor: Some(0),
+                payment_terms_days: Some(30),
+                expected_version: Some(created.version),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.version, created.version + 1);
+    let reassigned_dimensions: (Uuid, Uuid) = sqlx::query_as(
+        "SELECT legal_entity_id,business_unit_id FROM business_customers WHERE id=$1",
+    )
+    .bind(created.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(reassigned_dimensions, (selected_legal, reassigned_unit));
     let impact = service
         .impact(actor, CoreMasterType::LegalEntity, compatibility_legal)
         .await
