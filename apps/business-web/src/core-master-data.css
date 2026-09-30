@@ -342,10 +342,9 @@
 .master-register-head,
 .master-register article {
   display: grid;
-  grid-template-columns: minmax(170px, 1.15fr) minmax(240px, 1.5fr) minmax(
-      150px,
-      1fr
-    ) 105px 125px;
+  grid-template-columns:
+    minmax(125px, 0.75fr) minmax(220px, 1.55fr) minmax(150px, 1fr) 105px
+    125px;
   gap: 16px;
   align-items: center;
 }
@@ -385,12 +384,29 @@
 }
 
 .master-identity small,
+.master-name small,
 .master-attribute small,
 .master-version {
   display: block;
   margin-top: 4px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.master-code code {
+  color: var(--blue);
+  font-size: 11px;
+}
+
+.master-name {
+  min-width: 0;
+}
+
+.master-name strong {
+  display: block;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
 }
 
 .master-hierarchy {

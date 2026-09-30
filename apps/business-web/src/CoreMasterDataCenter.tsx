@@ -285,8 +285,8 @@ export function CoreMasterDataCenter({
       ) : (
         <div className="master-register">
           <div className="master-register-head">
-            <span>编码 / 名称</span>
-            <span>权威关系</span>
+            <span>编码</span>
+            <span>名称</span>
             <span>业务属性</span>
             <span>状态 / 版本</span>
             <span>操作</span>
@@ -296,12 +296,13 @@ export function CoreMasterDataCenter({
               key={item.id}
               className={item.status === "disabled" ? "disabled" : ""}
             >
-              <div className="master-identity">
+              <div className="master-code">
                 <code>{item.code}</code>
+              </div>
+              <div className="master-name">
                 <strong>{item.name}</strong>
                 <small>更新 {formatDate(item.updatedAt)}</small>
               </div>
-              <Hierarchy item={item} />
               <div className="master-attribute">
                 <strong>{attribute(item)}</strong>
                 <small>{attributeNote(item)}</small>
@@ -504,33 +505,6 @@ function OperatingTreeRow({
   );
 }
 
-function Hierarchy({ item }: { item: CoreMasterRecord }) {
-  const steps =
-    item.resourceType === "legal_entity"
-      ? [{ id: "legal", name: item.name }]
-      : item.resourceType === "business_unit"
-        ? [
-            { id: "legal", name: item.legalEntityName },
-            { id: "unit", name: item.name },
-          ]
-        : [
-            { id: "legal", name: item.legalEntityName },
-            { id: "unit", name: item.businessUnitName },
-            { id: "object", name: item.name },
-          ];
-  const visible = steps.filter((step) => step.name);
-  return (
-    <div className="master-hierarchy">
-      {visible.map((step, index) => (
-        <React.Fragment key={step.id}>
-          <span>{step.name}</span>
-          {index < visible.length - 1 && <i>›</i>}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
 function MasterFormModal({
   state,
   items,
@@ -708,12 +682,6 @@ function MasterFormModal({
                   maxLength={3}
                   value={form.functionalCurrency}
                   onChange={(e) => set("functionalCurrency", e.target.value)}
-                />
-              </Field>
-              <Field label="登记编号" wide>
-                <input
-                  value={form.registrationNumber}
-                  onChange={(e) => set("registrationNumber", e.target.value)}
                 />
               </Field>
             </>
@@ -1022,8 +990,7 @@ function attribute(item: CoreMasterRecord) {
   return "经营归属节点";
 }
 function attributeNote(item: CoreMasterRecord) {
-  if (item.resourceType === "legal_entity")
-    return item.registrationNumber || "登记编号待维护";
+  if (item.resourceType === "legal_entity") return "国家/地区 · 功能币";
   if (item.resourceType === "customer")
     return `${item.paymentTermsDays ?? 0} 天账期 · ${item.creditCurrency ?? "CNY"}`;
   return item.resourceType === "business_unit"

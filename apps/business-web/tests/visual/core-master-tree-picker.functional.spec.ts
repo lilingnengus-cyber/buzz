@@ -117,6 +117,18 @@ test("新增客户通过经营组织树选择经营主体", async ({ page }) => 
   });
 
   await page.goto("/#coreData");
+  const header = page.locator(".master-register-head");
+  await expect(header.getByText("编码", { exact: true })).toBeVisible();
+  await expect(header.getByText("名称", { exact: true })).toBeVisible();
+  await expect(header.getByText("权威关系", { exact: true })).toHaveCount(0);
+  await page
+    .locator("article")
+    .filter({ hasText: "LE-0001" })
+    .getByRole("button", { name: "编辑" })
+    .click();
+  const legalDialog = page.getByRole("dialog", { name: "编辑法定主体" });
+  await expect(legalDialog.getByLabel("登记编号")).toHaveCount(0);
+  await legalDialog.getByRole("button", { name: "关闭弹窗" }).click();
   await page.getByRole("tab", { name: /客户/ }).click();
   await page.getByRole("button", { name: "＋ 新增客户" }).click();
 
