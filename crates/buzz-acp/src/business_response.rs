@@ -241,7 +241,8 @@ pub(crate) async fn publish(
 ) -> BusinessResponseObservation {
     observation.publish_attempted = true;
     let started = Instant::now();
-    let event = match build_event(rest, channel_id, source_event, content) {
+    let content = canonicalize_master_data_links(content);
+    let event = match build_event(rest, channel_id, source_event, &content) {
         Ok(event) => event,
         Err(error) => {
             tracing::warn!(channel = %channel_id, "Business Agent response build failed: {error}");
@@ -271,6 +272,12 @@ pub(crate) async fn publish(
         }
     }
     observation
+}
+
+fn canonicalize_master_data_links(content: &str) -> String {
+    content
+        .replace("biz://master-data/customer/", "biz://customer/")
+        .replace("biz://master-data/supplier/", "biz://supplier/")
 }
 
 fn build_event(
@@ -317,6 +324,17 @@ mod tests {
             "business-read-mcp__analyze_cross_domain_risks"
         ));
         assert!(!is_business_read_tool("dev__shell"));
+    }
+
+    #[test]
+    fn response_uses_canonical_master_data_links() {
+        let response = canonicalize_master_data_links(
+            "客户已创建：[上海蜂芒优搜网络科技有限公司](biz://master-data/customer/b95f52f1-526e-49e7-accb-06a3296a1b01)",
+        );
+        assert_eq!(
+            response,
+            "客户已创建：[上海蜂芒优搜网络科技有限公司](biz://customer/b95f52f1-526e-49e7-accb-06a3296a1b01)"
+        );
     }
 
     #[test]
