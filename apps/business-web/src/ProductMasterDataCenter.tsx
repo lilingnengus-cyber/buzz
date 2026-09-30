@@ -320,7 +320,8 @@ function ProductRegister({
   return (
     <div className="master-register product-register">
       <div className="master-register-head">
-        <span>编码 / 名称</span>
+        <span>编码</span>
+        <span>名称</span>
         <span>商品关系</span>
         <span>识别与计量</span>
         <span>状态 / 版本</span>
@@ -331,8 +332,10 @@ function ProductRegister({
           key={item.id}
           className={item.status === "disabled" ? "disabled" : ""}
         >
-          <div className="master-identity">
+          <div className="master-code">
             <code>{item.code}</code>
+          </div>
+          <div className="master-name">
             <strong>{item.name}</strong>
             <small>更新 {formatDate(item.updatedAt)}</small>
           </div>

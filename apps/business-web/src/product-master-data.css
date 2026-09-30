@@ -23,8 +23,8 @@
 .product-register .master-register-head,
 .product-register article {
   grid-template-columns:
-    minmax(170px, 1.15fr) minmax(220px, 1.4fr) minmax(175px, 1.05fr)
-    105px 125px;
+    minmax(120px, 0.7fr) minmax(180px, 1.15fr) minmax(200px, 1.3fr)
+    minmax(165px, 1fr) 105px 125px;
 }
 
 .product-master-form .master-form-grid .product-check {

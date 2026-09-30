@@ -280,3 +280,63 @@ test("编辑客户可以重新选择经营主体", async ({ page }) => {
   await expect.poll(() => submitted?.legalEntityId).toBe("legal");
   await expect(dialog).toHaveCount(0);
 });
+
+test("商品主数据编码与名称独立展示", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/session") {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          subject: "product-register-test",
+          displayName: "商品列表验收",
+          csrfToken: "product-register-csrf",
+        },
+      });
+    } else if (path === "/api/v1/product-master-data") {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              resourceType: "product",
+              id: "product-1",
+              code: "SPU-0001",
+              name: "示例商品",
+              status: "active",
+              categoryId: "category-1",
+              categoryCode: "CAT-0001",
+              categoryName: "示例分类",
+              brandId: "brand-1",
+              brandCode: "BRD-0001",
+              brandName: "示例品牌",
+              unitOfMeasureId: "uom-1",
+              unitOfMeasureCode: "PCS",
+              unitOfMeasureName: "件",
+              allowZeroCost: false,
+              version: 1,
+              updatedAt: "2026-10-01T09:00:00Z",
+            },
+          ],
+          canManage: true,
+          dataAsOf: "2026-10-01T09:00:00Z",
+        },
+      });
+    } else {
+      await route.fulfill({ json: { items: [] } });
+    }
+  });
+
+  await page.goto("/#productData");
+  const header = page.locator(".product-register .master-register-head");
+  await expect(header.locator("span")).toHaveText([
+    "编码",
+    "名称",
+    "商品关系",
+    "识别与计量",
+    "状态 / 版本",
+    "操作",
+  ]);
+  const row = page.locator(".product-register article");
+  await expect(row.locator(".master-code")).toHaveText("SPU-0001");
+  await expect(row.locator(".master-name strong")).toHaveText("示例商品");
+});
