@@ -68,18 +68,22 @@ impl SettlementService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let customer_business_unit: Uuid = sqlx::query_scalar("SELECT business_unit_id FROM business_customers WHERE id=$1 AND legal_entity_id=$2 AND status='active'")
-            .bind(input.customer_id).bind(input.legal_entity_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let customer_active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM business_customers WHERE id=$1 AND status='active')",
+        )
+        .bind(input.customer_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !customer_active {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
         let id = Uuid::new_v4();
         let number = next_number(
             &mut tx,
             "receipt",
             &self.receipt_prefix,
             id,
-            crate::numbering::NumberingContext::new(
-                input.legal_entity_id,
-                Some(customer_business_unit),
-            ),
+            crate::numbering::NumberingContext::new(input.legal_entity_id, None),
         )
         .await?;
         sqlx::query("INSERT INTO customer_receipts(id,receipt_number,legal_entity_id,customer_id,currency,receipt_date,amount,payment_method,external_reference,business_note,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")

@@ -71,18 +71,22 @@ impl PayablesService {
             tx.commit().await?;
             return Ok(replay);
         }
-        let supplier_business_unit: Uuid = sqlx::query_scalar("SELECT business_unit_id FROM business_suppliers WHERE id=$1 AND legal_entity_id=$2 AND status='active'")
-            .bind(input.supplier_id).bind(input.legal_entity_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let supplier_active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM business_suppliers WHERE id=$1 AND status='active')",
+        )
+        .bind(input.supplier_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !supplier_active {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
         let id = Uuid::new_v4();
         let number = next_number(
             &mut tx,
             "supplier_payment",
             &self.payment_prefix,
             id,
-            crate::numbering::NumberingContext::new(
-                input.legal_entity_id,
-                Some(supplier_business_unit),
-            ),
+            crate::numbering::NumberingContext::new(input.legal_entity_id, None),
         )
         .await?;
         sqlx::query("INSERT INTO supplier_payments(id,supplier_payment_number,legal_entity_id,supplier_id,currency,payment_date,amount,payment_method,external_reference,business_note,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")

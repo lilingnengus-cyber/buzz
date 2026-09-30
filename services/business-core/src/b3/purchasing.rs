@@ -518,7 +518,7 @@ impl PurchasingService {
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
         let line_rows = sqlx::query(
-            "SELECT l.line_number,sku.code sku_code,sku.name sku_name,w.code warehouse_code,w.name warehouse_name,u.code unit_code,u.name unit_name,l.ordered_quantity,l.unit_price,l.discount_amount,l.net_amount,l.tax_rate,l.tax_amount,l.gross_amount,(sku.status='active' AND p.status='active' AND w.status='active' AND u.status='active' AND w.legal_entity_id=o.legal_entity_id AND p.base_uom_id=l.unit_of_measure_id AND l.ordered_quantity>0 AND l.unit_price>=0 AND l.discount_amount>=0 AND l.discount_amount<=l.ordered_quantity*l.unit_price AND l.tax_rate>=0 AND l.tax_rate<=1) ready FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 ORDER BY l.line_number",
+            "SELECT l.line_number,sku.code sku_code,sku.name sku_name,w.code warehouse_code,w.name warehouse_name,u.code unit_code,u.name unit_name,l.ordered_quantity,l.unit_price,l.discount_amount,l.net_amount,l.tax_rate,l.tax_amount,l.gross_amount,(sku.status='active' AND p.status='active' AND w.status='active' AND u.status='active' AND p.base_uom_id=l.unit_of_measure_id AND l.ordered_quantity>0 AND l.unit_price>=0 AND l.discount_amount>=0 AND l.discount_amount<=l.ordered_quantity*l.unit_price AND l.tax_rate>=0 AND l.tax_rate<=1) ready FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 ORDER BY l.line_number",
         )
         .bind(order_id)
         .fetch_all(self.store.pool())
@@ -745,7 +745,7 @@ async fn validate_master_data(
         return Err(DomainError::NotFoundOrForbidden);
     }
     for line in &input.lines {
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_warehouses w ON w.id=$2 WHERE s.id=$1 AND s.status='active' AND p.status='active' AND p.base_uom_id=$3 AND w.status='active' AND w.legal_entity_id=$4)").bind(line.sku_id).bind(line.warehouse_id).bind(line.unit_of_measure_id).bind(input.legal_entity_id).fetch_one(&mut **tx).await?;
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_skus s JOIN business_products p ON p.id=s.product_id JOIN business_warehouses w ON w.id=$2 WHERE s.id=$1 AND s.status='active' AND p.status='active' AND p.base_uom_id=$3 AND w.status='active')").bind(line.sku_id).bind(line.warehouse_id).bind(line.unit_of_measure_id).fetch_one(&mut **tx).await?;
         if !valid {
             return Err(DomainError::Invalid(
                 "UOM_CONVERSION_NOT_SUPPORTED or inactive SKU/warehouse".into(),
@@ -760,7 +760,7 @@ async fn validate_confirmation_master_data(
     order_id: Uuid,
 ) -> Result<(), DomainError> {
     let ready: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM purchase_orders o JOIN business_suppliers sup ON sup.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND sup.status='active' AND bu.status='active') AND EXISTS(SELECT 1 FROM purchase_order_lines WHERE purchase_order_id=$1) AND NOT EXISTS(SELECT 1 FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 AND (sku.status<>'active' OR p.status<>'active' OR w.status<>'active' OR u.status<>'active' OR w.legal_entity_id<>o.legal_entity_id OR p.base_uom_id<>l.unit_of_measure_id OR l.ordered_quantity<=0 OR l.unit_price<0 OR l.discount_amount<0 OR l.discount_amount>l.ordered_quantity*l.unit_price OR l.tax_rate<0 OR l.tax_rate>1))",
+        "SELECT EXISTS(SELECT 1 FROM purchase_orders o JOIN business_suppliers sup ON sup.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND sup.status='active' AND bu.status='active') AND EXISTS(SELECT 1 FROM purchase_order_lines WHERE purchase_order_id=$1) AND NOT EXISTS(SELECT 1 FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id JOIN business_skus sku ON sku.id=l.sku_id JOIN business_products p ON p.id=sku.product_id JOIN business_warehouses w ON w.id=l.warehouse_id JOIN business_units_of_measure u ON u.id=l.unit_of_measure_id WHERE l.purchase_order_id=$1 AND (sku.status<>'active' OR p.status<>'active' OR w.status<>'active' OR u.status<>'active' OR p.base_uom_id<>l.unit_of_measure_id OR l.ordered_quantity<=0 OR l.unit_price<0 OR l.discount_amount<0 OR l.discount_amount>l.ordered_quantity*l.unit_price OR l.tax_rate<0 OR l.tax_rate>1))",
     )
     .bind(order_id)
     .fetch_one(&mut **tx)

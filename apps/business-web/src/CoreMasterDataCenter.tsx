@@ -17,10 +17,6 @@ import {
   type OperatingUnitNode,
 } from "./OperatingUnitTree";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
-import {
-  rememberSyncedRecentOperatingUnit,
-  resolveRecentOperatingUnit,
-} from "./recentOperatingUnit";
 import "./core-master-data.css";
 
 const TYPES: Array<{
@@ -64,8 +60,6 @@ const TYPES: Array<{
 type FormState = {
   code: string;
   name: string;
-  legalEntityId: string;
-  businessUnitId: string;
   parentBusinessUnitId: string;
   countryCode: string;
   functionalCurrency: string;
@@ -83,8 +77,6 @@ type ModalState =
 const EMPTY_FORM: FormState = {
   code: "",
   name: "",
-  legalEntityId: "",
-  businessUnitId: "",
   parentBusinessUnitId: "",
   countryCode: "CN",
   functionalCurrency: "CNY",
@@ -172,8 +164,7 @@ export function CoreMasterDataCenter({
           <p>CORE DATA / AUTHORITATIVE REGISTER</p>
           <h1>核心数据中心</h1>
           <span>
-            以法定主体 → 经营主体 →
-            业务对象为统一关系主线，维护业务闭环依赖的权威基础数据。
+            法定主体、经营组织与集团共享主数据独立维护，在业务单据中按需组合。
           </span>
         </div>
         {data?.canManage && (
@@ -234,7 +225,7 @@ export function CoreMasterDataCenter({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="编码、名称或上级主体"
+              placeholder="编码或名称"
             />
           </label>
           <label>
@@ -350,7 +341,7 @@ export function CoreMasterDataCenter({
       <footer className="master-footnote">
         <span>DATA AS OF {data ? formatDate(data.dataAsOf) : "—"}</span>
         <p>
-          编码与法定主体创建后保持不变；客户经营主体可受控调整，停用前实时检查业务影响。
+          编码创建后保持不变；客户、供应商与仓库由集团共享，停用前实时检查业务影响。
         </p>
       </footer>
 
@@ -517,9 +508,6 @@ function MasterFormModal({
   onSaved: () => Promise<void>;
 }) {
   const { record, type } = state;
-  const entities = items.filter(
-    (item) => item.resourceType === "legal_entity" && item.status === "active",
-  );
   const units = items.filter(
     (item) =>
       item.resourceType === "business_unit" &&
@@ -527,15 +515,7 @@ function MasterFormModal({
       item.id !== record?.id,
   );
   const [form, setForm] = React.useState<FormState>(() =>
-    record
-      ? fromRecord(record)
-      : {
-          ...EMPTY_FORM,
-          businessUnitId: resolveRecentOperatingUnit(
-            `core-master-${type}`,
-            units,
-          ),
-        },
+    record ? fromRecord(record) : EMPTY_FORM,
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -545,13 +525,6 @@ function MasterFormModal({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (
-      !(["legal_entity", "business_unit"] as CoreMasterType[]).includes(type) &&
-      !form.businessUnitId
-    ) {
-      setError("请选择经营主体");
-      return;
-    }
     if (type === "business_unit" && !record && !form.parentBusinessUnitId) {
       setError("请选择上级经营单元");
       return;
@@ -562,8 +535,8 @@ function MasterFormModal({
       resourceType: type,
       code: record ? form.code.trim().toUpperCase() : "AUTO",
       name: form.name.trim(),
-      legalEntityId: form.legalEntityId || null,
-      businessUnitId: form.businessUnitId || null,
+      legalEntityId: null,
+      businessUnitId: null,
       parentBusinessUnitId: form.parentBusinessUnitId || null,
       countryCode: form.countryCode.trim().toUpperCase() || null,
       functionalCurrency: form.functionalCurrency.trim().toUpperCase() || null,
@@ -582,12 +555,6 @@ function MasterFormModal({
         method: record ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
-      if (form.businessUnitId) {
-        void rememberSyncedRecentOperatingUnit(
-          `core-master-${type}`,
-          form.businessUnitId,
-        );
-      }
       await onSaved();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "保存失败");
@@ -607,10 +574,8 @@ function MasterFormModal({
           <b>{record ? "受控修订" : "建立权威记录"}</b>
           <span>
             {record
-              ? type === "customer"
-                ? "编码与法定主体不可更改；可调整经营主体，保存时校验当前版本。"
-                : "编码与归属关系不可更改；保存时校验当前版本。"
-              : "编码由编码规则自动生成，保存后不可更改，请确认所属关系准确。"}
+              ? "编码不可更改；保存时校验当前版本。"
+              : "编码由编码规则自动生成；客户、供应商与仓库为集团共享主数据。"}
           </span>
         </div>
         <div className="master-form-grid">
@@ -630,23 +595,6 @@ function MasterFormModal({
               onChange={(e) => set("name", e.target.value)}
             />
           </Field>
-          {type !== "legal_entity" && type !== "business_unit" && (
-            <Field label="法定主体 *">
-              <select
-                required
-                disabled={Boolean(record)}
-                value={form.legalEntityId}
-                onChange={(e) => set("legalEntityId", e.target.value)}
-              >
-                <option value="">请选择</option>
-                {entities.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.code} · {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
           {type === "business_unit" && (
             <OperatingUnitPicker
               label="上级经营单元 *"
@@ -654,18 +602,6 @@ function MasterFormModal({
               value={form.parentBusinessUnitId}
               onChange={(value) => set("parentBusinessUnitId", value)}
               allowEmpty={Boolean(record)}
-            />
-          )}
-          {!(["legal_entity", "business_unit"] as CoreMasterType[]).includes(
-            type,
-          ) && (
-            <OperatingUnitPicker
-              label="经营主体 *"
-              records={units}
-              value={form.businessUnitId}
-              onChange={(value) => set("businessUnitId", value)}
-              disabled={Boolean(record) && type !== "customer"}
-              preferenceContext={record ? undefined : `core-master-${type}`}
             />
           )}
           {type === "legal_entity" && (
@@ -964,8 +900,6 @@ function fromRecord(record: CoreMasterRecord): FormState {
   return {
     code: record.code,
     name: record.name,
-    legalEntityId: record.legalEntityId ?? "",
-    businessUnitId: record.businessUnitId ?? "",
     parentBusinessUnitId: record.parentBusinessUnitId ?? "",
     countryCode: record.countryCode ?? "CN",
     functionalCurrency: record.functionalCurrency ?? "CNY",
@@ -994,8 +928,8 @@ function attributeNote(item: CoreMasterRecord) {
   if (item.resourceType === "customer")
     return `${item.paymentTermsDays ?? 0} 天账期 · ${item.creditCurrency ?? "CNY"}`;
   return item.resourceType === "business_unit"
-    ? "承接客户、供应商与仓库"
-    : "受主体关系约束";
+    ? "独立经营组织节点"
+    : "集团共享主数据";
 }
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {

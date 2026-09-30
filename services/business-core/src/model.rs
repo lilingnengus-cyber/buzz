@@ -351,8 +351,10 @@ pub struct ProductCategoryInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WarehouseInput {
     pub id: Uuid,
-    pub legal_entity_id: Uuid,
-    pub business_unit_id: Uuid,
+    #[serde(default)]
+    pub legal_entity_id: Option<Uuid>,
+    #[serde(default)]
+    pub business_unit_id: Option<Uuid>,
     pub code: String,
     pub name: String,
     #[serde(default)]
@@ -363,8 +365,10 @@ pub struct WarehouseInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CustomerInput {
     pub id: Uuid,
-    pub legal_entity_id: Uuid,
-    pub business_unit_id: Uuid,
+    #[serde(default)]
+    pub legal_entity_id: Option<Uuid>,
+    #[serde(default)]
+    pub business_unit_id: Option<Uuid>,
     pub code: String,
     pub name: String,
     pub credit_currency: String,
@@ -375,8 +379,10 @@ pub struct CustomerInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PartyInput {
     pub id: Uuid,
-    pub legal_entity_id: Uuid,
-    pub business_unit_id: Uuid,
+    #[serde(default)]
+    pub legal_entity_id: Option<Uuid>,
+    #[serde(default)]
+    pub business_unit_id: Option<Uuid>,
     pub code: String,
     pub name: String,
 }

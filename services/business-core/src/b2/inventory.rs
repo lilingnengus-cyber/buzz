@@ -91,14 +91,13 @@ impl InventoryService {
                 .unit_cost
                 .non_negative("unitCost")
                 .map_err(DomainError::Invalid)?;
-            let row = sqlx::query("SELECT w.legal_entity_id,p.allow_zero_cost FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active' AND s.status='active' AND p.status='active'")
+            let row = sqlx::query("SELECT p.allow_zero_cost FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active' AND s.status='active' AND p.status='active'")
                 .bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut *tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-            if row.get::<Uuid, _>("legal_entity_id") != input.legal_entity_id
-                || (cost == Decimal::ZERO && !row.get::<bool, _>("allow_zero_cost"))
+            if (cost == Decimal::ZERO && !row.get::<bool, _>("allow_zero_cost"))
                 || quantity.scale() > 6
             {
                 return Err(DomainError::Invalid(
-                    "opening line violates legal entity or zero-cost policy".into(),
+                    "opening line violates zero-cost policy".into(),
                 ));
             }
         }

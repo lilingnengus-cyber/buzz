@@ -86,8 +86,12 @@ impl ReceivingService {
                 "goods receipt requires an open confirmed purchase order".into(),
             ));
         }
-        let valid_warehouse: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active')")
-            .bind(input.warehouse_id).bind(order.get::<Uuid,_>("legal_entity_id")).fetch_one(&mut *tx).await?;
+        let valid_warehouse: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM business_warehouses WHERE id=$1 AND status='active')",
+        )
+        .bind(input.warehouse_id)
+        .fetch_one(&mut *tx)
+        .await?;
         if !valid_warehouse {
             return Err(DomainError::NotFoundOrForbidden);
         }

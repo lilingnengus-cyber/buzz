@@ -214,16 +214,25 @@ async fn insert_master_data(
             .await?;
     }
     for item in &input.warehouses {
-        sqlx::query("INSERT INTO business_warehouses(id,legal_entity_id,business_unit_id,code,name,address) VALUES($1,$2,$3,$4,$5,$6)")
-            .bind(item.id).bind(item.legal_entity_id).bind(item.business_unit_id).bind(&item.code).bind(&item.name).bind(&item.address).execute(&mut **tx).await?;
+        sqlx::query("INSERT INTO business_warehouses(id,code,name,address) VALUES($1,$2,$3,$4)")
+            .bind(item.id)
+            .bind(&item.code)
+            .bind(&item.name)
+            .bind(&item.address)
+            .execute(&mut **tx)
+            .await?;
     }
     for item in &input.customers {
-        sqlx::query("INSERT INTO business_customers(id,legal_entity_id,business_unit_id,code,name,credit_currency,credit_limit_minor) VALUES($1,$2,$3,$4,$5,$6,$7)")
-            .bind(item.id).bind(item.legal_entity_id).bind(item.business_unit_id).bind(&item.code).bind(&item.name).bind(&item.credit_currency).bind(item.credit_limit_minor).execute(&mut **tx).await?;
+        sqlx::query("INSERT INTO business_customers(id,code,name,credit_currency,credit_limit_minor) VALUES($1,$2,$3,$4,$5)")
+            .bind(item.id).bind(&item.code).bind(&item.name).bind(&item.credit_currency).bind(item.credit_limit_minor).execute(&mut **tx).await?;
     }
     for item in &input.suppliers {
-        sqlx::query("INSERT INTO business_suppliers(id,legal_entity_id,business_unit_id,code,name) VALUES($1,$2,$3,$4,$5)")
-            .bind(item.id).bind(item.legal_entity_id).bind(item.business_unit_id).bind(&item.code).bind(&item.name).execute(&mut **tx).await?;
+        sqlx::query("INSERT INTO business_suppliers(id,code,name) VALUES($1,$2,$3)")
+            .bind(item.id)
+            .bind(&item.code)
+            .bind(&item.name)
+            .execute(&mut **tx)
+            .await?;
     }
     for item in &input.products {
         sqlx::query("INSERT INTO business_products(id,code,name,category_id,brand_id,base_uom_id) VALUES($1,$2,$3,$4,$5,$6)")

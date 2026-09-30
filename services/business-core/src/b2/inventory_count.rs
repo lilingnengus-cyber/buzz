@@ -246,14 +246,15 @@ impl InventoryCountService {
                 "inventory count currency must match the legal entity functional currency".into(),
             ));
         }
-        let business_unit_id: Uuid = sqlx::query_scalar(
-            "SELECT business_unit_id FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active'",
+        let warehouse_active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM business_warehouses WHERE id=$1 AND status='active')",
         )
         .bind(input.warehouse_id)
-        .bind(input.legal_entity_id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(DomainError::NotFoundOrForbidden)?;
+        .fetch_one(&mut *tx)
+        .await?;
+        if !warehouse_active {
+            return Err(DomainError::NotFoundOrForbidden);
+        }
         let balances=sqlx::query("SELECT sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=ANY($3) ORDER BY sku_id FOR UPDATE").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
         if balances.len() != input.sku_ids.len() {
             return Err(DomainError::NotFoundOrForbidden);
@@ -270,7 +271,7 @@ impl InventoryCountService {
             "inventory_count",
             &self.prefix,
             id,
-            crate::numbering::NumberingContext::new(input.legal_entity_id, Some(business_unit_id)),
+            crate::numbering::NumberingContext::new(input.legal_entity_id, None),
         )
         .await?;
         sqlx::query("INSERT INTO inventory_count_tasks(id,count_number,legal_entity_id,warehouse_id,count_date,currency,business_note,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(id).bind(&number).bind(input.legal_entity_id).bind(input.warehouse_id).bind(input.count_date).bind(&input.currency).bind(&input.business_note).bind(actor).bind(trace_id).execute(&mut *tx).await?;

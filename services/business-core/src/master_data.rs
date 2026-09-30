@@ -100,13 +100,7 @@ pub struct SaveCoreMasterData {
 pub struct CreateAgentCustomer {
     /// Customer name supplied by the user.
     pub name: String,
-    /// Explicit legal entity, required only when the actor can access several.
-    #[serde(default)]
-    pub legal_entity_id: Option<Uuid>,
-    /// Explicit operating unit; otherwise the account preference or sole unit is used.
-    #[serde(default)]
-    pub business_unit_id: Option<Uuid>,
-    /// Optional credit currency; defaults to the legal entity functional currency.
+    /// Optional credit currency; defaults to the group base currency.
     #[serde(default)]
     pub credit_currency: Option<String>,
     /// Optional credit limit in minor currency units.
@@ -263,6 +257,17 @@ impl CoreMasterDataService {
         }
     }
 
+    /// Returns the group base currency for group-shared master-data defaults.
+    pub async fn group_currency(&self, actor: Uuid) -> Result<String, DomainError> {
+        self.snapshot(actor, "business_master_data:manage").await?;
+        sqlx::query_scalar(
+            "SELECT base_currency::text FROM business_group_profile WHERE singleton AND status='active'",
+        )
+        .fetch_optional(self.store.pool())
+        .await?
+        .ok_or(DomainError::NotFoundOrForbidden)
+    }
+
     pub async fn list(
         &self,
         actor: Uuid,
@@ -300,7 +305,7 @@ impl CoreMasterDataService {
             .iter()
             .copied()
             .collect::<Vec<_>>();
-        let items=sqlx::query_as::<_,CoreMasterRecord>("SELECT resource_type,id,code,name,status,legal_entity_id,legal_entity_code,legal_entity_name,business_unit_id,business_unit_code,business_unit_name,country_code,functional_currency,registration_number,address,credit_currency,credit_limit_minor,payment_terms_days,version,updated_at,parent_business_unit_id,business_unit_path,business_unit_depth,descendant_count FROM core_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND ((resource_type='legal_entity' AND id=ANY($2)) OR (resource_type='business_unit' AND id=ANY($3)) OR (resource_type NOT IN ('legal_entity','business_unit') AND legal_entity_id=ANY($2) AND business_unit_id=ANY($3))) AND (resource_type<>'warehouse' OR id=ANY($4)) AND (resource_type<>'customer' OR id=ANY($5)) AND (resource_type<>'supplier' OR id=ANY($6)) ORDER BY CASE resource_type WHEN 'legal_entity' THEN 0 WHEN 'business_unit' THEN 1 WHEN 'customer' THEN 2 WHEN 'supplier' THEN 3 ELSE 4 END,code LIMIT $7")
+        let items=sqlx::query_as::<_,CoreMasterRecord>("SELECT resource_type,id,code,name,status,legal_entity_id,legal_entity_code,legal_entity_name,business_unit_id,business_unit_code,business_unit_name,country_code,functional_currency,registration_number,address,credit_currency,credit_limit_minor,payment_terms_days,version,updated_at,parent_business_unit_id,business_unit_path,business_unit_depth,descendant_count FROM core_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND ((resource_type='legal_entity' AND id=ANY($2)) OR (resource_type='business_unit' AND id=ANY($3)) OR resource_type IN ('customer','supplier','warehouse')) AND (resource_type<>'warehouse' OR id=ANY($4)) AND (resource_type<>'customer' OR id=ANY($5)) AND (resource_type<>'supplier' OR id=ANY($6)) ORDER BY CASE resource_type WHEN 'legal_entity' THEN 0 WHEN 'business_unit' THEN 1 WHEN 'customer' THEN 2 WHEN 'supplier' THEN 3 ELSE 4 END,code LIMIT $7")
             .bind(resource_type.map(CoreMasterType::as_str)).bind(entities).bind(units).bind(warehouses).bind(customers).bind(suppliers).bind(limit.clamp(1,1000)).fetch_all(self.store.pool()).await?;
         Ok(CoreMasterList {
             items,
@@ -342,7 +347,6 @@ impl CoreMasterDataService {
             .bind(format!("{}:{target_id}", kind.as_str()))
             .execute(&mut *tx)
             .await?;
-        let mut operating_unit_change = None;
         if kind == CoreMasterType::BusinessUnit {
             if input
                 .parent_business_unit_id
@@ -364,41 +368,11 @@ impl CoreMasterDataService {
                 current.get("business_unit_id"),
                 existing_id,
             )?;
-            if kind == CoreMasterType::Customer {
-                let current_legal_entity_id = current.get::<Option<Uuid>, _>("legal_entity_id");
-                let current_business_unit_id = current.get::<Option<Uuid>, _>("business_unit_id");
-                if input.legal_entity_id != current_legal_entity_id {
-                    return Err(DomainError::Invalid(
-                        "legalEntityId cannot be changed for a customer".into(),
-                    ));
-                }
-                if input
-                    .business_unit_id
-                    .is_none_or(|value| !snapshot.scopes.business_unit_ids.contains(&value))
-                {
-                    return Err(DomainError::NotFoundOrForbidden);
-                }
-                ensure_parents(&mut tx, kind, input).await?;
-                if input.business_unit_id != current_business_unit_id {
-                    operating_unit_change =
-                        Some((current_business_unit_id, input.business_unit_id));
-                }
-            }
             update_record(&mut tx, kind, existing_id, input, actor, trace_id).await?;
         } else {
             if input.expected_version.is_some() {
                 return Err(DomainError::VersionConflict);
             }
-            if input
-                .legal_entity_id
-                .is_some_and(|value| !snapshot.scopes.legal_entity_ids.contains(&value))
-                || input
-                    .business_unit_id
-                    .is_some_and(|value| !snapshot.scopes.business_unit_ids.contains(&value))
-            {
-                return Err(DomainError::NotFoundOrForbidden);
-            }
-            ensure_parents(&mut tx, kind, input).await?;
             let mut generated = input.clone();
             generated.code = allocate_core_master_code(&mut tx, kind, target_id, input).await?;
             insert_record(&mut tx, kind, target_id, &generated).await?;
@@ -415,11 +389,7 @@ impl CoreMasterDataService {
             )?;
         }
         let version: i64 = row.get("version");
-        let mut audit_detail = json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}});
-        if let Some((old_business_unit_id, new_business_unit_id)) = operating_unit_change {
-            audit_detail["oldBusinessUnitId"] = json!(old_business_unit_id);
-            audit_detail["newBusinessUnitId"] = json!(new_business_unit_id);
-        }
+        let audit_detail = json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}});
         record(
             &mut tx,
             trace_id,
@@ -565,18 +535,17 @@ impl CoreMasterDataService {
         &self,
         s: &AuthorizationSnapshot,
         k: CoreMasterType,
-        legal: Option<Uuid>,
-        unit: Option<Uuid>,
+        _legal: Option<Uuid>,
+        _unit: Option<Uuid>,
         id: Uuid,
     ) -> Result<(), DomainError> {
         let legal_ok = match k {
             CoreMasterType::LegalEntity => s.scopes.legal_entity_ids.contains(&id),
-            CoreMasterType::BusinessUnit => true,
-            _ => legal.is_some_and(|v| s.scopes.legal_entity_ids.contains(&v)),
+            _ => true,
         };
         let unit_ok = match k {
             CoreMasterType::BusinessUnit => s.scopes.business_unit_ids.contains(&id),
-            _ => unit.is_none_or(|v| s.scopes.business_unit_ids.contains(&v)),
+            _ => true,
         };
         let ok = legal_ok
             && unit_ok
@@ -636,17 +605,19 @@ fn validate(i: &SaveCoreMasterData, k: CoreMasterType, updating: bool) -> Result
             }
         }
         CoreMasterType::Customer => {
-            if i.legal_entity_id.is_none() || i.business_unit_id.is_none() {
+            if i.legal_entity_id.is_some() || i.business_unit_id.is_some() {
                 return Err(DomainError::Invalid(
-                    "legalEntityId and businessUnitId are required".into(),
+                    "legalEntityId and businessUnitId are not valid for group-shared master data"
+                        .into(),
                 ));
             }
             currency(i.credit_currency.as_deref())?;
         }
         CoreMasterType::Supplier | CoreMasterType::Warehouse => {
-            if i.legal_entity_id.is_none() || i.business_unit_id.is_none() {
+            if i.legal_entity_id.is_some() || i.business_unit_id.is_some() {
                 return Err(DomainError::Invalid(
-                    "legalEntityId and businessUnitId are required".into(),
+                    "legalEntityId and businessUnitId are not valid for group-shared master data"
+                        .into(),
                 ));
             }
         }
@@ -658,7 +629,7 @@ async fn allocate_core_master_code(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     kind: CoreMasterType,
     id: Uuid,
-    input: &SaveCoreMasterData,
+    _input: &SaveCoreMasterData,
 ) -> Result<String, DomainError> {
     let context = match kind {
         CoreMasterType::LegalEntity => NumberingContext::default(),
@@ -666,12 +637,7 @@ async fn allocate_core_master_code(
         // dimension. Keep their generated codes equally independent.
         CoreMasterType::BusinessUnit => NumberingContext::default(),
         CoreMasterType::Customer | CoreMasterType::Supplier | CoreMasterType::Warehouse => {
-            NumberingContext::new(
-                input
-                    .legal_entity_id
-                    .ok_or_else(|| DomainError::Invalid("legalEntityId is required".into()))?,
-                input.business_unit_id,
-            )
+            NumberingContext::default()
         }
     };
     allocate_number(
@@ -689,27 +655,6 @@ fn currency(v: Option<&str>) -> Result<(), DomainError> {
     } else {
         Err(DomainError::Invalid("currency is invalid".into()))
     }
-}
-
-async fn ensure_parents(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    k: CoreMasterType,
-    i: &SaveCoreMasterData,
-) -> Result<(), DomainError> {
-    if matches!(
-        k,
-        CoreMasterType::Customer | CoreMasterType::Supplier | CoreMasterType::Warehouse
-    ) {
-        let legal = i
-            .legal_entity_id
-            .ok_or_else(|| DomainError::Invalid("legalEntityId is required".into()))?;
-        let unit = i.business_unit_id;
-        let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$1 AND status='active') AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM business_units WHERE id=$2 AND status='active'))").bind(legal).bind(unit).fetch_one(&mut **tx).await?;
-        if !ok {
-            return Err(DomainError::NotFoundOrForbidden);
-        }
-    }
-    Ok(())
 }
 
 async fn insert_record(
@@ -732,13 +677,21 @@ async fn insert_record(
             .await?;
         }
         CoreMasterType::Customer => {
-            sqlx::query("INSERT INTO business_customers(id,legal_entity_id,business_unit_id,code,name,credit_currency,credit_limit_minor,payment_terms_days) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(id).bind(i.legal_entity_id).bind(i.business_unit_id).bind(&i.code).bind(i.name.trim()).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
+            sqlx::query("INSERT INTO business_customers(id,code,name,credit_currency,credit_limit_minor,payment_terms_days) VALUES($1,$2,$3,$4,$5,$6)").bind(id).bind(&i.code).bind(i.name.trim()).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
         }
         CoreMasterType::Supplier => {
-            sqlx::query("INSERT INTO business_suppliers(id,legal_entity_id,business_unit_id,code,name,payment_terms_days) VALUES($1,$2,$3,$4,$5,$6)").bind(id).bind(i.legal_entity_id).bind(i.business_unit_id).bind(&i.code).bind(i.name.trim()).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
+            sqlx::query("INSERT INTO business_suppliers(id,code,name,payment_terms_days) VALUES($1,$2,$3,$4)").bind(id).bind(&i.code).bind(i.name.trim()).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
         }
         CoreMasterType::Warehouse => {
-            sqlx::query("INSERT INTO business_warehouses(id,legal_entity_id,business_unit_id,code,name,address) VALUES($1,$2,$3,$4,$5,$6)").bind(id).bind(i.legal_entity_id).bind(i.business_unit_id).bind(&i.code).bind(i.name.trim()).bind(&i.address).execute(&mut **tx).await?;
+            sqlx::query(
+                "INSERT INTO business_warehouses(id,code,name,address) VALUES($1,$2,$3,$4)",
+            )
+            .bind(id)
+            .bind(&i.code)
+            .bind(i.name.trim())
+            .bind(&i.address)
+            .execute(&mut **tx)
+            .await?;
         }
     }
     Ok(())
@@ -785,7 +738,7 @@ async fn update_record(
             }
         }
         CoreMasterType::Customer => {
-            sqlx::query("UPDATE business_customers SET name=$2,business_unit_id=$3,credit_currency=$4,credit_limit_minor=$5,payment_terms_days=$6,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.business_unit_id).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
+            sqlx::query("UPDATE business_customers SET name=$2,credit_currency=$3,credit_limit_minor=$4,payment_terms_days=$5,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.credit_currency.as_deref()).bind(i.credit_limit_minor.unwrap_or(0)).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
         }
         CoreMasterType::Supplier => {
             sqlx::query("UPDATE business_suppliers SET name=$2,payment_terms_days=$3,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(i.name.trim()).bind(i.payment_terms_days.unwrap_or(30)).execute(&mut **tx).await?;
@@ -824,21 +777,13 @@ async fn grant_creator_scope(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     k: CoreMasterType,
     id: Uuid,
-    i: &SaveCoreMasterData,
+    _i: &SaveCoreMasterData,
     actor: Uuid,
 ) -> Result<(), DomainError> {
-    if let Some(le) = if k == CoreMasterType::LegalEntity {
-        Some(id)
-    } else {
-        i.legal_entity_id
-    } {
+    if let Some(le) = (k == CoreMasterType::LegalEntity).then_some(id) {
         sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(le).execute(&mut **tx).await?;
     }
-    if let Some(bu) = if k == CoreMasterType::BusinessUnit {
-        Some(id)
-    } else {
-        i.business_unit_id
-    } {
+    if let Some(bu) = (k == CoreMasterType::BusinessUnit).then_some(id) {
         sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1) ON CONFLICT DO NOTHING").bind(actor).bind(bu).execute(&mut **tx).await?;
     }
     let table = match k {
@@ -866,7 +811,7 @@ async fn load_impacts(
 ) -> Result<Vec<ImpactItem>, DomainError> {
     let queries:&[(&str,&str,&str,bool)]=match k{
 CoreMasterType::LegalEntity=>&[("open_sales","未完成销售订单","SELECT count(*) FROM sales_orders WHERE legal_entity_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("open_purchase","未完成采购订单","SELECT count(*) FROM purchase_orders WHERE legal_entity_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("stock","存在库存的商品仓位","SELECT count(*) FROM inventory_balances WHERE legal_entity_id=$1 AND (on_hand_quantity<>0 OR reserved_quantity<>0 OR quarantined_quantity<>0)",true)],
-CoreMasterType::BusinessUnit=>&[("active_warehouses","启用中的仓库","SELECT count(*) FROM business_warehouses WHERE business_unit_id=$1 AND status='active'",true),("active_partners","启用中的客户或供应商","SELECT (SELECT count(*) FROM business_customers WHERE business_unit_id=$1 AND status='active')+(SELECT count(*) FROM business_suppliers WHERE business_unit_id=$1 AND status='active')",true),("open_orders","未完成销售或采购订单","SELECT (SELECT count(*) FROM sales_orders WHERE business_unit_id=$1 AND lifecycle_status IN ('draft','confirmed'))+(SELECT count(*) FROM purchase_orders WHERE business_unit_id=$1 AND lifecycle_status IN ('draft','confirmed'))",true)],
+CoreMasterType::BusinessUnit=>&[("open_orders","未完成销售或采购订单","SELECT (SELECT count(*) FROM sales_orders WHERE business_unit_id=$1 AND lifecycle_status IN ('draft','confirmed'))+(SELECT count(*) FROM purchase_orders WHERE business_unit_id=$1 AND lifecycle_status IN ('draft','confirmed'))",true)],
 CoreMasterType::Customer=>&[("open_orders","未完成销售订单","SELECT count(*) FROM sales_orders WHERE customer_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("open_receivables","未结经营应收","SELECT count(*) FROM trade_receivables WHERE customer_id=$1 AND status IN ('open','partially_settled')",false)],
 CoreMasterType::Supplier=>&[("open_orders","未完成采购订单","SELECT count(*) FROM purchase_orders WHERE supplier_id=$1 AND lifecycle_status IN ('draft','confirmed')",true),("open_payables","未结经营应付","SELECT count(*) FROM trade_payables WHERE supplier_id=$1 AND status IN ('open','partially_settled')",false),("inbound_lines","仍有在途数量的采购行","SELECT count(*) FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE o.supplier_id=$1 AND o.lifecycle_status='confirmed' AND l.ordered_quantity>l.received_quantity+l.cancelled_quantity",true)],
 CoreMasterType::Warehouse=>&[("stock","存在余额的库存记录","SELECT count(*) FROM inventory_balances WHERE warehouse_id=$1 AND (on_hand_quantity<>0 OR reserved_quantity<>0 OR quarantined_quantity<>0)",true),("sales_demand","未完成销售订单行","SELECT count(*) FROM sales_order_lines l JOIN sales_orders o ON o.id=l.sales_order_id WHERE l.warehouse_id=$1 AND o.lifecycle_status IN ('draft','confirmed') AND l.ordered_quantity>l.shipped_quantity+l.cancelled_quantity",true),("purchase_inbound","未完成采购订单行","SELECT count(*) FROM purchase_order_lines l JOIN purchase_orders o ON o.id=l.purchase_order_id WHERE l.warehouse_id=$1 AND o.lifecycle_status='confirmed' AND l.ordered_quantity>l.received_quantity+l.cancelled_quantity",true),("inventory_counts","进行中的盘点任务","SELECT count(*) FROM inventory_count_tasks WHERE warehouse_id=$1 AND status IN ('counting','counted')",true)]};
@@ -923,5 +868,28 @@ mod tests {
             expected_version: Some(1),
         };
         assert!(validate(&i, CoreMasterType::Warehouse, true).is_err());
+    }
+
+    #[test]
+    fn group_shared_master_data_rejects_dimension_bindings() {
+        let mut input = SaveCoreMasterData {
+            resource_type: "customer".into(),
+            code: "AUTO".into(),
+            name: "集团共享客户".into(),
+            legal_entity_id: None,
+            business_unit_id: None,
+            parent_business_unit_id: None,
+            country_code: None,
+            functional_currency: None,
+            registration_number: None,
+            address: None,
+            credit_currency: Some("CNY".into()),
+            credit_limit_minor: Some(0),
+            payment_terms_days: Some(30),
+            expected_version: None,
+        };
+        assert!(validate(&input, CoreMasterType::Customer, false).is_ok());
+        input.legal_entity_id = Some(Uuid::nil());
+        assert!(validate(&input, CoreMasterType::Customer, false).is_err());
     }
 }

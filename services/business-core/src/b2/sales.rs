@@ -651,13 +651,13 @@ impl SalesService {
         if order.get::<String, _>("hold_status") != "none" {
             return Err(DomainError::OrderOnHold);
         }
-        let warehouse_legal: Option<Uuid> = sqlx::query_scalar(
-            "SELECT legal_entity_id FROM business_warehouses WHERE id=$1 AND status='active'",
+        let warehouse_active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM business_warehouses WHERE id=$1 AND status='active')",
         )
         .bind(input.warehouse_id)
-        .fetch_optional(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
-        if warehouse_legal != Some(order.get("legal_entity_id")) {
+        if !warehouse_active {
             return Err(DomainError::NotFoundOrForbidden);
         }
         let mut seen = BTreeSet::new();
@@ -1106,9 +1106,8 @@ async fn validate_order_master_data(
         return Err(DomainError::NotFoundOrForbidden);
     }
     for line in lines {
-        let row=sqlx::query("SELECT w.legal_entity_id,s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active'").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
-        if row.get::<Uuid, _>("legal_entity_id") != legal
-            || row.get::<String, _>("sku_status") != "active"
+        let row=sqlx::query("SELECT s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active'").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        if row.get::<String, _>("sku_status") != "active"
             || row.get::<String, _>("product_status") != "active"
             || row.get::<Uuid, _>("base_uom_id") != line.unit_of_measure_id
             || line

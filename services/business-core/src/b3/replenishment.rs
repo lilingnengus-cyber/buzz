@@ -300,7 +300,7 @@ impl ReplenishmentService {
             ))
             .execute(&mut *tx)
             .await?;
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_warehouses w JOIN business_skus s ON s.id=$3 JOIN business_products p ON p.id=s.product_id JOIN business_suppliers supplier ON supplier.id=$4 WHERE w.id=$2 AND w.legal_entity_id=$1 AND p.base_uom_id=$5 AND w.status='active' AND s.status='active' AND supplier.legal_entity_id=$1 AND supplier.status='active')").bind(input.legal_entity_id).bind(input.warehouse_id).bind(input.sku_id).bind(input.preferred_supplier_id).bind(input.unit_of_measure_id).fetch_one(&mut *tx).await?;
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_warehouses w JOIN business_skus s ON s.id=$3 JOIN business_products p ON p.id=s.product_id JOIN business_suppliers supplier ON supplier.id=$4 WHERE w.id=$2 AND p.base_uom_id=$5 AND w.status='active' AND s.status='active' AND supplier.status='active' AND EXISTS(SELECT 1 FROM business_legal_entities entity WHERE entity.id=$1 AND entity.status='active'))").bind(input.legal_entity_id).bind(input.warehouse_id).bind(input.sku_id).bind(input.preferred_supplier_id).bind(input.unit_of_measure_id).fetch_one(&mut *tx).await?;
         if !valid {
             return Err(DomainError::NotFoundOrForbidden);
         }
@@ -427,21 +427,13 @@ impl ReplenishmentService {
             .ok_or_else(|| DomainError::Invalid("required date unavailable".into()))?;
         let required_date = input.request_date + Duration::days(i64::from(max_lead_time));
         let currency: String = suggestions[0].get("currency");
-        let business_unit_id: Uuid = sqlx::query_scalar(
-            "SELECT business_unit_id FROM business_warehouses WHERE id=$1 AND legal_entity_id=$2 AND status='active'",
-        )
-        .bind(warehouse)
-        .bind(entity)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(DomainError::NotFoundOrForbidden)?;
         let id = Uuid::new_v4();
         let number = next_number(
             &mut tx,
             "purchase_requisition",
             &self.prefix,
             id,
-            crate::numbering::NumberingContext::new(entity, Some(business_unit_id)),
+            crate::numbering::NumberingContext::new(entity, None),
         )
         .await?;
         sqlx::query("INSERT INTO purchase_requisitions(id,requisition_number,legal_entity_id,warehouse_id,supplier_id,request_date,required_date,currency,business_note,created_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)").bind(id).bind(&number).bind(entity).bind(warehouse).bind(supplier).bind(input.request_date).bind(required_date).bind(&currency).bind(&input.business_note).bind(actor).bind(trace_id).execute(&mut *tx).await?;

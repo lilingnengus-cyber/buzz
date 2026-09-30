@@ -167,32 +167,23 @@ async fn create_agent_customer(
     headers: HeaderMap,
     Json(input): Json<CreateAgentCustomer>,
 ) -> Result<Json<impl serde::Serialize>, MasterApiError> {
-    let (legal_entity_id, functional_currency) = state
+    let group_currency = state
         .master_data
-        .resolve_legal_entity(context.actor_user_id, input.legal_entity_id)
-        .await
-        .map_err(|error| MasterApiError::domain(error, context.trace_id))?;
-    let business_unit_id = state
-        .user_preferences
-        .resolve_operating_unit(
-            context.actor_user_id,
-            "core-master-customer",
-            input.business_unit_id,
-        )
+        .group_currency(context.actor_user_id)
         .await
         .map_err(|error| MasterApiError::domain(error, context.trace_id))?;
     let command = SaveCoreMasterData {
         resource_type: "customer".into(),
         code: "AUTO".into(),
         name: input.name,
-        legal_entity_id: Some(legal_entity_id),
-        business_unit_id: Some(business_unit_id),
+        legal_entity_id: None,
+        business_unit_id: None,
         parent_business_unit_id: None,
         country_code: None,
         functional_currency: None,
         registration_number: None,
         address: None,
-        credit_currency: Some(input.credit_currency.unwrap_or(functional_currency)),
+        credit_currency: Some(input.credit_currency.unwrap_or(group_currency)),
         credit_limit_minor: input.credit_limit_minor,
         payment_terms_days: input.payment_terms_days,
         expected_version: None,

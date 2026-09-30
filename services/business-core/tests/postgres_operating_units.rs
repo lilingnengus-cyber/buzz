@@ -264,7 +264,7 @@ async fn operating_unit_scope_includes_descendants_without_siblings_or_duplicate
 }
 
 #[tokio::test]
-async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing() {
+async fn group_shared_master_data_has_no_legal_or_operating_owner() {
     let Ok(database_url) = std::env::var("BUSINESS_CORE_TEST_DATABASE_URL") else {
         eprintln!("skipping: BUSINESS_CORE_TEST_DATABASE_URL is not set");
         return;
@@ -376,8 +376,8 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
                 resource_type: "customer".into(),
                 code: "DIM_CUSTOMER".into(),
                 name: "Independent Customer".into(),
-                legal_entity_id: Some(selected_legal),
-                business_unit_id: Some(operating_unit),
+                legal_entity_id: None,
+                business_unit_id: None,
                 parent_business_unit_id: None,
                 country_code: None,
                 functional_currency: None,
@@ -391,48 +391,22 @@ async fn independent_dimensions_allow_master_data_across_legacy_entity_pairing()
         )
         .await
         .unwrap();
-    let dimensions: (Uuid, Uuid) = sqlx::query_as(
+    let dimensions: (Option<Uuid>, Option<Uuid>) = sqlx::query_as(
         "SELECT legal_entity_id,business_unit_id FROM business_customers WHERE id=$1",
     )
     .bind(created.id)
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(dimensions, (selected_legal, operating_unit));
-    let updated = service
-        .save(
-            actor,
-            Uuid::new_v4(),
-            Some(created.id),
-            "independent-dimensions-customer-reassignment",
-            &SaveCoreMasterData {
-                resource_type: "customer".into(),
-                code: created.code.clone(),
-                name: "Independent Customer".into(),
-                legal_entity_id: Some(selected_legal),
-                business_unit_id: Some(reassigned_unit),
-                parent_business_unit_id: None,
-                country_code: None,
-                functional_currency: None,
-                registration_number: None,
-                address: None,
-                credit_currency: Some("CNY".into()),
-                credit_limit_minor: Some(0),
-                payment_terms_days: Some(30),
-                expected_version: Some(created.version),
-            },
-        )
+    assert_eq!(dimensions, (None, None));
+    let listed = service
+        .list(actor, Some(CoreMasterType::Customer), 10)
         .await
         .unwrap();
-    assert_eq!(updated.version, created.version + 1);
-    let reassigned_dimensions: (Uuid, Uuid) = sqlx::query_as(
-        "SELECT legal_entity_id,business_unit_id FROM business_customers WHERE id=$1",
-    )
-    .bind(created.id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(reassigned_dimensions, (selected_legal, reassigned_unit));
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].id, created.id);
+    assert_eq!(listed.items[0].legal_entity_id, None);
+    assert_eq!(listed.items[0].business_unit_id, None);
     let impact = service
         .impact(actor, CoreMasterType::LegalEntity, compatibility_legal)
         .await
