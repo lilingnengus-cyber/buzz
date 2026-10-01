@@ -206,7 +206,6 @@ function App() {
                       className={item.id === activeNavigation ? "active" : ""}
                       href={`#${item.id}`}
                     >
-                      <span className="rail-item-index">{item.index}</span>
                       <span className="rail-item-label">{item.label}</span>
                     </a>
                   ))}

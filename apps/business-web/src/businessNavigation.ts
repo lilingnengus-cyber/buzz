@@ -24,7 +24,7 @@ export type Section =
   | "adjustments"
   | "reports"
   | "preferences";
-type NavItem = { id: Section; label: string; index: string };
+type NavItem = { id: Section; label: string };
 
 export const NAV_GROUPS: Array<{
   id: string;
@@ -37,10 +37,10 @@ export const NAV_GROUPS: Array<{
     label: "经营控制",
     index: "01",
     items: [
-      { id: "dashboard", label: "经营驾驶舱", index: "OPS" },
-      { id: "quality", label: "数据质量", index: "DQ" },
-      { id: "incidents", label: "异常处置", index: "INC" },
-      { id: "trends", label: "日报与趋势", index: "TRD" },
+      { id: "dashboard", label: "经营驾驶舱" },
+      { id: "quality", label: "数据质量" },
+      { id: "incidents", label: "异常处置" },
+      { id: "trends", label: "日报与趋势" },
     ],
   },
   {
@@ -48,9 +48,9 @@ export const NAV_GROUPS: Array<{
     label: "基础资料",
     index: "02",
     items: [
-      { id: "coreData", label: "核心数据", index: "MDM" },
-      { id: "productData", label: "商品数据", index: "PDM" },
-      { id: "numbering", label: "编码规则", index: "NUM" },
+      { id: "coreData", label: "核心数据" },
+      { id: "productData", label: "商品数据" },
+      { id: "numbering", label: "编码规则" },
     ],
   },
   {
@@ -58,9 +58,9 @@ export const NAV_GROUPS: Array<{
     label: "售前 CRM",
     index: "03",
     items: [
-      { id: "crm", label: "商机", index: "OPP" },
-      { id: "crmFollowups", label: "跟进记录", index: "LOG" },
-      { id: "crmContacts", label: "客户联系人", index: "CON" },
+      { id: "crm", label: "商机" },
+      { id: "crmFollowups", label: "跟进记录" },
+      { id: "crmContacts", label: "客户联系人" },
     ],
   },
   {
@@ -68,9 +68,9 @@ export const NAV_GROUPS: Array<{
     label: "业务闭环",
     index: "04",
     items: [
-      { id: "sales", label: "销售订单闭环", index: "O2C" },
-      { id: "inventory", label: "库存台账", index: "INV" },
-      { id: "purchasing", label: "采购订单闭环", index: "P2P" },
+      { id: "sales", label: "销售订单闭环" },
+      { id: "inventory", label: "库存台账" },
+      { id: "purchasing", label: "采购订单闭环" },
     ],
   },
   {
@@ -78,17 +78,17 @@ export const NAV_GROUPS: Array<{
     label: "经营分析",
     index: "05",
     items: [
-      { id: "profits", label: "订单真实利润", index: "P&L" },
-      { id: "profitability", label: "多维盈利分析", index: "DIM" },
-      { id: "adjustments", label: "经营费用归集", index: "ADJ" },
-      { id: "reports", label: "管理利润报表", index: "RPT" },
+      { id: "profits", label: "订单真实利润" },
+      { id: "profitability", label: "多维盈利分析" },
+      { id: "adjustments", label: "经营费用归集" },
+      { id: "reports", label: "管理利润报表" },
     ],
   },
   {
     id: "personal",
     label: "个人设置",
     index: "06",
-    items: [{ id: "preferences", label: "默认经营主体", index: "ORG" }],
+    items: [{ id: "preferences", label: "默认经营主体" }],
   },
 ];
 export const NAV = NAV_GROUPS.flatMap((group) => group.items);
