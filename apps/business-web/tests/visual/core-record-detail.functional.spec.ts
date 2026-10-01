@@ -39,6 +39,8 @@ for (const canManage of [true, false]) {
             dataAsOf: "2026-10-01T00:00:00Z",
           },
         });
+      else if (path.endsWith("/disable-impact"))
+        await route.fulfill({ json: { canDisable: true, impacts: [] } });
       else await route.fulfill({ json: { items: [] } });
     });
     await page.goto("/#coreData");
