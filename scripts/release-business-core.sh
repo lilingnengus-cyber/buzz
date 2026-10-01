@@ -88,7 +88,7 @@ release_locked() (
   rollback=("${compose[@]}" -f "$release_dir/rollback.yml")
   "${candidate[@]}" config --quiet
   echo "business-core-release: checking candidate $candidate_image"
-  "${candidate[@]}" run --rm --no-deps --no-build --pull never \
+  "${candidate[@]}" run --rm --no-deps --pull never \
     --entrypoint business-core business-core --check-migrations > "$release_dir/preflight.log"
   cat "$release_dir/preflight.log"
   # The current binary validates every applied version at startup. Applying a

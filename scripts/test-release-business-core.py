@@ -38,6 +38,9 @@ elif args[:2] == ["image", "inspect"]:
     print(new)
 elif args[0] == "compose":
     if "run" in args:
+        if "--no-build" in args:
+            print("unknown flag: --no-build", file=sys.stderr)
+            sys.exit(1)
         if mode == "preflight_failure":
             sys.exit(1)
         pending = 1 if mode == "pending" else 0
