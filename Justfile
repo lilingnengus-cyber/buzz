@@ -504,6 +504,14 @@ business-migration-preflight *ARGS:
 business-migration-preflight-test:
     ./scripts/test-check-business-migrations.sh
 
+# Run on the Docker host with an already built Core image.
+business-core-release *ARGS:
+    ./scripts/release-business-core.sh {{ARGS}}
+
+# Validate candidate preflight, image switching, and automatic rollback.
+business-core-release-test:
+    python3 ./scripts/test-release-business-core.py
+
 # Verify the dedicated runtime exposes exactly the fixed Business MCP tools.
 business-agent-runtime-acceptance:
     cargo build -p buzz-agent -p business-read-mcp

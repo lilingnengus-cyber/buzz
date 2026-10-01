@@ -5,8 +5,13 @@ use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use uuid::Uuid;
 
+mod migration_preflight;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("--check-migrations") {
+        return migration_preflight::check().await;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

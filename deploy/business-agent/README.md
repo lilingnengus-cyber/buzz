@@ -52,6 +52,33 @@ host or Compose network, query `version`, `success`, and the hex-encoded
 `checksum` from `_sqlx_migrations`, then pipe the tab-separated rows to
 `scripts/check-business-migrations.sh --database-manifest -`.
 
+## Business Core image releases
+
+Build the candidate from the release commit, then run this command on the
+Docker host with a writable evidence directory:
+
+```bash
+scripts/release-business-core.sh \
+  --image your-core-image:release \
+  --container your-project-business-core-1 \
+  --release-root /opt/business-platform/shared/core-releases \
+  --dry-run
+# Remove --dry-run to switch Core after the check passes.
+```
+
+The candidate binary must support `business-core --check-migrations`. The
+script pins both images by Docker image ID, reads the complete Compose
+configuration chain from the current container, serializes releases with
+`flock`, and checks the candidate's actual embedded SQLx migrations in a
+read-only database transaction. It replaces only the Core service and restores
+the previous image if startup or health checks fail. Each release directory
+retains the preflight output, both image IDs, and Compose overrides.
+
+Automatic rollback requires zero pending migrations: apply new forward-only
+migrations in a separate, compatible rollout before using this script.
+Rollback restores the service image, never the database schema. Core may be
+briefly unavailable while Compose replaces its single container.
+
 ## IAM bootstrap
 
 Create or map the Human principal using the enterprise user UUID as
