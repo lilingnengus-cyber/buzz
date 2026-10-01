@@ -33,6 +33,9 @@ const purchaseOrder = {
   supplierId: "supplier-1",
   supplierCode: "SUP-01",
   supplierName: "核心供应商",
+  businessUnitId: "business-unit-1",
+  businessUnitCode: "BU-01",
+  businessUnitName: "商贸业务部",
   currency: "CNY",
   lifecycleStatus: "confirmed",
   receivingStatus: "unreceived",
@@ -40,6 +43,21 @@ const purchaseOrder = {
   orderDate: "2026-08-23",
   updatedAt: "2026-08-23T01:30:00Z",
   version: 2,
+};
+
+const alternatePurchaseOrder = {
+  ...purchaseOrder,
+  id: "purchase-order-2",
+  purchaseOrderNumber: "PO-202608-000002",
+  legalEntityId: "legal-entity-2",
+  legalEntityCode: "LE-02",
+  legalEntityName: "北京法定主体",
+  supplierId: "supplier-2",
+  supplierCode: "SUP-02",
+  supplierName: "北方供应商",
+  businessUnitId: "business-unit-2",
+  businessUnitCode: "BU-02",
+  businessUnitName: "北方业务部",
 };
 
 const inventoryBalance = {
@@ -124,7 +142,7 @@ async function installBusinessFixtures(page: Page, zoom: number) {
     } else if (path === "/api/v1/sales-orders") {
       body = envelope([salesOrder]);
     } else if (path === "/api/v1/purchase-orders") {
-      body = envelope([purchaseOrder]);
+      body = envelope([purchaseOrder, alternatePurchaseOrder]);
     } else if (path === "/api/v1/purchase-orders/entry-options") {
       body = {
         canCreate: true,
@@ -329,6 +347,22 @@ for (const zoom of ZOOMS) {
     ).toBeVisible();
     await expect(page.getByText("供应商 核心供应商 · SUP-01")).toBeVisible();
     await expect(page.getByText("法定主体 上海法定主体 · LE-01")).toBeVisible();
+    const firstOrder = page.getByRole("button", {
+      name: "查看 PO-202608-000001 详情",
+    });
+    const secondOrder = page.getByRole("button", {
+      name: "查看 PO-202608-000002 详情",
+    });
+    await page.getByLabel("筛选法定主体").selectOption("legal-entity-1");
+    await expect(firstOrder).toBeVisible();
+    await expect(secondOrder).toBeHidden();
+    await page.getByLabel("筛选经营主体").selectOption("business-unit-2");
+    await expect(firstOrder).toBeHidden();
+    await expect(secondOrder).toBeHidden();
+    await page.getByLabel("筛选法定主体").selectOption("");
+    await expect(firstOrder).toBeHidden();
+    await expect(secondOrder).toBeVisible();
+    await page.getByLabel("筛选经营主体").selectOption("");
     await expectNoHorizontalOverflow(page.locator("main"));
     await expectSingleLine(page.locator(".money-cell strong").first());
     await expect(page).toHaveScreenshot(`purchase-page-${zoom}.png`);

@@ -240,6 +240,26 @@
   border-radius: 50%;
 }
 
+.workflow-toolbar-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.workflow-toolbar-filters select {
+  width: min(190px, 18vw);
+  min-height: 44px;
+  padding: 0 30px 0 10px;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+}
+
+.workflow-toolbar-filters select:focus {
+  border-color: var(--workflow-accent);
+  outline: 2px solid color-mix(in srgb, var(--workflow-accent) 22%, transparent);
+  outline-offset: 1px;
+}
+
 .workflow-table {
   margin-bottom: 28px;
   overflow: hidden;
@@ -854,6 +874,16 @@
   .workflow-toolbar label {
     flex-basis: auto;
     max-width: none;
+  }
+
+  .workflow-toolbar-filters {
+    width: 100%;
+  }
+
+  .workflow-toolbar-filters select {
+    flex: 1;
+    width: auto;
+    min-width: 0;
   }
 
   .workflow-row {

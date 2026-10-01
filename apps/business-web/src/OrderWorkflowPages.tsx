@@ -393,6 +393,8 @@ function PurchaseOrderRegisterPage() {
   const [revision, setRevision] = React.useState(0);
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const [query, setQuery] = React.useState("");
+  const [legalEntityId, setLegalEntityId] = React.useState("");
+  const [businessUnitId, setBusinessUnitId] = React.useState("");
   const state = useWorkflowData<PurchaseWorkflowData>(async () => {
     const [orders, receipts, payables, payments, returns] = await Promise.all([
       loadWorkflowStage<PurchaseOrder>("/api/v1/purchase-orders?limit=200"),
@@ -420,12 +422,33 @@ function PurchaseOrderRegisterPage() {
   const data = state.data;
   const stageError = data?.errors[tab] ?? null;
   const search = query.trim().toLowerCase();
-  const orders = filterRows(data?.orders ?? [], search, (item) => [
+  const sourceOrders = data?.orders ?? [];
+  const legalEntityOptions = purchaseDimensionOptions(
+    sourceOrders,
+    (item) => item.legalEntityId,
+    (item) => dimensionLabel(item.legalEntityName, item.legalEntityCode),
+  );
+  const businessUnitOptions = purchaseDimensionOptions(
+    sourceOrders,
+    (item) => item.businessUnitId,
+    (item) => dimensionLabel(item.businessUnitName, item.businessUnitCode),
+  );
+  const orders = filterRows(sourceOrders, search, (item) => [
     item.purchaseOrderNumber,
     item.supplierId,
+    item.supplierCode,
+    item.supplierName,
+    item.legalEntityCode,
+    item.legalEntityName,
+    item.businessUnitCode,
+    item.businessUnitName,
     item.lifecycleStatus,
     item.receivingStatus,
-  ]);
+  ]).filter(
+    (item) =>
+      (!legalEntityId || item.legalEntityId === legalEntityId) &&
+      (!businessUnitId || item.businessUnitId === businessUnitId),
+  );
   const receipts = filterRows(data?.receipts ?? [], search, (item) => [
     item.goodsReceiptNumber,
     item.purchaseOrderId,
@@ -547,6 +570,36 @@ function PurchaseOrderRegisterPage() {
         query={query}
         onQuery={setQuery}
         placeholder="搜索采购单、供应商、收货单或应付单…"
+        filters={
+          tab === "orders" ? (
+            <div className="workflow-toolbar-filters">
+              <select
+                aria-label="筛选法定主体"
+                value={legalEntityId}
+                onChange={(event) => setLegalEntityId(event.target.value)}
+              >
+                <option value="">全部法定主体</option>
+                {legalEntityOptions.map((option) => (
+                  <option value={option.id} key={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="筛选经营主体"
+                value={businessUnitId}
+                onChange={(event) => setBusinessUnitId(event.target.value)}
+              >
+                <option value="">全部经营主体</option>
+                {businessUnitOptions.map((option) => (
+                  <option value={option.id} key={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : undefined
+        }
         meta={
           state.loading ? "正在同步业务事实…" : `数据已同步 · v${revision + 1}`
         }
@@ -744,11 +797,13 @@ function WorkflowToolbar({
   query,
   onQuery,
   placeholder,
+  filters,
   meta,
 }: {
   query: string;
   onQuery: (value: string) => void;
   placeholder: string;
+  filters?: React.ReactNode;
   meta: string;
 }) {
   return (
@@ -763,11 +818,30 @@ function WorkflowToolbar({
           onChange={(event) => onQuery(event.target.value)}
         />
       </label>
+      {filters}
       <small>
         <i /> {meta}
       </small>
     </div>
   );
+}
+
+function purchaseDimensionOptions(
+  rows: PurchaseOrder[],
+  idOf: (row: PurchaseOrder) => string | undefined,
+  labelOf: (row: PurchaseOrder) => string | undefined,
+) {
+  const options = new Map<string, string>();
+  for (const row of rows) {
+    const id = idOf(row);
+    if (id) options.set(id, labelOf(row) ?? id);
+  }
+  return [...options].map(([id, label]) => ({ id, label }));
+}
+
+function dimensionLabel(name: string | undefined, code: string | undefined) {
+  if (name && code) return `${name} · ${code}`;
+  return name ?? code;
 }
 
 function CommandConfirmation({
