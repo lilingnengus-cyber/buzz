@@ -16,7 +16,8 @@ ordinary cancelled orders are not deleted. Idempotency hashes include the order
 ID so a key cannot accidentally replay a different order's deletion.
 
 Operational order lists, direct order reads and dashboard/trend order totals
-exclude tombstones. Order rows, lines, numbers and immutable event history stay
+exclude tombstones. Purchase delivery and supplier performance reads also exclude
+deleted drafts. Order rows, lines, numbers and immutable event history stay
 in the database. No inventory, receivable or payable facts are changed, and
 numbers are never recycled. A stale command, non-draft order or revoked scope
 is rejected without a deletion event.

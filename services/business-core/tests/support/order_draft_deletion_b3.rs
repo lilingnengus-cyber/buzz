@@ -109,4 +109,17 @@ pub(super) async fn check(
         .delete_order_draft(f.actor, Uuid::new_v4(), other.id, "delete-cleanup-test", 3)
         .await
         .unwrap();
+    let delivery = business_core::b3::DeliveryService::new(PgStore::new(pool.clone()));
+    assert!(delivery
+        .deliveries(f.actor, None, 200)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    assert!(delivery
+        .supplier_performance(f.actor, 365)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
 }

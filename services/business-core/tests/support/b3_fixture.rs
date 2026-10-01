@@ -173,6 +173,8 @@ pub(super) async fn seed(pool: &sqlx::PgPool) -> Fixture {
         "purchase_order:update_draft",
         "purchase_order:confirm",
         "purchase_order:cancel_remaining",
+        "purchase_delivery:read",
+        "supplier_delivery_performance:read",
         "goods_receipt:read",
         "goods_receipt:create",
         "goods_receipt:confirm",
