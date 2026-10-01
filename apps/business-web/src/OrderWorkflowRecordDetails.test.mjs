@@ -11,7 +11,14 @@ test("builds a readable sales-order detail record", () => {
     id: "order-1",
     orderNumber: "SO-2026-001",
     legalEntityId: "entity-1",
+    legalEntityCode: "LE_CN_01",
+    legalEntityName: "杭州主体",
     customerId: "customer-1",
+    customerCode: "CU-000001",
+    customerName: "重点客户",
+    businessUnitId: "unit-1",
+    businessUnitCode: "BU_CN_01",
+    businessUnitName: "华东事业部",
     currency: "CNY",
     lifecycleStatus: "confirmed",
     holdStatus: "none",
@@ -33,6 +40,14 @@ test("builds a readable sales-order detail record", () => {
       ["订单状态", "已确认"],
       ["履约状态", "部分出库"],
       ["冻结状态", "正常"],
+    ],
+  );
+  assert.deepEqual(
+    detail.fields.slice(6, 9).map(({ label, value }) => [label, value]),
+    [
+      ["法定主体", "LE_CN_01 · 杭州主体"],
+      ["经营主体", "BU_CN_01 · 华东事业部"],
+      ["客户", "CU-000001 · 重点客户"],
     ],
   );
 });

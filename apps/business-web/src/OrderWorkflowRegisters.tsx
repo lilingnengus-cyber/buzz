@@ -71,6 +71,10 @@ export function SalesOrdersRegister({
             number={row.orderNumber}
             date={row.orderDate}
             id={row.customerId}
+            details={[
+              `客户 ${masterDataSummary(row.customerCode, row.customerName, row.customerId)}`,
+              `法定主体 ${masterDataSummary(row.legalEntityCode, row.legalEntityName, row.legalEntityId)}`,
+            ]}
             onOpen={() => onModal(salesOrderDetail(row))}
           />
           <MoneyCell currency={row.currency} amount={row.grossAmount} />

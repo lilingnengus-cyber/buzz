@@ -532,7 +532,14 @@ export type SalesOrder = {
   id: string;
   orderNumber: string;
   legalEntityId: string;
+  legalEntityCode?: string;
+  legalEntityName?: string;
   customerId: string;
+  customerCode?: string;
+  customerName?: string;
+  businessUnitId?: string;
+  businessUnitCode?: string;
+  businessUnitName?: string;
   currency: string;
   lifecycleStatus: string;
   holdStatus: string;

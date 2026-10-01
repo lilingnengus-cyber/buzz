@@ -39,8 +39,26 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       detailField("履约状态", statusLabel(row.fulfillmentStatus), "status"),
       detailField("冻结状态", statusLabel(row.holdStatus), "status"),
       detailField("订单日期", row.orderDate),
-      detailField("客户 ID", row.customerId, "id"),
-      detailField("法定主体 ID", row.legalEntityId, "id"),
+      detailField(
+        "法定主体",
+        masterDataLabel(
+          row.legalEntityCode,
+          row.legalEntityName,
+          row.legalEntityId,
+        ),
+      ),
+      detailField(
+        "经营主体",
+        masterDataLabel(
+          row.businessUnitCode,
+          row.businessUnitName,
+          row.businessUnitId,
+        ),
+      ),
+      detailField(
+        "客户",
+        masterDataLabel(row.customerCode, row.customerName, row.customerId),
+      ),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],

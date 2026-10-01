@@ -14,7 +14,7 @@ impl SalesService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, SalesOrderSummary>("SELECT id,order_number,legal_entity_id,customer_id,currency::text,lifecycle_status,hold_status,fulfillment_status,gross_amount,order_date,updated_at,version FROM sales_orders WHERE id=$1 AND legal_entity_id=ANY($2) AND customer_id=ANY($3) AND business_unit_id=ANY($4)")
+        sqlx::query_as::<_, SalesOrderSummary>("SELECT o.id,o.order_number,o.legal_entity_id,le.code AS legal_entity_code,le.name AS legal_entity_name,o.customer_id,c.code AS customer_code,c.name AS customer_name,o.business_unit_id,bu.code AS business_unit_code,bu.name AS business_unit_name,o.currency::text,o.lifecycle_status,o.hold_status,o.fulfillment_status,o.gross_amount,o.order_date,o.updated_at,o.version FROM sales_orders o JOIN business_legal_entities le ON le.id=o.legal_entity_id JOIN business_customers c ON c.id=o.customer_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.id=$1 AND o.legal_entity_id=ANY($2) AND o.customer_id=ANY($3) AND o.business_unit_id=ANY($4)")
             .bind(id)
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>())
