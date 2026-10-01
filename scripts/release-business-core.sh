@@ -89,7 +89,8 @@ release_locked() (
   "${candidate[@]}" config --quiet
   echo "business-core-release: checking candidate $candidate_image"
   "${candidate[@]}" run --rm --no-deps --pull never \
-    --entrypoint business-core business-core --check-migrations > "$release_dir/preflight.log"
+    --entrypoint business-core business-core --check-migrations \
+    < /dev/null > "$release_dir/preflight.log"
   cat "$release_dir/preflight.log"
   # The current binary validates every applied version at startup. Applying a
   # new version would therefore also prevent the old binary from restarting.
