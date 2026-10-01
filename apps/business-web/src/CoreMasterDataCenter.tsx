@@ -71,7 +71,12 @@ type FormState = {
 };
 
 type ModalState =
-  | { kind: "form"; type: CoreMasterType; record?: CoreMasterRecord }
+  | {
+      kind: "form";
+      type: CoreMasterType;
+      record?: CoreMasterRecord;
+      detail?: boolean;
+    }
   | { kind: "status"; record: CoreMasterRecord };
 
 const EMPTY_FORM: FormState = {
@@ -247,8 +252,13 @@ export function CoreMasterDataCenter({
           records={current}
           query={query}
           canManage={data?.canManage === true}
-          onEdit={(record) =>
-            setModal({ kind: "form", type: "business_unit", record })
+          onEdit={(record, detail = false) =>
+            setModal({
+              kind: "form",
+              type: "business_unit",
+              record,
+              detail,
+            })
           }
           onStatus={(record) => setModal({ kind: "status", record })}
         />
@@ -264,6 +274,31 @@ export function CoreMasterDataCenter({
           {current.map((item) => (
             <article
               key={item.id}
+              tabIndex={0}
+              aria-label={`查看${item.name}详情`}
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("button")) return;
+                setModal({
+                  kind: "form",
+                  type: item.resourceType,
+                  record: item,
+                  detail: true,
+                });
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.target !== event.currentTarget ||
+                  !["Enter", " "].includes(event.key)
+                )
+                  return;
+                event.preventDefault();
+                setModal({
+                  kind: "form",
+                  type: item.resourceType,
+                  record: item,
+                  detail: true,
+                });
+              }}
               className={item.status === "disabled" ? "disabled" : ""}
             >
               <div className="master-code">
@@ -327,6 +362,7 @@ export function CoreMasterDataCenter({
       {modal?.kind === "form" && (
         <MasterFormModal
           state={modal}
+          readOnly={data?.canManage !== true}
           items={data?.items ?? []}
           onClose={() => setModal(null)}
           onSaved={async () => {
@@ -359,7 +395,7 @@ function OperatingTreePanel({
   records: CoreMasterRecord[];
   query: string;
   canManage: boolean;
-  onEdit: (record: CoreMasterRecord) => void;
+  onEdit: (record: CoreMasterRecord, detail?: boolean) => void;
   onStatus: (record: CoreMasterRecord) => void;
 }) {
   const tree = buildOperatingTree(records, query);
@@ -410,7 +446,7 @@ function OperatingTreeRow({
   collapsed: Set<string>;
   toggle: (id: string) => void;
   canManage: boolean;
-  onEdit: (record: CoreMasterRecord) => void;
+  onEdit: (record: CoreMasterRecord, detail?: boolean) => void;
   onStatus: (record: CoreMasterRecord) => void;
 }) {
   const record = byId.get(node.id);
@@ -421,6 +457,19 @@ function OperatingTreeRow({
       <div
         role="treeitem"
         tabIndex={0}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button")) return;
+          if (record) onEdit(record, true);
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.target !== event.currentTarget ||
+            !["Enter", " "].includes(event.key)
+          )
+            return;
+          event.preventDefault();
+          if (record) onEdit(record, true);
+        }}
         aria-expanded={node.children.length ? !isCollapsed : undefined}
         className={`${node.status === "disabled" ? "disabled" : ""} ${node.orphaned ? "orphan" : ""}`}
         style={{ "--tree-depth": node.depth } as React.CSSProperties}
@@ -435,11 +484,16 @@ function OperatingTreeRow({
           >
             {node.children.length === 0 ? "·" : isCollapsed ? "+" : "−"}
           </button>
-          <span>
+          <button
+            type="button"
+            className="master-record-link"
+            onClick={() => record && onEdit(record, true)}
+            aria-label={`查看${node.name}详情`}
+          >
             <code>{node.code}</code>
             <strong>{node.name}</strong>
             <small>{path || node.name}</small>
-          </span>
+          </button>
         </div>
         <b>{node.descendantCount}</b>
         <span className={`master-status ${node.status}`}>
@@ -477,11 +531,13 @@ function OperatingTreeRow({
 
 function MasterFormModal({
   state,
+  readOnly,
   items,
   onClose,
   onSaved,
 }: {
   state: Extract<ModalState, { kind: "form" }>;
+  readOnly: boolean;
   items: CoreMasterRecord[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -498,12 +554,15 @@ function MasterFormModal({
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const title = `${record ? "编辑" : "新增"}${labelFor(type)}`;
+  const title = state.detail
+    ? `${labelFor(type)}详情`
+    : `${record ? "编辑" : "新增"}${labelFor(type)}`;
   const set = (field: keyof FormState, value: string) =>
     setForm((current) => ({ ...current, [field]: value }));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (readOnly || saving) return;
     if (type === "business_unit" && !record && !form.parentBusinessUnitId) {
       setError("请选择上级经营单元");
       return;
@@ -550,14 +609,14 @@ function MasterFormModal({
     >
       <form className="master-form" onSubmit={submit}>
         <div className="master-form-note">
-          <b>{record ? "受控修订" : "建立权威记录"}</b>
+          <b>{readOnly ? "只读详情" : record ? "受控修订" : "建立权威记录"}</b>
           <span>
             {record
               ? "编码不可更改；保存时校验当前版本。"
               : "编码由编码规则自动生成；客户、供应商与仓库为集团共享主数据。"}
           </span>
         </div>
-        <div className="master-form-grid">
+        <fieldset className="master-form-grid" disabled={readOnly || saving}>
           <Field label="编码">
             <input
               disabled
@@ -634,15 +693,17 @@ function MasterFormModal({
               />
             </Field>
           )}
-        </div>
+        </fieldset>
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
           <button type="button" className="master-secondary" onClick={onClose}>
             取消
           </button>
-          <button type="submit" disabled={saving}>
-            {saving ? "保存中…" : record ? "保存修订" : "确认新增"}
-          </button>
+          {!readOnly && (
+            <button type="submit" disabled={saving}>
+              {saving ? "保存中…" : record ? "保存修订" : "确认新增"}
+            </button>
+          )}
         </div>
       </form>
     </MasterModal>

@@ -223,7 +223,9 @@
 .operating-tree > header {
   padding: 10px 16px;
   color: #5e7480;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
   background: #dbe6ea;
 }
@@ -276,7 +278,9 @@
   height: 27px;
   padding: 0;
   color: var(--master-navy);
-  font: 700 16px ui-monospace, monospace;
+  font:
+    700 16px ui-monospace,
+    monospace;
   background: #e5edf0;
   border-color: #b9cbd2;
 }
@@ -750,4 +754,27 @@
   .operating-tree > [role="treeitem"] {
     min-width: 760px;
   }
+}
+
+.master-register article {
+  cursor: pointer;
+}
+.master-register article:focus-visible {
+  outline: 2px solid var(--master-gold);
+  outline-offset: -2px;
+}
+fieldset.master-form-grid {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.operating-tree-name > .master-record-link {
+  display: grid;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
 }

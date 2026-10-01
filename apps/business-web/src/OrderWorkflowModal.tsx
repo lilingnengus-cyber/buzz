@@ -63,7 +63,16 @@ export function WorkflowModal({
         : "sales";
   return createPortal(
     <div className="workflow-modal-layer">
-      <div className="workflow-modal-scrim" />
+      {state.kind === "record-detail" ? (
+        <button
+          type="button"
+          className="workflow-modal-scrim"
+          aria-label="点击外部关闭详情"
+          onClick={onClose}
+        />
+      ) : (
+        <div className="workflow-modal-scrim" />
+      )}
       <div
         className={`workflow-modal ${domain}`}
         role="dialog"
