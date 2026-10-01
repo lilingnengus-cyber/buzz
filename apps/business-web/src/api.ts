@@ -903,7 +903,15 @@ export type PurchaseOrder = {
   id: string;
   purchaseOrderNumber: string;
   legalEntityId: string;
+  legalEntityCode?: string;
+  legalEntityName?: string;
   supplierId: string;
+  supplierCode?: string;
+  supplierName?: string;
+  businessUnitId?: string;
+  businessUnitCode?: string;
+  businessUnitName?: string;
+  warehouseLabels?: string[];
   currency: string;
   lifecycleStatus: string;
   receivingStatus: string;

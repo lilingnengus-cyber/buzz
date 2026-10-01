@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  purchaseOrderDetail,
   salesOrderDetail,
   statusLabel,
 } from "./OrderWorkflowRecordDetails.ts";
@@ -39,4 +40,38 @@ test("builds a readable sales-order detail record", () => {
 test("keeps status labels consistent between rows and details", () => {
   assert.equal(statusLabel("fully_allocated"), "已核销");
   assert.equal(statusLabel("supplier_acknowledged"), "供应商已签收");
+});
+
+test("shows purchase-order business dimensions as readable master data", () => {
+  const detail = purchaseOrderDetail({
+    id: "purchase-1",
+    purchaseOrderNumber: "PO-2026-001",
+    legalEntityId: "legal-1",
+    legalEntityCode: "LE_CN_01",
+    legalEntityName: "杭州主体",
+    supplierId: "supplier-1",
+    supplierCode: "SU-000001",
+    supplierName: "共享供应商",
+    businessUnitId: "unit-1",
+    businessUnitCode: "BU_CN_01",
+    businessUnitName: "华东事业部",
+    warehouseLabels: ["WH-000001 · 杭州仓", "WH-000002 · 上海仓"],
+    currency: "CNY",
+    lifecycleStatus: "draft",
+    receivingStatus: "unreceived",
+    grossAmount: "1",
+    orderDate: "2026-10-01",
+    updatedAt: "2026-10-01T03:21:00Z",
+    version: 1,
+  });
+
+  assert.deepEqual(
+    detail.fields.slice(5, 9).map(({ label, value }) => [label, value]),
+    [
+      ["法定主体", "LE_CN_01 · 杭州主体"],
+      ["经营主体", "BU_CN_01 · 华东事业部"],
+      ["供应商", "SU-000001 · 共享供应商"],
+      ["仓库", "WH-000001 · 杭州仓；WH-000002 · 上海仓"],
+    ],
+  );
 });

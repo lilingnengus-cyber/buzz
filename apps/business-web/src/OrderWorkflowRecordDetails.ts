@@ -40,7 +40,7 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       detailField("冻结状态", statusLabel(row.holdStatus), "status"),
       detailField("订单日期", row.orderDate),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -97,7 +97,7 @@ export function receivableDetail(row: Receivable): RecordDetailAction {
       detailField("销售订单 ID", row.salesOrderId, "id"),
       detailField("出库单 ID", row.shipmentId, "id"),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -125,7 +125,7 @@ export function receiptDetail(row: Receipt): RecordDetailAction {
       ),
       detailField("收款日期", row.receiptDate),
       detailField("客户 ID", row.customerId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -147,8 +147,27 @@ export function purchaseOrderDetail(row: PurchaseOrder): RecordDetailAction {
       detailField("订单状态", statusLabel(row.lifecycleStatus), "status"),
       detailField("到货状态", statusLabel(row.receivingStatus), "status"),
       detailField("订单日期", row.orderDate),
-      detailField("供应商 ID", row.supplierId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField(
+        "法定主体",
+        masterDataLabel(
+          row.legalEntityCode,
+          row.legalEntityName,
+          row.legalEntityId,
+        ),
+      ),
+      detailField(
+        "经营主体",
+        masterDataLabel(
+          row.businessUnitCode,
+          row.businessUnitName,
+          row.businessUnitId,
+        ),
+      ),
+      detailField(
+        "供应商",
+        masterDataLabel(row.supplierCode, row.supplierName, row.supplierId),
+      ),
+      detailField("仓库", row.warehouseLabels?.join("；") || "—"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -177,7 +196,7 @@ export function goodsReceiptDetail(row: GoodsReceipt): RecordDetailAction {
       detailField("采购订单 ID", row.purchaseOrderId, "id"),
       detailField("供应商 ID", row.supplierId, "id"),
       detailField("仓库 ID", row.warehouseId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -216,7 +235,7 @@ export function payableDetail(row: Payable): RecordDetailAction {
       detailField("采购订单 ID", row.purchaseOrderId, "id"),
       detailField("收货单 ID", row.goodsReceiptId, "id"),
       detailField("供应商 ID", row.supplierId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -244,7 +263,7 @@ export function paymentDetail(row: SupplierPayment): RecordDetailAction {
       ),
       detailField("付款日期", row.paymentDate),
       detailField("供应商 ID", row.supplierId, "id"),
-      detailField("经营主体 ID", row.legalEntityId, "id"),
+      detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
@@ -325,6 +344,15 @@ function recordDetail(
   fields: RecordDetailAction["fields"],
 ): RecordDetailAction {
   return { kind: "record-detail", domain, title, subtitle, fields };
+}
+
+function masterDataLabel(
+  code: string | undefined,
+  name: string | undefined,
+  fallbackId: string | undefined,
+) {
+  if (code && name) return `${code} · ${name}`;
+  return fallbackId || "—";
 }
 
 function detailField(

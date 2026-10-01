@@ -32,6 +32,18 @@ for (const domain of ["sales", "purchase"] as const) {
           customerId: id,
           supplierId: id,
           legalEntityId: id,
+          ...(domain === "purchase"
+            ? {
+                legalEntityCode: "LE_CN_01",
+                legalEntityName: "杭州主体",
+                businessUnitId: "unit-1",
+                businessUnitCode: "BU_CN_01",
+                businessUnitName: "华东事业部",
+                supplierCode: "SU-000001",
+                supplierName: "共享供应商",
+                warehouseLabels: ["WH-000001 · 杭州仓"],
+              }
+            : {}),
           currency: "CNY",
           grossAmount: "23.45",
           lifecycleStatus: "draft",
@@ -57,6 +69,20 @@ for (const domain of ["sales", "purchase"] as const) {
     await expect(page.getByTestId("workflow-record-detail")).toContainText(
       "23.45",
     );
+    if (domain === "purchase") {
+      await expect(page.getByTestId("workflow-record-detail")).toContainText(
+        "LE_CN_01 · 杭州主体",
+      );
+      await expect(page.getByTestId("workflow-record-detail")).toContainText(
+        "BU_CN_01 · 华东事业部",
+      );
+      await expect(page.getByTestId("workflow-record-detail")).toContainText(
+        "SU-000001 · 共享供应商",
+      );
+      await expect(page.getByTestId("workflow-record-detail")).toContainText(
+        "WH-000001 · 杭州仓",
+      );
+    }
     expect(requests).toEqual([
       `/api/v1/${domain}-orders/${id}`,
       `/api/v1/${domain}-orders/${id}`,
