@@ -1,0 +1,13 @@
+ALTER TABLE business_document_approval_requests DROP CONSTRAINT business_document_approval_requests_document_type_check,
+ ADD CONSTRAINT business_document_approval_requests_document_type_check CHECK(document_type IN ('sales_order','purchase_order','shipment','goods_receipt','inventory_opening','customer_receipt','supplier_payment','receivable_allocation_intent','payable_allocation_intent','customer_receipt_reversal_intent','supplier_payment_reversal_intent','receivable_allocation_reversal_intent','payable_allocation_reversal_intent','sales_order_cancellation_intent','purchase_order_cancellation_intent','shipment_reversal_intent','goods_receipt_reversal_intent','inventory_opening_reversal_intent','sales_return','purchase_return')),
+ DROP CONSTRAINT business_document_approval_requests_action_code_check,
+ ADD CONSTRAINT business_document_approval_requests_action_code_check CHECK(action_code IN ('sales_order:confirm','purchase_order:confirm','shipment:confirm','goods_receipt:confirm','inventory_opening:post','customer_receipt:confirm','supplier_payment:confirm','receivable_allocation:create','payable_allocation:create','customer_receipt:reverse','supplier_payment:reverse','receivable_allocation:reverse','payable_allocation:reverse','sales_order:cancel','purchase_order:cancel_remaining','shipment:reverse','goods_receipt:reverse','inventory_opening:reverse'));
+ALTER TABLE agent_read_delegations DROP CONSTRAINT agent_read_delegations_approval_document_type_check,
+ ADD CONSTRAINT agent_read_delegations_approval_document_type_check CHECK(approval_document_type IS NULL OR approval_document_type IN ('sales_order','purchase_order','shipment','goods_receipt','inventory_opening','customer_receipt','supplier_payment','receivable_allocation_intent','payable_allocation_intent','customer_receipt_reversal_intent','supplier_payment_reversal_intent','receivable_allocation_reversal_intent','payable_allocation_reversal_intent','sales_order_cancellation_intent','purchase_order_cancellation_intent','shipment_reversal_intent','goods_receipt_reversal_intent','inventory_opening_reversal_intent','sales_return','purchase_return'));
+INSERT INTO business_iam.permissions(id,capability,resource_type,action,obligations,risk_level)
+SELECT gen_random_uuid(),resource||':'||action,resource,action,
+ CASE WHEN action='approve' THEN '["fresh_signed_chat_command"]'::jsonb ELSE '[]'::jsonb END,
+ CASE WHEN action='read' THEN 'low' ELSE 'high' END
+FROM (VALUES ('sales_return','read'),('sales_return','create'),('sales_return','approve'),('purchase_return','read'),('purchase_return','create'),('purchase_return','approve')) AS capability(resource,action)
+ON CONFLICT(capability) DO NOTHING;
+-- No automatic grants or policies.

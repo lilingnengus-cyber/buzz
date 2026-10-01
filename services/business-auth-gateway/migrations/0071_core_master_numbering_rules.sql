@@ -22,7 +22,7 @@ INSERT INTO business_numbering_rules(id,record_type,name,segments,reset_period,s
 VALUES
 ('20000000-0000-0000-0000-000000000016','legal_entity','法定主体编码','[{"type":"fixed","value":"LE-"},{"type":"sequence","width":4}]','never','global'),
 ('20000000-0000-0000-0000-000000000017','business_unit','经营主体编码','[{"type":"fixed","value":"OU-"},{"type":"sequence","width":4}]','never','global'),
-('20000000-0000-0000-0000-000000000018','customer','客户编码','[{"type":"fixed","value":"CU-"},{"type":"scope"},{"type":"fixed","value":"-"},{"type":"sequence","width":5}]','never','legal_entity'),
-('20000000-0000-0000-0000-000000000019','supplier','供应商编码','[{"type":"fixed","value":"SU-"},{"type":"scope"},{"type":"fixed","value":"-"},{"type":"sequence","width":5}]','never','legal_entity'),
-('20000000-0000-0000-0000-000000000020','warehouse','仓库编码','[{"type":"fixed","value":"WH-"},{"type":"scope"},{"type":"fixed","value":"-"},{"type":"sequence","width":4}]','never','legal_entity')
+('20000000-0000-0000-0000-000000000018','customer','客户编码','[{"type":"fixed","value":"CU-"},{"type":"sequence","width":5}]','never','legal_entity'),
+('20000000-0000-0000-0000-000000000019','supplier','供应商编码','[{"type":"fixed","value":"SU-"},{"type":"sequence","width":5}]','never','legal_entity'),
+('20000000-0000-0000-0000-000000000020','warehouse','仓库编码','[{"type":"fixed","value":"WH-"},{"type":"sequence","width":4}]','never','legal_entity')
 ON CONFLICT (record_type) DO NOTHING;
