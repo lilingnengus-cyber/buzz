@@ -296,3 +296,15 @@ pub(super) async fn cancel_purchase_return(
         .map(Json)
         .map_err(|e| B2ApiError::domain(e, c.trace_id))
 }
+
+pub(super) async fn sales_draft_options(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<impl serde::Serialize>, B2ApiError> {
+    s.sales
+        .draft_options(c.actor_user_id, id)
+        .await
+        .map(Json)
+        .map_err(|e| B2ApiError::domain(e, c.trace_id))
+}

@@ -1,4 +1,5 @@
 import React from "react";
+import type { SalesOrderDraftOptions } from "./salesOrderDraftOptions";
 import {
   type CoreMasterRecord,
   type MasterDataList,
@@ -36,7 +37,17 @@ const emptyCatalog: Catalog = {
   units: [],
 };
 
-export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
+export function SalesOrderEntry({
+  onDone,
+  orderId,
+}: {
+  onDone: () => void;
+  orderId?: string;
+}) {
+  const [original, setOriginal] = React.useState<
+    SalesOrderDraftOptions["draft"] | null
+  >(null);
+  const [ready, setReady] = React.useState(false);
   const [catalog, setCatalog] = React.useState<Catalog>(emptyCatalog);
   const [loading, setLoading] = React.useState(true);
   const [legalEntityId, setLegalEntityId] = React.useState("");
@@ -54,6 +65,8 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
 
   React.useEffect(() => {
     let active = true;
+    setLoading(true);
+    setReady(false);
     Promise.all([
       loadMaster("legal_entity"),
       loadMaster("customer"),
@@ -61,6 +74,11 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
       loadMaster("sku"),
       loadMaster("warehouse"),
       loadMaster("unit_of_measure"),
+      orderId
+        ? request<SalesOrderDraftOptions>(
+            `/api/v1/sales-orders/${orderId}/draft-options`,
+          )
+        : Promise.resolve(null),
     ])
       .then(
         ([
@@ -70,6 +88,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
           skus,
           warehouses,
           units,
+          options,
         ]) => {
           if (!active) return;
           const next = {
@@ -81,6 +100,33 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
             units,
           };
           setCatalog(next);
+          if (options) {
+            if (
+              !options.canUpdate ||
+              options.draft.lifecycleStatus !== "draft"
+            ) {
+              throw new Error("此订单当前不可编辑，请检查权限或刷新订单状态。");
+            }
+            const draft = options.draft;
+            setOriginal(draft);
+            setLegalEntityId(draft.legalEntityId);
+            setCustomerId(draft.customerId);
+            setBusinessUnitId(draft.businessUnitId);
+            setOrderDate(draft.orderDate);
+            setRequestedDeliveryDate(draft.requestedDeliveryDate ?? "");
+            setCustomerReference(draft.customerReference ?? "");
+            setBusinessNote(draft.businessNote ?? "");
+            setLines(
+              draft.lines.map((line) => ({
+                ...line,
+                key: crypto.randomUUID(),
+                taxRate: String(Number(line.taxRate) * 100),
+              })),
+            );
+            setReady(true);
+            return;
+          }
+          setReady(true);
           setLegalEntityId(legalEntities[0]?.id ?? "");
           setCustomerId(customers[0]?.id ?? "");
           setBusinessUnitId(
@@ -100,7 +146,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [orderId]);
 
   const availableCustomers = catalog.customers.filter(
     (item) => !item.legalEntityId || item.legalEntityId === legalEntityId,
@@ -148,6 +194,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setNotice(null);
+    if (!ready || busy) return;
     if (!legalEntityId || !customerId || !businessUnitId) {
       setNotice("请选择法律主体、客户和业务单元。");
       return;
@@ -158,20 +205,33 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     }
     setBusy(true);
     try {
-      const output = await request<{ number: string }>("/api/v1/sales-orders", {
-        method: "POST",
-        body: JSON.stringify({
-          legalEntityId,
-          customerId,
-          businessUnitId,
-          currency: "CNY",
-          orderDate,
-          requestedDeliveryDate: requestedDeliveryDate || undefined,
-          customerReference: customerReference.trim() || undefined,
-          businessNote: businessNote.trim() || undefined,
-          lines: lines.map(({ key: _key, ...line }) => line),
-        }),
-      });
+      const output = await request<{ number: string }>(
+        orderId ? `/api/v1/sales-orders/${orderId}` : "/api/v1/sales-orders",
+        {
+          method: orderId ? "PUT" : "POST",
+          body: JSON.stringify({
+            ...(orderId && original
+              ? {
+                  expectedVersion: original.version,
+                  departmentId: original.departmentId,
+                  brandId: original.brandId,
+                  paymentTermsDays: original.paymentTermsDays,
+                }
+              : { legalEntityId }),
+            customerId,
+            businessUnitId,
+            currency: original?.currency ?? "CNY",
+            orderDate,
+            requestedDeliveryDate: requestedDeliveryDate || undefined,
+            customerReference: customerReference.trim() || undefined,
+            businessNote: businessNote.trim() || undefined,
+            lines: lines.map(({ key: _key, ...line }) => ({
+              ...line,
+              taxRate: String(Number(line.taxRate) / 100),
+            })),
+          }),
+        },
+      );
       setNotice(`销售订单 ${output.number} 已保存为草稿。`);
       void rememberSyncedRecentOperatingUnit("sales-order", businessUnitId);
       setCustomerReference("");
@@ -211,20 +271,27 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     <section className="sales-entry" aria-labelledby="sales-entry-title">
       <header>
         <div>
-          <span>NEW SALES ORDER</span>
-          <h2 id="sales-entry-title">录入销售订单</h2>
+          <span>{orderId ? "EDIT SALES ORDER" : "NEW SALES ORDER"}</span>
+          <h2 id="sales-entry-title">
+            {orderId ? "编辑销售订单草稿" : "录入销售订单"}
+          </h2>
           <p>先保存草稿，再进入订单详情核对库存并执行确认。</p>
         </div>
         <strong>草稿</strong>
       </header>
       {loading ? (
         <p className="entry-loading">正在加载可用客户、商品与仓库…</p>
+      ) : !ready ? (
+        <p className="entry-notice" role="alert">
+          {notice}
+        </p>
       ) : (
         <form onSubmit={submit}>
           <div className="entry-fields">
             <Field label="法律主体">
               <select
                 value={legalEntityId}
+                disabled={Boolean(orderId)}
                 onChange={(event) => changeLegalEntity(event.target.value)}
                 required
               >
@@ -245,7 +312,7 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
               records={availableUnits}
               value={businessUnitId}
               onChange={setBusinessUnitId}
-              preferenceContext="sales-order"
+              preferenceContext={orderId ? undefined : "sales-order"}
               preferenceFallback={availableUnits[0]?.id ?? ""}
             />
             <Field label="订单日期">
@@ -423,8 +490,12 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
             </dl>
           </div>
           {notice && <p className="entry-notice">{notice}</p>}
-          <button className="entry-save" type="submit" disabled={busy}>
-            {busy ? "正在保存…" : "保存销售订单草稿"}
+          <button
+            className="entry-save"
+            type="submit"
+            disabled={busy || !ready}
+          >
+            {busy ? "正在保存…" : orderId ? "保存修改" : "保存销售订单草稿"}
           </button>
         </form>
       )}

@@ -1,5 +1,8 @@
 export type SalesOrderLineDraft = {
   key: string;
+  businessUnitId?: string | null;
+  departmentId?: string | null;
+  brandId?: string | null;
   skuId: string;
   warehouseId: string;
   unitOfMeasureId: string;

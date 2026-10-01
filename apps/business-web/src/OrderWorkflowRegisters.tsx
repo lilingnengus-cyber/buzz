@@ -28,6 +28,7 @@ import {
 
 export type RegisterModalAction =
   | RecordDetailAction
+  | { kind: "sales-edit"; id: string; number: string }
   | { kind: "sales-confirm"; id: string; number: string }
   | { kind: "shipment-confirm"; id: string; number: string }
   | { kind: "purchase-edit"; id: string; number: string }
@@ -85,6 +86,21 @@ export function SalesOrdersRegister({
           />
           <StatusBadge value={row.fulfillmentStatus} />
           <div className="workflow-row-actions">
+            {row.lifecycleStatus === "draft" && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  onModal({
+                    kind: "sales-edit",
+                    id: row.id,
+                    number: row.orderNumber,
+                  })
+                }
+              >
+                编辑
+              </button>
+            )}
             {row.lifecycleStatus === "draft" && (
               <button
                 type="button"

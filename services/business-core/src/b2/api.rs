@@ -233,6 +233,10 @@ pub fn browser_routes(state: Arc<AppState>) -> Router {
             "/api/v1/sales-orders/{id}/confirmation-preview",
             get(confirmation_preview),
         )
+        .route(
+            "/api/v1/sales-orders/{id}/draft-options",
+            get(sales_draft_options),
+        )
         .route("/api/v1/sales-orders/{id}/confirm", post(confirm_order))
         .route(
             "/api/v1/sales-orders/{id}/manual-review-hold",

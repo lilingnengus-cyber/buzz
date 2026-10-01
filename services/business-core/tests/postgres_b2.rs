@@ -7,6 +7,8 @@ mod order_draft_deletion;
 
 #[path = "support/master_search.rs"]
 mod master_search;
+#[path = "support/sales_draft_edit.rs"]
+mod sales_draft_edit;
 
 use business_core::{
     b2::{
@@ -98,6 +100,7 @@ async fn b2_postgres_closed_loop_and_concurrency() {
     assert!(replay.idempotent_replay);
 
     order_draft_deletion::check(&sales, &pool, &fixture, date).await;
+    sales_draft_edit::check(&sales, &pool, &fixture, date).await;
 
     let first = create_order(&sales, &fixture, date, "order-create-0001").await;
     let second = create_order(&sales, &fixture, date, "order-create-0002").await;
