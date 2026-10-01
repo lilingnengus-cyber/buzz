@@ -202,14 +202,6 @@ export function SalesOrdersRegister({
                   取消剩余
                 </button>
               )}
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => onModal(salesOrderDetail(row))}
-              aria-label={`查看销售订单 ${row.orderNumber}`}
-            >
-              查看详情
-            </button>
           </div>
         </WorkflowRow>
       ))}
@@ -485,13 +477,6 @@ export function PurchaseOrdersRegister({
                   取消剩余
                 </button>
               )}
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => onModal(purchaseOrderDetail(row))}
-            >
-              查看详情
-            </button>
           </div>
         </WorkflowRow>
       ))}
