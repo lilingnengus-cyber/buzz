@@ -178,27 +178,6 @@ export function CoreMasterDataCenter({
       </div>
 
       {!error && (
-        <fieldset
-          className="master-dimensions"
-          aria-label="法人主体与经营组织并列管理"
-        >
-          <button type="button" onClick={() => setActiveType("legal_entity")}>
-            <small>LEGAL ENTITIES</small>
-            <strong>法人主体</strong>
-            <span>{counts.legal_entity} 个签约与责任主体</span>
-          </button>
-          <div className="master-dimension-divider" aria-hidden="true">
-            ×
-          </div>
-          <button type="button" onClick={() => setActiveType("business_unit")}>
-            <small>OPERATING ORGANIZATION</small>
-            <strong>经营组织树</strong>
-            <span>{counts.business_unit} 个经营单元，可持续向下分解</span>
-          </button>
-        </fieldset>
-      )}
-
-      {!error && (
         <div className="master-tabs" role="tablist" aria-label="核心数据类别">
           {TYPES.map((item) => (
             <button
