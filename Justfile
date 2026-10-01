@@ -495,6 +495,15 @@ business-web-release *ARGS:
 business-web-release-test:
     ./scripts/test-release-business-web.sh
 
+# Refuse a Business deployment when the target SQLx history is incompatible
+# with the migrations embedded by this source tree.
+business-migration-preflight *ARGS:
+    ./scripts/check-business-migrations.sh {{ARGS}}
+
+# Exercise migration gaps, pending versions, failed rows, and checksum drift.
+business-migration-preflight-test:
+    ./scripts/test-check-business-migrations.sh
+
 # Verify the dedicated runtime exposes exactly the fixed Business MCP tools.
 business-agent-runtime-acceptance:
     cargo build -p buzz-agent -p business-read-mcp

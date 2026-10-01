@@ -37,6 +37,21 @@ Gateway, Core and Read API listen only on `127.0.0.1` host ports for a local
 reverse proxy. The MCP server has no network listener and is spawned per turn by
 `buzz-acp`.
 
+Before replacing a Business Core or gateway image, compare the migrations in
+the release source with the target database:
+
+```bash
+BUSINESS_MIGRATION_DATABASE_URL='postgresql://...' \
+  just business-migration-preflight
+```
+
+The check is read-only. It accepts unapplied migrations in the new release and
+rejects an incomplete release history, failed database migrations, version
+gaps, or a checksum mismatch. When the database is only reachable from its
+host or Compose network, query `version`, `success`, and the hex-encoded
+`checksum` from `_sqlx_migrations`, then pipe the tab-separated rows to
+`scripts/check-business-migrations.sh --database-manifest -`.
+
 ## IAM bootstrap
 
 Create or map the Human principal using the enterprise user UUID as
