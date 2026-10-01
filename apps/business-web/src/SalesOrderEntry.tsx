@@ -118,11 +118,17 @@ export function SalesOrderEntry({ onDone }: { onDone: () => void }) {
     const warehouses = catalog.warehouses.filter(
       (item) => !item.legalEntityId || item.legalEntityId === value,
     );
-    setCustomerId(customers[0]?.id ?? "");
+    setCustomerId((current) =>
+      customers.some((item) => item.id === current)
+        ? current
+        : (customers[0]?.id ?? ""),
+    );
     setLines((current) =>
       current.map((line) => ({
         ...line,
-        warehouseId: warehouses[0]?.id ?? "",
+        warehouseId: warehouses.some((item) => item.id === line.warehouseId)
+          ? line.warehouseId
+          : (warehouses[0]?.id ?? ""),
       })),
     );
   }
