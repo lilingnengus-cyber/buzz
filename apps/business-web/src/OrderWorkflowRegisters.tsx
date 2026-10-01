@@ -838,7 +838,7 @@ function masterDataSummary(
   name: string | undefined,
   id: string,
 ) {
-  if (code && name) return `${code} · ${name}`;
+  if (code && name) return `${name} · ${code}`;
   return name ?? code ?? compactId(id);
 }
 

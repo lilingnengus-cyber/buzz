@@ -327,8 +327,8 @@ for (const zoom of ZOOMS) {
     await expect(
       page.getByRole("heading", { name: "采购订单闭环" }),
     ).toBeVisible();
-    await expect(page.getByText("供应商 SUP-01 · 核心供应商")).toBeVisible();
-    await expect(page.getByText("法定主体 LE-01 · 上海法定主体")).toBeVisible();
+    await expect(page.getByText("供应商 核心供应商 · SUP-01")).toBeVisible();
+    await expect(page.getByText("法定主体 上海法定主体 · LE-01")).toBeVisible();
     await expectNoHorizontalOverflow(page.locator("main"));
     await expectSingleLine(page.locator(".money-cell strong").first());
     await expect(page).toHaveScreenshot(`purchase-page-${zoom}.png`);
