@@ -74,7 +74,12 @@ type FormState = {
 };
 
 type ModalState =
-  | { kind: "form"; type: ProductMasterType; record?: ProductMasterRecord }
+  | {
+      kind: "form";
+      type: ProductMasterType;
+      record?: ProductMasterRecord;
+      detail?: boolean;
+    }
   | { kind: "status"; record: ProductMasterRecord };
 
 const EMPTY_FORM: FormState = {
@@ -267,8 +272,13 @@ export function ProductMasterDataCenter() {
         <ProductRegister
           items={current}
           canManage={Boolean(data?.canManage)}
-          onEdit={(record) =>
-            setModal({ kind: "form", type: record.resourceType, record })
+          onEdit={(record, detail = false) =>
+            setModal({
+              kind: "form",
+              type: record.resourceType,
+              record,
+              detail,
+            })
           }
           onStatus={(record) => setModal({ kind: "status", record })}
         />
@@ -284,6 +294,7 @@ export function ProductMasterDataCenter() {
       {modal?.kind === "form" && (
         <ProductFormModal
           state={modal}
+          readOnly={data?.canManage !== true}
           items={data?.items ?? []}
           onClose={() => setModal(null)}
           onSaved={async () => {
@@ -314,7 +325,7 @@ function ProductRegister({
 }: {
   items: ProductMasterRecord[];
   canManage: boolean;
-  onEdit: (record: ProductMasterRecord) => void;
+  onEdit: (record: ProductMasterRecord, detail?: boolean) => void;
   onStatus: (record: ProductMasterRecord) => void;
 }) {
   return (
@@ -330,6 +341,21 @@ function ProductRegister({
       {items.map((item) => (
         <article
           key={item.id}
+          tabIndex={0}
+          aria-label={`查看${item.name}详情`}
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest("button")) return;
+            onEdit(item, true);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.target !== event.currentTarget ||
+              !["Enter", " "].includes(event.key)
+            )
+              return;
+            event.preventDefault();
+            onEdit(item, true);
+          }}
           className={item.status === "disabled" ? "disabled" : ""}
         >
           <div className="master-code">
@@ -412,11 +438,13 @@ function ProductHierarchy({ item }: { item: ProductMasterRecord }) {
 
 function ProductFormModal({
   state,
+  readOnly,
   items,
   onClose,
   onSaved,
 }: {
   state: Extract<ModalState, { kind: "form" }>;
+  readOnly: boolean;
   items: ProductMasterRecord[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -446,6 +474,7 @@ function ProductFormModal({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (readOnly || saving) return;
     setSaving(true);
     setError(null);
     const conversionProduct = products.find(
@@ -496,20 +525,26 @@ function ProductFormModal({
   const immutable = Boolean(record);
   return (
     <MasterModal
-      title={`${record ? "编辑" : "新增"}${labelFor(type)}`}
+      title={
+        state.detail
+          ? `${labelFor(type)}详情`
+          : `${record ? "编辑" : "新增"}${labelFor(type)}`
+      }
       eyebrow="CONTROLLED PRODUCT DATA"
       onClose={onClose}
     >
       <form className="master-form product-master-form" onSubmit={submit}>
         <div className="master-form-note">
-          <b>{record ? "受控修订" : "建立商品权威记录"}</b>
+          <b>
+            {readOnly ? "只读详情" : record ? "受控修订" : "建立商品权威记录"}
+          </b>
           <span>
             {record
               ? "编码和所属关系不可更改；保存时校验当前版本。"
               : "编码与所属关系保存后不可更改，请确认定义准确。"}
           </span>
         </div>
-        <div className="master-form-grid">
+        <fieldset className="master-form-grid" disabled={readOnly || saving}>
           {type !== "uom_conversion" && (
             <>
               <Field label="编码 *">
@@ -711,15 +746,17 @@ function ProductFormModal({
               </div>
             </>
           )}
-        </div>
+        </fieldset>
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
           <button type="button" className="master-secondary" onClick={onClose}>
             取消
           </button>
-          <button type="submit" disabled={saving}>
-            {saving ? "保存中…" : record ? "保存修订" : "确认新增"}
-          </button>
+          {!readOnly && (
+            <button type="submit" disabled={saving}>
+              {saving ? "保存中…" : record ? "保存修订" : "确认新增"}
+            </button>
+          )}
         </div>
       </form>
     </MasterModal>
