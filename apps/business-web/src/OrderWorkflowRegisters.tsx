@@ -363,6 +363,10 @@ export function PurchaseOrdersRegister({
             number={row.purchaseOrderNumber}
             date={row.orderDate}
             id={row.supplierId}
+            details={[
+              `供应商 ${masterDataSummary(row.supplierCode, row.supplierName, row.supplierId)}`,
+              `法定主体 ${masterDataSummary(row.legalEntityCode, row.legalEntityName, row.legalEntityId)}`,
+            ]}
             onOpen={() => onModal(purchaseOrderDetail(row))}
           />
           <MoneyCell currency={row.currency} amount={row.grossAmount} />
@@ -796,25 +800,46 @@ function DocumentCell({
   number,
   date,
   id,
+  details,
   onOpen,
 }: {
   number: string;
   date: string;
   id: string;
+  details?: string[];
   onOpen: () => void;
 }) {
   return (
     <button
       type="button"
-      className="document-cell workflow-record-trigger"
+      className={`document-cell workflow-record-trigger${details ? " document-cell-detailed" : ""}`}
       onClick={onOpen}
       aria-label={`查看 ${number} 详情`}
     >
       <strong>{number}</strong>
       <span>{date}</span>
-      <code>{compactId(id)}</code>
+      {details ? (
+        <span className="document-cell-details">
+          {details.map((detail) => (
+            <span key={detail} title={detail}>
+              {detail}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <code>{compactId(id)}</code>
+      )}
     </button>
   );
+}
+
+function masterDataSummary(
+  code: string | undefined,
+  name: string | undefined,
+  id: string,
+) {
+  if (code && name) return `${code} · ${name}`;
+  return name ?? code ?? compactId(id);
 }
 
 function MoneyCell({
@@ -829,9 +854,7 @@ function MoneyCell({
   return (
     <div className={`money-cell ${emphasis ? "attention" : ""}`}>
       <small>{currency}</small>
-      <strong>
-        {formatAmount(amount)}
-      </strong>
+      <strong>{formatAmount(amount)}</strong>
     </div>
   );
 }
