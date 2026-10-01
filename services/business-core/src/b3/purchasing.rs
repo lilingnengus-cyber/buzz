@@ -49,6 +49,27 @@ impl PurchasingService {
         }
     }
 
+    /// Deletes a draft from operational reads while preserving its number and audit history.
+    pub async fn delete_order_draft(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        id: Uuid,
+        key: &str,
+        expected_version: i64,
+    ) -> Result<crate::b2::model::CommandResult, DomainError> {
+        crate::b2::draft_deletion::delete_draft(
+            &self.store,
+            crate::b2::draft_deletion::OrderKind::Purchase,
+            actor,
+            trace_id,
+            id,
+            key,
+            expected_version,
+        )
+        .await
+    }
+
     pub async fn create_order(
         &self,
         actor: Uuid,
@@ -406,7 +427,7 @@ impl PurchasingService {
             None,
         )
         .await?;
-        Ok(sqlx::query_as::<_,PurchaseOrderView>("SELECT o.id,o.purchase_order_number,o.legal_entity_id,le.code AS legal_entity_code,le.name AS legal_entity_name,o.supplier_id,s.code AS supplier_code,s.name AS supplier_name,o.business_unit_id,bu.code AS business_unit_code,bu.name AS business_unit_name,ARRAY(SELECT DISTINCT concat(w.code,' · ',w.name) FROM purchase_order_lines pol JOIN business_warehouses w ON w.id=pol.warehouse_id WHERE pol.purchase_order_id=o.id ORDER BY concat(w.code,' · ',w.name)) AS warehouse_labels,o.currency::text,o.lifecycle_status,o.receiving_status,o.gross_amount,o.order_date,o.updated_at,o.version FROM purchase_orders o JOIN business_legal_entities le ON le.id=o.legal_entity_id JOIN business_suppliers s ON s.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE o.legal_entity_id=ANY($1) AND o.supplier_id=ANY($2) AND ($3::uuid IS NULL OR o.supplier_id=$3) ORDER BY o.updated_at DESC LIMIT $4")
+        Ok(sqlx::query_as::<_,PurchaseOrderView>("SELECT o.id,o.purchase_order_number,o.legal_entity_id,le.code AS legal_entity_code,le.name AS legal_entity_name,o.supplier_id,s.code AS supplier_code,s.name AS supplier_name,o.business_unit_id,bu.code AS business_unit_code,bu.name AS business_unit_name,ARRAY(SELECT DISTINCT concat(w.code,' · ',w.name) FROM purchase_order_lines pol JOIN business_warehouses w ON w.id=pol.warehouse_id WHERE pol.purchase_order_id=o.id ORDER BY concat(w.code,' · ',w.name)) AS warehouse_labels,o.currency::text,o.lifecycle_status,o.receiving_status,o.gross_amount,o.order_date,o.updated_at,o.version FROM purchase_orders o JOIN business_legal_entities le ON le.id=o.legal_entity_id JOIN business_suppliers s ON s.id=o.supplier_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE NOT EXISTS (SELECT 1 FROM purchase_order_events de WHERE de.purchase_order_id=o.id AND de.event_type='draft_deleted') AND o.legal_entity_id=ANY($1) AND o.supplier_id=ANY($2) AND ($3::uuid IS NULL OR o.supplier_id=$3) ORDER BY o.updated_at DESC LIMIT $4")
             .bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.supplier_ids.into_iter().collect::<Vec<_>>()).bind(supplier_id).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?)
     }
 

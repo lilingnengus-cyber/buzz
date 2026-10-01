@@ -200,6 +200,10 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
         )
         .route("/api/v1/purchase-orders/{id}/confirm", post(confirm_order))
         .route(
+            "/api/v1/purchase-orders/{id}/delete-draft",
+            post(delete_draft),
+        )
+        .route(
             "/api/v1/purchase-orders/{id}/cancel-remaining",
             post(cancel_remaining),
         )
@@ -384,6 +388,26 @@ async fn purchase_order_confirmation_preview(
     enabled(&s, 0, c.trace_id)?;
     s.purchasing
         .confirmation_preview(c.actor_user_id, id)
+        .await
+        .map(Json)
+        .map_err(|e| B3ApiError::domain(e, c.trace_id))
+}
+async fn delete_draft(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(i): Json<VersionCommand>,
+) -> Result<Json<impl serde::Serialize>, B3ApiError> {
+    enabled(&s, 0, c.trace_id)?;
+    s.purchasing
+        .delete_order_draft(
+            c.actor_user_id,
+            c.trace_id,
+            id,
+            key(&h, c.trace_id)?,
+            i.expected_version,
+        )
         .await
         .map(Json)
         .map_err(|e| B3ApiError::domain(e, c.trace_id))

@@ -2,6 +2,7 @@
 
 pub mod api;
 pub(crate) mod common;
+pub(crate) mod draft_deletion;
 mod inventory;
 mod inventory_count;
 mod inventory_count_api;

@@ -144,6 +144,27 @@ export function SalesOrdersRegister({
                 恢复
               </button>
             )}
+            {row.lifecycleStatus === "draft" && (
+              <button
+                type="button"
+                className="secondary danger"
+                aria-label={`删除销售订单 ${row.orderNumber}`}
+                onClick={() =>
+                  onModal(
+                    command(
+                      `删除销售订单草稿 · ${row.orderNumber}`,
+                      "确认删除此草稿？删除后从订单列表移除，订单编号和审计记录保留。",
+                      `/api/v1/sales-orders/${row.id}/delete-draft`,
+                      { expectedVersion: row.version },
+                      "确认删除",
+                      "danger",
+                    ),
+                  )
+                }
+              >
+                删除
+              </button>
+            )}
             {row.lifecycleStatus !== "draft" &&
               row.fulfillmentStatus !== "shipped" && (
                 <button
@@ -405,6 +426,27 @@ export function PurchaseOrdersRegister({
                   确认订单
                 </button>
               </>
+            )}
+            {row.lifecycleStatus === "draft" && (
+              <button
+                type="button"
+                className="secondary danger"
+                aria-label={`删除采购订单 ${row.purchaseOrderNumber}`}
+                onClick={() =>
+                  onModal(
+                    command(
+                      `删除采购订单草稿 · ${row.purchaseOrderNumber}`,
+                      "确认删除此草稿？删除后从订单列表移除，订单编号和审计记录保留。",
+                      `/api/v1/purchase-orders/${row.id}/delete-draft`,
+                      { expectedVersion: row.version },
+                      "确认删除",
+                      "danger",
+                    ),
+                  )
+                }
+              >
+                删除
+              </button>
             )}
             {row.lifecycleStatus !== "draft" &&
               row.receivingStatus !== "fully_received" && (
@@ -782,6 +824,7 @@ function WorkflowRow({
   children,
 }: React.PropsWithChildren<{ onOpen: () => void }>) {
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Keyboard users open details with the existing row buttons.
     <article
       className="workflow-row workflow-row-clickable"
       onClick={(event) => {

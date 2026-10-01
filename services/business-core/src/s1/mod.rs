@@ -257,7 +257,7 @@ impl OperationsService {
 
         let stage_started = Instant::now();
         let sales = sqlx::query(
-            "SELECT count(*) order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) order_amount,count(*) FILTER(WHERE lifecycle_status IN ('confirmed','completed')) committed_count,count(*) FILTER(WHERE fulfillment_status='shipped') shipped_count,count(*) FILTER(WHERE hold_status='manual_review_hold') hold_count FROM sales_orders WHERE order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)",
+            "SELECT count(*) order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) order_amount,count(*) FILTER(WHERE lifecycle_status IN ('confirmed','completed')) committed_count,count(*) FILTER(WHERE fulfillment_status='shipped') shipped_count,count(*) FILTER(WHERE hold_status='manual_review_hold') hold_count FROM sales_orders WHERE NOT EXISTS (SELECT 1 FROM sales_order_events de WHERE de.sales_order_id=sales_orders.id AND de.event_type='draft_deleted') AND order_date>=$1 AND order_date<$2 AND currency=$3 AND legal_entity_id=ANY($4) AND customer_id=ANY($5) AND (brand_id IS NULL OR brand_id=ANY($6)) AND business_unit_id=ANY($7)",
         )
         .bind(period_start).bind(period_end).bind(currency).bind(&le).bind(&customer).bind(&brand).bind(&bu)
         .fetch_one(self.store.pool()).await?;
@@ -271,7 +271,7 @@ impl OperationsService {
         record_stage(&mut stages, "shipments", stage_started);
         let stage_started = Instant::now();
         let purchasing = sqlx::query(
-            "WITH scoped AS (SELECT p.id,p.gross_amount,p.receiving_status,count(*) line_count,count(*) FILTER(WHERE l.received_quantity+l.cancelled_quantity=l.ordered_quantity) received_line_count FROM purchase_orders p JOIN purchase_order_lines l ON l.purchase_order_id=p.id WHERE p.order_date>=$1 AND p.order_date<$2 AND p.currency=$3 AND p.legal_entity_id=ANY($4) AND p.supplier_id=ANY($5) AND (p.brand_id IS NULL OR p.brand_id=ANY($6)) AND p.business_unit_id=ANY($7) AND l.warehouse_id=ANY($8) GROUP BY p.id) SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount,COALESCE(sum(line_count),0)::bigint line_count,COALESCE(sum(received_line_count),0)::bigint received_line_count,count(*) FILTER(WHERE receiving_status='received') received_order_count FROM scoped",
+            "WITH scoped AS (SELECT p.id,p.gross_amount,p.receiving_status,count(*) line_count,count(*) FILTER(WHERE l.received_quantity+l.cancelled_quantity=l.ordered_quantity) received_line_count FROM purchase_orders p JOIN purchase_order_lines l ON l.purchase_order_id=p.id WHERE NOT EXISTS (SELECT 1 FROM purchase_order_events de WHERE de.purchase_order_id=p.id AND de.event_type='draft_deleted') AND p.order_date>=$1 AND p.order_date<$2 AND p.currency=$3 AND p.legal_entity_id=ANY($4) AND p.supplier_id=ANY($5) AND (p.brand_id IS NULL OR p.brand_id=ANY($6)) AND p.business_unit_id=ANY($7) AND l.warehouse_id=ANY($8) GROUP BY p.id) SELECT count(*) purchase_order_count,COALESCE(sum(gross_amount),0)::numeric(24,6) purchase_order_amount,COALESCE(sum(line_count),0)::bigint line_count,COALESCE(sum(received_line_count),0)::bigint received_line_count,count(*) FILTER(WHERE receiving_status='received') received_order_count FROM scoped",
         )
         .bind(period_start).bind(period_end).bind(currency).bind(&le).bind(&supplier).bind(&brand).bind(&bu).bind(&wh)
         .fetch_one(self.store.pool()).await?;

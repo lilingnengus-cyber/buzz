@@ -46,7 +46,7 @@ pub(super) async fn check(store: &PgStore, fixture: &Fixture) {
         .await
         .unwrap();
     assert!(literal.is_empty());
-    let wrong_entity = store
+    let shared_customers = store
         .search_resources(
             ResourceType::Customer,
             &snapshot,
@@ -57,7 +57,9 @@ pub(super) async fn check(store: &PgStore, fixture: &Fixture) {
         )
         .await
         .unwrap();
-    assert!(wrong_entity.is_empty());
+    // Customers are shared across legal entities; actor customer scopes still apply.
+    assert_eq!(shared_customers.len(), 2);
+    assert!(shared_customers.iter().all(|item| ids.contains(&item.id)));
     let operating_units = store
         .search_resources(
             ResourceType::BusinessUnit,
