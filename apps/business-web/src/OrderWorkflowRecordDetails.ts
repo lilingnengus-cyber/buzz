@@ -16,6 +16,11 @@ export type RecordDetailAction = {
   domain: "sales" | "purchase";
   title: string;
   subtitle: string;
+  editDraft?: {
+    kind: "sales-edit" | "purchase-edit";
+    id: string;
+    number: string;
+  };
   fields: Array<{
     label: string;
     value: string;
@@ -24,7 +29,7 @@ export type RecordDetailAction = {
 };
 
 export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
-  return recordDetail(
+  const detail = recordDetail(
     "sales",
     `销售订单 · ${row.orderNumber}`,
     "客户承诺与履约状态",
@@ -63,6 +68,13 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
   );
+  if (row.lifecycleStatus === "draft")
+    detail.editDraft = {
+      kind: "sales-edit",
+      id: row.id,
+      number: row.orderNumber,
+    };
+  return detail;
 }
 
 export function shipmentDetail(row: Shipment): RecordDetailAction {
@@ -151,7 +163,7 @@ export function receiptDetail(row: Receipt): RecordDetailAction {
 }
 
 export function purchaseOrderDetail(row: PurchaseOrder): RecordDetailAction {
-  return recordDetail(
+  const detail = recordDetail(
     "purchase",
     `采购订单 · ${row.purchaseOrderNumber}`,
     "供应承诺与到货状态",
@@ -190,6 +202,13 @@ export function purchaseOrderDetail(row: PurchaseOrder): RecordDetailAction {
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
   );
+  if (row.lifecycleStatus === "draft")
+    detail.editDraft = {
+      kind: "purchase-edit",
+      id: row.id,
+      number: row.purchaseOrderNumber,
+    };
+  return detail;
 }
 
 export function goodsReceiptDetail(row: GoodsReceipt): RecordDetailAction {

@@ -63,7 +63,7 @@ export function WorkflowModal({
         : "sales";
   return createPortal(
     <div className="workflow-modal-layer">
-      {state.kind === "record-detail" ? (
+      {["record-detail", "sales-edit", "purchase-edit"].includes(state.kind) ? (
         <button
           type="button"
           className="workflow-modal-scrim"
@@ -107,8 +107,10 @@ export function WorkflowModal({
 
 export function RecordDetail({
   state,
+  onEdit,
 }: {
   state: Extract<WorkflowModalState, { kind: "record-detail" }>;
+  onEdit?: (action: NonNullable<typeof state.editDraft>) => void;
 }) {
   return (
     <section className="record-detail" data-testid="workflow-record-detail">
@@ -130,8 +132,23 @@ export function RecordDetail({
         ))}
       </dl>
       <footer>
-        <span>只读详情</span>
-        <p>操作请返回记录行使用对应业务按钮，所有变更仍执行版本与权限校验。</p>
+        {state.editDraft && onEdit ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (state.editDraft) onEdit(state.editDraft);
+            }}
+          >
+            编辑草稿
+          </button>
+        ) : (
+          <span>只读详情</span>
+        )}
+        <p>
+          {state.editDraft && onEdit
+            ? "草稿可修改，保存时校验当前权限和记录版本。"
+            : "所有变更仍执行版本与权限校验。"}
+        </p>
       </footer>
     </section>
   );

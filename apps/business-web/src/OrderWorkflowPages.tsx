@@ -407,7 +407,9 @@ function SalesOrderRegisterPage() {
           {modal.kind === "sales-return-inspect" && (
             <SalesReturnInspection item={modal.item} onDone={done} />
           )}
-          {modal.kind === "record-detail" && <RecordDetail state={modal} />}
+          {modal.kind === "record-detail" && (
+            <RecordDetail state={modal} onEdit={setModal} />
+          )}
           {modal.kind === "command" && (
             <CommandConfirmation
               state={modal}
@@ -713,7 +715,9 @@ function PurchaseOrderRegisterPage() {
           {modal.kind === "purchase-return-acknowledge" && (
             <PurchaseReturnAcknowledgment item={modal.item} onDone={done} />
           )}
-          {modal.kind === "record-detail" && <RecordDetail state={modal} />}
+          {modal.kind === "record-detail" && (
+            <RecordDetail state={modal} onEdit={setModal} />
+          )}
           {modal.kind === "command" && (
             <CommandConfirmation
               state={modal}
