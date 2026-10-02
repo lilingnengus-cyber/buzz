@@ -102,7 +102,7 @@ export function CrmDrawer({
   );
 }
 
-function DiscardPrompt({
+export function DiscardPrompt({
   onCancel,
   onDiscard,
 }: {

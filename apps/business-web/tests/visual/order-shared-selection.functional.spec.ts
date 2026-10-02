@@ -55,6 +55,13 @@ for (const flow of ["sales", "purchase"] as const) {
       exact: true,
     });
     await party.click();
+    await dialog.getByRole("combobox", { name: purchase ? "搜索供应商" : "搜索客户", exact: true }).fill("search-only");
+    await page.keyboard.press("Escape");
+    await dialog.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "放弃未保存修改" })).toHaveCount(0);
+    await page.getByRole("button", { name: title, exact: true }).click();
+    await party.click();
     const partySearch = dialog.getByRole("combobox", { name: purchase ? "搜索供应商" : "搜索客户", exact: true });
     await partySearch.fill(`${purchase ? "SUPPLIER" : "CUSTOMER"}-2`);
     await partySearch.press("Enter");
@@ -114,6 +121,22 @@ for (const flow of ["sales", "purchase"] as const) {
     await expect(quantity).toBeFocused();
     await quantity.fill("1");
     await expect(quantity).not.toHaveAttribute("aria-invalid", "true");
+    await dialog.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+    const prompt = page.getByRole("dialog", { name: "放弃未保存修改", exact: true });
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("button", { name: "继续编辑", exact: true }).click();
+    await expect(quantity).toHaveValue("1");
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.mouse.click(1, 1);
+    await expect(prompt).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(prompt).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("button", { name: "放弃修改", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
 
   });
 }

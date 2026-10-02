@@ -1,3 +1,4 @@
+import { useOrderDraft } from "./OrderDraft";
 import { useOrderValidation } from "./OrderValidation";
 import "./order-entry-responsive.css";
 import { OrderMasterPicker } from "./OrderMasterPicker";
@@ -53,6 +54,7 @@ export function PurchaseOrderEntry({
   orderId?: string;
   onDone: () => void;
 }) {
+  const draftGuard = useOrderDraft();
   const validation = useOrderValidation();
   const [catalog, setCatalog] = React.useState<Catalog>(emptyCatalog);
   const [options, setOptions] = React.useState<PurchaseOrderEntryOptions>();
@@ -228,6 +230,7 @@ export function PurchaseOrderEntry({
       setNotice("折扣不能超过该行数量与单价的乘积。");
       return;
     }
+    draftGuard.setBusy(true);
     setBusy(true);
     try {
       const payload = {
@@ -271,10 +274,12 @@ export function PurchaseOrderEntry({
           ),
         ]);
       }
+      draftGuard.saved();
       onDone();
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
+      draftGuard.setBusy(false);
       setBusy(false);
     }
   }
@@ -314,7 +319,12 @@ export function PurchaseOrderEntry({
       {loading ? (
         <p className="entry-loading">正在加载供应商、商品与收货仓库…</p>
       ) : (
-        <form onSubmit={submit} noValidate onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+        <form onSubmit={submit} noValidate
+          onChangeCapture={(event) => { if (!(event.target instanceof HTMLInputElement && event.target.type === "search")) draftGuard.markDirty(); }}
+          onClickCapture={(event) => {
+            const button = (event.target as HTMLElement).closest("button");
+            if (button && (button.matches(".line-remove, .master-tree-choice") || button.textContent?.includes("添加商品行") || button.textContent?.includes("添加采购行"))) draftGuard.markDirty();
+          }} onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
           {validation.summary}
           {!allowed && (
             <div className="shipment-gate">

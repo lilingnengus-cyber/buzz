@@ -1,3 +1,4 @@
+import { useOrderDraft } from "./OrderDraft";
 import { useOrderValidation } from "./OrderValidation";
 import "./order-entry-responsive.css";
 import { OrderMasterPicker } from "./OrderMasterPicker";
@@ -54,6 +55,7 @@ export function SalesOrderEntry({
   onBusy?: (busy: boolean) => void;
 }) {
   const command = useCrmCommand();
+  const draftGuard = useOrderDraft();
   const validation = useOrderValidation();
   const [source, setSource] = React.useState<CrmDetail["item"] | null>(null);
   const [original, setOriginal] = React.useState<
@@ -255,6 +257,7 @@ export function SalesOrderEntry({
       setNotice("请补全商品行，并填写单价；数量须大于 0，单价不能为负。");
       return;
     }
+    draftGuard.setBusy(true);
     setBusy(true);
     onBusy?.(true);
     try {
@@ -298,10 +301,12 @@ export function SalesOrderEntry({
           catalog.units[0]?.id,
         ),
       ]);
+      draftGuard.saved();
       onDone();
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
+      draftGuard.setBusy(false);
       setBusy(false);
       onBusy?.(false);
     }
@@ -347,7 +352,12 @@ export function SalesOrderEntry({
           {notice}
         </p>
       ) : (
-        <form onSubmit={submit} noValidate onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+        <form onSubmit={submit} noValidate
+          onChangeCapture={(event) => { if (!(event.target instanceof HTMLInputElement && event.target.type === "search")) draftGuard.markDirty(); }}
+          onClickCapture={(event) => {
+            const button = (event.target as HTMLElement).closest("button");
+            if (button && (button.matches(".line-remove, .master-tree-choice") || button.textContent?.includes("添加商品行") || button.textContent?.includes("添加采购行"))) draftGuard.markDirty();
+          }} onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
           {validation.summary}
           <div className="entry-fields">
             <Field label="法律主体">

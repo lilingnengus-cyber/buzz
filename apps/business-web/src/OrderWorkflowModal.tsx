@@ -1,3 +1,5 @@
+import { OrderDraftContext } from "./OrderDraft";
+import { DiscardPrompt } from "./CrmDrawer";
 import React from "react";
 import { createPortal } from "react-dom";
 import type { RegisterModalAction } from "./OrderWorkflowRegisters";
@@ -21,6 +23,23 @@ export function WorkflowModal({
   state: WorkflowModalState;
   onClose: () => void;
 }>) {
+  const [dirty, setDirty] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
+  const close = () => {
+    if (busy) return;
+    if (dirty) setPending(true);
+    else onClose();
+  };
+  const closeRef = React.useRef(close);
+  closeRef.current = close;
+  React.useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => {
+      if (dirty || busy) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [dirty, busy]);
   const panel = React.useRef<HTMLDivElement>(null);
   const trigger = React.useRef<HTMLElement | null>(null);
   React.useEffect(() => {
@@ -31,7 +50,8 @@ export function WorkflowModal({
       ?.querySelector<HTMLElement>("button, input, select, textarea, a[href]")
       ?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (panel.current?.parentElement?.querySelector("dialog[open]")) return;
+      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
       if (event.key !== "Tab" || !panel.current) return;
       const items = [
         ...panel.current.querySelectorAll<HTMLElement>(
@@ -54,7 +74,7 @@ export function WorkflowModal({
       document.removeEventListener("keydown", onKey);
       trigger.current?.focus();
     };
-  }, [onClose]);
+  }, []);
   const domain =
     state.kind === "record-detail"
       ? state.domain
@@ -62,13 +82,14 @@ export function WorkflowModal({
         ? "purchase"
         : "sales";
   return createPortal(
+    <OrderDraftContext.Provider value={{ markDirty: () => setDirty(true), saved: () => setDirty(false), setBusy }}>
     <div className="workflow-modal-layer">
-      {["record-detail", "sales-edit", "purchase-edit"].includes(state.kind) ? (
+      {["record-detail", "sales-edit", "purchase-edit", "sales-create", "purchase-create"].includes(state.kind) ? (
         <button
           type="button"
           className="workflow-modal-scrim"
           aria-label="点击外部关闭详情"
-          onClick={onClose}
+          onClick={close}
         />
       ) : (
         <div className="workflow-modal-scrim" />
@@ -92,7 +113,8 @@ export function WorkflowModal({
           <button
             type="button"
             className="modal-close"
-            onClick={onClose}
+            onClick={close}
+            disabled={busy}
             aria-label="关闭弹窗"
           >
             <CloseIcon />
@@ -100,7 +122,9 @@ export function WorkflowModal({
         </header>
         <div className="workflow-modal-body">{children}</div>
       </div>
-    </div>,
+      {pending && <DiscardPrompt onCancel={() => setPending(false)} onDiscard={() => { setDirty(false); setPending(false); onClose(); }} />}
+    </div>
+    </OrderDraftContext.Provider>,
     document.body,
   );
 }
