@@ -196,7 +196,7 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(4rem, 0.55fr) minmax(
       5rem,
       0.55fr
-    ) minmax(6rem, 0.7fr) minmax(0, 1.2fr);
+    ) minmax(6rem, 0.7fr) minmax(0, 1.2fr) minmax(7rem, 0.8fr);
 }
 .crm-opportunities .crm-row > .crm-contact {
   overflow-wrap: anywhere;
@@ -250,6 +250,17 @@
     color: var(--crm-muted);
   }
   .crm-opportunities .crm-opportunity-next {
+    grid-column: 1 / -1;
+  }
+}
+
+.crm-opportunity-date {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 850px) {
+  .crm-opportunities .crm-opportunity-date {
     grid-column: 1 / -1;
   }
 }

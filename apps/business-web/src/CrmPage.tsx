@@ -241,7 +241,8 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             <span>联系人</span>
             <span>销售阶段</span>
             <span>预计金额</span>
-            <span>下一步 / 跟进日期</span>
+            <span>下一步</span>
+            <span>跟进日期</span>
           </div>
           {loading ? (
             <p className="crm-empty" role="status">
@@ -293,17 +294,18 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                         item.expectedAmountMinor / 100,
                       )}
                 </span>
-                <span className="crm-opportunity-next">
-                  <span>{item.nextAction || "待安排下一步"}</span>
-                  <span
-                    className={isDue(item) ? "crm-due" : "crm-followup-date"}
-                  >
-                    {item.stage === "won" || item.stage === "lost"
-                      ? "已结束"
-                      : item.nextFollowUp
-                        ? `${item.nextFollowUp === localDate() ? "今天" : item.nextFollowUp} 跟进${isDue(item) && item.nextFollowUp < localDate() ? " · 已逾期" : ""}`
-                        : "未安排跟进日期"}
-                  </span>
+                <span className="crm-opportunity-next" data-label="下一步">
+                  {item.nextAction || "待安排下一步"}
+                </span>
+                <span
+                  data-label="跟进日期"
+                  className={`crm-opportunity-date ${isDue(item) ? "crm-due" : "crm-followup-date"}`}
+                >
+                  {item.stage === "won" || item.stage === "lost"
+                    ? "已结束"
+                    : item.nextFollowUp
+                      ? `${item.nextFollowUp === localDate() ? "今天" : item.nextFollowUp} 跟进${isDue(item) && item.nextFollowUp < localDate() ? " · 已逾期" : ""}`
+                      : "未安排跟进日期"}
                 </span>
               </button>
             ))
