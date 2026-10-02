@@ -1,0 +1,38 @@
+.sales-entry { container-type: inline-size; }
+.sales-entry .entry-field { min-width: 0; }
+@container (max-width: 960px) {
+  .sales-entry .entry-line-head { display: none; }
+  .sales-entry .entry-lines { overflow: visible; }
+  .sales-entry .entry-line {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .sales-entry .entry-line > * { min-width: 0; }
+  .sales-entry .entry-line label > span { display: block; }
+  .sales-entry .order-product-picker .crm-search-select > span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    font-size: .75rem;
+    color: var(--muted);
+  }
+  .sales-entry .entry-line > .order-product-picker:first-child { grid-column: 1 / -1; }
+  .sales-entry .line-remove { justify-self: end; align-self: end; }
+  .sales-entry .entry-foot { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .sales-entry .entry-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-entry .entry-note textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+}
+@container (max-width: 480px) {
+  .sales-entry > header { flex-wrap: wrap; gap: .5rem; padding: 1rem; }
+  .sales-entry form { padding: .75rem; }
+  .sales-entry .entry-fields { grid-template-columns: minmax(0, 1fr); }
+  .sales-entry .entry-line { gap: .75rem; padding: .75rem; }
+  .sales-entry .entry-foot button { max-width: 100%; white-space: normal; }
+  .sales-entry .entry-total div { gap: .5rem; flex-wrap: wrap; }
+  .sales-entry .entry-total dd { overflow-wrap: anywhere; }
+}

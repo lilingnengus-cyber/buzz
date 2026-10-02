@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForAnimations } from "../../../../desktop/tests/helpers/animations";
 
 for (const flow of ["sales", "purchase"] as const) {
   test(`${flow} 法人切换保留每行共享仓库及往来方`, async ({ page }) => {
@@ -81,6 +82,21 @@ for (const flow of ["sales", "purchase"] as const) {
       .selectOption("legal_entity-2");
     await expect(product).toContainText("sku-2");
     await expect(dialog.getByRole("combobox", { name: "第 2 行商品", exact: true })).toContainText("sku-1");
+    for (const width of [520, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(dialog).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      expect(await dialog.locator(".entry-line").first().evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await product.click();
+      await expect(dialog.getByRole("combobox", { name: "搜索第 1 行商品", exact: true })).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      if (width === 520) {
+        await waitForAnimations(page);
+        await dialog.screenshot({ path: `test-results/${flow}-entry-narrow-search.png` });
+      }
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+    }
     await expect(party).toContainText(`${purchase ? "supplier" : "customer"}-2`);
     await expect(
       dialog.getByLabel(`第 1 行${warehouseLabel}`, { exact: true }),

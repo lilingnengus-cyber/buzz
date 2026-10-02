@@ -1,3 +1,4 @@
+import "./order-entry-responsive.css";
 import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
 import type { CrmDetail } from "./crm";
