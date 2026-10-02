@@ -4,7 +4,8 @@ import { CrmDirectoryPage } from "./CrmDirectoryPage";
 import { request } from "./api";
 import { CrmDrawer } from "./CrmDrawer";
 import { CrmFollowupDetail } from "./CrmRecordDetails";
-import { CRM_STAGES, type Followup } from "./crm";
+import { CrmAccountPicker } from "./CrmDirectoryFields";
+import { CRM_STAGES, type CrmAccount, type Followup } from "./crm";
 import "./crm.css";
 import "./crm-opportunities.css";
 import "./crm-registers.css";
@@ -42,6 +43,7 @@ function CrmHistoryRegister() {
   const view = "followups";
   const title = "跟进记录";
   const [selected, setSelected] = React.useState<Note | null>(null);
+  const [account, setAccount] = React.useState<CrmAccount | null>(null);
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
@@ -60,6 +62,7 @@ function CrmHistoryRegister() {
         query: query.trim(),
         offset: String(offset),
       });
+      if (account) params.set("accountId", account.id);
       request<Register>(`/api/v1/crm/${view}?${params}`)
         .then((result) => {
           if (active) setData(result);
@@ -78,7 +81,7 @@ function CrmHistoryRegister() {
       active = false;
       clearTimeout(timer);
     };
-  }, [view, query, offset, revision, title]);
+  }, [view, query, offset, revision, title, account]);
   return (
     <section className="crm-page crm-opportunities crm-history-page">
       <header className="crm-heading">
@@ -125,6 +128,14 @@ function CrmHistoryRegister() {
         </label>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
+      <CrmAccountPicker
+        filter
+        value={account}
+        onChange={(value) => {
+          setAccount(value);
+          setOffset(0);
+        }}
+      />
       {error && (
         <p role="alert" className="crm-error">
           {error}{" "}

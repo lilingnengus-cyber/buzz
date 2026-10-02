@@ -200,6 +200,9 @@ function DirectoryForm({
   );
 }
 export function CrmDirectoryPage() {
+  const [filterAccount, setFilterAccount] = React.useState<CrmAccount | null>(
+    null,
+  );
   const [kind, setKind] = React.useState<"accounts" | "contacts">("contacts");
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
@@ -221,7 +224,7 @@ export function CrmDirectoryPage() {
     setError("");
     const timer = setTimeout(() => {
       request<Directory>(
-        `/api/v1/crm/${kind}?query=${encodeURIComponent(query.trim())}&offset=${offset}`,
+        `/api/v1/crm/${kind}?query=${encodeURIComponent(query.trim())}&offset=${offset}${kind === "contacts" && filterAccount ? `&accountId=${encodeURIComponent(filterAccount.id)}` : ""}`,
       )
         .then((result) => {
           if (active) setData(result);
@@ -240,7 +243,7 @@ export function CrmDirectoryPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [kind, query, offset, revision]);
+  }, [kind, query, offset, revision, filterAccount]);
   const title = kind === "accounts" ? "客户" : "联系人";
   return (
     <section className="crm-page crm-opportunities crm-directory-page">
@@ -297,6 +300,16 @@ export function CrmDirectoryPage() {
         </label>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
+      {kind === "contacts" && (
+        <CrmAccountPicker
+          filter
+          value={filterAccount}
+          onChange={(value) => {
+            setFilterAccount(value);
+            setOffset(0);
+          }}
+        />
+      )}
       {error && (
         <p className="crm-error" role="alert">
           {error}

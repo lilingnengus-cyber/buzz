@@ -276,3 +276,48 @@ test("跟进与联系人列表分列展示，窄屏没有横向溢出", async ({
   await page.screenshot({ path: "test-results/crm-contact-list-520.png" });
   expect(writes).toEqual([]);
 });
+
+test("客户筛选与搜索同时发送，清除后恢复全部客户", async ({ page }) => {
+  await seedRecords(page, true);
+  for (const hash of ["crmFollowups", "crmContacts"]) {
+    await page.goto(`/#${hash}`);
+    const select = page.getByRole("combobox", {
+      name: "按客户筛选",
+      exact: true,
+    });
+    await expect(select.locator("option[value=prospect]")).toHaveCount(1);
+    const path = hash === "crmContacts" ? "contacts" : "followups";
+    const filtered = page.waitForRequest(
+      (r) =>
+        r.url().includes(`/crm/${path}?`) &&
+        new URL(r.url()).searchParams.get("accountId") === "prospect",
+    );
+    await select.selectOption("prospect");
+    expect(new URL((await filtered).url()).searchParams.get("offset")).toBe(
+      "0",
+    );
+    const searched = page.waitForRequest(
+      (r) =>
+        r.url().includes(`/crm/${path}?`) &&
+        new URL(r.url()).searchParams.get("query") === "张经理",
+    );
+    await page
+      .getByRole("searchbox", {
+        name: hash === "crmContacts" ? "搜索联系人" : "搜索跟进记录",
+        exact: true,
+      })
+      .fill("张经理");
+    expect(new URL((await searched).url()).searchParams.get("accountId")).toBe(
+      "prospect",
+    );
+    const cleared = page.waitForRequest(
+      (r) =>
+        r.url().includes(`/crm/${path}?`) &&
+        !new URL(r.url()).searchParams.has("accountId"),
+    );
+    await select.selectOption("");
+    expect(new URL((await cleared).url()).searchParams.get("query")).toBe(
+      "张经理",
+    );
+  }
+});

@@ -1,4 +1,6 @@
 import React from "react";
+import type { CrmDetail } from "./crm";
+import { useCrmCommand } from "./useCrmCommand";
 import type { SalesOrderDraftOptions } from "./salesOrderDraftOptions";
 import {
   type CoreMasterRecord,
@@ -40,10 +42,16 @@ const emptyCatalog: Catalog = {
 export function SalesOrderEntry({
   onDone,
   orderId,
+  opportunityId,
+  onBusy,
 }: {
   onDone: () => void;
   orderId?: string;
+  opportunityId?: string;
+  onBusy?: (busy: boolean) => void;
 }) {
+  const command = useCrmCommand();
+  const [source, setSource] = React.useState<CrmDetail["item"] | null>(null);
   const [original, setOriginal] = React.useState<
     SalesOrderDraftOptions["draft"] | null
   >(null);
@@ -79,6 +87,11 @@ export function SalesOrderEntry({
             `/api/v1/sales-orders/${orderId}/draft-options`,
           )
         : Promise.resolve(null),
+      opportunityId
+        ? request<CrmDetail>(
+            `/api/v1/crm/opportunities/${encodeURIComponent(opportunityId)}`,
+          )
+        : Promise.resolve(null),
     ])
       .then(
         ([
@@ -89,6 +102,7 @@ export function SalesOrderEntry({
           warehouses,
           units,
           options,
+          opportunity,
         ]) => {
           if (!active) return;
           const next = {
@@ -126,6 +140,30 @@ export function SalesOrderEntry({
             setReady(true);
             return;
           }
+          if (opportunity) {
+            const source = opportunity.item;
+            if (source.stage !== "won" || !source.customerId)
+              throw new Error("商机须已成交并关联正式客户后才能创建订单草稿。");
+            if (
+              !legalEntities.some((v) => v.id === source.legalEntityId) ||
+              !customers.some((v) => v.id === source.customerId) ||
+              !businessUnits.some((v) => v.id === source.businessUnitId)
+            )
+              throw new Error(
+                "商机对应的客户或主体不可用于录单，请核对权限及启用状态。",
+              );
+            setSource(source);
+            setLegalEntityId(source.legalEntityId);
+            setCustomerId(source.customerId);
+            setBusinessUnitId(source.businessUnitId);
+            setCustomerReference(`CRM:${source.id}`);
+            setBusinessNote(
+              `来自已成交商机：${source.title}\n联系人：${source.contactName} ${source.contactDetails}\n商机：/#crm?opportunity=${encodeURIComponent(source.id)}`,
+            );
+            setLines([newSalesOrderLine()]);
+            setReady(true);
+            return;
+          }
           setReady(true);
           setLegalEntityId(legalEntities[0]?.id ?? "");
           setCustomerId(customers[0]?.id ?? "");
@@ -146,7 +184,7 @@ export function SalesOrderEntry({
     return () => {
       active = false;
     };
-  }, [orderId]);
+  }, [orderId, opportunityId]);
 
   const availableCustomers = catalog.customers.filter(
     (item) => !item.legalEntityId || item.legalEntityId === legalEntityId,
@@ -204,8 +242,10 @@ export function SalesOrderEntry({
       return;
     }
     setBusy(true);
+    onBusy?.(true);
     try {
-      const output = await request<{ number: string }>(
+      const send = opportunityId ? command : request;
+      const output = await send<{ number: string }>(
         orderId ? `/api/v1/sales-orders/${orderId}` : "/api/v1/sales-orders",
         {
           method: orderId ? "PUT" : "POST",
@@ -220,7 +260,7 @@ export function SalesOrderEntry({
               : { legalEntityId }),
             customerId,
             businessUnitId,
-            currency: original?.currency ?? "CNY",
+            currency: original?.currency ?? source?.currency ?? "CNY",
             orderDate,
             requestedDeliveryDate: requestedDeliveryDate || undefined,
             customerReference: customerReference.trim() || undefined,
@@ -248,6 +288,7 @@ export function SalesOrderEntry({
       setNotice((error as Error).message);
     } finally {
       setBusy(false);
+      onBusy?.(false);
     }
   }
 
@@ -276,6 +317,11 @@ export function SalesOrderEntry({
             {orderId ? "编辑销售订单草稿" : "录入销售订单"}
           </h2>
           <p>先保存草稿，再进入订单详情核对库存并执行确认。</p>
+          {source && (
+            <p>
+              来源商机：{source.title} · {source.currency}
+            </p>
+          )}
         </div>
         <strong>草稿</strong>
       </header>
@@ -312,7 +358,9 @@ export function SalesOrderEntry({
               records={availableUnits}
               value={businessUnitId}
               onChange={setBusinessUnitId}
-              preferenceContext={orderId ? undefined : "sales-order"}
+              preferenceContext={
+                orderId || opportunityId ? undefined : "sales-order"
+              }
               preferenceFallback={availableUnits[0]?.id ?? ""}
             />
             <Field label="订单日期">
@@ -366,6 +414,7 @@ export function SalesOrderEntry({
                     }
                     required
                   >
+                    {source && <option value="">请选择商品</option>}
                     {catalog.skus.map(option)}
                   </select>
                 </label>
@@ -379,6 +428,7 @@ export function SalesOrderEntry({
                     }
                     required
                   >
+                    {source && <option value="">请选择仓库</option>}
                     {availableWarehouses.map(option)}
                   </select>
                 </label>
@@ -396,6 +446,7 @@ export function SalesOrderEntry({
                     }
                     required
                   >
+                    {source && <option value="">请选择单位</option>}
                     {catalog.units.map(option)}
                   </select>
                 </label>

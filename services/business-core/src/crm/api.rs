@@ -52,6 +52,10 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/crm/opportunities", get(list).post(create))
         .route("/api/v1/crm/options", get(options))
+        .route(
+            "/api/v1/crm/opportunities/{id}/convert-customer",
+            post(convert_customer),
+        )
         .route("/api/v1/crm/owners", get(owners))
         .route("/api/v1/crm/followups", get(followups))
         .route("/api/v1/crm/contacts", get(contacts).post(create_contact))
@@ -287,6 +291,26 @@ async fn owners(
 ) -> Result<Json<Value>, Error> {
     service(&s)
         .owners(c.actor_user_id, &q)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn convert_customer(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(input): Json<super::ConvertCustomer>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .convert_customer(
+            c.actor_user_id,
+            c.trace_id,
+            id,
+            key(&headers, c.trace_id)?,
+            &input,
+        )
         .await
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))

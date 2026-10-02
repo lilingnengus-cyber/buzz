@@ -86,6 +86,12 @@ export function CrmForm({
       setError("请选择法人主体和经营主体");
       return;
     }
+    if (stage === "won" && !record?.customerId) {
+      setError(
+        "请先保存商机，再在商机详情中选择已成交，确认正式客户与联系人资料。",
+      );
+      return;
+    }
     const form = new FormData(event.currentTarget);
     lock.current = true;
     setBusy(true);

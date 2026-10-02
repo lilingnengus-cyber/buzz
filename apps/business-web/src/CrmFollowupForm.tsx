@@ -1,6 +1,7 @@
 import React from "react";
 import { useCrmDraft } from "./CrmDrawer";
 import { useCrmCommand } from "./useCrmCommand";
+import { CrmConversionFields } from "./CrmConversionFields";
 import { CRM_STAGES, type Opportunity, type CrmStage } from "./crm";
 export function CrmFollowupForm({
   item,
@@ -25,17 +26,35 @@ export function CrmFollowupForm({
     draft.setBusy(true);
     setError("");
     try {
-      await request(`/api/v1/crm/opportunities/${item.id}/followups`, {
-        method: "POST",
-        body: JSON.stringify({
-          note: fields.get("note"),
-          stage,
-          nextAction: fields.get("nextAction"),
-          nextFollowUp: fields.get("nextFollowUp") || null,
-          expectedVersion: item.version,
-          lossReason: stage === "lost" ? fields.get("lossReason") : "",
-        }),
-      });
+      const conversion = stage === "won";
+      await request(
+        `/api/v1/crm/opportunities/${item.id}/${conversion ? "convert-customer" : "followups"}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...(conversion
+              ? {
+                  customerId: fields.get("confirmedCustomerId") || null,
+                  customerName:
+                    fields.get("conversionCustomerName") || item.companyName,
+                  contactName: fields.get("conversionContactName"),
+                  contactDetails: fields.get("conversionContactDetails"),
+                  creditCurrency:
+                    fields.get("conversionCurrency") || item.currency,
+                  paymentTermsDays: Number(fields.get("conversionTerms") ?? 30),
+                }
+              : {
+                  stage,
+                  nextAction: fields.get("nextAction"),
+                  nextFollowUp: fields.get("nextFollowUp") || null,
+                  lossReason: stage === "lost" ? fields.get("lossReason") : "",
+                }),
+            note: fields.get("note"),
+
+            expectedVersion: item.version,
+          }),
+        },
+      );
       draft.saved();
       await onRefresh();
     } catch (e) {
@@ -91,24 +110,29 @@ export function CrmFollowupForm({
               ))}
             </select>
           </label>
+          {stage !== "won" && (
+            <label>
+              下次跟进日期
+              <input
+                type="date"
+                name="nextFollowUp"
+                defaultValue={item.nextFollowUp ?? ""}
+              />
+            </label>
+          )}
+        </div>
+        {stage !== "won" && (
           <label>
-            下次跟进日期
+            下一步
             <input
-              type="date"
-              name="nextFollowUp"
-              defaultValue={item.nextFollowUp ?? ""}
+              name="nextAction"
+              maxLength={500}
+              defaultValue={item.nextAction}
+              placeholder="明确下一步要做什么"
             />
           </label>
-        </div>
-        <label>
-          下一步
-          <input
-            name="nextAction"
-            maxLength={500}
-            defaultValue={item.nextAction}
-            placeholder="明确下一步要做什么"
-          />
-        </label>
+        )}
+        {stage === "won" && <CrmConversionFields key={item.id} item={item} />}
         {stage === "lost" && (
           <label>
             流失原因
@@ -123,7 +147,11 @@ export function CrmFollowupForm({
           </label>
         )}
         <button className="primary" disabled={busy}>
-          {busy ? "保存中…" : "保存跟进"}
+          {busy
+            ? "保存中…"
+            : stage === "won"
+              ? "确认成交并保存档案"
+              : "保存跟进"}
         </button>
       </fieldset>
     </form>

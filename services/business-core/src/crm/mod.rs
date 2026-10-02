@@ -1,6 +1,8 @@
 //! Minimal presales CRM, sharing Business Core identity, scopes and command audit.
 pub mod api;
+mod conversion;
 mod directory;
+pub use conversion::ConvertCustomer;
 mod model;
 mod ownership;
 pub use ownership::OwnerScope;
@@ -101,6 +103,11 @@ impl CrmService {
         input: &SaveOpportunity,
     ) -> Result<Value, DomainError> {
         input.validate()?;
+        if input.stage == "won" && input.customer_id.is_none() {
+            return Err(DomainError::Invalid(
+                "请通过成交转客户确认正式客户与联系人资料".into(),
+            ));
+        }
         authorize(
             &self.store,
             actor,
@@ -228,6 +235,11 @@ impl CrmService {
         model::text(&input.next_action, 500, false)?;
         model::stage(&input.stage)?;
         let previous = self.accessible(actor, id, "crm:manage").await?;
+        if input.stage == "won" && previous.customer_id.is_none() {
+            return Err(DomainError::Invalid(
+                "请通过成交转客户确认正式客户与联系人资料".into(),
+            ));
+        }
         let mut tx = self.store.pool().begin().await?;
         let hash = request_hash(&(id, input))?;
         if let Some(result) =
