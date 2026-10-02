@@ -59,3 +59,11 @@
 验证新增 `crm-directory.functional.spec.ts`，覆盖独立建档、商机复用、失败重试、放弃确认、窄屏和只读入口。`postgres_crm` 扩展真实 PostgreSQL 测试，覆盖引用一致性、联系人同步、多种日期筛选、幂等、版本冲突、权限隔离及撤销；迁移还须在含旧商机的 76 版独立数据库验证回填。
 
 发布须先准备包含迁移 77 的旧业务代码兼容镜像，用于迁移后回滚。Core 启动检查完整 SQLx 历史，不能直接回滚到只包含迁移 76 的原镜像。网关及读 API 不在正常启动时执行迁移。
+
+### 本轮发布验收
+
+实现提交 `0046e4fdb`，内嵌确认弹窗及提交期间表单锁定提交 `c4b89c836`。Core 镜像 `shiyue-business-core:crm-directory-0046e4fdb`，固定 ID `sha256:faf24038785c13b08b629c442784a81ff5d364e733ad14344d2b153d2cde88bd`；网页目录 `business-web-c4b89c836`。迁移 77 success，预检 head=77/pending=0，Core 健康。保留旧业务代码兼容镜像 `shiyue-business-core:crm-directory-compat-8f286fd11`，完整数据库备份及迁移前后数量核对位于服务端发布目录 `migration-evidence`，新 Core 发布证据位于 `release-evidence/release.l5zey3ic`。商机、跟进、销售订单数量保持不变；全部旧商机客户关联及非空联系人关联回填完整。
+
+本地验证：TypeScript/Vite 构建、4 项 Playwright CRM 流程、2 项 CRM 规则测试、Core 全目标严格 Clippy、fmt、真实 PostgreSQL 扩展 CRM 测试（含无会话路由拒绝）通过。另在迁移 76 的隔离数据库中执行旧数据回填测试：5 笔旧商机建立 3 个客户及 3 个联系人，不跨创建者合并同名潜在客户，旧文字完整保留。窄屏 520px 截图检查通过。未运行全仓 just ci，未创建 PR。
+
+原生 `/Applications/Pacioli.app` 使用现有生产登录，只读核对独立客户和联系人页、联系人到商机的链接、历史跟进、右侧详情、编辑表单中客户及联系人引用、默认进行中列表和逾期显示。原客户杭州某公司、联系人张经理、年度采购项目及 2026-09-21 跟进日期保留。未保存或创建生产验收记录。
