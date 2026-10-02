@@ -1,0 +1,103 @@
+.crm-followup-grid,
+.crm-contact-grid,
+.crm-account-grid {
+  display: grid;
+  align-items: center;
+  gap: 1.25rem;
+}
+.crm-followup-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 7rem;
+}
+.crm-contact-grid {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(
+      0,
+      1fr
+    ) 7rem;
+}
+.crm-account-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 7rem;
+}
+.crm-register-columns {
+  padding: 0.75rem 1.25rem;
+  color: var(--crm-muted);
+  background: var(--crm-surface);
+  font-size: 0.75rem;
+  border-block: 1px solid var(--crm-rule);
+}
+.crm-history-page .crm-register-card,
+.crm-directory-page .crm-register-card {
+  padding: 1rem 1.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--crm-rule);
+  border-radius: 0;
+  background: white;
+  font-size: 0.875rem;
+}
+.crm-history-page .crm-register-card:last-child,
+.crm-directory-page .crm-register-card:last-child {
+  border-bottom: 0;
+}
+.crm-history-page .crm-register-card:hover,
+.crm-directory-page .crm-register-card:hover {
+  background: var(--crm-surface);
+}
+.crm-directory-page .crm-register-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.crm-register-cell {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.crm-register-actions {
+  justify-self: end;
+}
+.crm-note-preview {
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+.crm-mobile-label {
+  display: none;
+}
+@media (max-width: 1050px) {
+  .crm-register-columns {
+    display: none;
+  }
+  .crm-followup-grid,
+  .crm-contact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .crm-communication {
+    grid-column: 1 / -1;
+  }
+  .crm-mobile-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--crm-muted);
+  }
+  .crm-register-actions {
+    align-self: end;
+  }
+}
+@media (max-width: 550px) {
+  .crm-history-page,
+  .crm-directory-page {
+    padding: 1rem;
+  }
+  .crm-followup-grid,
+  .crm-contact-grid,
+  .crm-account-grid {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+  }
+  .crm-register-actions {
+    justify-self: start;
+  }
+}

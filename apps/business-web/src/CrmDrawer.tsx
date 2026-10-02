@@ -81,7 +81,7 @@ export function CrmDrawer({
         <div className="crm-drawer-content">
           <header className="crm-drawer-heading">
             <strong>{title}</strong>
-            <button aria-label="关闭商机弹窗" disabled={busy} onClick={close}>
+            <button aria-label="关闭详情弹窗" disabled={busy} onClick={close}>
               关闭 ×
             </button>
           </header>
