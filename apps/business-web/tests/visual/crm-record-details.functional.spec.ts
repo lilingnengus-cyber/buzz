@@ -250,3 +250,29 @@ test("客户详情关联记录按客户 ID 隔离，联系人可直接编辑", a
       .getByLabel("联系方式", { exact: true }),
   ).toHaveValue("13800000000");
 });
+
+test("跟进与联系人列表分列展示，窄屏没有横向溢出", async ({ page }) => {
+  const writes = await seedRecords(page, true);
+  await page.goto("/#crmFollowups");
+  await expect(
+    page.getByRole("button", { name: "查看跟进：年度采购", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".crm-register-columns")).toContainText("下一步");
+  await expect(page.locator(".crm-register-columns")).toContainText("跟进日期");
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-followup-list.png" });
+  await page.goto("/#crmContacts");
+  await expect(
+    page.getByRole("button", { name: "查看联系人：张经理", exact: true }),
+  ).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-contact-list.png" });
+  await page.setViewportSize({ width: 520, height: 900 });
+  await expect(page.locator(".crm-register-columns")).not.toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(520);
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-contact-list-520.png" });
+  expect(writes).toEqual([]);
+});

@@ -5,6 +5,8 @@ import { CrmDrawer } from "./CrmDrawer";
 import { CrmFollowupDetail } from "./CrmRecordDetails";
 import { CRM_STAGES, type Followup } from "./crm";
 import "./crm.css";
+import "./crm-opportunities.css";
+import "./crm-registers.css";
 
 type Note = Followup & {
   opportunityId: string;
@@ -61,7 +63,7 @@ function CrmHistoryRegister() {
     };
   }, [view, query, offset, revision, title]);
   return (
-    <section className="crm-page">
+    <section className="crm-page crm-opportunities crm-history-page">
       <header className="crm-heading">
         <div>
           <p className="eyebrow">售前 CRM</p>
@@ -92,6 +94,22 @@ function CrmHistoryRegister() {
         </p>
       )}
       <div className="crm-register" aria-busy={loading}>
+        <div className="crm-list-caption">
+          <strong>沟通历史</strong>
+          <span>
+            {loading ? "加载中…" : `本页 ${data.items.length} 条记录`} ·
+            点击记录查看详情
+          </span>
+        </div>
+        <div
+          className="crm-register-columns crm-followup-grid"
+          aria-hidden="true"
+        >
+          <span>沟通记录 / 商机</span>
+          <span>客户 / 联系人</span>
+          <span>下一步</span>
+          <span>跟进日期</span>
+        </div>
         {loading ? (
           <p role="status">正在加载{title}…</p>
         ) : !error && !data.items.length ? (
@@ -105,7 +123,7 @@ function CrmHistoryRegister() {
         ) : (
           data.items.map((item) => (
             <article
-              className="crm-register-card crm-clickable-record"
+              className="crm-register-card crm-clickable-record crm-followup-grid"
               key={item.id}
               role="button"
               tabIndex={0}
@@ -130,31 +148,47 @@ function CrmHistoryRegister() {
                 }
               }}
             >
-              <div className="crm-row-top">
-                <a href={opportunityLink(item.opportunityId)}>
-                  {item.opportunityTitle}
-                </a>
-                <span className={`crm-stage crm-stage-${item.stage}`}>
-                  {CRM_STAGES[item.stage]}
+              <div className="crm-communication">
+                <div className="crm-row-top">
+                  <a href={opportunityLink(item.opportunityId)}>
+                    {item.opportunityTitle}
+                  </a>
+                  <span className={`crm-stage crm-stage-${item.stage}`}>
+                    {CRM_STAGES[item.stage]}
+                  </span>
+                </div>
+                <p className="crm-note-preview">{item.note}</p>
+                <div className="crm-note-meta">
+                  <strong>{item.authorName}</strong>
+                  <time dateTime={item.createdAt}>
+                    {new Date(item.createdAt).toLocaleString("zh-CN", {
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </div>
+              </div>
+              <div className="crm-register-cell">
+                <span className="crm-mobile-label">客户 / 联系人</span>
+                <strong>{item.companyName}</strong>
+                <span className="crm-hint">
+                  {item.contactName || "未填写联系人"}
                 </span>
               </div>
-              <p className="crm-company">
-                {item.companyName}
-                {item.contactName && ` · ${item.contactName}`}
-              </p>
-              <p className="crm-note-content">{item.note}</p>
-              <div className="crm-note-meta">
-                <strong>{item.authorName}</strong>
-                <time dateTime={item.createdAt}>
-                  {new Date(item.createdAt).toLocaleString("zh-CN")}
-                </time>
+              <div className="crm-register-cell">
+                <span className="crm-mobile-label">下一步</span>
+                <span>{item.nextAction || "未安排"}</span>
               </div>
-              {(item.nextAction || item.nextFollowUp) && (
-                <p className="crm-hint">
-                  下一步：{item.nextAction || "未填写"}
-                  {item.nextFollowUp && ` · ${item.nextFollowUp}`}
-                </p>
-              )}
+              <div className="crm-register-cell">
+                <span className="crm-mobile-label">跟进日期</span>
+                {item.nextFollowUp ? (
+                  <time dateTime={item.nextFollowUp}>{item.nextFollowUp}</time>
+                ) : (
+                  <span className="crm-hint">未安排</span>
+                )}
+              </div>
             </article>
           ))
         )}

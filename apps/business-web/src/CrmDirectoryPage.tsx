@@ -1,3 +1,5 @@
+import "./crm-registers.css";
+import "./crm-opportunities.css";
 import React from "react";
 import { request } from "./api";
 import { CrmDirectoryDetail } from "./CrmRecordDetails";
@@ -241,7 +243,7 @@ export function CrmDirectoryPage() {
   }, [kind, query, offset, revision]);
   const title = kind === "accounts" ? "客户" : "联系人";
   return (
-    <section className="crm-page crm-opportunities">
+    <section className="crm-page crm-opportunities crm-directory-page">
       <header className="crm-heading">
         <div>
           <p className="eyebrow">售前 CRM</p>
@@ -301,6 +303,33 @@ export function CrmDirectoryPage() {
         </p>
       )}
       <div className="crm-register" aria-busy={loading}>
+        <div className="crm-list-caption">
+          <strong>{title}档案</strong>
+          <span>
+            {loading ? "加载中…" : `本页 ${data.items.length} 条档案`} ·
+            点击记录查看详情
+          </span>
+        </div>
+        <div
+          className={`crm-register-columns ${kind === "contacts" ? "crm-contact-grid" : "crm-account-grid"}`}
+          aria-hidden="true"
+        >
+          {kind === "contacts" ? (
+            <>
+              <span>联系人</span>
+              <span>所属客户</span>
+              <span>联系方式</span>
+              <span>关联商机</span>
+              <span>操作</span>
+            </>
+          ) : (
+            <>
+              <span>客户名称</span>
+              <span>客户类型</span>
+              <span>操作</span>
+            </>
+          )}
+        </div>
         {loading ? (
           <p className="crm-empty" role="status">
             正在加载档案…
@@ -315,7 +344,7 @@ export function CrmDirectoryPage() {
           data.items.map((item) => (
             <article
               key={item.id}
-              className="crm-register-card crm-clickable-record"
+              className={`crm-register-card crm-clickable-record ${"contactName" in item ? "crm-contact-grid" : "crm-account-grid"}`}
               role="button"
               tabIndex={0}
               aria-haspopup="dialog"
@@ -341,19 +370,19 @@ export function CrmDirectoryPage() {
             >
               {"contactName" in item ? (
                 <>
-                  <div className="crm-heading">
-                    <div>
-                      <h2>{item.contactName}</h2>
-                      <p>{item.companyName}</p>
-                    </div>
-                    {data.canManage && (
-                      <button onClick={() => setEditing({ item })}>
-                        编辑联系人
-                      </button>
-                    )}
+                  <div>
+                    <h2>{item.contactName}</h2>
                   </div>
-                  <p>{item.contactDetails || "未填写联系方式"}</p>
-                  <div className="crm-related">
+                  <div className="crm-register-cell">
+                    <span className="crm-mobile-label">所属客户</span>
+                    <strong>{item.companyName}</strong>
+                  </div>
+                  <div className="crm-register-cell">
+                    <span className="crm-mobile-label">联系方式</span>
+                    <span>{item.contactDetails || "未填写"}</span>
+                  </div>
+                  <div className="crm-related crm-register-cell">
+                    <span className="crm-mobile-label">关联商机</span>
                     {item.opportunities.length ? (
                       item.opportunities.map((o) => (
                         <a
@@ -364,24 +393,37 @@ export function CrmDirectoryPage() {
                         </a>
                       ))
                     ) : (
-                      <span className="crm-hint">尚未关联商机</span>
+                      <span className="crm-hint">尚未关联</span>
+                    )}
+                  </div>
+                  <div className="crm-register-actions">
+                    {data.canManage && (
+                      <button onClick={() => setEditing({ item })}>
+                        编辑联系人
+                      </button>
                     )}
                   </div>
                 </>
               ) : (
-                <div className="crm-heading">
+                <>
                   <div>
                     <h2>{item.name}</h2>
-                    <p className="crm-hint">
-                      {item.customerId ? "已关联核心客户" : "潜在客户"}
-                    </p>
                   </div>
-                  {data.canManage && !item.customerId && (
-                    <button onClick={() => setEditing({ item })}>
-                      编辑客户
-                    </button>
-                  )}
-                </div>
+                  <div>
+                    <span
+                      className={`crm-stage ${item.customerId ? "crm-stage-won" : "crm-stage-new"}`}
+                    >
+                      {item.customerId ? "已关联核心客户" : "潜在客户"}
+                    </span>
+                  </div>
+                  <div className="crm-register-actions">
+                    {data.canManage && !item.customerId && (
+                      <button onClick={() => setEditing({ item })}>
+                        编辑客户
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </article>
           ))
