@@ -1,3 +1,4 @@
+import { CoreCustomerContacts } from "./CoreCustomerContacts";
 import React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -706,6 +707,9 @@ function MasterFormModal({
           )}
         </div>
       </form>
+      {type === "customer" && record && (
+        <CoreCustomerContacts customerId={record.id} customerName={record.name} />
+      )}
     </MasterModal>
   );
 }
@@ -881,6 +885,7 @@ export function MasterModal({
       ?.querySelector<HTMLElement>("input, select, textarea, button")
       ?.focus();
     const keydown = (event: KeyboardEvent) => {
+      if (panel.current?.querySelector("dialog[open]")) return;
       if (event.key === "Escape") onClose();
       if (event.key !== "Tab" || !panel.current) return;
       const focusable = [
