@@ -1,3 +1,4 @@
+import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import React from "react";
 import {
@@ -540,7 +541,7 @@ function ProductFormModal({
       busy={saving}
       onClose={guard.close}
     >
-      <form className="master-form product-master-form" onSubmit={submit}>
+      <ValidatedMasterForm className="master-form product-master-form" onSubmit={submit}>
         <div className="master-form-note">
           <b>
             {readOnly ? "只读详情" : record ? "受控修订" : "建立商品权威记录"}
@@ -777,7 +778,7 @@ function ProductFormModal({
             </button>
           )}
         </div>
-      </form>
+      </ValidatedMasterForm>
       {guard.prompt}
     </MasterModal>
   );

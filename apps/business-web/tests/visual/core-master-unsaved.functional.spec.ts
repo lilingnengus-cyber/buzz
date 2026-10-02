@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供应商"], ["warehouse", "仓库"], ["product", "商品"], ["sku", "SKU / 条码"]]) {
+for (const [resourceType, title] of [["legal_entity", "法定主体"], ["business_unit", "经营主体"], ["customer", "客户"], ["supplier", "供应商"], ["warehouse", "仓库"], ["product", "商品"], ["sku", "SKU / 条码"]]) {
   test(`${title}修改关闭保护、还原及保存失败保留`, async ({ page }) => {
     const product = ["product", "sku"].includes(resourceType);
     const endpoint = product ? "/api/v1/product-master-data" : "/api/v1/core-master-data";
@@ -14,18 +14,38 @@ for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供�
         return fail ? route.fulfill({ status: 409, json: { error: "版本冲突，请重试" } }) : route.fulfill({ json: { id: "record", version: 2 } });
       }
       if (path === endpoint) return route.fulfill({ json: {
-        items: [{ id: "record", resourceType, categoryId: "category", productId: "product", unitOfMeasureId: "uom", code: "TEST-01", name: `示例${title}`, status: "active", version: 1, updatedAt: "2026-10-03T00:00:00Z" }],
+        items: [{ id: "record", resourceType, parentBusinessUnitId: null, ancestorPath: [`示例${title}`], depth: 0, descendantCount: 0, categoryId: "category", productId: "product", unitOfMeasureId: "uom", code: "TEST-01", name: `示例${title}`, status: "active", version: 1, updatedAt: "2026-10-03T00:00:00Z" }, ...(resourceType === "business_unit" ? [{ id: "parent", resourceType, code: "PARENT", name: "可选上级", status: "active", version: 1, parentBusinessUnitId: null, ancestorPath: ["可选上级"], depth: 0, descendantCount: 0, updatedAt: "2026-10-03T00:00:00Z" }] : [])],
         canManage: true, dataAsOf: "2026-10-03T00:00:00Z",
       } });
       return route.fulfill({ json: { items: [] } });
     });
     await page.goto(product ? "/#productData" : "/#coreData");
     await page.getByRole("tab", { name: resourceType === "product" ? /^SPU 商品 / : title, exact: false }).click();
-    const row = page.getByRole("article", { name: `查看示例${title}详情`, exact: true });
+    const row = resourceType === "business_unit" ? page.getByRole("treeitem").filter({ hasText: `示例${title}` }) : page.getByRole("article", { name: `查看示例${title}详情`, exact: true });
     await row.click();
     const dialog = page.getByRole("dialog", { name: `${title}详情`, exact: true });
+    if (resourceType === "business_unit") {
+      await dialog.locator(".master-tree-selection").click();
+      await dialog.locator(".master-tree-choice").filter({ hasText: "可选上级" }).click();
+      await dialog.getByRole("button", { name: "取消", exact: true }).click();
+      const discard = page.getByRole("dialog", { name: "放弃未保存修改", exact: true });
+      await expect(discard).toBeVisible();
+      await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
+      await expect(dialog.locator(".master-tree-selection")).toContainText("可选上级");
+      await dialog.getByRole("button", { name: "取消", exact: true }).click();
+      await discard.getByRole("button", { name: "放弃修改", exact: true }).click();
+      expect(writes).toHaveLength(0);
+      await row.click();
+    }
     const name = dialog.getByRole("textbox", { name: "名称 *", exact: true });
+    await name.fill("   ");
+    await dialog.getByRole("button", { name: "保存修订", exact: true }).click();
+    await expect(name).toBeFocused();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByRole("alert")).toContainText("请填写名称");
+    expect(writes).toHaveLength(0);
     await name.fill("修改内容");
+    await expect(name).not.toHaveAttribute("aria-invalid", "true");
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     const prompt = page.getByRole("dialog", { name: "放弃未保存修改", exact: true });
     await expect(prompt).toBeVisible();

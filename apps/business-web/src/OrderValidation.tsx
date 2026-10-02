@@ -28,9 +28,10 @@ export function useOrderValidation() {
         target = control;
         message = `请选择${element.dataset.orderRequired}`;
       } else if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
-        if (!element.willValidate || element.validity.valid) continue;
-        const label = element.getAttribute("aria-label") ?? element.labels?.[0]?.textContent?.trim() ?? "此字段";
-        message = element.validity.valueMissing ? `请填写${label}` : `请检查${label}的格式或取值范围`;
+        const blank = element.required && !element.value.trim();
+        if (!element.willValidate || (element.validity.valid && !blank)) continue;
+        const label = (element.getAttribute("aria-label") ?? element.labels?.[0]?.querySelector(":scope > span")?.textContent ?? element.labels?.[0]?.textContent ?? "此字段").trim().replace(/\s*\*$/, "");
+        message = element.validity.valueMissing || blank ? `${element instanceof HTMLSelectElement ? "请选择" : "请填写"}${label}` : `请检查${label}的格式或取值范围`;
       }
       if (!message) continue;
       target.setAttribute("aria-invalid", "true");

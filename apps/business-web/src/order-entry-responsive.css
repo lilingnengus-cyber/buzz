@@ -40,3 +40,4 @@
 .entry-validation { padding: .75rem 1rem; margin-bottom: 1rem; color: #8b2d26; background: #fff0ed; border-left: .2rem solid #b73c33; }
 .entry-validation ul { margin: .5rem 0 0; padding-left: 1.25rem; }
 .entry-validation button { padding: .2rem 0; color: inherit; background: transparent; border: 0; text-align: left; text-decoration: underline; }
+.master-form [aria-invalid="true"] { outline: 2px solid #b73c33; outline-offset: 1px; }
