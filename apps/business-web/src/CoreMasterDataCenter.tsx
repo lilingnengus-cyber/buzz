@@ -555,7 +555,7 @@ function MasterFormModal({
     record ? fromRecord(record) : EMPTY_FORM,
   );
   const [saving, setSaving] = React.useState(false);
-  const guard = useRecordCloseGuard(form, !readOnly && (type === "customer" || type === "supplier"), saving, onClose);
+  const guard = useRecordCloseGuard(form, !readOnly && ["customer", "supplier", "warehouse"].includes(type), saving, onClose);
   const [error, setError] = React.useState<string | null>(null);
   const title = state.detail
     ? `${labelFor(type)}详情`

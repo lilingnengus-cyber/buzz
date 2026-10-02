@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供应商"]]) {
+for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供应商"], ["warehouse", "仓库"], ["product", "商品"], ["sku", "SKU / 条码"]]) {
   test(`${title}修改关闭保护、还原及保存失败保留`, async ({ page }) => {
+    const product = ["product", "sku"].includes(resourceType);
+    const endpoint = product ? "/api/v1/product-master-data" : "/api/v1/core-master-data";
     let fail = true;
     const writes: unknown[] = [];
     await page.route("**/api/**", async (route) => {
@@ -11,14 +13,14 @@ for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供�
         writes.push(request.postDataJSON());
         return fail ? route.fulfill({ status: 409, json: { error: "版本冲突，请重试" } }) : route.fulfill({ json: { id: "record", version: 2 } });
       }
-      if (path === "/api/v1/core-master-data") return route.fulfill({ json: {
-        items: [{ id: "record", resourceType, code: "TEST-01", name: `示例${title}`, status: "active", version: 1, updatedAt: "2026-10-03T00:00:00Z" }],
+      if (path === endpoint) return route.fulfill({ json: {
+        items: [{ id: "record", resourceType, categoryId: "category", productId: "product", unitOfMeasureId: "uom", code: "TEST-01", name: `示例${title}`, status: "active", version: 1, updatedAt: "2026-10-03T00:00:00Z" }],
         canManage: true, dataAsOf: "2026-10-03T00:00:00Z",
       } });
       return route.fulfill({ json: { items: [] } });
     });
-    await page.goto("/#coreData");
-    await page.getByRole("tab", { name: title, exact: false }).click();
+    await page.goto(product ? "/#productData" : "/#coreData");
+    await page.getByRole("tab", { name: resourceType === "product" ? /^SPU 商品 / : title, exact: false }).click();
     const row = page.getByRole("article", { name: `查看示例${title}详情`, exact: true });
     await row.click();
     const dialog = page.getByRole("dialog", { name: `${title}详情`, exact: true });
