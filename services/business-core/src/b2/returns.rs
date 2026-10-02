@@ -5,7 +5,7 @@ use super::{
     },
     model::{CommandResult, DecimalString, VersionCommand},
 };
-use crate::store::PgStore;
+use crate::{b3::common::authorize as authorize_purchase, store::PgStore};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -358,7 +358,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        authorize_purchase(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -584,7 +584,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        authorize_purchase(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -771,17 +771,31 @@ impl ReturnService {
             .fetch_optional(self.store.pool())
             .await?
             .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
-            &self.store,
-            actor,
-            permission,
-            Some(pre.get("legal_entity_id")),
-            Some(pre.get("warehouse_id")),
-            Some(pre.get("partner_id")),
-            None,
-            None,
-        )
-        .await?;
+        if side == "sales" {
+            authorize(
+                &self.store,
+                actor,
+                permission,
+                Some(pre.get("legal_entity_id")),
+                Some(pre.get("warehouse_id")),
+                Some(pre.get("partner_id")),
+                None,
+                None,
+            )
+            .await?;
+        } else {
+            authorize_purchase(
+                &self.store,
+                actor,
+                permission,
+                Some(pre.get("legal_entity_id")),
+                Some(pre.get("warehouse_id")),
+                Some(pre.get("partner_id")),
+                None,
+                None,
+            )
+            .await?;
+        }
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =

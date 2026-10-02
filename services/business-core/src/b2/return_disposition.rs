@@ -3,7 +3,7 @@ use super::{
     model::{CommandResult, DecimalString},
     DomainError,
 };
-use crate::store::PgStore;
+use crate::{b3::common::authorize as authorize_purchase, store::PgStore};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -341,7 +341,7 @@ impl ReturnDispositionService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        authorize_purchase(
             &self.store,
             actor,
             "goods_receipt:reverse",
