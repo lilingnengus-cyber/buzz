@@ -18,7 +18,6 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         "inventory_opening:create",
         "inventory_opening:post",
         "shipment:create",
-        "shipment:read",
         "customer_receipt:create",
         "customer_receipt:confirm",
         "receivable_allocation:create",
@@ -278,7 +277,7 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
     let scoped = sales.order_detail(actor, order.id).await.unwrap();
     assert!(scoped["progress"]["goods"].is_null());
     assert!(scoped["progress"]["services"].is_array());
-    sqlx::query("DELETE FROM business_role_permissions WHERE role_id=$1 AND permission_key IN ('shipment:read','service_delivery:read','receivable:read')").bind(role).execute(pool).await.unwrap();
+    sqlx::query("DELETE FROM business_role_permissions WHERE role_id=$1 AND permission_key IN ('service_delivery:read','receivable:read')").bind(role).execute(pool).await.unwrap();
     let restricted = sales.order_detail(actor, order.id).await.unwrap();
     assert!(restricted["progress"]["goods"].is_null());
     assert!(restricted["progress"]["services"].is_null());

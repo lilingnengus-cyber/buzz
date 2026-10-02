@@ -50,7 +50,7 @@ SELECT jsonb_build_object(
             .bind(id)
             .bind(scope.scopes.brand_ids.iter().copied().collect::<Vec<_>>())
             .bind(scope.scopes.warehouse_ids.iter().copied().collect::<Vec<_>>())
-            .bind(scope.permission_keys.contains("shipment:read"))
+            .bind(scope.permission_keys.contains("sales_order:read"))
             .bind(scope.permission_keys.contains("service_delivery:read"))
             .bind(scope.permission_keys.contains("receivable:read"))
             .fetch_one(self.store.pool()).await?;
