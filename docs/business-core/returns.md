@@ -48,3 +48,11 @@ general-ledger posting model.
 
 Confirmed returns are immutable in this release. Corrections use a new compensating
 business document rather than editing confirmed quantities or amounts.
+
+## 2026-10-03 workflow audit
+
+A new isolated PostgreSQL regression (`postgres_returns`, enabled with `BUSINESS_CORE_RETURNS_TEST_DATABASE_URL`) reproduced a confirmation/version defect: sales confirmation returned version 2 while the stored return remained at version 1, so an immediate inspection using the returned version failed with VersionConflict. Both sales and purchase confirmation statements omitted the version increment. They now increment the locked document version in the same transaction as inventory and receivable/payable updates. This change has not yet been deployed.
+
+The sales regression exercises opening 20 units at cost 5, shipping 8 at price 100, returning 2, and inspecting 1 accepted plus 1 scrapped. It verifies 14 on-hand / 2 quarantined / value 70 after confirmation, receivable original/open amount 600, and 13 on-hand / zero quarantined / value 65 after inspection. It checks persisted versus returned version, rejected incomplete inspection, confirmation and inspection idempotent replay, rejection of a second inspection, and exactly one scrap movement. The original test failed before the fix and passes after it on a fresh isolated database; all-target Business Core clippy also passes.
+
+Outstanding: independent purchase return/dispatch/acknowledgment coverage, settlement and over-return guards, UI return workflow checks, then release and native verification. No production business data was changed by these tests.
