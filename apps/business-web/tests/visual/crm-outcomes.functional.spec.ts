@@ -126,9 +126,10 @@ test("分配负责人、预计成交日期、流失原因与重新跟进", async
   const startFollowup = async () => {
     await page.goto("/#crmFollowups");
     await page.getByRole("button", { name: "新建跟进", exact: true }).click();
+    await page.getByRole("combobox", { name: "关联商机", exact: true }).click();
     await page
       .getByRole("dialog", { name: "新建跟进", exact: true })
-      .getByRole("button", { name: /年度采购/ })
+      .getByRole("option", { name: /年度采购/ })
       .click();
   };
   await startFollowup();

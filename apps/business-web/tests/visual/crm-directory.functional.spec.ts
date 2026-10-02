@@ -153,7 +153,8 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   await page.goto("/#crmFollowups");
   await page.getByRole("button", { name: "新建跟进", exact: true }).click();
   const followup = page.getByRole("dialog", { name: "新建跟进", exact: true });
-  await followup.getByRole("button", { name: /年度项目/ }).click();
+  await followup.getByRole("combobox", { name: "关联商机", exact: true }).click();
+  await followup.getByRole("option", { name: /年度项目/ }).click();
   await followup.getByLabel("本次沟通").fill("尚未提交的沟通");
   await followup.getByRole("button", { name: "更换商机" }).click();
   await page.getByRole("button", { name: "继续编辑" }).click();

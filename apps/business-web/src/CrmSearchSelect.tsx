@@ -1,7 +1,7 @@
 import React from "react";
 import "./crm-search-select.css";
 
-export function CrmSearchSelect({ label, value, options, query, onQuery, onChange, disabled = false, maxLength = 160 }: {
+export function CrmSearchSelect({ label, value, options, query, onQuery, onChange, disabled = false, maxLength = 160, children, resetQueryOnSelect = true, showEmptyHint = true }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
@@ -10,6 +10,9 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
   onChange: (value: string) => void;
   disabled?: boolean;
   maxLength?: number;
+  children?: React.ReactNode;
+  resetQueryOnSelect?: boolean;
+  showEmptyHint?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(0);
@@ -18,7 +21,7 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
   const search = React.useRef<HTMLInputElement>(null);
   const id = React.useId();
   const close = () => { setOpen(false); trigger.current?.focus(); };
-  const choose = (next: string) => { onChange(next); onQuery(""); close(); };
+  const choose = (next: string) => { onChange(next); if (resetQueryOnSelect) onQuery(""); close(); };
   React.useEffect(() => {
     if (!open) return;
     search.current?.focus();
@@ -61,8 +64,9 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
         {options.map((option, index) => <button type="button" role="option" id={`${id}-${index}`} key={option.value}
           aria-selected={option.value === value} className={index === active ? "is-active" : ""}
           onClick={() => choose(option.value)}>{option.label}</button>)}
-        {options.length <= 1 && query && <p className="crm-hint">暂无匹配结果，可调整关键词</p>}
+        {showEmptyHint && options.length <= 1 && query && <p className="crm-hint">暂无匹配结果，可调整关键词</p>}
       </div>
+      {children}
     </div>}
   </div>;
 }

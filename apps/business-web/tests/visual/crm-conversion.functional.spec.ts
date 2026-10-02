@@ -81,7 +81,8 @@ test("成交确认正式客户和联系人，失败保留输入，成功刷新�
   await page.goto("/#crmFollowups");
   await page.getByRole("button", { name: "新建跟进", exact: true }).click();
   const drawer = page.getByRole("dialog");
-  await drawer.locator(".crm-register-card").click();
+  await drawer.getByRole("combobox", { name: "关联商机", exact: true }).click();
+  await drawer.getByRole("option").first().click();
   await drawer.getByLabel("更新阶段").selectOption("won");
   await expect(
     drawer.getByRole("heading", { name: "成交转客户" }),

@@ -1,3 +1,4 @@
+import { CrmSearchSelect } from "./CrmSearchSelect";
 import React from "react";
 import { request } from "./api";
 import { useCrmDraft } from "./CrmDrawer";
@@ -14,6 +15,7 @@ export function CrmFollowupCreate({
   const [items, setItems] = React.useState<Opportunity[]>([]);
   const [hasMore, setHasMore] = React.useState(false);
   const [selected, setSelected] = React.useState<Opportunity | null>(null);
+  const [choosing, setChoosing] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [revision, setRevision] = React.useState(0);
@@ -47,7 +49,7 @@ export function CrmFollowupCreate({
     };
   }, [query, offset, revision]);
   const choose = async (id: string) => {
-    setLoading(true);
+    setChoosing(true);
     draft.setBusy(true);
     setError("");
     try {
@@ -58,7 +60,7 @@ export function CrmFollowupCreate({
     } catch (e) {
       setError(e instanceof Error ? e.message : "商机加载失败");
     } finally {
-      setLoading(false);
+      setChoosing(false);
       draft.setBusy(false);
     }
   };
@@ -93,60 +95,28 @@ export function CrmFollowupCreate({
         </>
       ) : (
         <>
-          <label className="crm-search">
-            搜索关联商机
-            <input
-              type="search"
-              maxLength={160}
-              value={query}
-              placeholder="商机、客户或联系人"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setOffset(0);
-              }}
-            />
-          </label>
-          {error && (
-            <p role="alert">
-              {error}{" "}
-              <button onClick={() => setRevision((v) => v + 1)}>重试</button>
-            </p>
-          )}
-          {loading ? (
-            <p role="status">正在加载商机…</p>
-          ) : (
-            <>
-              {!error && !items.length && (
-                <p>没有符合条件的商机，请调整搜索或先创建商机。</p>
-              )}
-              {items.map((item) => (
-                <button
-                  className="crm-register-card"
-                  key={item.id}
-                  onClick={() => choose(item.id)}
-                >
-                  {item.title} · {item.companyName} ·{" "}
-                  {item.contactName || "未填写联系人"}
-                </button>
-              ))}
-              {!error && (offset > 0 || hasMore) && (
+          <CrmSearchSelect
+            label="关联商机" value="" query={query}
+            resetQueryOnSelect={false} showEmptyHint={false} disabled={choosing}
+            onQuery={(value) => { setQuery(value); setOffset(0); }}
+            onChange={(id) => { if (id) void choose(id); }}
+            options={loading || error ? [] : items.map((item) => ({
+              value: item.id,
+              label: `${item.title} · ${item.companyName} · ${item.contactName || "未填写联系人"}`,
+            }))}
+          >
+            {loading ? <p role="status">正在加载商机…</p> : error ? null : <>
+              {!items.length && <p>没有符合条件的商机，请调整搜索或先创建商机。</p>}
+              {(offset > 0 || hasMore) && (
                 <nav className="crm-pagination" aria-label="选择商机分页">
-                  <button
-                    disabled={offset === 0}
-                    onClick={() => setOffset(offset - 50)}
-                  >
-                    上一页
-                  </button>
-                  <button
-                    disabled={!hasMore}
-                    onClick={() => setOffset(offset + 50)}
-                  >
-                    下一页
-                  </button>
+                  <button type="button" disabled={offset === 0} onClick={() => setOffset(offset - 50)}>上一页</button>
+                  <button type="button" disabled={!hasMore} onClick={() => setOffset(offset + 50)}>下一页</button>
                 </nav>
               )}
-            </>
-          )}
+            </>}
+          </CrmSearchSelect>
+          {choosing && <p role="status">正在读取商机详情…</p>}
+          {error && <p role="alert">{error} <button type="button" onClick={() => setRevision((value) => value + 1)}>重试</button></p>}
         </>
       )}
     </div>
