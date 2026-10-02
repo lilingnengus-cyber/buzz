@@ -119,8 +119,8 @@ const NAV_GROUPS: Array<{
     index: "03",
     items: [
       { id: "sales", label: "销售订单闭环", index: "O2C" },
-      { id: "inventory", label: "库存台账", index: "INV" },
       { id: "purchasing", label: "采购订单闭环", index: "P2P" },
+      { id: "inventory", label: "库存台账", index: "INV" },
     ],
   },
   {
