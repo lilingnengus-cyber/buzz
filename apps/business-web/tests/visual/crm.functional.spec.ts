@@ -171,8 +171,8 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   await expect(form.getByLabel("客户公司")).toHaveValue("杭州示例企业");
   await form.getByLabel("联系人", { exact: true }).fill("陈经理");
   await form.getByLabel("预计金额").fill("1250.50");
-  await form.getByLabel("下一步", { exact: true }).fill("发送初步方案");
-  await form.getByLabel("下次跟进日期").fill("2026-09-20");
+  await expect(form.getByLabel("下一步", { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel("下次跟进日期")).toHaveCount(0);
   await form.getByRole("button", { name: "保存商机", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "商机详情" });
   await expect(

@@ -304,3 +304,13 @@
   justify-content: end;
   margin-top: 1.5rem;
 }
+
+@media (min-width: 851px) {
+  .crm-opportunities .crm-list-columns,
+  .crm-opportunities .crm-row {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, 0.8fr) 6rem minmax(
+        7rem,
+        0.8fr
+      );
+  }
+}

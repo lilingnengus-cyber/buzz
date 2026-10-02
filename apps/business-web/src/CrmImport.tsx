@@ -220,7 +220,7 @@ function ImportForm({
                   <th>行</th>
                   <th>商机 / 客户</th>
                   <th>阶段 / 金额</th>
-                  <th>下一步 / 日期</th>
+                  <th>预计成交日期 / 流失原因</th>
                   <th>校验及结果</th>
                 </tr>
               </thead>
@@ -248,10 +248,6 @@ function ImportForm({
                           )}
                     </td>
                     <td>
-                      {r.payload?.nextAction}
-                      <br />
-                      {r.payload?.nextFollowUp}
-                      <br />
                       预计成交：{r.payload?.expectedCloseDate || "未安排"}
                       <br />
                       {r.payload?.lossReason}

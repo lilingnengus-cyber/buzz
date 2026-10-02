@@ -109,15 +109,13 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
   const pending = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "下载 CSV 模板" }).click();
   expect((await pending).suggestedFilename()).toBe("商机导入模板.csv");
-  await dialog
-    .getByLabel("上传 CSV")
-    .setInputFiles({
-      name: "opportunities.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(
-        '\uFEFF商机名称,客户公司,联系人,联系方式,预计金额,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,12.34,2026-10-10',
-      ),
-    });
+  await dialog.getByLabel("上传 CSV").setInputFiles({
+    name: "opportunities.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      '\uFEFF商机名称,客户公司,联系人,联系方式,预计金额,预计成交日期\r\n"项目,甲",客户甲,张经理,13800138000,12.34,2026-10-10',
+    ),
+  });
   await expect(dialog.getByLabel("表格内容")).toContainText("项目,甲");
   await dialog.getByRole("button", { name: "预览校验" }).click();
   await expect(dialog.getByRole("status")).toContainText("校验错误 0 条");

@@ -88,7 +88,7 @@ export function CrmForm({
     }
     if (stage === "won" && !record?.customerId) {
       setError(
-        "请先保存商机，再在商机详情中选择已成交，确认正式客户与联系人资料。",
+        "请先保存商机，再在跟进记录中选择已成交，确认正式客户与联系人资料。",
       );
       return;
     }
@@ -115,8 +115,8 @@ export function CrmForm({
             stage,
             expectedAmountMinor: amountMinor(String(form.get("amount") ?? "")),
             currency: form.get("currency"),
-            nextAction: form.get("nextAction"),
-            nextFollowUp: form.get("nextFollowUp") || null,
+            nextAction: record?.nextAction ?? "",
+            nextFollowUp: record?.nextFollowUp ?? null,
             expectedVersion: record?.version ?? null,
             ownerUserId: owner || null,
             expectedCloseDate: form.get("expectedCloseDate") || null,
@@ -363,23 +363,6 @@ export function CrmForm({
                 <option key={v}>{v}</option>
               ))}
             </select>
-          </label>
-          <label className="crm-wide">
-            下一步
-            <input
-              name="nextAction"
-              maxLength={500}
-              defaultValue={record?.nextAction}
-              placeholder="例如：向采购负责人发送方案"
-            />
-          </label>
-          <label>
-            下次跟进日期
-            <input
-              type="date"
-              name="nextFollowUp"
-              defaultValue={record?.nextFollowUp ?? ""}
-            />
           </label>
         </div>
         <button className="primary" disabled={busy} type="submit">

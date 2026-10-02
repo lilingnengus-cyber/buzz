@@ -17,7 +17,7 @@ test("CSV quotes, BOM, CRLF and spreadsheet paste", () => {
 });
 test("validate dates, duplicates, currency, conversion and precise money", () => {
   const rows = importRows(
-    "商机名称,客户公司,预计金额,跟进日期\n项目,客户,12.34,2026-10-02\n项目,客户,12.34,2026-10-02\n坏日期,客户,1,2026-02-30",
+    "商机名称,客户公司,预计金额,预计成交日期\n项目,客户,12.34,2026-10-02\n项目,客户,12.34,2026-10-02\n坏日期,客户,1,2026-02-30",
     "le",
     "bu",
   );

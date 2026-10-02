@@ -7,8 +7,6 @@ export const IMPORT_HEADERS = [
   "阶段",
   "预计金额",
   "币种",
-  "下一步",
-  "跟进日期",
   "预计成交日期",
   "流失原因",
 ];
@@ -106,7 +104,6 @@ export function importRows(
         ["客户公司", 160],
         ["联系人", 100],
         ["联系方式", 200],
-        ["下一步", 500],
         ["流失原因", 1000],
       ] as const)
         if (Array.from(get(name)).length > max)
@@ -132,8 +129,8 @@ export function importRows(
         stage,
         expectedAmountMinor: amountMinor(get("预计金额")),
         currency,
-        nextAction: get("下一步"),
-        nextFollowUp: date(get("跟进日期"), "跟进日期"),
+        nextAction: "",
+        nextFollowUp: null,
         expectedCloseDate: date(get("预计成交日期"), "预计成交日期"),
         lossReason: stage === "lost" ? get("流失原因") : "",
         ownerUserId: null,

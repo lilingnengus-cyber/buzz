@@ -114,10 +114,6 @@ export function CrmDetail({
               : formatMoney(item.currency, item.expectedAmountMinor / 100)}
           </dd>
         </div>
-        <div>
-          <dt>下次跟进</dt>
-          <dd>{item.nextFollowUp || "未安排"}</dd>
-        </div>
       </dl>
       {item.stage === "lost" && (
         <div className="crm-next">
@@ -125,10 +121,7 @@ export function CrmDetail({
           <p>{item.lossReason || "历史记录未填写"}</p>
         </div>
       )}
-      <div className="crm-next">
-        <strong>下一步</strong>
-        <p>{item.nextAction || "记录一次跟进，安排下一步。"}</p>
-      </div>
+
       {orderSaved && (
         <p role="status" className="crm-notice">
           销售订单草稿已保存，可前往<a href="/#sales">销售订单</a>查看。
