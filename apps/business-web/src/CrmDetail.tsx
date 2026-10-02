@@ -86,7 +86,7 @@ export function CrmDetail({
         {canManage && (
           <button
             onClick={() => {
-              if (draft.confirmDiscard()) onEdit();
+              draft.discard(onEdit);
             }}
           >
             编辑商机
@@ -138,57 +138,59 @@ export function CrmDetail({
           }}
           onSubmit={submit}
         >
-          <h3>记录跟进</h3>
-          {error && (
-            <p role="alert" className="crm-error">
-              {error}
-            </p>
-          )}
-          <label>
-            本次沟通
-            <textarea
-              name="note"
-              required
-              maxLength={4000}
-              rows={3}
-              placeholder="客户反馈、已确认事项…"
-            />
-          </label>
-          <div className="crm-fields">
+          <fieldset className="crm-edit-fields" disabled={busy}>
+            <h3>记录跟进</h3>
+            {error && (
+              <p role="alert" className="crm-error">
+                {error}
+              </p>
+            )}
             <label>
-              更新阶段
-              <select
-                value={stage}
-                onChange={(e) => setStage(e.target.value as CrmStage)}
-              >
-                {Object.entries(CRM_STAGES).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              下次跟进日期
-              <input
-                type="date"
-                name="nextFollowUp"
-                defaultValue={item.nextFollowUp ?? ""}
+              本次沟通
+              <textarea
+                name="note"
+                required
+                maxLength={4000}
+                rows={3}
+                placeholder="客户反馈、已确认事项…"
               />
             </label>
-          </div>
-          <label>
-            下一步
-            <input
-              name="nextAction"
-              maxLength={500}
-              defaultValue={item.nextAction}
-              placeholder="明确下一步要做什么"
-            />
-          </label>
-          <button className="primary" disabled={busy}>
-            {busy ? "保存中…" : "保存跟进"}
-          </button>
+            <div className="crm-fields">
+              <label>
+                更新阶段
+                <select
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value as CrmStage)}
+                >
+                  {Object.entries(CRM_STAGES).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                下次跟进日期
+                <input
+                  type="date"
+                  name="nextFollowUp"
+                  defaultValue={item.nextFollowUp ?? ""}
+                />
+              </label>
+            </div>
+            <label>
+              下一步
+              <input
+                name="nextAction"
+                maxLength={500}
+                defaultValue={item.nextAction}
+                placeholder="明确下一步要做什么"
+              />
+            </label>
+            <button className="primary" disabled={busy}>
+              {busy ? "保存中…" : "保存跟进"}
+            </button>
+          </fieldset>
         </form>
       )}
       <section className="crm-history">

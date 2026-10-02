@@ -100,11 +100,11 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   await page.getByRole("button", { name: "新建客户", exact: true }).click();
   let drawer = page.getByRole("dialog");
   await drawer.getByLabel("客户名称").fill("独立潜在客户");
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toContain("未保存");
-    await dialog.dismiss();
-  });
   await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "放弃未保存修改" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "继续编辑" }).click();
   await expect(drawer).toBeVisible();
   await expect(drawer.getByLabel("客户名称")).toHaveValue("独立潜在客户");
   await drawer.getByRole("button", { name: "保存档案" }).click();
@@ -137,8 +137,8 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   failContact = true;
   await drawer.getByRole("button", { name: "保存档案" }).click();
   await expect(drawer.getByRole("alert")).toContainText("记录已更新");
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.mouse.click(10, 450);
+  await page.getByRole("button", { name: "继续编辑" }).click();
   await expect(drawer).toBeVisible();
   failContact = false;
   await drawer.getByRole("button", { name: "保存档案" }).click();
@@ -164,11 +164,11 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   expect(opportunities[0].accountId).toBe("account-1");
   expect(opportunities[0].contactId).toBe("contact-1");
   await drawer.getByLabel("本次沟通").fill("尚未提交的沟通");
-  page.once("dialog", (dialog) => dialog.dismiss());
   await drawer.getByRole("button", { name: "编辑商机" }).click();
+  await page.getByRole("button", { name: "继续编辑" }).click();
   await expect(drawer.getByLabel("本次沟通")).toHaveValue("尚未提交的沟通");
-  page.once("dialog", (dialog) => dialog.accept());
   await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "放弃修改", exact: true }).click();
   await expect(drawer).not.toBeVisible();
   for (const value of ["overdue", "today", "upcoming", "unscheduled", ""]) {
     const fetched = page.waitForRequest(

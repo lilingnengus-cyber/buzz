@@ -110,87 +110,89 @@ function DirectoryForm({
         }
       }}
     >
-      {error && (
-        <p className="crm-error" role="alert">
-          {error}
-        </p>
-      )}
-      {kind === "accounts" ? (
-        <>
-          {!item && (
+      <fieldset className="crm-edit-fields" disabled={busy}>
+        {error && (
+          <p className="crm-error" role="alert">
+            {error}
+          </p>
+        )}
+        {kind === "accounts" ? (
+          <>
+            {!item && (
+              <label>
+                关联核心客户
+                <select
+                  value={customer}
+                  onChange={(e) => {
+                    setCustomer(e.target.value);
+                    setName(
+                      choices.find((o) => o.id === e.target.value)?.name ?? "",
+                    );
+                  }}
+                >
+                  <option value="">潜在客户（仅需名称）</option>
+                  {choices.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name} · {o.code}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
-              关联核心客户
-              <select
-                value={customer}
-                onChange={(e) => {
-                  setCustomer(e.target.value);
-                  setName(
-                    choices.find((o) => o.id === e.target.value)?.name ?? "",
-                  );
-                }}
-              >
-                <option value="">潜在客户（仅需名称）</option>
-                {choices.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} · {o.code}
-                  </option>
-                ))}
-              </select>
+              客户名称
+              <input
+                required
+                maxLength={160}
+                value={name}
+                readOnly={Boolean(customer)}
+                onChange={(e) => setName(e.target.value)}
+              />
             </label>
-          )}
-          <label>
-            客户名称
-            <input
-              required
-              maxLength={160}
-              value={name}
-              readOnly={Boolean(customer)}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          {customer && (
-            <p className="crm-hint">
-              名称复用核心客户资料；修改名称请前往核心数据。
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          {item ? (
-            <p>所属客户：{contactItem?.companyName}</p>
-          ) : (
-            <CrmAccountPicker
-              value={account}
-              onChange={(value) => {
-                setAccount(value);
-                draft.markDirty();
-              }}
-            />
-          )}
-          <label>
-            联系人姓名
-            <input
-              required
-              maxLength={100}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            联系方式
-            <input
-              name="details"
-              maxLength={200}
-              defaultValue={contactItem?.contactDetails}
-              placeholder="电话、微信或邮箱"
-            />
-          </label>
-          <p className="crm-hint">保存后，关联商机统一显示最新联系人资料。</p>
-        </>
-      )}
-      <button className="primary" disabled={busy}>
-        {busy ? "保存中…" : "保存档案"}
-      </button>
+            {customer && (
+              <p className="crm-hint">
+                名称复用核心客户资料；修改名称请前往核心数据。
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            {item ? (
+              <p>所属客户：{contactItem?.companyName}</p>
+            ) : (
+              <CrmAccountPicker
+                value={account}
+                onChange={(value) => {
+                  setAccount(value);
+                  draft.markDirty();
+                }}
+              />
+            )}
+            <label>
+              联系人姓名
+              <input
+                required
+                maxLength={100}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label>
+              联系方式
+              <input
+                name="details"
+                maxLength={200}
+                defaultValue={contactItem?.contactDetails}
+                placeholder="电话、微信或邮箱"
+              />
+            </label>
+            <p className="crm-hint">保存后，关联商机统一显示最新联系人资料。</p>
+          </>
+        )}
+        <button className="primary" disabled={busy}>
+          {busy ? "保存中…" : "保存档案"}
+        </button>
+      </fieldset>
     </form>
   );
 }
