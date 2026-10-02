@@ -26,6 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     let store = PgStore::new(pool);
     store.migrate().await?;
+    if std::env::args().nth(1).as_deref() == Some("--migrate-only") {
+        tracing::info!("Business Core migrations complete");
+        return Ok(());
+    }
     if config.profit_projection_worker_enabled {
         let projection = ProfitProjectionService::with_retry_limit(
             store.clone(),

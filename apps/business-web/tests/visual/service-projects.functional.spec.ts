@@ -183,7 +183,7 @@ test("从订单创建服务项目，回填客户主体并保存来源", async ({
   await expect(drawer.getByLabel("名称", { exact: true })).toHaveValue(
     "年度软件",
   );
-  await expect(drawer.getByLabel("法定主体", { exact: true })).toBeDisabled();
+  await expect(drawer.getByRole("combobox", { name: "法定主体", exact: true })).toBeDisabled();
   await drawer.getByLabel("开始日期").fill("2026-10-01");
   await drawer.getByLabel("结束日期").fill("2027-09-30");
   await drawer.getByRole("button", { name: "保存", exact: true }).click();
