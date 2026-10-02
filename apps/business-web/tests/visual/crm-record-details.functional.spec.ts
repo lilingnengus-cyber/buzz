@@ -15,6 +15,7 @@ async function seedRecords(page: Page, canManage: boolean) {
     {
       id: "contact",
       accountId: "prospect",
+      customerId: "core-customer",
       companyName: "潜在客户",
       contactName: "张经理",
       contactDetails: "13800000000",
@@ -101,6 +102,9 @@ test("客户与联系人点击记录打开右侧详情，编辑保留未保存�
     name: "查看联系人：张经理",
     exact: true,
   });
+  await expect(
+    contactRow.getByRole("link", { name: "潜在客户", exact: true }),
+  ).toHaveAttribute("href", "/customers/core-customer");
   await contactRow.focus();
   await page.keyboard.press("Enter");
   const contactDetail = page.getByRole("dialog", {
@@ -108,6 +112,9 @@ test("客户与联系人点击记录打开右侧详情，编辑保留未保存�
     exact: true,
   });
   await expect(contactDetail).toBeVisible();
+  await expect(
+    contactDetail.getByRole("link", { name: "潜在客户", exact: true }),
+  ).toHaveAttribute("href", "/customers/core-customer");
   await expect(
     contactDetail.getByText("13800000000", { exact: true }),
   ).toBeVisible();
@@ -147,6 +154,10 @@ test("客户与联系人点击记录打开右侧详情，编辑保留未保存�
   await page.setViewportSize({ width: 520, height: 900 });
   await expect(contactDetail).toBeVisible();
   expect(Math.round((await contactDetail.boundingBox())!.width)).toBe(520);
+  await contactDetail
+    .getByRole("link", { name: "潜在客户", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/customers\/core-customer$/);
 });
 
 test("只读联系人也可查看右侧详情", async ({ page }) => {
@@ -260,14 +271,15 @@ test("客户筛选与搜索同时发送，清除后恢复全部客户", async ({
       name: "按客户筛选",
       exact: true,
     });
-    await expect(select.locator("option[value=prospect]")).toHaveCount(1);
+    await select.click();
+    await expect(page.getByRole("option", { name: /潜在客户/ }).last()).toBeVisible();
     const path = hash === "crmContacts" ? "contacts" : "followups";
     const filtered = page.waitForRequest(
       (r) =>
         r.url().includes(`/crm/${path}?`) &&
         new URL(r.url()).searchParams.get("accountId") === "prospect",
     );
-    await select.selectOption("prospect");
+    await page.getByRole("option", { name: /潜在客户/ }).last().click();
     expect(new URL((await filtered).url()).searchParams.get("offset")).toBe(
       "0",
     );
@@ -290,9 +302,45 @@ test("客户筛选与搜索同时发送，清除后恢复全部客户", async ({
         r.url().includes(`/crm/${path}?`) &&
         !new URL(r.url()).searchParams.has("accountId"),
     );
-    await select.selectOption("");
+    await select.click();
+    await page.getByRole("option", { name: "全部客户", exact: true }).click();
     expect(new URL((await cleared).url()).searchParams.get("query")).toBe(
       "张经理",
     );
   }
+});
+
+test("历史潜在客户联系人不生成核心客户链接", async ({ page }) => {
+  await seedRecords(page, false);
+  await page.route("**/api/v1/crm/contacts?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "legacy",
+            accountId: "prospect",
+            customerId: null,
+            companyName: "历史潜客",
+            contactName: "李经理",
+            contactDetails: "",
+            opportunities: [],
+          },
+        ],
+        canManage: false,
+        hasMore: false,
+      },
+    }),
+  );
+  await page.goto("/#crmContacts");
+  const row = page.getByRole("button", {
+    name: "查看联系人：李经理",
+    exact: true,
+  });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("link")).toHaveCount(0);
+  await row.click();
+  await expect(
+    page.getByRole("dialog").getByText("历史潜客", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("link")).toHaveCount(0);
 });

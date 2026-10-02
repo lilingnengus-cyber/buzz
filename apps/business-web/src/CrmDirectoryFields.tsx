@@ -1,3 +1,4 @@
+import { CrmSearchSelect } from "./CrmSearchSelect";
 import React from "react";
 import { request } from "./api";
 import type { CrmAccount, CrmContact } from "./crm";
@@ -47,36 +48,11 @@ export function CrmAccountPicker({
     <div
       className={`crm-wide crm-directory-picker ${filter ? "crm-customer-filter" : ""}`}
     >
-      <label>
-        {filter ? "查找筛选客户" : "搜索客户档案"}
-        <input
-          type="search"
-          maxLength={160}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="输入客户名称"
-        />
-      </label>
-      <label>
-        {filter ? "按客户筛选" : "客户档案"}
-        <select
-          aria-label={filter ? "按客户筛选" : "客户档案"}
-          value={value?.id ?? ""}
-          onChange={(e) =>
-            onChange(choices.find((item) => item.id === e.target.value) ?? null)
-          }
-        >
-          <option value="">
-            {filter ? "全部客户" : "快速填写 / 暂不选择"}
-          </option>
-          {choices.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-              {item.customerId ? "" : "（潜在客户）"}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CrmSearchSelect label={filter ? "按客户筛选" : "客户档案"}
+        value={value?.id ?? ""} query={query} onQuery={setQuery}
+        onChange={(id) => onChange(choices.find((item) => item.id === id) ?? null)}
+        options={[{ value: "", label: filter ? "全部客户" : "快速填写 / 暂不选择" },
+          ...choices.map((item) => ({ value: item.id, label: item.name + (item.customerId ? "" : "（潜在客户）") }))]} />
       {more && (
         <p className="crm-hint">匹配超过 50 个客户，请输入更完整的名称。</p>
       )}
@@ -128,32 +104,10 @@ export function CrmContactPicker({
       : items;
   return (
     <div className="crm-wide crm-directory-picker">
-      <label>
-        搜索已有联系人
-        <input
-          type="search"
-          maxLength={160}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      <label>
-        选择联系人
-        <select
-          aria-label="选择联系人"
-          value={value?.id ?? ""}
-          onChange={(e) =>
-            onChange(choices.find((item) => item.id === e.target.value) ?? null)
-          }
-        >
-          <option value="">填写新联系人 / 暂不填写</option>
-          {choices.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.contactName} · {item.contactDetails || "未填写联系方式"}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CrmSearchSelect label="选择联系人" value={value?.id ?? ""} query={query} onQuery={setQuery}
+        onChange={(id) => onChange(choices.find((item) => item.id === id) ?? null)}
+        options={[{ value: "", label: "填写新联系人 / 暂不填写" },
+          ...choices.map((item) => ({ value: item.id, label: `${item.contactName} · ${item.contactDetails || "未填写联系方式"}` }))]} />
       {more && <p className="crm-hint">匹配超过 50 人，请继续搜索。</p>}
       {error && <p role="alert">{error}</p>}
     </div>

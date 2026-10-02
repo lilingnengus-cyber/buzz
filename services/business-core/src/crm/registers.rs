@@ -25,7 +25,7 @@ impl CrmService {
             }
         }
         let sql = if contacts {
-            r#"SELECT jsonb_build_object('id',c.id,'accountId',c.account_id,'version',c.version,
+            r#"SELECT jsonb_build_object('id',c.id,'accountId',c.account_id,'customerId',a.customer_id,'version',c.version,
               'companyName',COALESCE(b.name,a.name),'contactName',c.name,'contactDetails',c.details,
               'opportunities',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',o.id,'title',o.title) ORDER BY o.title,o.id)
                 FROM crm_opportunities o WHERE o.contact_id=c.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND (o.customer_id IS NULL OR o.customer_id=ANY($3))),'[]'::jsonb))

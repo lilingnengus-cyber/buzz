@@ -45,7 +45,15 @@ export function CrmDirectoryDetail({
           <dl className="crm-facts">
             <div>
               <dt>所属客户</dt>
-              <dd>{item.companyName}</dd>
+              <dd>
+                {item.customerId ? (
+                  <a href={`/customers/${encodeURIComponent(item.customerId)}`}>
+                    {item.companyName}
+                  </a>
+                ) : (
+                  item.companyName
+                )}
+              </dd>
             </div>
             <div>
               <dt>联系方式</dt>

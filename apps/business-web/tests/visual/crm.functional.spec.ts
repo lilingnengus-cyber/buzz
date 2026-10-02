@@ -186,7 +186,8 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   await page.goto("/#crmFollowups");
   await page.getByRole("button", { name: "新建跟进", exact: true }).click();
   const followup = page.getByRole("dialog", { name: "新建跟进", exact: true });
-  await followup.getByRole("button", { name: /企业年度采购/ }).click();
+  await followup.getByRole("combobox", { name: "关联商机", exact: true }).click();
+  await followup.getByRole("option", { name: /企业年度采购/ }).click();
   await followup.getByLabel("本次沟通").fill("客户确认需求，准备报价。");
   await followup.getByLabel("更新阶段").selectOption("quoting");
   await followup.getByLabel("下一步", { exact: true }).fill("提交报价单");

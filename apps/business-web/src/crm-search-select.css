@@ -1,0 +1,9 @@
+.crm-directory-picker:has(.crm-search-select) { display: block; }
+.crm-search-select { position: relative; display: grid; gap: .45rem; min-width: 0; }
+.crm-search-select > button { display: flex; justify-content: space-between; gap: 1rem; width: 100%; text-align: left; }
+.crm-search-select-panel { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; padding: .6rem; background: #f8fbfc; border: 1px solid #b9ccd4; box-shadow: 0 .5rem 1rem #18394b22; }
+.crm-search-select-panel input { width: 100%; box-sizing: border-box; }
+.crm-search-select-panel [role="listbox"] { max-height: 14rem; overflow-y: auto; margin-top: .4rem; }
+.crm-search-select-panel button { display: block; width: 100%; text-align: left; white-space: normal; border: 0; margin: 0; }
+.crm-search-select-panel button.is-active, .crm-search-select-panel button:hover { background: #e3edf1; color: #18394b; }
+.crm-search-select-panel button[aria-selected="true"] { box-shadow: inset .2rem 0 #be841b; }
