@@ -1,3 +1,4 @@
+import { OrderProductPicker } from "./OrderProductPicker";
 import React from "react";
 import type { CrmDetail } from "./crm";
 import { useCrmCommand } from "./useCrmCommand";
@@ -408,20 +409,8 @@ export function SalesOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <label>
-                  <span>商品 {index + 1}</span>
-                  <select
-                    aria-label={`第 ${index + 1} 行商品`}
-                    value={line.skuId}
-                    onChange={(event) =>
-                      updateLine(line.key, "skuId", event.target.value)
-                    }
-                    required
-                  >
-                    {source && <option value="">请选择商品</option>}
-                    {catalog.skus.map(option)}
-                  </select>
-                </label>
+                <OrderProductPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                  items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
                 <label>
                   <span>仓库</span>
                   <select

@@ -1,3 +1,4 @@
+import { OrderProductPicker } from "./OrderProductPicker";
 import React from "react";
 import {
   type CoreMasterRecord,
@@ -411,14 +412,8 @@ export function PurchaseOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <LineSelect
-                  label={`第 ${index + 1} 行商品`}
-                  value={line.skuId}
-                  disabled={!allowed}
-                  onChange={(value) => updateLine(line.key, "skuId", value)}
-                >
-                  {catalog.skus.map(option)}
-                </LineSelect>
+                <OrderProductPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                  disabled={!allowed} items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
                 <LineSelect
                   label={`第 ${index + 1} 行收货仓库`}
                   value={line.warehouseId}

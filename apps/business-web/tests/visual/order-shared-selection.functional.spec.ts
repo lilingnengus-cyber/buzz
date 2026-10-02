@@ -54,6 +54,17 @@ for (const flow of ["sales", "purchase"] as const) {
       exact: true,
     });
     await party.selectOption(`${purchase ? "supplier" : "customer"}-2`);
+    const product = dialog.getByRole("combobox", { name: "第 1 行商品", exact: true });
+    await product.click();
+    const search = dialog.getByRole("combobox", { name: "搜索第 1 行商品", exact: true });
+    await search.fill("missing-product");
+    await expect(dialog.getByRole("listbox", { name: "第 1 行商品", exact: true }).getByRole("option")).toHaveCount(0);
+    await expect(dialog.getByText("没有匹配的商品，请调整名称或编码")).toBeVisible();
+    await search.fill("SKU-2");
+    await expect(dialog.getByRole("listbox", { name: "第 1 行商品", exact: true }).getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(product).toContainText("sku-2");
+    await expect(search).toHaveCount(0);
     const warehouseLabel = purchase ? "收货仓库" : "仓库";
     await dialog
       .getByLabel(`第 1 行${warehouseLabel}`, { exact: true })
@@ -64,6 +75,8 @@ for (const flow of ["sales", "purchase"] as const) {
     await dialog
       .getByLabel("法律主体", { exact: true })
       .selectOption("legal_entity-2");
+    await expect(product).toContainText("sku-2");
+    await expect(dialog.getByRole("combobox", { name: "第 2 行商品", exact: true })).toContainText("sku-1");
     await expect(party).toHaveValue(`${purchase ? "supplier" : "customer"}-2`);
     await expect(
       dialog.getByLabel(`第 1 行${warehouseLabel}`, { exact: true }),

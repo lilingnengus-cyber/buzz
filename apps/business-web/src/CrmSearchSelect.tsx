@@ -1,7 +1,8 @@
 import React from "react";
 import "./crm-search-select.css";
 
-export function CrmSearchSelect({ label, value, options, query, onQuery, onChange, disabled = false, maxLength = 160, children, resetQueryOnSelect = true, showEmptyHint = true }: {
+export function CrmSearchSelect({ label, value, options, query, onQuery, onChange, disabled = false, maxLength = 160, children, resetQueryOnSelect = true, showEmptyHint = true, selectedLabel }: {
+  selectedLabel?: string;
   label: string;
   value: string;
   options: { value: string; label: string }[];
@@ -43,7 +44,7 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
       aria-expanded={open} aria-controls={`${id}-list`} aria-haspopup="listbox" disabled={disabled}
       onClick={() => setOpen((current) => !current)}
       onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); } }}>
-      <span>{options.find((option) => option.value === value)?.label ?? "请选择"}</span><span aria-hidden="true">▾</span>
+      <span>{selectedLabel ?? options.find((option) => option.value === value)?.label ?? "请选择"}</span><span aria-hidden="true">▾</span>
     </button>
     {open && <div className="crm-search-select-panel">
       <input ref={search} type="search" aria-label={`搜索${label}`} placeholder="输入关键词搜索"
