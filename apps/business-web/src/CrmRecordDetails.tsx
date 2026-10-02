@@ -217,6 +217,9 @@ export function CrmFollowupDetail({ item }: { item: CrmFollowupRecord }) {
       <section>
         <h3>沟通内容</h3>
         <p className="crm-note-content">{item.note}</p>
+        {item.lossReason && (
+          <p className="crm-hint">流失原因：{item.lossReason}</p>
+        )}
       </section>
       <div className="crm-next">
         <strong>下一步</strong>

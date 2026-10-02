@@ -169,6 +169,9 @@ function CrmHistoryRegister() {
                   </span>
                 </div>
                 <p className="crm-note-preview">{item.note}</p>
+                {item.lossReason && (
+                  <p className="crm-hint">流失原因：{item.lossReason}</p>
+                )}
                 <div className="crm-note-meta">
                   <strong>{item.authorName}</strong>
                   <time dateTime={item.createdAt}>
@@ -199,6 +202,7 @@ function CrmHistoryRegister() {
                 ) : (
                   <span className="crm-hint">未安排</span>
                 )}
+
               </div>
             </article>
           ))

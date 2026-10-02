@@ -52,6 +52,7 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/crm/opportunities", get(list).post(create))
         .route("/api/v1/crm/options", get(options))
+        .route("/api/v1/crm/owners", get(owners))
         .route("/api/v1/crm/followups", get(followups))
         .route("/api/v1/crm/contacts", get(contacts).post(create_contact))
         .route(
@@ -274,6 +275,18 @@ async fn update_contact(
             key(&h, c.trace_id)?,
             &input,
         )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn owners(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<super::OwnerScope>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .owners(c.actor_user_id, &q)
         .await
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))

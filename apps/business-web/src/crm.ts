@@ -22,6 +22,10 @@ export type Opportunity = {
   currency: string;
   nextAction: string;
   nextFollowUp: string | null;
+  ownerUserId?: string;
+  ownerName?: string;
+  expectedCloseDate?: string | null;
+  lossReason?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -42,6 +46,7 @@ export type CrmOption = {
 export type Followup = {
   id: string;
   note: string;
+  lossReason?: string;
   stage: CrmStage;
   nextAction: string;
   nextFollowUp: string | null;

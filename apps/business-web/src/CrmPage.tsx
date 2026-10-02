@@ -24,6 +24,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   const [options, setOptions] = React.useState<CrmOption[]>([]);
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("");
+  const [mine, setMine] = React.useState(false);
   const [due, setDue] = React.useState("open");
   const [offset, setOffset] = React.useState(0);
   const [selected, setSelected] = React.useState<string | null>(
@@ -46,6 +47,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       const params = new URLSearchParams({ offset: String(offset) });
       if (query.trim()) params.set("query", query.trim());
       if (stage) params.set("stage", stage);
+      if (mine) params.set("mine", "true");
       if (due) {
         params.set("followup", due);
         params.set("today", localDate());
@@ -74,7 +76,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [query, stage, due, offset, revision]);
+  }, [query, stage, due, mine, offset, revision]);
   React.useEffect(() => {
     let current = true;
     setDetail(null);
@@ -166,6 +168,15 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             <option value="">全部</option>
           </select>
         </label>
+        <button
+          aria-pressed={mine}
+          onClick={() => {
+            setMine(!mine);
+            setOffset(0);
+          }}
+        >
+          我的商机
+        </button>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
       <nav className="crm-stage-nav" aria-label="按销售阶段筛选">
@@ -220,12 +231,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           ) : !error && !data.items.length ? (
             <div className="crm-empty">
               <h2>
-                {query || stage || due
+                {query || stage || due || mine
                   ? "没有符合条件的商机"
                   : "从一个潜在客户开始"}
               </h2>
               <p>
-                {query || stage || due
+                {query || stage || due || mine
                   ? "调整筛选条件，或新建商机。"
                   : "新建商机，记下需求和下一步跟进。"}
               </p>
@@ -245,6 +256,11 @@ export function CrmPage({ initialId }: { initialId?: string }) {
               >
                 <span className="crm-opportunity-identity">
                   <strong>{item.title}</strong>
+                  {item.ownerName && (
+                    <span className="crm-contact">
+                      负责人：{item.ownerName}
+                    </span>
+                  )}
                 </span>
                 <span className="crm-company" data-label="客户">
                   {item.companyName}

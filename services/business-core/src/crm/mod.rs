@@ -2,6 +2,8 @@
 pub mod api;
 mod directory;
 mod model;
+mod ownership;
+pub use ownership::OwnerScope;
 mod registers;
 use crate::{
     b2::common::{
@@ -48,9 +50,9 @@ impl CrmService {
                 return Err(DomainError::Invalid("无效跟进筛选或本地日期".into()));
             }
         }
-        let mut items=sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunity_current WHERE legal_entity_id=ANY($1) AND business_unit_id=ANY($2) AND (customer_id IS NULL OR customer_id=ANY($3)) AND ($4::text IS NULL OR strpos(lower(title||' '||company_name||' '||contact_name),lower($4))>0) AND ($5::text IS NULL OR stage=$5) AND ($6::date IS NULL OR (next_follow_up <= $6 AND stage NOT IN ('won','lost'))) AND ($8::text IS NULL OR (stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN next_follow_up < $9::date WHEN 'today' THEN next_follow_up = $9::date WHEN 'upcoming' THEN next_follow_up > $9::date AND next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN next_follow_up IS NULL WHEN 'open' THEN true ELSE false END)) ORDER BY next_follow_up ASC NULLS LAST,created_at DESC,id LIMIT 51 OFFSET $7")
+        let mut items=sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunity_current WHERE legal_entity_id=ANY($1) AND business_unit_id=ANY($2) AND (customer_id IS NULL OR customer_id=ANY($3)) AND ($4::text IS NULL OR strpos(lower(title||' '||company_name||' '||contact_name),lower($4))>0) AND ($5::text IS NULL OR stage=$5) AND ($6::date IS NULL OR (next_follow_up <= $6 AND stage NOT IN ('won','lost'))) AND ($8::text IS NULL OR (stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN next_follow_up < $9::date WHEN 'today' THEN next_follow_up = $9::date WHEN 'upcoming' THEN next_follow_up > $9::date AND next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN next_follow_up IS NULL WHEN 'open' THEN true ELSE false END)) AND (NOT $10::boolean OR owner_user_id=$11) ORDER BY next_follow_up ASC NULLS LAST,created_at DESC,id LIMIT 51 OFFSET $7")
             .bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>())
-            .bind(filters.query.as_deref().map(str::trim)).bind(&filters.stage).bind(filters.due_by).bind(filters.offset).bind(&filters.followup).bind(filters.today)
+            .bind(filters.query.as_deref().map(str::trim)).bind(&filters.stage).bind(filters.due_by).bind(filters.offset).bind(&filters.followup).bind(filters.today).bind(filters.mine).bind(actor)
             .fetch_all(self.store.pool()).await?;
         let has_more = items.len() > 50;
         items.truncate(50);
@@ -75,7 +77,7 @@ impl CrmService {
             return Err(DomainError::Invalid("无效页码".into()));
         }
         let item = self.accessible(actor, id, "crm:read").await?;
-        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
+        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name,'lossReason',f.loss_reason) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
             .bind(id).bind(offset).fetch_all(self.store.pool()).await?;
         let has_more = notes.len() > 100;
         Ok(
@@ -110,14 +112,17 @@ impl CrmService {
             Some(input.business_unit_id),
         )
         .await?;
-        if let Some(id) = id {
+        let previous = if let Some(id) = id {
             let old = self.accessible(actor, id, "crm:manage").await?;
             if old.legal_entity_id != input.legal_entity_id
                 || old.business_unit_id != input.business_unit_id
             {
                 return Err(DomainError::Invalid("商机所属主体不可更改".into()));
             }
-        }
+            Some(old)
+        } else {
+            None
+        };
         if id.is_some() != input.expected_version.is_some() {
             return Err(DomainError::Invalid("更新需要当前版本".into()));
         }
@@ -129,6 +134,34 @@ impl CrmService {
             tx.commit().await?;
             return Ok(result);
         }
+        let owner = input
+            .owner_user_id
+            .or(previous.as_ref().map(|old| old.owner_user_id))
+            .unwrap_or(actor);
+        if previous
+            .as_ref()
+            .is_none_or(|old| old.owner_user_id != owner || old.customer_id != input.customer_id)
+        {
+            authorize(
+                &self.store,
+                owner,
+                "crm:manage",
+                Some(input.legal_entity_id),
+                None,
+                input.customer_id,
+                None,
+                Some(input.business_unit_id),
+            )
+            .await?;
+        }
+        let close_date = input
+            .expected_close_date
+            .unwrap_or_else(|| previous.as_ref().and_then(|old| old.expected_close_date));
+        let loss_reason = model::loss_reason(
+            &input.stage,
+            input.loss_reason.as_deref(),
+            previous.as_ref().map(|old| old.loss_reason.as_str()),
+        )?;
         let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM business_units WHERE id=$1 AND status='active') AND EXISTS(SELECT 1 FROM business_legal_entities WHERE id=$2 AND status='active') AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM business_customers WHERE id=$3 AND status='active'))")
             .bind(input.business_unit_id).bind(input.legal_entity_id).bind(input.customer_id).fetch_one(&mut *tx).await?;
         if !valid {
@@ -144,12 +177,28 @@ impl CrmService {
                 .bind(record_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?
         };
         let version = version.ok_or(DomainError::VersionConflict)?;
-        sqlx::query("UPDATE crm_opportunities SET account_id=$2,contact_id=$3 WHERE id=$1")
+        sqlx::query("UPDATE crm_opportunities SET account_id=$2,contact_id=$3,owner_user_id=$4,expected_close_date=$5,loss_reason=$6 WHERE id=$1")
             .bind(record_id)
             .bind(account_id)
             .bind(contact_id)
+            .bind(owner).bind(close_date).bind(&loss_reason)
             .execute(&mut *tx)
             .await?;
+        if previous
+            .as_ref()
+            .is_some_and(|old| old.stage != input.stage || old.loss_reason != loss_reason)
+        {
+            let label = match input.stage.as_str() {
+                "new" => "新线索",
+                "contacting" => "沟通中",
+                "quoting" => "报价中",
+                "won" => "已成交",
+                _ => "已流失",
+            };
+            sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,loss_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+                .bind(Uuid::new_v4()).bind(record_id).bind(actor).bind(format!("商机资料更新：阶段为{label}。"))
+                .bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(&loss_reason).execute(&mut *tx).await?;
+        }
         let result = json!({"id":record_id,"version":version,"traceId":trace});
         record(
             &mut tx,
@@ -159,7 +208,7 @@ impl CrmService {
             "crm.opportunity.saved",
             "crm_opportunity",
             record_id,
-            json!({"version":version,"stage":input.stage}),
+            json!({"version":version,"stage":input.stage,"ownerUserId":owner,"expectedCloseDate":close_date,"lossReason":loss_reason}),
         )
         .await?;
         finish_idempotent(&mut tx, actor, "crm:save", key, &result).await?;
@@ -178,7 +227,7 @@ impl CrmService {
         model::text(&input.note, 4000, true)?;
         model::text(&input.next_action, 500, false)?;
         model::stage(&input.stage)?;
-        self.accessible(actor, id, "crm:manage").await?;
+        let previous = self.accessible(actor, id, "crm:manage").await?;
         let mut tx = self.store.pool().begin().await?;
         let hash = request_hash(&(id, input))?;
         if let Some(result) =
@@ -187,11 +236,16 @@ impl CrmService {
             tx.commit().await?;
             return Ok(result);
         }
-        let version:Option<i64>=sqlx::query_scalar("UPDATE crm_opportunities SET stage=$2,next_action=$3,next_follow_up=$4,version=version+1,updated_at=now() WHERE id=$1 AND version=$5 RETURNING version")
-            .bind(id).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?;
+        let loss_reason = model::loss_reason(
+            &input.stage,
+            input.loss_reason.as_deref(),
+            Some(&previous.loss_reason),
+        )?;
+        let version:Option<i64>=sqlx::query_scalar("UPDATE crm_opportunities SET stage=$2,next_action=$3,next_follow_up=$4,loss_reason=$6,version=version+1,updated_at=now() WHERE id=$1 AND version=$5 RETURNING version")
+            .bind(id).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).bind(&loss_reason).fetch_optional(&mut *tx).await?;
         let version = version.ok_or(DomainError::VersionConflict)?;
-        sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up) VALUES($1,$2,$3,$4,$5,$6,$7)")
-            .bind(Uuid::new_v4()).bind(id).bind(actor).bind(input.note.trim()).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,loss_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+            .bind(Uuid::new_v4()).bind(id).bind(actor).bind(input.note.trim()).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(&loss_reason).execute(&mut *tx).await?;
         let result = json!({"id":id,"version":version,"traceId":trace});
         record(
             &mut tx,
@@ -201,7 +255,7 @@ impl CrmService {
             "crm.followup.added",
             "crm_opportunity",
             id,
-            json!({"version":version,"stage":input.stage}),
+            json!({"version":version,"stage":input.stage,"lossReason":loss_reason}),
         )
         .await?;
         finish_idempotent(&mut tx, actor, "crm:followup", key, &result).await?;

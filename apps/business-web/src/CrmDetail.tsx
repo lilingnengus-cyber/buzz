@@ -61,6 +61,7 @@ export function CrmDetail({
           nextAction: fields.get("nextAction"),
           nextFollowUp: fields.get("nextFollowUp") || null,
           expectedVersion: item.version,
+          lossReason: stage === "lost" ? fields.get("lossReason") : "",
         }),
       });
       draft.saved();
@@ -95,6 +96,14 @@ export function CrmDetail({
       </div>
       <dl className="crm-facts">
         <div>
+          <dt>商机负责人</dt>
+          <dd>{item.ownerName || "未设置"}</dd>
+        </div>
+        <div>
+          <dt>预计成交日期</dt>
+          <dd>{item.expectedCloseDate || "未安排"}</dd>
+        </div>
+        <div>
           <dt>联系人</dt>
           <dd>{item.contactName || "未填写"}</dd>
         </div>
@@ -115,6 +124,12 @@ export function CrmDetail({
           <dd>{item.nextFollowUp || "未安排"}</dd>
         </div>
       </dl>
+      {item.stage === "lost" && (
+        <div className="crm-next">
+          <strong>流失原因</strong>
+          <p>{item.lossReason || "历史记录未填写"}</p>
+        </div>
+      )}
       <div className="crm-next">
         <strong>下一步</strong>
         <p>{item.nextAction || "记录一次跟进，安排下一步。"}</p>
@@ -187,6 +202,19 @@ export function CrmDetail({
                 placeholder="明确下一步要做什么"
               />
             </label>
+            {stage === "lost" && (
+              <label>
+                流失原因
+                <textarea
+                  name="lossReason"
+                  required
+                  maxLength={1000}
+                  rows={3}
+                  defaultValue={item.lossReason ?? ""}
+                  placeholder="说明本次商机流失的主要原因"
+                />
+              </label>
+            )}
             <button className="primary" disabled={busy}>
               {busy ? "保存中…" : "保存跟进"}
             </button>
@@ -206,6 +234,9 @@ export function CrmDetail({
               <span>{CRM_STAGES[note.stage]}</span>
             </div>
             <p>{note.note}</p>
+            {note.lossReason && (
+              <p className="crm-hint">流失原因：{note.lossReason}</p>
+            )}
             {note.nextAction && (
               <p className="crm-hint">
                 下一步：{note.nextAction}
