@@ -17,6 +17,7 @@ export type RecordDetailAction = {
   title: string;
   subtitle: string;
   serviceOrderNumber?: string;
+  salesOrderId?: string;
   editDraft?: {
     kind: "sales-edit" | "purchase-edit";
     id: string;
@@ -69,6 +70,7 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       detailField("最近更新", formatDateTime(row.updatedAt)),
     ],
   );
+  detail.salesOrderId = row.id;
   if (row.lifecycleStatus === "draft")
     detail.editDraft = {
       kind: "sales-edit",

@@ -74,7 +74,7 @@ for (const side of ["sales", "purchase"] as const) {
       .click();
     let dialog = page.getByRole("dialog");
     await expect(dialog).toContainText(number);
-    await dialog.getByRole("heading").click();
+    await dialog.getByRole("heading", { name: `${side === "sales" ? "销售订单" : "采购订单"} · ${number}`, exact: true }).click();
     await expect(dialog).toBeVisible();
     await page.mouse.click(10, 10);
     await expect(dialog).toHaveCount(0);
