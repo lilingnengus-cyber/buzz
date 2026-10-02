@@ -151,71 +151,104 @@ function CrmHistoryRegister() {
           </span>
         </div>
         <div
-          className="crm-register-columns crm-followup-grid"
-          aria-hidden="true"
+          className="crm-followup-scroll"
+          role="region"
+          aria-label="跟进记录字段列表"
+          tabIndex={0}
         >
-          <span>沟通记录 / 商机</span>
-          <span>客户 / 联系人</span>
-          <span>下一步</span>
-          <span>跟进日期</span>
-        </div>
-        {loading ? (
-          <p role="status">正在加载{title}…</p>
-        ) : !error && !data.items.length ? (
-          <div className="crm-empty">
-            <h2>{query ? "没有符合条件的记录" : `还没有${title}`}</h2>
-            <p>
-              {query
-                ? "调整搜索条件后重试。"
-                : "点击新建跟进，选择商机并记录客户沟通。"}
-            </p>
-            <a href="/#crm">查看商机</a>
+          <div
+            className="crm-register-columns crm-followup-grid"
+            aria-hidden="true"
+          >
+            {[
+              "商机",
+              "客户",
+              "联系人",
+              "阶段",
+              "沟通内容",
+              "下一步",
+              "跟进日期",
+              "记录人",
+              "记录时间",
+              "流失原因",
+            ].map((label) => (
+              <span key={label}>{label}</span>
+            ))}
           </div>
-        ) : (
-          data.items.map((item) => (
-            <article
-              className="crm-register-card crm-clickable-record crm-followup-grid"
-              key={item.id}
-              role="button"
-              tabIndex={0}
-              aria-haspopup="dialog"
-              aria-label={`查看跟进：${item.opportunityTitle}`}
-              onClick={(event) => {
-                if (
-                  !(
-                    event.target instanceof Element &&
-                    event.target.closest("a, button")
+          {loading ? (
+            <p role="status">正在加载{title}…</p>
+          ) : !error && !data.items.length ? (
+            <div className="crm-empty">
+              <h2>{query ? "没有符合条件的记录" : `还没有${title}`}</h2>
+              <p>
+                {query
+                  ? "调整搜索条件后重试。"
+                  : "点击新建跟进，选择商机并记录客户沟通。"}
+              </p>
+              <a href="/#crm">查看商机</a>
+            </div>
+          ) : (
+            data.items.map((item) => (
+              <article
+                className="crm-register-card crm-clickable-record crm-followup-grid"
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                aria-haspopup="dialog"
+                aria-label={`查看跟进：${item.opportunityTitle}`}
+                onClick={(event) => {
+                  if (
+                    !(
+                      event.target instanceof Element &&
+                      event.target.closest("a, button")
+                    )
                   )
-                )
-                  setSelected(item);
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.target === event.currentTarget &&
-                  ["Enter", " "].includes(event.key)
-                ) {
-                  event.preventDefault();
-                  setSelected(item);
-                }
-              }}
-            >
-              <div className="crm-communication">
-                <div className="crm-row-top">
+                    setSelected(item);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.target === event.currentTarget &&
+                    ["Enter", " "].includes(event.key)
+                  ) {
+                    event.preventDefault();
+                    setSelected(item);
+                  }
+                }}
+              >
+                <div className="crm-register-cell">
                   <a href={opportunityLink(item.opportunityId)}>
                     {item.opportunityTitle}
                   </a>
+                </div>
+                <div className="crm-register-cell">{item.companyName}</div>
+                <div className="crm-register-cell">
+                  {item.contactName || "未填写"}
+                </div>
+                <div className="crm-register-cell">
                   <span className={`crm-stage crm-stage-${item.stage}`}>
                     {CRM_STAGES[item.stage]}
                   </span>
                 </div>
-                <p className="crm-note-preview">{item.note}</p>
-                {item.lossReason && (
-                  <p className="crm-hint">流失原因：{item.lossReason}</p>
-                )}
-                <div className="crm-note-meta">
-                  <strong>{item.authorName}</strong>
+                <div className="crm-register-cell">
+                  <p className="crm-note-preview">{item.note}</p>
+                </div>
+                <div className="crm-register-cell">
+                  {item.nextAction || "未安排"}
+                </div>
+                <div className="crm-register-cell">
+                  {item.nextFollowUp ? (
+                    <time dateTime={item.nextFollowUp}>
+                      {item.nextFollowUp}
+                    </time>
+                  ) : (
+                    "未安排"
+                  )}
+                </div>
+                <div className="crm-register-cell">{item.authorName}</div>
+                <div className="crm-register-cell">
                   <time dateTime={item.createdAt}>
                     {new Date(item.createdAt).toLocaleString("zh-CN", {
+                      year: "numeric",
                       month: "2-digit",
                       day: "2-digit",
                       hour: "2-digit",
@@ -223,29 +256,13 @@ function CrmHistoryRegister() {
                     })}
                   </time>
                 </div>
-              </div>
-              <div className="crm-register-cell">
-                <span className="crm-mobile-label">客户 / 联系人</span>
-                <strong>{item.companyName}</strong>
-                <span className="crm-hint">
-                  {item.contactName || "未填写联系人"}
-                </span>
-              </div>
-              <div className="crm-register-cell">
-                <span className="crm-mobile-label">下一步</span>
-                <span>{item.nextAction || "未安排"}</span>
-              </div>
-              <div className="crm-register-cell">
-                <span className="crm-mobile-label">跟进日期</span>
-                {item.nextFollowUp ? (
-                  <time dateTime={item.nextFollowUp}>{item.nextFollowUp}</time>
-                ) : (
-                  <span className="crm-hint">未安排</span>
-                )}
-              </div>
-            </article>
-          ))
-        )}
+                <div className="crm-register-cell">
+                  {item.lossReason || "—"}
+                </div>
+              </article>
+            ))
+          )}
+        </div>
       </div>
       {selected && (
         <CrmDrawer title="跟进记录详情" onClose={() => setSelected(null)}>
