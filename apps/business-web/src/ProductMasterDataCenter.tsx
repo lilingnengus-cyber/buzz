@@ -1,3 +1,4 @@
+import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import React from "react";
 import {
   type ApiFailure,
@@ -456,6 +457,7 @@ function ProductFormModal({
     record ? fromRecord(record) : EMPTY_FORM,
   );
   const [saving, setSaving] = React.useState(false);
+  const guard = useRecordCloseGuard(form, !readOnly, saving, onClose);
   const [error, setError] = React.useState<string | null>(null);
   const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     setForm((current) => ({ ...current, [field]: value }));
@@ -517,6 +519,7 @@ function ProductFormModal({
         method: record ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
+      guard.saved();
       await onSaved();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "保存失败");
@@ -534,7 +537,8 @@ function ProductFormModal({
           : `${record ? "编辑" : "新增"}${labelFor(type)}`
       }
       eyebrow="CONTROLLED PRODUCT DATA"
-      onClose={onClose}
+      busy={saving}
+      onClose={guard.close}
     >
       <form className="master-form product-master-form" onSubmit={submit}>
         <div className="master-form-note">
@@ -764,7 +768,7 @@ function ProductFormModal({
         </fieldset>
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
-          <button type="button" className="master-secondary" onClick={onClose}>
+          <button type="button" className="master-secondary" disabled={saving} onClick={guard.close}>
             取消
           </button>
           {!readOnly && (
@@ -774,6 +778,7 @@ function ProductFormModal({
           )}
         </div>
       </form>
+      {guard.prompt}
     </MasterModal>
   );
 }

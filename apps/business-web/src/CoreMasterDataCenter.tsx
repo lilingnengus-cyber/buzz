@@ -1,3 +1,4 @@
+import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import { CoreCustomerContacts } from "./CoreCustomerContacts";
 import React from "react";
 import { createPortal } from "react-dom";
@@ -554,6 +555,7 @@ function MasterFormModal({
     record ? fromRecord(record) : EMPTY_FORM,
   );
   const [saving, setSaving] = React.useState(false);
+  const guard = useRecordCloseGuard(form, !readOnly && ["customer", "supplier", "warehouse"].includes(type), saving, onClose);
   const [error, setError] = React.useState<string | null>(null);
   const title = state.detail
     ? `${labelFor(type)}详情`
@@ -594,6 +596,7 @@ function MasterFormModal({
         method: record ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
+      guard.saved();
       await onSaved();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "保存失败");
@@ -606,7 +609,8 @@ function MasterFormModal({
     <MasterModal
       title={title}
       eyebrow="CONTROLLED MASTER DATA"
-      onClose={onClose}
+      busy={saving}
+      onClose={guard.close}
     >
       <form className="master-form" onSubmit={submit}>
         <div className="master-form-note">
@@ -697,7 +701,7 @@ function MasterFormModal({
         </fieldset>
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
-          <button type="button" className="master-secondary" onClick={onClose}>
+          <button type="button" className="master-secondary" disabled={saving} onClick={guard.close}>
             取消
           </button>
           {!readOnly && (
@@ -707,6 +711,7 @@ function MasterFormModal({
           )}
         </div>
       </form>
+      {guard.prompt}
       {type === "customer" && record && (
         <CoreCustomerContacts customerId={record.id} customerName={record.name} />
       )}
@@ -869,14 +874,18 @@ export function MasterModal({
   title,
   eyebrow,
   onClose,
+  busy = false,
   children,
 }: React.PropsWithChildren<{
   title: string;
   eyebrow: string;
+  busy?: boolean;
   onClose: () => void;
 }>) {
   const panel = React.useRef<HTMLDivElement>(null);
   const trigger = React.useRef<HTMLElement | null>(null);
+  const closeRef = React.useRef(onClose);
+  closeRef.current = onClose;
   React.useEffect(() => {
     trigger.current = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
@@ -886,7 +895,7 @@ export function MasterModal({
       ?.focus();
     const keydown = (event: KeyboardEvent) => {
       if (panel.current?.querySelector("dialog[open]")) return;
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
       if (event.key !== "Tab" || !panel.current) return;
       const focusable = [
         ...panel.current.querySelectorAll<HTMLElement>(
@@ -909,13 +918,14 @@ export function MasterModal({
       document.removeEventListener("keydown", keydown);
       trigger.current?.focus();
     };
-  }, [onClose]);
+  }, []);
   return createPortal(
     <div className="master-modal-layer">
       <button
         type="button"
         aria-label="关闭弹窗"
         className="master-modal-scrim"
+        disabled={busy}
         onClick={onClose}
       />
       <div
@@ -930,7 +940,7 @@ export function MasterModal({
             <span>{eyebrow}</span>
             <h2 id="master-modal-title">{title}</h2>
           </div>
-          <button type="button" aria-label="关闭弹窗" onClick={onClose}>
+          <button type="button" aria-label="关闭弹窗" disabled={busy} onClick={onClose}>
             ×
           </button>
         </header>
