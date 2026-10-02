@@ -575,6 +575,158 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     let reopened = crm.detail(actor, linked_ids[0], 0).await.unwrap();
     assert_eq!(reopened["item"]["lossReason"], "");
     assert_eq!(reopened["followups"][1]["lossReason"], "项目暂停");
+    // Conversion is atomic, deduplicated and restricted to one opportunity.
+    let mut conversion_input = input.clone();
+    conversion_input.account_id = None;
+    conversion_input.contact_id = None;
+    conversion_input.customer_id = None;
+    conversion_input.owner_user_id = None;
+    conversion_input.expected_version = None;
+    conversion_input.stage = "quoting".into();
+    conversion_input.company_name = "成交转客户测试".into();
+    conversion_input.title = "成交商机".into();
+    let conversion_op = crm
+        .save(
+            actor,
+            Uuid::new_v4(),
+            None,
+            "conversion-op",
+            &conversion_input,
+        )
+        .await
+        .unwrap();
+    let conversion_id: Uuid = serde_json::from_value(conversion_op["id"].clone()).unwrap();
+    let conversion = business_core::crm::ConvertCustomer {
+        expected_version: 1,
+        customer_id: None,
+        customer_name: "成交转客户测试".into(),
+        contact_name: "王经理".into(),
+        contact_details: "13800138000".into(),
+        credit_currency: "CNY".into(),
+        payment_terms_days: 30,
+        note: "合同已签署".into(),
+    };
+    assert!(matches!(
+        crm.convert_customer(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "conversion-key",
+            &conversion
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'business_master_data:manage') ON CONFLICT DO NOTHING").bind(role).execute(&pool).await.unwrap();
+    let mut invalid = conversion.clone();
+    invalid.payment_terms_days = -1;
+    assert!(crm
+        .convert_customer(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "conversion-invalid",
+            &invalid
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        crm.detail(actor, conversion_id, 0).await.unwrap()["item"]["stage"],
+        "quoting"
+    );
+    let converted = crm
+        .convert_customer(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "conversion-key",
+            &conversion,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        converted,
+        crm.convert_customer(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "conversion-key",
+            &conversion
+        )
+        .await
+        .unwrap()
+    );
+    assert!(matches!(
+        crm.convert_customer(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "conversion-stale",
+            &conversion
+        )
+        .await,
+        Err(DomainError::VersionConflict)
+    ));
+    let detail = crm.detail(actor, conversion_id, 0).await.unwrap();
+    assert_eq!(detail["item"]["stage"], "won");
+    assert_eq!(detail["item"]["customerId"], converted["customerId"]);
+    assert_eq!(detail["followups"][0]["note"], "合同已签署");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM business_customers WHERE name='成交转客户测试'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sales_orders")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let second = crm
+        .save(
+            actor,
+            Uuid::new_v4(),
+            None,
+            "conversion-second-op",
+            &conversion_input,
+        )
+        .await
+        .unwrap();
+    let second_id: Uuid = serde_json::from_value(second["id"].clone()).unwrap();
+    assert!(matches!(
+        crm.convert_customer(
+            actor,
+            Uuid::new_v4(),
+            second_id,
+            "conversion-duplicate",
+            &conversion
+        )
+        .await,
+        Err(DomainError::Invalid(_))
+    ));
+    let mut reuse = conversion.clone();
+    reuse.customer_id = Some(serde_json::from_value(converted["customerId"].clone()).unwrap());
+    let reused = crm
+        .convert_customer(actor, Uuid::new_v4(), second_id, "conversion-reuse", &reuse)
+        .await
+        .unwrap();
+    assert_eq!(reused["contactId"], converted["contactId"]);
+    assert!(matches!(
+        crm.convert_customer(
+            outsider,
+            Uuid::new_v4(),
+            second_id,
+            "conversion-outsider",
+            &reuse
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
     // Revoking the business scope hides opportunities but not an owner's independent prospect.
     sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
         .bind(actor)

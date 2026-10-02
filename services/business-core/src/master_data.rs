@@ -625,6 +625,24 @@ fn validate(i: &SaveCoreMasterData, k: CoreMasterType, updating: bool) -> Result
     Ok(())
 }
 
+/// Create a customer inside an enclosing domain transaction using governed codes and creator grants.
+pub(crate) async fn create_crm_customer(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor: Uuid,
+    trace: Uuid,
+    input: &SaveCoreMasterData,
+) -> Result<Uuid, DomainError> {
+    validate(input, CoreMasterType::Customer, false)?;
+    let id = Uuid::new_v4();
+    let mut generated = input.clone();
+    generated.code = allocate_core_master_code(tx, CoreMasterType::Customer, id, input).await?;
+    insert_record(tx, CoreMasterType::Customer, id, &generated).await?;
+    grant_creator_scope(tx, CoreMasterType::Customer, id, &generated, actor).await?;
+    record(tx, trace, actor, "CORE_MASTER_DATA_SAVED", "core_master_data_saved", "customer", id,
+        json!({"resourceType":"customer","code":generated.code,"version":1,"mode":"create","source":"crm_conversion"})).await?;
+    Ok(id)
+}
+
 async fn allocate_core_master_code(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     kind: CoreMasterType,
