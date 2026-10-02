@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { waitForAnimations } from "../../../../desktop/tests/helpers/animations";
 
 test("客户联系人独立建档、复用及未保存保护", async ({ page }) => {
-  const accounts: any[] = [];
+  const accounts: any[] = [
+    { id: "account-1", name: "独立潜在客户", customerId: null, version: 1 },
+  ];
   const contacts: any[] = [];
   const opportunities: any[] = [];
   let failContact = false;
@@ -93,30 +95,7 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto("/#crmContacts");
-  await page
-    .getByRole("navigation", { name: "档案类型" })
-    .getByRole("button", { name: "客户", exact: true })
-    .click();
-  await page.getByRole("button", { name: "新建客户", exact: true }).click();
   let drawer = page.getByRole("dialog");
-  await drawer.getByLabel("客户名称").fill("独立潜在客户");
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("dialog", { name: "放弃未保存修改" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "继续编辑" }).click();
-  await expect(drawer).toBeVisible();
-  await expect(drawer.getByLabel("客户名称")).toHaveValue("独立潜在客户");
-  await drawer.getByRole("button", { name: "保存档案" }).click();
-  await expect(drawer).not.toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "独立潜在客户" }),
-  ).toBeVisible();
-  expect(accounts[0]).not.toHaveProperty("legalEntityId");
-  await page
-    .getByRole("navigation", { name: "档案类型" })
-    .getByRole("button", { name: "联系人", exact: true })
-    .click();
   await page.getByRole("button", { name: "新建联系人" }).click();
   await drawer
     .getByLabel("客户档案", { exact: true })

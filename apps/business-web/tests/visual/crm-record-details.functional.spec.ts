@@ -134,50 +134,19 @@ test("客户与联系人点击记录打开右侧详情，编辑保留未保存�
   await edit.getByRole("button", { name: "保存档案" }).click();
   await expect(edit).not.toBeVisible();
   expect(writes).toEqual(["/api/v1/crm/contacts/contact"]);
-  await page
-    .getByRole("navigation", { name: "档案类型" })
-    .getByRole("button", { name: "客户", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "查看客户：潜在客户", exact: true })
-    .getByRole("heading")
-    .click();
-  const customerDetail = page.getByRole("dialog", {
-    name: "客户详情",
-    exact: true,
-  });
   await expect(
-    customerDetail.getByRole("heading", { name: "潜在客户", exact: true }),
+    page.getByRole("heading", { name: "联系人", exact: true }),
   ).toBeVisible();
-  await customerDetail.getByRole("button", { name: "编辑客户" }).click();
+  await expect(page.getByRole("navigation", { name: "档案类型" })).toHaveCount(
+    0,
+  );
   await expect(
-    page
-      .getByRole("dialog", { name: "编辑客户", exact: true })
-      .getByLabel("客户名称"),
-  ).toHaveValue("潜在客户");
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "查看客户：已有核心客户", exact: true })
-    .getByRole("heading")
-    .click();
-  await expect(customerDetail).toBeVisible();
-  await expect(
-    customerDetail.getByRole("button", { name: "编辑客户" }),
+    page.getByRole("button", { name: "新建客户", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    customerDetail.getByRole("link", { name: "前往核心数据维护" }),
-  ).toBeVisible();
+  await contactRow.click();
   await page.setViewportSize({ width: 520, height: 900 });
-  const narrow = await customerDetail.boundingBox();
-  expect(Math.round(narrow!.x)).toBe(0);
-  expect(Math.round(narrow!.width)).toBe(520);
-  await waitForAnimations(page);
-  await page.screenshot({
-    path: "test-results/crm-customer-record-detail-520.png",
-  });
-  await page.keyboard.press("Escape");
-  await expect(customerDetail).not.toBeVisible();
-  expect(writes).toHaveLength(1);
+  await expect(contactDetail).toBeVisible();
+  expect(Math.round((await contactDetail.boundingBox())!.width)).toBe(520);
 });
 
 test("只读联系人也可查看右侧详情", async ({ page }) => {
@@ -226,29 +195,6 @@ test("跟进记录采用右侧详情，保留商机链接且不修改历史", as
   await detail.getByRole("link", { name: "打开商机继续跟进" }).click();
   await expect(page).toHaveURL(/#crm\?opportunity=opp$/);
   expect(writes).toHaveLength(0);
-});
-
-test("客户详情关联记录按客户 ID 隔离，联系人可直接编辑", async ({ page }) => {
-  await seedRecords(page, true);
-  await page.goto("/#crmContacts");
-  await page.getByRole("button", { name: "客户", exact: true }).click();
-  await page
-    .getByRole("button", { name: "查看客户：潜在客户", exact: true })
-    .click();
-  const detail = page.getByRole("dialog", { name: "客户详情", exact: true });
-  await expect(
-    detail.getByRole("link", { name: "年度采购 · 沟通中" }),
-  ).toHaveAttribute("href", "/#crm?opportunity=opp");
-  await expect(detail.getByText("同名客户商机")).toHaveCount(0);
-  await detail.getByRole("button", { name: "张经理 · 13800000000" }).click();
-  const contact = page.getByRole("dialog", { name: "联系人详情", exact: true });
-  await expect(contact).toBeVisible();
-  await contact.getByRole("button", { name: "编辑联系人" }).click();
-  await expect(
-    page
-      .getByRole("dialog", { name: "编辑联系人", exact: true })
-      .getByLabel("联系方式", { exact: true }),
-  ).toHaveValue("13800000000");
 });
 
 test("跟进与联系人列表分列展示，窄屏没有横向溢出", async ({ page }) => {

@@ -203,7 +203,7 @@ export function CrmDirectoryPage() {
   const [filterAccount, setFilterAccount] = React.useState<CrmAccount | null>(
     null,
   );
-  const [kind, setKind] = React.useState<"accounts" | "contacts">("contacts");
+  const [kind] = React.useState<"accounts" | "contacts">("contacts");
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
@@ -250,8 +250,8 @@ export function CrmDirectoryPage() {
       <header className="crm-heading">
         <div>
           <p className="eyebrow">售前 CRM</p>
-          <h1>客户联系人</h1>
-          <p className="crm-hint">客户与联系人独立维护，多个商机共同引用。</p>
+          <h1>联系人</h1>
+          <p className="crm-hint">统一维护客户联系人，多个商机共同引用。正式客户在核心数据中维护。</p>
         </div>
         {data.canManage && (
           <button
@@ -262,26 +262,6 @@ export function CrmDirectoryPage() {
           </button>
         )}
       </header>
-      <nav className="crm-stage-nav" aria-label="档案类型">
-        {(
-          [
-            ["contacts", "联系人"],
-            ["accounts", "客户"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            aria-pressed={kind === value}
-            onClick={() => {
-              setKind(value);
-              setQuery("");
-              setOffset(0);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
       <div className="crm-toolbar">
         <label className="crm-search">
           搜索{title}

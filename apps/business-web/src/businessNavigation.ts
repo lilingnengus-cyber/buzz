@@ -60,7 +60,7 @@ export const NAV_GROUPS: Array<{
     items: [
       { id: "crm", label: "商机" },
       { id: "crmFollowups", label: "跟进记录" },
-      { id: "crmContacts", label: "客户联系人" },
+      { id: "crmContacts", label: "联系人" },
     ],
   },
   {
