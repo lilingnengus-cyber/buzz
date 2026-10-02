@@ -9,7 +9,7 @@ use business_core::{
             CreateInventoryOpening, CreateSalesOrder, CreateShipment, DecimalString,
             InventoryOpeningLineInput, SalesOrderLineInput, ShipmentLineInput, VersionCommand,
         },
-        InventoryService, SalesService,
+        InventoryService, SalesService, SettlementService,
     },
     PgStore,
 };
@@ -49,6 +49,7 @@ async fn sales_return_quarantine_inspection_and_replay() {
     let sales = SalesService::new(store.clone(), "SO".into(), "SHP".into(), 30);
     let inventory = InventoryService::new(store.clone(), "OPEN".into(), "AR".into());
     let returns = ReturnService::new(store.clone(), "SR".into(), "PR".into());
+    let settlement = SettlementService::new(store.clone(), "RCPT".into());
     let disposition = ReturnDispositionService::new(store);
     let opening = inventory
         .create_opening(
@@ -139,6 +140,16 @@ async fn sales_return_quarantine_inspection_and_replay() {
             .0,
         Decimal::from(6)
     );
+    let excessive: CreateReturn = serde_json::from_value(json!({"sourceId": shipment.id, "returnDate": date, "reasonCode": "customer_return", "lines": [{"sourceLineId": options.items[0].source_line_id, "quantity": "7"}]})).unwrap();
+    assert!(returns
+        .create_sales_return(
+            f.actor,
+            Uuid::new_v4(),
+            "sales-return-excessive",
+            &excessive
+        )
+        .await
+        .is_err());
     let confirmed = returns
         .confirm_sales_return(
             f.actor,
@@ -245,6 +256,84 @@ async fn sales_return_quarantine_inspection_and_replay() {
     );
     let movements: i64 = sqlx::query_scalar("SELECT count(*) FROM inventory_movements WHERE source_id=$1 AND movement_type='sales_return_scrap'").bind(ret.id).fetch_one(&pool).await.unwrap();
     assert_eq!(movements, 1);
+    let receipt_input = serde_json::from_value(json!({"legalEntityId": f.legal_entity, "customerId": f.customer, "currency": "CNY", "receiptDate": date, "amount": "600", "paymentMethod": "bank_transfer"})).unwrap();
+    let receipt = settlement
+        .create_receipt(
+            f.actor,
+            Uuid::new_v4(),
+            "return-cash-create",
+            &receipt_input,
+        )
+        .await
+        .unwrap();
+    let cash = settlement
+        .confirm_receipt(
+            f.actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "return-cash-confirm",
+            &version(1),
+        )
+        .await
+        .unwrap();
+    let receivable_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM trade_receivables WHERE shipment_id=$1")
+            .bind(shipment.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let allocation = serde_json::from_value(json!({"expectedReceiptVersion": cash.version, "allocations": [{"receivableId": receivable_id, "amount": "600"}]})).unwrap();
+    settlement
+        .apply_receipt(
+            f.actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "return-cash-apply",
+            &allocation,
+        )
+        .await
+        .unwrap();
+    let blocked = returns
+        .create_sales_return(f.actor, Uuid::new_v4(), "return-settled-draft", &input)
+        .await
+        .unwrap();
+    assert!(matches!(
+        returns
+            .confirm_sales_return(
+                f.actor,
+                Uuid::new_v4(),
+                blocked.id,
+                "return-settled-confirm",
+                &version(1)
+            )
+            .await,
+        Err(business_core::b2::DomainError::ReceivableAlreadySettled)
+    ));
+    let unchanged: (Decimal, Decimal, Decimal) = sqlx::query_as("SELECT on_hand_quantity,quarantined_quantity,inventory_value FROM inventory_balances WHERE sku_id=$1").bind(f.sku).fetch_one(&pool).await.unwrap();
+    assert_eq!(unchanged, balance);
+    let pending: (String, i64) =
+        sqlx::query_as("SELECT status,version FROM sales_returns WHERE id=$1")
+            .bind(blocked.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending, ("draft".into(), 1));
+    returns
+        .cancel_sales_return(
+            f.actor,
+            Uuid::new_v4(),
+            blocked.id,
+            "return-cancel-draft",
+            &version(1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        returns.sales_options(f.actor).await.unwrap().items[0]
+            .returnable_quantity
+            .0,
+        Decimal::from(6)
+    );
 }
 
 async fn create_order(
