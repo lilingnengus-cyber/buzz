@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmFollowupCreate } from "./CrmFollowupCreate";
 import { CrmDirectoryPage } from "./CrmDirectoryPage";
 import { request } from "./api";
 import { CrmDrawer } from "./CrmDrawer";
@@ -22,6 +23,22 @@ export function CrmRegisters({ view }: { view: "followups" | "contacts" }) {
   return view === "contacts" ? <CrmDirectoryPage /> : <CrmHistoryRegister />;
 }
 function CrmHistoryRegister() {
+  const [creating, setCreating] = React.useState(false);
+  const [canManage, setCanManage] = React.useState(false);
+  const [notice, setNotice] = React.useState("");
+  React.useEffect(() => {
+    let active = true;
+    request<{ canManage: boolean }>("/api/v1/crm/opportunities?offset=0")
+      .then((r) => {
+        if (active) setCanManage(r.canManage);
+      })
+      .catch(() => {
+        if (active) setCanManage(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const view = "followups";
   const title = "跟进记录";
   const [selected, setSelected] = React.useState<Note | null>(null);
@@ -68,9 +85,30 @@ function CrmHistoryRegister() {
         <div>
           <p className="eyebrow">售前 CRM</p>
           <h1>{title}</h1>
-          <p className="crm-hint">按时间查看客户沟通，回到商机继续跟进。</p>
+          <p className="crm-hint">
+            统一记录客户沟通，更新关联商机的阶段和下一步。
+          </p>
         </div>
+        {canManage && (
+          <button className="primary" onClick={() => setCreating(true)}>
+            新建跟进
+          </button>
+        )}
       </header>
+      {notice && <p role="status">{notice}</p>}
+      {creating && (
+        <CrmDrawer title="新建跟进" onClose={() => setCreating(false)}>
+          <CrmFollowupCreate
+            onSaved={async () => {
+              setCreating(false);
+              setQuery("");
+              setOffset(0);
+              setRevision((v) => v + 1);
+              setNotice("跟进已保存，关联商机已更新。");
+            }}
+          />
+        </CrmDrawer>
+      )}
       <div className="crm-toolbar">
         <label className="crm-search">
           搜索{title}
@@ -116,7 +154,9 @@ function CrmHistoryRegister() {
           <div className="crm-empty">
             <h2>{query ? "没有符合条件的记录" : `还没有${title}`}</h2>
             <p>
-              {query ? "调整搜索条件后重试。" : "打开商机，记录一次客户沟通。"}
+              {query
+                ? "调整搜索条件后重试。"
+                : "点击新建跟进，选择商机并记录客户沟通。"}
             </p>
             <a href="/#crm">查看商机</a>
           </div>
@@ -191,7 +231,6 @@ function CrmHistoryRegister() {
                 ) : (
                   <span className="crm-hint">未安排</span>
                 )}
-
               </div>
             </article>
           ))

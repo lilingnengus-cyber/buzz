@@ -163,13 +163,20 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   await expect(drawer.getByRole("heading", { name: "年度项目" })).toBeVisible();
   expect(opportunities[0].accountId).toBe("account-1");
   expect(opportunities[0].contactId).toBe("contact-1");
-  await drawer.getByLabel("本次沟通").fill("尚未提交的沟通");
-  await drawer.getByRole("button", { name: "编辑商机" }).click();
+  await expect(drawer.getByLabel("本次沟通")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.goto("/#crmFollowups");
+  await page.getByRole("button", { name: "新建跟进", exact: true }).click();
+  const followup = page.getByRole("dialog", { name: "新建跟进", exact: true });
+  await followup.getByRole("button", { name: /年度项目/ }).click();
+  await followup.getByLabel("本次沟通").fill("尚未提交的沟通");
+  await followup.getByRole("button", { name: "更换商机" }).click();
   await page.getByRole("button", { name: "继续编辑" }).click();
-  await expect(drawer.getByLabel("本次沟通")).toHaveValue("尚未提交的沟通");
+  await expect(followup.getByLabel("本次沟通")).toHaveValue("尚未提交的沟通");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "放弃修改", exact: true }).click();
-  await expect(drawer).not.toBeVisible();
+  await expect(followup).not.toBeVisible();
+  await page.goto("/#crm");
   for (const value of ["overdue", "today", "upcoming", "unscheduled", ""]) {
     const fetched = page.waitForRequest(
       (req) =>

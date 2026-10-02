@@ -223,7 +223,7 @@ test("跟进记录采用右侧详情，保留商机链接且不修改历史", as
   await row.focus();
   await page.keyboard.press("Space");
   await expect(detail).toBeVisible();
-  await detail.getByRole("link", { name: "打开商机继续跟进" }).click();
+  await detail.getByRole("link", { name: "查看关联商机" }).click();
   await expect(page).toHaveURL(/#crm\?opportunity=opp$/);
   expect(writes).toHaveLength(0);
 });
