@@ -16,6 +16,14 @@ impl CrmService {
         if !(0..=100000).contains(&filters.offset) {
             return Err(DomainError::Invalid("无效页码".into()));
         }
+        if let Some(mode) = &filters.followup {
+            if contacts
+                || !["overdue", "today", "upcoming", "unscheduled", "open"].contains(&mode.as_str())
+                || filters.today.is_none()
+            {
+                return Err(DomainError::Invalid("无效跟进筛选或本地日期".into()));
+            }
+        }
         let sql = if contacts {
             r#"SELECT jsonb_build_object('id',c.id,'accountId',c.account_id,'version',c.version,
               'companyName',COALESCE(b.name,a.name),'contactName',c.name,'contactDetails',c.details,
@@ -24,7 +32,7 @@ impl CrmService {
               FROM crm_contacts c JOIN crm_accounts a ON a.id=c.account_id LEFT JOIN business_customers b ON b.id=a.customer_id
               WHERE ((a.customer_id IS NOT NULL AND a.customer_id=ANY($3)) OR (a.customer_id IS NULL AND (a.owner_user_id=$6 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.account_id=a.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND o.customer_id IS NULL))))
                 AND ($4::text IS NULL OR strpos(lower(COALESCE(b.name,a.name)||' '||c.name||' '||c.details),lower($4))>0)
-                AND ($7::uuid IS NULL OR c.account_id=$7)
+                AND ($7::uuid IS NULL OR c.account_id=$7) AND $8::text IS NULL AND $9::date IS NULL
               ORDER BY COALESCE(b.name,a.name),c.name,c.id LIMIT 51 OFFSET $5"#
         } else {
             r#"SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,
@@ -36,7 +44,8 @@ impl CrmService {
               WHERE o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2)
                 AND (o.customer_id IS NULL OR o.customer_id=ANY($3))
                 AND ($4::text IS NULL OR strpos(lower(o.title||' '||o.company_name||' '||o.contact_name||' '||f.note),lower($4))>0)
-              AND $6::uuid IS NOT NULL AND ($7::uuid IS NULL OR o.account_id=$7) ORDER BY f.created_at DESC,f.id DESC LIMIT 51 OFFSET $5"#
+              AND $6::uuid IS NOT NULL AND ($7::uuid IS NULL OR o.account_id=$7)
+              AND ($8::text IS NULL OR (o.stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN o.next_follow_up < $9::date WHEN 'today' THEN o.next_follow_up = $9::date WHEN 'upcoming' THEN o.next_follow_up > $9::date AND o.next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN o.next_follow_up IS NULL WHEN 'open' THEN true ELSE false END)) ORDER BY f.created_at DESC,f.id DESC LIMIT 51 OFFSET $5"#
         };
         let mut items: Vec<Value> = sqlx::query_scalar(sql)
             .bind(
@@ -67,6 +76,8 @@ impl CrmService {
             .bind(filters.offset)
             .bind(actor)
             .bind(filters.account_id)
+            .bind(&filters.followup)
+            .bind(if contacts { None } else { filters.today })
             .fetch_all(self.store.pool())
             .await?;
         let has_more = items.len() > 50;

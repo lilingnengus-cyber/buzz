@@ -7,7 +7,6 @@ import { CrmDrawer } from "./CrmDrawer";
 import { CrmDetail } from "./CrmDetail";
 import {
   CRM_STAGES,
-  localDate,
   type CrmDetail as Detail,
   type CrmOption,
   type Opportunity,
@@ -25,7 +24,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("");
   const [mine, setMine] = React.useState(false);
-  const [due, setDue] = React.useState("open");
   const [offset, setOffset] = React.useState(0);
   const [selected, setSelected] = React.useState<string | null>(
     initialId ?? null,
@@ -49,10 +47,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       if (query.trim()) params.set("query", query.trim());
       if (stage) params.set("stage", stage);
       if (mine) params.set("mine", "true");
-      if (due) {
-        params.set("followup", due);
-        params.set("today", localDate());
-      }
       Promise.all([
         request<List>(`/api/v1/crm/opportunities?${params}`),
         request<{ items: CrmOption[] }>("/api/v1/crm/options"),
@@ -77,7 +71,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [query, stage, due, mine, offset, revision]);
+  }, [query, stage, mine, offset, revision]);
   React.useEffect(() => {
     let current = true;
     setDetail(null);
@@ -161,24 +155,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
-        <label>
-          跟进安排
-          <select
-            aria-label="跟进安排"
-            value={due}
-            onChange={(event) => {
-              setDue(event.target.value);
-              setOffset(0);
-            }}
-          >
-            <option value="open">进行中</option>
-            <option value="overdue">逾期</option>
-            <option value="today">今天</option>
-            <option value="upcoming">未来七天</option>
-            <option value="unscheduled">未安排</option>
-            <option value="">全部</option>
-          </select>
-        </label>
         <button
           aria-pressed={mine}
           onClick={() => {
@@ -198,7 +174,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
               aria-pressed={stage === value}
               onClick={() => {
                 setStage(value);
-                if (value === "won" || value === "lost") setDue("");
                 setOffset(0);
               }}
             >
@@ -240,12 +215,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           ) : !error && !data.items.length ? (
             <div className="crm-empty">
               <h2>
-                {query || stage || due || mine
+                {query || stage || mine
                   ? "没有符合条件的商机"
                   : "从一个潜在客户开始"}
               </h2>
               <p>
-                {query || stage || due || mine
+                {query || stage || mine
                   ? "调整筛选条件，或新建商机。"
                   : "新建商机，记录客户需求。"}
               </p>
