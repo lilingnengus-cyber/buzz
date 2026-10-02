@@ -308,6 +308,10 @@ impl From<Decimal> for DecimalString {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryBalanceView {
+    pub currency: Option<String>,
+    pub currency_conflict: bool,
+    pub unit_of_measure_id: Uuid,
+    pub unit_name: String,
     pub legal_entity_id: Uuid,
     pub warehouse_id: Uuid,
     pub sku_id: Uuid,

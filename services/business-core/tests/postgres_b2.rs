@@ -87,6 +87,14 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .await
         .unwrap();
     assert_eq!(posted.status, "posted");
+    let balance = inventory
+        .balances(fixture.actor, Some(fixture.sku), 10)
+        .await
+        .unwrap();
+    assert_eq!(balance[0].currency.as_deref(), Some("CNY"));
+    assert!(!balance[0].currency_conflict);
+    assert_eq!(balance[0].unit_of_measure_id, fixture.uom);
+    assert!(!balance[0].unit_name.is_empty());
     let replay = inventory
         .post_opening(
             fixture.actor,
@@ -808,6 +816,43 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .unwrap();
     assert!(audit_count >= 15);
     assert_eq!(audit_count, outbox_count);
+
+    // Existing ledgers can contain mixed currencies; the read model must not invent a denomination.
+    let mixed = inventory
+        .create_opening(
+            fixture.actor,
+            Uuid::new_v4(),
+            "audit-mixed-currency-create",
+            &CreateInventoryOpening {
+                legal_entity_id: fixture.legal_entity,
+                business_date: date,
+                currency: "USD".into(),
+                lines: vec![InventoryOpeningLineInput {
+                    warehouse_id: fixture.warehouse,
+                    sku_id: fixture.sku,
+                    quantity: dec(1),
+                    unit_cost: dec(1),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    inventory
+        .post_opening(
+            fixture.actor,
+            Uuid::new_v4(),
+            mixed.id,
+            "audit-mixed-currency-post",
+            &version(1),
+        )
+        .await
+        .unwrap();
+    let balance = inventory
+        .balances(fixture.actor, Some(fixture.sku), 10)
+        .await
+        .unwrap();
+    assert!(balance[0].currency.is_none());
+    assert!(balance[0].currency_conflict);
 
     let mut order_reads = Vec::with_capacity(100);
     let mut inventory_reads = Vec::with_capacity(100);
