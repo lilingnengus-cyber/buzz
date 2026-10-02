@@ -189,4 +189,26 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         services.detail(actor, project_id).await.unwrap()["receivable"]["openAmount"],
         "100.000000"
     );
+    let settlement =
+        business_core::b2::SettlementService::new(PgStore::new(pool.clone()), "RCPT".into());
+    let goods = settlement
+        .receivables_for_source(actor, None, 1, Some("goods"))
+        .await
+        .unwrap();
+    assert_eq!(goods.len(), 1);
+    assert!(goods[0].shipment_id.is_some());
+    let service = settlement
+        .receivables_for_source(actor, None, 1, Some("service"))
+        .await
+        .unwrap();
+    assert_eq!(service.len(), 1);
+    assert!(service[0].service_project_id.is_some());
+    assert!(settlement
+        .receivables_for_source(actor, None, 1, Some("unknown"))
+        .await
+        .is_err());
+    assert!(settlement
+        .receivables_for_source(Uuid::new_v4(), None, 1, Some("service"))
+        .await
+        .is_err());
 }

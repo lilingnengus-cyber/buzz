@@ -12,6 +12,8 @@ export type Section =
   | "numbering"
   | "serviceProjects"
   | "serviceDeliverables"
+  | "goodsOrders"
+  | "serviceOrders"
   | "sales"
   | "shipments"
   | "inventory"
@@ -70,11 +72,11 @@ export const NAV_GROUPS: Array<{
     label: "业务闭环",
     index: "04",
     items: [
-      { id: "sales", label: "销售订单闭环" },
-      { id: "serviceProjects", label: "服务项目" },
-      { id: "serviceDeliverables", label: "交付事项" },
-      { id: "inventory", label: "库存台账" },
+      { id: "sales", label: "销售订单" },
+      { id: "goodsOrders", label: "商品订单闭环" },
+      { id: "serviceOrders", label: "服务订单闭环" },
       { id: "purchasing", label: "采购订单闭环" },
+      { id: "inventory", label: "库存台账" },
     ],
   },
   {

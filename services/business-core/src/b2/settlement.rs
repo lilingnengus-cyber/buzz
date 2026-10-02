@@ -511,6 +511,23 @@ impl SettlementService {
         customer: Option<Uuid>,
         limit: i64,
     ) -> Result<Vec<ReceivableView>, DomainError> {
+        self.receivables_for_source(actor, customer, limit, None)
+            .await
+    }
+
+    /// List authorized receivables, filtering delivery source before the row limit.
+    pub async fn receivables_for_source(
+        &self,
+        actor: Uuid,
+        customer: Option<Uuid>,
+        limit: i64,
+        source: Option<&str>,
+    ) -> Result<Vec<ReceivableView>, DomainError> {
+        if source.is_some_and(|s| !["goods", "service"].contains(&s)) {
+            return Err(DomainError::Invalid(
+                "sourceKind must be goods or service".into(),
+            ));
+        }
         let snapshot = authorize(
             &self.store,
             actor,
@@ -522,7 +539,7 @@ impl SettlementService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,ReceivableView>("SELECT id,receivable_number,legal_entity_id,customer_id,sales_order_id,shipment_id,service_project_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND current_date>due_date) is_overdue,GREATEST(current_date-due_date,0)::int overdue_days,updated_at,version FROM trade_receivables WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,ReceivableView>("SELECT id,receivable_number,legal_entity_id,customer_id,sales_order_id,shipment_id,service_project_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND current_date>due_date) is_overdue,GREATEST(current_date-due_date,0)::int overdue_days,updated_at,version FROM trade_receivables WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) AND ($5::text IS NULL OR ($5='goods' AND shipment_id IS NOT NULL) OR ($5='service' AND service_project_id IS NOT NULL)) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).bind(source).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

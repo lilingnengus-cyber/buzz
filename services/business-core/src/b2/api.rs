@@ -179,6 +179,8 @@ impl B2ApiError {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ListQuery {
     #[serde(default)]
+    source_kind: Option<String>,
+    #[serde(default)]
     opportunity_id: Option<Uuid>,
     #[serde(default = "default_limit")]
     pub(super) limit: i64,
@@ -797,7 +799,12 @@ async fn list_receivables(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<impl serde::Serialize>, B2ApiError> {
     s.settlement
-        .receivables(c.actor_user_id, q.customer_id, q.limit)
+        .receivables_for_source(
+            c.actor_user_id,
+            q.customer_id,
+            q.limit,
+            q.source_kind.as_deref(),
+        )
         .await
         .map(|items| {
             Json(json!({"items":items,"dataAsOf":chrono::Utc::now(),"source":"business-core-b2"}))
