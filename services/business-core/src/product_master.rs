@@ -76,6 +76,8 @@ pub struct SaveProductMasterData {
     #[serde(default)]
     pub allow_zero_cost: Option<bool>,
     #[serde(default)]
+    pub service_kind: Option<String>,
+    #[serde(default)]
     pub factor_to_base: Option<Decimal>,
     #[serde(default)]
     pub usage_scope: Option<String>,
@@ -128,6 +130,7 @@ pub struct ProductMasterRecord {
     pub barcode: Option<String>,
     pub precision_scale: Option<i16>,
     pub allow_zero_cost: Option<bool>,
+    pub service_kind: Option<String>,
     pub factor_to_base: Option<Decimal>,
     pub usage_scope: Option<String>,
     pub version: i64,
@@ -205,7 +208,7 @@ impl ProductMasterService {
             .iter()
             .copied()
             .collect::<Vec<_>>();
-        let items=sqlx::query_as::<_,ProductMasterRecord>("SELECT resource_type,id,code,name,status,product_id,product_code,product_name,category_id,category_code,category_name,parent_category_id,parent_category_code,parent_category_name,brand_id,brand_code,brand_name,unit_of_measure_id,unit_of_measure_code,unit_of_measure_name,barcode,precision_scale,allow_zero_cost,factor_to_base,usage_scope,version,updated_at FROM product_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND (brand_id IS NULL OR brand_id=ANY($2)) ORDER BY CASE resource_type WHEN 'product_category' THEN 0 WHEN 'brand' THEN 1 WHEN 'unit_of_measure' THEN 2 WHEN 'product' THEN 3 WHEN 'sku' THEN 4 ELSE 5 END,code LIMIT $3")
+        let items=sqlx::query_as::<_,ProductMasterRecord>("SELECT resource_type,id,code,name,status,product_id,product_code,product_name,category_id,category_code,category_name,parent_category_id,parent_category_code,parent_category_name,brand_id,brand_code,brand_name,unit_of_measure_id,unit_of_measure_code,unit_of_measure_name,barcode,precision_scale,allow_zero_cost,factor_to_base,usage_scope,version,updated_at,(SELECT p.service_kind FROM business_products p WHERE p.id=CASE WHEN resource_type='product' THEN product_master_data_maintenance.id ELSE product_master_data_maintenance.product_id END) service_kind FROM product_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND (brand_id IS NULL OR brand_id=ANY($2)) ORDER BY CASE resource_type WHEN 'product_category' THEN 0 WHEN 'brand' THEN 1 WHEN 'unit_of_measure' THEN 2 WHEN 'product' THEN 3 WHEN 'sku' THEN 4 ELSE 5 END,code LIMIT $3")
             .bind(resource_type.map(ProductMasterType::as_str)).bind(brands).bind(limit.clamp(1,2000)).fetch_all(self.store.pool()).await?;
         Ok(ProductMasterList {
             items,
@@ -257,6 +260,18 @@ impl ProductMasterService {
                 return Err(DomainError::VersionConflict);
             }
             ensure_brand_scope(&snapshot, row.get("brand_id"))?;
+            if kind == ProductMasterType::Product {
+                let current: String =
+                    sqlx::query_scalar("SELECT service_kind FROM business_products WHERE id=$1")
+                        .bind(target_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                if input.service_kind.as_ref().is_some_and(|v| v != &current) {
+                    return Err(DomainError::Invalid(
+                        "商品类型建立后不可修改，请新建商品".into(),
+                    ));
+                }
+            }
             update_record(&mut tx, kind, target_id, input).await?;
         } else {
             if input.expected_version.is_some() {
@@ -417,6 +432,13 @@ fn validate(
     kind: ProductMasterType,
     updating: bool,
 ) -> Result<(), DomainError> {
+    if input
+        .service_kind
+        .as_deref()
+        .is_some_and(|v| !["goods", "technical_service", "software_service"].contains(&v))
+    {
+        return Err(DomainError::Invalid("无效服务类型".into()));
+    }
     if kind != ProductMasterType::UomConversion {
         let code_ok = (2..=32).contains(&input.code.len())
             && input
@@ -522,7 +544,7 @@ async fn insert_record(
                 .await?;
         }
         ProductMasterType::Product => {
-            sqlx::query("INSERT INTO business_products(id,code,name,category_id,brand_id,base_uom_id,allow_zero_cost) VALUES($1,$2,$3,$4,$5,$6,$7)").bind(id).bind(&input.code).bind(input.name.trim()).bind(input.category_id).bind(input.brand_id).bind(input.base_uom_id).bind(input.allow_zero_cost.unwrap_or(false)).execute(&mut **tx).await?;
+            sqlx::query("INSERT INTO business_products(id,code,name,category_id,brand_id,base_uom_id,allow_zero_cost,service_kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(id).bind(&input.code).bind(input.name.trim()).bind(input.category_id).bind(input.brand_id).bind(input.base_uom_id).bind(input.allow_zero_cost.unwrap_or(false)).bind(input.service_kind.as_deref().unwrap_or("goods")).execute(&mut **tx).await?;
         }
         ProductMasterType::Sku => {
             sqlx::query(
@@ -572,10 +594,11 @@ async fn update_record(
                 .await?;
         }
         ProductMasterType::Product => {
-            sqlx::query("UPDATE business_products SET name=$2,allow_zero_cost=$3 WHERE id=$1")
+            sqlx::query("UPDATE business_products SET name=$2,allow_zero_cost=$3,service_kind=COALESCE($4,service_kind) WHERE id=$1")
                 .bind(id)
                 .bind(input.name.trim())
                 .bind(input.allow_zero_cost.unwrap_or(false))
+                .bind(input.service_kind.as_deref())
                 .execute(&mut **tx)
                 .await?;
         }
@@ -691,6 +714,7 @@ mod tests {
             barcode: None,
             precision_scale: None,
             allow_zero_cost: None,
+            service_kind: None,
             factor_to_base: Some(Decimal::ZERO),
             usage_scope: Some("both".into()),
             expected_version: None,

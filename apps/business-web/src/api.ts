@@ -205,6 +205,7 @@ export type ProductMasterType =
   | "uom_conversion";
 
 export type ProductMasterRecord = {
+  serviceKind?: "goods" | "technical_service" | "software_service";
   resourceType: ProductMasterType;
   id: string;
   code: string;

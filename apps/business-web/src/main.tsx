@@ -57,6 +57,7 @@ import {
   SalesOrderWorkflowPage,
 } from "./OrderWorkflowPages";
 import { CrmRegisters } from "./CrmRegisters";
+import { ServiceProjects } from "./ServiceProjects";
 import { CrmPage } from "./CrmPage";
 import "./styles.css";
 
@@ -301,6 +302,13 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
   if (section === "trends") return <OperatingTrendsView />;
+  if (section === "serviceProjects" || section === "serviceDeliverables")
+    return (
+      <ServiceProjects
+        key={section}
+        tasks={section === "serviceDeliverables"}
+      />
+    );
   if (section === "crm") return <CrmPage key={id} initialId={id} />;
   if (section === "crmFollowups" || section === "crmContacts")
     return (
