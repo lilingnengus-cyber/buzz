@@ -129,7 +129,7 @@ pub(super) async fn list_orders(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<impl serde::Serialize>, B2ApiError> {
     s.sales
-        .list_orders(c.actor_user_id, q.limit)
+        .list_orders_for_opportunity(c.actor_user_id, q.limit, q.opportunity_id)
         .await
         .map(|items| {
             Json(json!({"items":items,"dataAsOf":chrono::Utc::now(),"source":"business-core-b2"}))

@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmRelatedOrders } from "./CrmRelatedOrders";
 import { SalesOrderEntry } from "./SalesOrderEntry";
 import { CrmConversionFields } from "./CrmConversionFields";
 import { useCrmDraft } from "./CrmDrawer";
@@ -22,6 +23,7 @@ export function CrmDetail({
   const item = data.item;
   const [orderEntry, setOrderEntry] = React.useState(false);
   const [orderSaved, setOrderSaved] = React.useState(false);
+  const [orderRevision, setOrderRevision] = React.useState(0);
   const [history, setHistory] = React.useState(data.followups);
   const [hasOlder, setHasOlder] = React.useState(data.hasOlderFollowups);
   const [historyLoading, setHistoryLoading] = React.useState(false);
@@ -118,6 +120,7 @@ export function CrmDetail({
             draft.saved();
             setOrderEntry(false);
             setOrderSaved(true);
+            setOrderRevision((v) => v + 1);
           }}
         />
       </div>
@@ -202,6 +205,9 @@ export function CrmDetail({
             </>
           )}
         </p>
+      )}
+      {item.customerId && (
+        <CrmRelatedOrders opportunityId={item.id} revision={orderRevision} />
       )}
       {canManage && (
         <form
