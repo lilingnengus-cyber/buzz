@@ -171,8 +171,8 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   await expect(form.getByLabel("客户公司")).toHaveValue("杭州示例企业");
   await form.getByLabel("联系人", { exact: true }).fill("陈经理");
   await form.getByLabel("预计金额").fill("1250.50");
-  await form.getByLabel("下一步", { exact: true }).fill("发送初步方案");
-  await form.getByLabel("下次跟进日期").fill("2026-09-20");
+  await expect(form.getByLabel("下一步", { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel("下次跟进日期")).toHaveCount(0);
   await form.getByRole("button", { name: "保存商机", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "商机详情" });
   await expect(
@@ -181,15 +181,22 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   expect(records[0].expectedAmountMinor).toBe(125050);
   expect(writes).toBe(1);
   await expect.poll(() => operatingUnitPreference).toBe("unit");
-  await detail.getByLabel("本次沟通").fill("客户确认需求，准备报价。");
-  await detail.getByLabel("更新阶段").selectOption("quoting");
-  await detail.getByLabel("下一步", { exact: true }).fill("提交报价单");
-  await detail.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect(detail.getByLabel("本次沟通")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.goto("/#crmFollowups");
+  await page.getByRole("button", { name: "新建跟进", exact: true }).click();
+  const followup = page.getByRole("dialog", { name: "新建跟进", exact: true });
+  await followup.getByRole("button", { name: /企业年度采购/ }).click();
+  await followup.getByLabel("本次沟通").fill("客户确认需求，准备报价。");
+  await followup.getByLabel("更新阶段").selectOption("quoting");
+  await followup.getByLabel("下一步", { exact: true }).fill("提交报价单");
+  await followup.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect(followup).not.toBeVisible();
   await expect(
-    detail.getByText("客户确认需求，准备报价。", { exact: true }),
+    page.getByText("客户确认需求，准备报价。", { exact: true }),
   ).toBeVisible();
   expect(writes).toBe(2);
-  await page.getByRole("button", { name: "关闭详情弹窗" }).click();
+  await page.goto("/#crm");
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.locator(".crm-row").filter({ hasText: "企业年度采购" }).click();
   await expect(

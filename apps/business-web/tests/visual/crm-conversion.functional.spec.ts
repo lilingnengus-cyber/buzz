@@ -78,8 +78,10 @@ test("成交确认正式客户和联系人，失败保留输入，成功刷新�
       });
     return route.fulfill({ json: { items: [] } });
   });
-  await page.goto("/#crm?opportunity=opp");
+  await page.goto("/#crmFollowups");
+  await page.getByRole("button", { name: "新建跟进", exact: true }).click();
   const drawer = page.getByRole("dialog");
+  await drawer.locator(".crm-register-card").click();
   await drawer.getByLabel("更新阶段").selectOption("won");
   await expect(
     drawer.getByRole("heading", { name: "成交转客户" }),
@@ -98,8 +100,9 @@ test("成交确认正式客户和联系人，失败保留输入，成功刷新�
     "13800138000",
   );
   await drawer.getByRole("button", { name: "确认成交并保存档案" }).click();
+  await expect(drawer).not.toBeVisible();
   await expect(
-    drawer.getByText("已有客户", { exact: true }).first(),
+    page.getByRole("status").filter({ hasText: "跟进已保存" }),
   ).toBeVisible();
   expect(attempts).toBe(2);
 });

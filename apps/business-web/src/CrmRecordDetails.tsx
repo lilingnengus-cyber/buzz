@@ -226,7 +226,7 @@ export function CrmFollowupDetail({ item }: { item: CrmFollowupRecord }) {
         <p>{item.nextAction || "未安排"}</p>
       </div>
       <a href={`/#crm?opportunity=${encodeURIComponent(item.opportunityId)}`}>
-        打开商机继续跟进
+        查看关联商机
       </a>
     </div>
   );

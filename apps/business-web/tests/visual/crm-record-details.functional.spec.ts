@@ -192,7 +192,7 @@ test("跟进记录采用右侧详情，保留商机链接且不修改历史", as
   await row.focus();
   await page.keyboard.press("Space");
   await expect(detail).toBeVisible();
-  await detail.getByRole("link", { name: "打开商机继续跟进" }).click();
+  await detail.getByRole("link", { name: "查看关联商机" }).click();
   await expect(page).toHaveURL(/#crm\?opportunity=opp$/);
   expect(writes).toHaveLength(0);
 });
@@ -207,6 +207,35 @@ test("跟进与联系人列表分列展示，窄屏没有横向溢出", async ({
   await expect(page.locator(".crm-register-columns")).toContainText("跟进日期");
   await waitForAnimations(page);
   await page.screenshot({ path: "test-results/crm-followup-list.png" });
+  await expect(
+    page.locator(".crm-followup-grid.crm-register-columns > span"),
+  ).toHaveText([
+    "商机",
+    "客户",
+    "联系人",
+    "阶段",
+    "沟通内容",
+    "下一步",
+    "跟进日期",
+    "记录人",
+    "记录时间",
+    "流失原因",
+  ]);
+  await page.setViewportSize({ width: 520, height: 900 });
+  await expect(
+    page.locator(".crm-followup-grid.crm-register-columns"),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(520);
+  expect(
+    await page
+      .locator(".crm-followup-scroll")
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true);
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-followup-columns-520.png" });
+  await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/#crmContacts");
   await expect(
     page.getByRole("button", { name: "查看联系人：张经理", exact: true }),

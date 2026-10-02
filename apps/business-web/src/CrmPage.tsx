@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmImport } from "./CrmImport";
 import { request } from "./api";
 import { formatMoney } from "./formatters";
 import { CrmForm } from "./CrmForm";
@@ -6,7 +7,6 @@ import { CrmDrawer } from "./CrmDrawer";
 import { CrmDetail } from "./CrmDetail";
 import {
   CRM_STAGES,
-  isDue,
   localDate,
   type CrmDetail as Detail,
   type CrmOption,
@@ -32,6 +32,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   );
   const [detail, setDetail] = React.useState<Detail | null>(null);
   const [editing, setEditing] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
@@ -115,7 +116,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
         <div>
           <p className="eyebrow">售前 CRM</p>
           <h1>商机</h1>
-          <p className="crm-hint">从线索到成交，让每个商机都有下一步。</p>
+          <p className="crm-hint">集中管理客户需求与销售进展。</p>
         </div>
         {data.canManage && !creating && (
           <button
@@ -130,7 +131,17 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             新建商机
           </button>
         )}
+        {data.canManage && (
+          <button onClick={() => setImporting(true)}>批量导入</button>
+        )}
       </header>
+      {importing && (
+        <CrmImport
+          options={options}
+          onClose={() => setImporting(false)}
+          onChanged={() => setRevision((v) => v + 1)}
+        />
+      )}
       {notice && (
         <p role="status" className="crm-notice">
           {notice}
@@ -221,8 +232,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             <span>联系人</span>
             <span>销售阶段</span>
             <span>预计金额</span>
-            <span>下一步</span>
-            <span>跟进日期</span>
           </div>
           {loading ? (
             <p className="crm-empty" role="status">
@@ -238,7 +247,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
               <p>
                 {query || stage || due || mine
                   ? "调整筛选条件，或新建商机。"
-                  : "新建商机，记下需求和下一步跟进。"}
+                  : "新建商机，记录客户需求。"}
               </p>
             </div>
           ) : (
@@ -278,19 +287,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                         item.currency,
                         item.expectedAmountMinor / 100,
                       )}
-                </span>
-                <span className="crm-opportunity-next" data-label="下一步">
-                  {item.nextAction || "待安排下一步"}
-                </span>
-                <span
-                  data-label="跟进日期"
-                  className={`crm-opportunity-date ${isDue(item) ? "crm-due" : "crm-followup-date"}`}
-                >
-                  {item.stage === "won" || item.stage === "lost"
-                    ? "已结束"
-                    : item.nextFollowUp
-                      ? `${item.nextFollowUp === localDate() ? "今天" : item.nextFollowUp} 跟进${isDue(item) && item.nextFollowUp < localDate() ? " · 已逾期" : ""}`
-                      : "未安排跟进日期"}
                 </span>
               </button>
             ))
@@ -353,7 +349,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                   data={detail}
                   canManage={data.canManage}
                   onEdit={() => setEditing(true)}
-                  onRefresh={refresh}
                 />
               ))
             )}

@@ -118,3 +118,25 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Preserve one column per field on all widths; scroll only the register. */
+.crm-followup-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.crm-followup-scroll .crm-followup-grid {
+  display: grid;
+  grid-template-columns: 10rem 10rem 6rem 6rem minmax(14rem, 2fr) minmax(
+      10rem,
+      1fr
+    ) 7rem 8rem 10rem 10rem;
+  min-width: 105rem;
+  gap: 1rem;
+  align-items: center;
+}
+.crm-followup-scroll .crm-register-columns {
+  white-space: nowrap;
+}
+.crm-followup-scroll .crm-register-cell .crm-stage {
+  justify-self: start;
+}

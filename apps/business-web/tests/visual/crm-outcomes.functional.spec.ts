@@ -121,20 +121,34 @@ test("分配负责人、预计成交日期、流失原因与重新跟进", async
   await drawer.getByRole("button", { name: "保存商机", exact: true }).click();
   await expect(drawer.getByText("李同事", { exact: true })).toBeVisible();
   await expect(drawer.getByText("2026-11-30", { exact: true })).toBeVisible();
-  await drawer.getByLabel("本次沟通").fill("客户预算暂停");
-  await drawer.getByLabel("更新阶段").selectOption("lost");
-  await drawer.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await page.keyboard.press("Escape");
+  const startFollowup = async () => {
+    await page.goto("/#crmFollowups");
+    await page.getByRole("button", { name: "新建跟进", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "新建跟进", exact: true })
+      .getByRole("button", { name: /年度采购/ })
+      .click();
+  };
+  await startFollowup();
+  const followup = page.getByRole("dialog", { name: "新建跟进", exact: true });
+  await followup.getByLabel("本次沟通").fill("客户预算暂停");
+  await followup.getByLabel("更新阶段").selectOption("lost");
+  await followup.getByRole("button", { name: "保存跟进", exact: true }).click();
   expect(writes).toBe(1);
-  await expect(drawer.getByLabel("流失原因", { exact: true })).toBeFocused();
-  await drawer.getByLabel("流失原因", { exact: true }).fill("预算取消");
-  await drawer.getByRole("button", { name: "保存跟进", exact: true }).click();
-  await expect(
-    drawer.locator(".crm-next").filter({ hasText: "流失原因" }),
-  ).toContainText("预算取消");
-  await drawer.getByLabel("本次沟通").fill("客户重新启动项目");
-  await drawer.getByLabel("更新阶段").selectOption("contacting");
-  await expect(drawer.getByLabel("流失原因", { exact: true })).toHaveCount(0);
-  await drawer.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect(followup.getByLabel("流失原因", { exact: true })).toBeFocused();
+  await followup.getByLabel("流失原因", { exact: true }).fill("预算取消");
+  await followup.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect(followup).not.toBeVisible();
+  expect(item.lossReason).toBe("预算取消");
+  await startFollowup();
+  await followup.getByLabel("本次沟通").fill("客户重新启动项目");
+  await followup.getByLabel("更新阶段").selectOption("contacting");
+  await expect(followup.getByLabel("流失原因", { exact: true })).toHaveCount(0);
+  await followup.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect(followup).not.toBeVisible();
+  await page.goto("/#crm");
+  await page.locator(".crm-row").click();
   await expect(drawer.locator(".crm-history")).toContainText(
     "流失原因：预算取消",
   );
@@ -151,4 +165,21 @@ test("分配负责人、预计成交日期、流失原因与重新跟进", async
   ).toBeVisible();
   await page.getByRole("button", { name: "我的商机", exact: true }).click();
   await expect(page.locator(".crm-row")).toContainText("李同事");
+});
+
+test("只读跟进页隐藏新建入口", async ({ page }) => {
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    return route.fulfill({
+      json:
+        path === "/api/session"
+          ? { authenticated: true, csrfToken: "csrf" }
+          : { items: [], hasMore: false, canManage: false },
+    });
+  });
+  await page.goto("/#crmFollowups");
+  await expect(
+    page.getByRole("heading", { name: "跟进记录", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "新建跟进" })).toHaveCount(0);
 });
