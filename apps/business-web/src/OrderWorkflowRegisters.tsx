@@ -295,7 +295,7 @@ export function ReceivablesRegister({
   return (
     <Register
       columns={["经营应收", "关联销售", "原始金额", "未收金额", "状态"]}
-      empty="暂无经营应收。确认出库后，系统会在同一事务中生成应收。"
+      empty="暂无经营应收。商品确认出库或服务验收通过后，系统会自动生成对应应收。"
       count={rows.length}
     >
       {rows.map((row) => (

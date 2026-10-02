@@ -1,9 +1,11 @@
 import { NAV, type Section } from "./businessNavigation";
 
 export const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
-  shipments: "sales",
-  receivables: "sales",
-  receipts: "sales",
+  shipments: "goodsOrders",
+  receivables: "goodsOrders",
+  receipts: "goodsOrders",
+  serviceProjects: "serviceOrders",
+  serviceDeliverables: "serviceOrders",
   goodsReceipts: "purchasing",
   payables: "purchasing",
   supplierPayments: "purchasing",

@@ -81,7 +81,15 @@ const localDay = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-export function ServiceProjects({ tasks = false }: { tasks?: boolean }) {
+export function ServiceProjects({
+  tasks = false,
+  embedded = false,
+  onChanged,
+}: {
+  tasks?: boolean;
+  embedded?: boolean;
+  onChanged?: () => void;
+}) {
   const [rows, setRows] = React.useState<RecordData[]>([]),
     [query, setQuery] = React.useState(""),
     [status, setStatus] = React.useState(""),
@@ -131,7 +139,7 @@ export function ServiceProjects({ tasks = false }: { tasks?: boolean }) {
       <header className="crm-heading">
         <div>
           <p>业务闭环</p>
-          <h1>{title}</h1>
+          {embedded ? <h2>{title}</h2> : <h1>{title}</h1>}
           <p>
             {tasks
               ? "按项目记录交付内容与进度。"
@@ -233,6 +241,7 @@ export function ServiceProjects({ tasks = false }: { tasks?: boolean }) {
             onSaved={() => {
               setCreate(false);
               setRevision((v) => v + 1);
+              onChanged?.();
             }}
           />
         </CrmDrawer>
@@ -242,7 +251,10 @@ export function ServiceProjects({ tasks = false }: { tasks?: boolean }) {
           <ProjectDetail
             id={selected}
             canManage={canManage}
-            onSaved={() => setRevision((v) => v + 1)}
+            onSaved={() => {
+              setRevision((v) => v + 1);
+              onChanged?.();
+            }}
           />
         </CrmDrawer>
       )}

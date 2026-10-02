@@ -1,79 +1,69 @@
-import {
-  CommandConfirmation,
-  WorkflowError,
-  useWorkflowData,
-} from "./OrderWorkflowSupport";
-import {
-  PlusIcon,
-  SearchIcon,
-  TruckIcon,
-  ReceiveIcon,
-} from "./OrderWorkflowIcons";
-import { LinkedOrderDetail } from "./LinkedOrderDetail";
 import React from "react";
 import {
   type ApiFailure,
   type BusinessReturn,
-  type Envelope,
   type GoodsReceipt,
   type Payable,
   type PurchaseOrder,
-  type Receipt,
-  type Receivable,
-  type SalesOrder,
-  type Shipment,
   type SupplierPayment,
-  request,
   toApiFailure,
 } from "./api";
-import { formatAmount } from "./formatters";
 import { GoodsReceiptConfirmation } from "./GoodsReceiptConfirmation";
 import { GoodsReceiptEntry } from "./GoodsReceiptEntry";
+import { LinkedOrderDetail } from "./LinkedOrderDetail";
+import "./order-workflow-detail.css";
+import "./order-workflows.css";
+import { PlusIcon, ReceiveIcon } from "./OrderWorkflowIcons";
 import {
-  GoodsReceiptsRegister,
-  PayablesRegister,
-  PaymentsRegister,
-  PurchaseOrdersRegister,
-  ReceiptsRegister,
-  ReceivablesRegister,
-  ReturnsRegister,
-  SalesOrdersRegister,
-  ShipmentsRegister,
-} from "./OrderWorkflowRegisters";
+  WorkflowDimensionFilters,
+  WorkflowPage,
+  WorkflowPulse,
+  WorkflowRail,
+  WorkflowToolbar,
+  compactErrors,
+  dimensionLabel,
+  dimensionOptions,
+  filterRows,
+  loadWorkflowStage,
+  money,
+  ratio,
+  returnConfirmation,
+  sum,
+  workflowMetric,
+  workflowNote,
+  workflowValue,
+} from "./OrderWorkflowLayout";
 import {
   RecordDetail,
   WorkflowModal,
   type WorkflowModalState,
 } from "./OrderWorkflowModal";
+import {
+  GoodsReceiptsRegister,
+  PayablesRegister,
+  PaymentsRegister,
+  PurchaseOrdersRegister,
+  ReturnsRegister,
+} from "./OrderWorkflowRegisters";
+import {
+  CommandConfirmation,
+  WorkflowError,
+  useWorkflowData,
+} from "./OrderWorkflowSupport";
+import { PurchaseDeliveryPanel } from "./PurchaseDeliveryPanel";
 import { PurchaseOrderConfirmation } from "./PurchaseOrderConfirmation";
 import { PurchaseOrderEntry } from "./PurchaseOrderEntry";
-import { PurchaseDeliveryPanel } from "./PurchaseDeliveryPanel";
-import { SalesOrderConfirmation } from "./SalesOrderConfirmation";
-import { SalesOrderEntry } from "./SalesOrderEntry";
-import { PurchaseReturnEntry, SalesReturnEntry } from "./ReturnEntry";
 import {
   PurchaseReturnAcknowledgment,
   PurchaseReturnDispatch,
   ReturnAnalyticsPanel,
-  SalesReturnInspection,
 } from "./ReturnDispositionForms";
-import { ShipmentConfirmation } from "./ShipmentConfirmation";
-import { ShipmentEntry } from "./ShipmentEntry";
+import { PurchaseReturnEntry } from "./ReturnEntry";
 import {
-  CustomerReceiptEntry,
-  CustomerReceiptSettlement,
   SupplierPaymentEntry,
   SupplierPaymentSettlement,
 } from "./SettlementForms";
-import "./order-workflows.css";
-import "./order-workflow-detail.css";
 
-type SalesTab =
-  | "orders"
-  | "fulfillment"
-  | "receivables"
-  | "settlement"
-  | "returns";
 type PurchaseTab =
   | "orders"
   | "delivery"
@@ -82,15 +72,6 @@ type PurchaseTab =
   | "settlement"
   | "returns";
 type ModalState = WorkflowModalState;
-
-type SalesWorkflowData = {
-  orders: SalesOrder[];
-  shipments: Shipment[];
-  receivables: Receivable[];
-  receipts: Receipt[];
-  returns: BusinessReturn[];
-  errors: Partial<Record<SalesTab, ApiFailure>>;
-};
 
 type PurchaseWorkflowData = {
   orders: PurchaseOrder[];
@@ -101,14 +82,6 @@ type PurchaseWorkflowData = {
   errors: Partial<Record<PurchaseTab, ApiFailure>>;
 };
 
-const salesStages: Array<{ id: SalesTab; code: string; label: string }> = [
-  { id: "orders", code: "01", label: "销售订单" },
-  { id: "fulfillment", code: "02", label: "出库履约" },
-  { id: "receivables", code: "03", label: "经营应收" },
-  { id: "settlement", code: "04", label: "收款核销" },
-  { id: "returns", code: "05", label: "销售退货" },
-];
-
 const purchaseStages: Array<{ id: PurchaseTab; code: string; label: string }> =
   [
     { id: "orders", code: "01", label: "采购订单" },
@@ -118,310 +91,6 @@ const purchaseStages: Array<{ id: PurchaseTab; code: string; label: string }> =
     { id: "settlement", code: "05", label: "付款核销" },
     { id: "returns", code: "06", label: "采购退货" },
   ];
-
-export function SalesOrderWorkflowPage({ id }: { id?: string }) {
-  return id ? (
-    <LinkedOrderDetail key={id} domain="sales" id={id} />
-  ) : (
-    <SalesOrderRegisterPage />
-  );
-}
-
-function SalesOrderRegisterPage() {
-  const [tab, setTab] = React.useState<SalesTab>("orders");
-  const [revision, setRevision] = React.useState(0);
-  const [modal, setModal] = React.useState<ModalState | null>(null);
-  const [query, setQuery] = React.useState("");
-  const [legalEntityId, setLegalEntityId] = React.useState("");
-  const [businessUnitId, setBusinessUnitId] = React.useState("");
-  const state = useWorkflowData<SalesWorkflowData>(async () => {
-    const [orders, shipments, receivables, receipts, returns] =
-      await Promise.all([
-        loadWorkflowStage<SalesOrder>("/api/v1/sales-orders?limit=200"),
-        loadWorkflowStage<Shipment>("/api/v1/shipments?limit=200"),
-        loadWorkflowStage<Receivable>("/api/v1/trade-receivables?limit=200"),
-        loadWorkflowStage<Receipt>("/api/v1/customer-receipts?limit=200"),
-        loadWorkflowStage<BusinessReturn>("/api/v1/sales-returns?limit=200"),
-      ]);
-    return {
-      orders: orders.items,
-      shipments: shipments.items,
-      receivables: receivables.items,
-      receipts: receipts.items,
-      returns: returns.items,
-      errors: compactErrors<SalesTab>({
-        orders: orders.error,
-        fulfillment: shipments.error,
-        receivables: receivables.error,
-        settlement: receipts.error,
-        returns: returns.error,
-      }),
-    };
-  }, [revision]);
-  const data = state.data;
-  const stageError = data?.errors[tab] ?? null;
-  const search = query.trim().toLowerCase();
-  const sourceOrders = data?.orders ?? [];
-  const legalEntityOptions = dimensionOptions(
-    sourceOrders,
-    (item) => item.legalEntityId,
-    (item) => dimensionLabel(item.legalEntityName, item.legalEntityCode),
-  );
-  const businessUnitOptions = dimensionOptions(
-    sourceOrders,
-    (item) => item.businessUnitId,
-    (item) => dimensionLabel(item.businessUnitName, item.businessUnitCode),
-  );
-  const orders = filterRows(sourceOrders, search, (item) => [
-    item.orderNumber,
-    item.customerId,
-    item.customerCode,
-    item.customerName,
-    item.legalEntityCode,
-    item.legalEntityName,
-    item.businessUnitCode,
-    item.businessUnitName,
-    item.lifecycleStatus,
-  ]).filter(
-    (item) =>
-      (!legalEntityId || item.legalEntityId === legalEntityId) &&
-      (!businessUnitId || item.businessUnitId === businessUnitId),
-  );
-  const shipments = filterRows(data?.shipments ?? [], search, (item) => [
-    item.shipmentNumber,
-    item.salesOrderId,
-    item.status,
-  ]);
-  const receivables = filterRows(data?.receivables ?? [], search, (item) => [
-    item.receivableNumber,
-    item.customerId,
-    item.salesOrderId,
-    item.status,
-  ]);
-  const receipts = filterRows(data?.receipts ?? [], search, (item) => [
-    item.receiptNumber,
-    item.customerId,
-    item.status,
-  ]);
-  const returns = filterRows(data?.returns ?? [], search, (item) => [
-    item.returnNumber,
-    item.sourceId,
-    item.partnerId,
-    item.reasonCode,
-    item.status,
-  ]);
-  const openReceivable = (data?.receivables ?? []).reduce(
-    (total, item) => total + Number(item.openAmount),
-    0,
-  );
-  const completedOrders = (data?.orders ?? []).filter(
-    (item) => item.fulfillmentStatus === "shipped",
-  ).length;
-  const refresh = () => setRevision((value) => value + 1);
-  const done = () => {
-    setModal(null);
-    refresh();
-  };
-
-  return (
-    <WorkflowPage
-      domain="sales"
-      eyebrow="销售闭环 / Order to cash"
-      title="销售订单闭环"
-      caption="从客户承诺、库存预占、分批出库到经营应收与收款核销，始终沿同一销售订单追溯。"
-      primaryAction={
-        data && !data.errors.orders ? (
-          <button
-            type="button"
-            onClick={() => setModal({ kind: "sales-create" })}
-          >
-            <PlusIcon /> 新增销售订单
-          </button>
-        ) : undefined
-      }
-      secondaryAction={
-        data && !data.errors.fulfillment ? (
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setModal({ kind: "shipment-create" })}
-          >
-            <TruckIcon /> 新建出库单
-          </button>
-        ) : undefined
-      }
-    >
-      <WorkflowRail
-        active={tab}
-        stages={salesStages}
-        onSelect={(value) => setTab(value as SalesTab)}
-        metrics={[
-          workflowMetric(data?.errors.orders, `${data?.orders.length ?? 0} 单`),
-          "实时",
-          workflowMetric(
-            data?.errors.fulfillment,
-            `${data?.shipments.length ?? 0} 次`,
-          ),
-          workflowMetric(
-            data?.errors.receivables,
-            `待收 ${money(openReceivable)}`,
-          ),
-          workflowMetric(
-            data?.errors.settlement,
-            `${data?.receipts.length ?? 0} 笔`,
-          ),
-          workflowMetric(
-            data?.errors.returns,
-            `${data?.returns.length ?? 0} 笔`,
-          ),
-        ]}
-      />
-      <WorkflowPulse
-        items={[
-          {
-            label: "订单总额",
-            value: workflowValue(
-              data?.errors.orders,
-              money(sum(data?.orders, "grossAmount")),
-            ),
-            note: workflowNote(
-              data?.errors.orders,
-              `${data?.orders.length ?? 0} 张订单`,
-            ),
-          },
-          {
-            label: "已履约订单",
-            value: workflowValue(data?.errors.orders, String(completedOrders)),
-            note: workflowNote(
-              data?.errors.orders,
-              `履约率 ${ratio(completedOrders, data?.orders.length ?? 0)}`,
-            ),
-          },
-          {
-            label: "经营应收余额",
-            value: workflowValue(
-              data?.errors.receivables,
-              money(openReceivable),
-            ),
-            note: workflowNote(
-              data?.errors.receivables,
-              `${(data?.receivables ?? []).filter((item) => item.status !== "settled").length} 笔未结`,
-            ),
-          },
-        ]}
-      />
-      <WorkflowToolbar
-        query={query}
-        onQuery={setQuery}
-        placeholder="搜索订单号、客户、出库单或应收单…"
-        filters={
-          tab === "orders" ? (
-            <WorkflowDimensionFilters
-              legalEntityId={legalEntityId}
-              legalEntityOptions={legalEntityOptions}
-              onLegalEntity={setLegalEntityId}
-              businessUnitId={businessUnitId}
-              businessUnitOptions={businessUnitOptions}
-              onBusinessUnit={setBusinessUnitId}
-            />
-          ) : undefined
-        }
-        meta={
-          state.loading ? "正在同步业务事实…" : `数据已同步 · v${revision + 1}`
-        }
-      />
-      {state.error || stageError ? (
-        <WorkflowError
-          error={
-            state.error ?? stageError ?? toApiFailure(null, "业务数据加载失败")
-          }
-          resourceLabel={
-            salesStages.find((stage) => stage.id === tab)?.label ?? "销售闭环"
-          }
-          onRetry={refresh}
-        />
-      ) : (
-        <div className="workflow-register" aria-busy={state.loading}>
-          {tab === "orders" && (
-            <SalesOrdersRegister rows={orders} onModal={setModal} />
-          )}
-          {tab === "fulfillment" && (
-            <ShipmentsRegister rows={shipments} onModal={setModal} />
-          )}
-          {tab === "receivables" && (
-            <ReceivablesRegister rows={receivables} onModal={setModal} />
-          )}
-          {tab === "settlement" && (
-            <ReceiptsRegister
-              rows={receipts}
-              onModal={setModal}
-              onCreate={() => setModal({ kind: "customer-receipt-create" })}
-            />
-          )}
-          {tab === "returns" && (
-            <>
-              <ReturnAnalyticsPanel side="sales" />
-              <ReturnsRegister
-                rows={returns}
-                side="sales"
-                onModal={setModal}
-                onCreate={() => setModal({ kind: "sales-return-create" })}
-              />
-            </>
-          )}
-        </div>
-      )}
-      {modal && (
-        <WorkflowModal state={modal} onClose={() => setModal(null)}>
-          {modal.kind === "sales-create" && <SalesOrderEntry onDone={done} />}
-          {modal.kind === "sales-edit" && (
-            <SalesOrderEntry orderId={modal.id} onDone={done} />
-          )}
-          {modal.kind === "sales-confirm" && (
-            <SalesOrderConfirmation orderId={modal.id} onDone={done} />
-          )}
-          {modal.kind === "shipment-create" && <ShipmentEntry onDone={done} />}
-          {modal.kind === "shipment-confirm" && (
-            <ShipmentConfirmation shipmentId={modal.id} onDone={done} />
-          )}
-          {modal.kind === "customer-receipt-create" && (
-            <CustomerReceiptEntry onDone={done} />
-          )}
-          {modal.kind === "customer-receipt-settle" && (
-            <CustomerReceiptSettlement
-              receipt={modal.receipt}
-              receivables={data?.receivables ?? []}
-              onDone={done}
-            />
-          )}
-          {modal.kind === "sales-return-create" && (
-            <SalesReturnEntry onDone={done} />
-          )}
-          {modal.kind === "sales-return-confirm" && (
-            <CommandConfirmation
-              state={returnConfirmation(modal.item, "sales")}
-              onCancel={() => setModal(null)}
-              onDone={done}
-            />
-          )}
-          {modal.kind === "sales-return-inspect" && (
-            <SalesReturnInspection item={modal.item} onDone={done} />
-          )}
-          {modal.kind === "record-detail" && (
-            <RecordDetail state={modal} onEdit={setModal} />
-          )}
-          {modal.kind === "command" && (
-            <CommandConfirmation
-              state={modal}
-              onCancel={() => setModal(null)}
-              onDone={done}
-            />
-          )}
-        </WorkflowModal>
-      )}
-    </WorkflowPage>
-  );
-}
 
 export function PurchaseOrderWorkflowPage({ id }: { id?: string }) {
   return id ? (
@@ -563,6 +232,7 @@ function PurchaseOrderRegisterPage() {
         onSelect={(value) => setTab(value as PurchaseTab)}
         metrics={[
           workflowMetric(data?.errors.orders, `${data?.orders.length ?? 0} 单`),
+          "交期跟踪",
           workflowMetric(
             data?.errors.receiving,
             `${data?.receipts.length ?? 0} 次`,
@@ -729,268 +399,4 @@ function PurchaseOrderRegisterPage() {
       )}
     </WorkflowPage>
   );
-}
-
-function WorkflowPage({
-  domain,
-  eyebrow,
-  title,
-  caption,
-  primaryAction,
-  secondaryAction,
-  children,
-}: React.PropsWithChildren<{
-  domain: "sales" | "purchase";
-  eyebrow: string;
-  title: string;
-  caption: string;
-  primaryAction: React.ReactNode;
-  secondaryAction: React.ReactNode;
-}>) {
-  return (
-    <section className={`page order-workflow ${domain}`}>
-      <div className="page-head workflow-head">
-        <div>
-          <p>{eyebrow}</p>
-          <h1>{title}</h1>
-          <span>{caption}</span>
-        </div>
-        <div className="workflow-head-actions">
-          {secondaryAction}
-          {primaryAction}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function WorkflowRail({
-  active,
-  stages,
-  metrics,
-  onSelect,
-}: {
-  active: string;
-  stages: Array<{ id: string; code: string; label: string }>;
-  metrics: string[];
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <nav className="workflow-rail" aria-label="订单闭环阶段">
-      {stages.map((stage, index) => (
-        <React.Fragment key={stage.id}>
-          <button
-            type="button"
-            className={active === stage.id ? "active" : ""}
-            aria-current={active === stage.id ? "step" : undefined}
-            onClick={() => onSelect(stage.id)}
-          >
-            <span>{stage.code}</span>
-            <strong>{stage.label}</strong>
-            <small>{metrics[index]}</small>
-          </button>
-          {index < stages.length - 1 && <i aria-hidden="true" />}
-        </React.Fragment>
-      ))}
-    </nav>
-  );
-}
-
-function WorkflowPulse({
-  items,
-}: {
-  items: Array<{ label: string; value: string; note: string }>;
-}) {
-  return (
-    <div className="workflow-pulse">
-      {items.map((item) => (
-        <div key={item.label}>
-          <span>{item.label}</span>
-          <strong>{item.value}</strong>
-          <small>{item.note}</small>
-        </div>
-      ))}
-      <div className="workflow-rule-note">
-        <span>闭环规则</span>
-        <strong>先确认，再形成业务事实</strong>
-        <small>草稿不会改变库存、应收或应付</small>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowToolbar({
-  query,
-  onQuery,
-  placeholder,
-  filters,
-  meta,
-}: {
-  query: string;
-  onQuery: (value: string) => void;
-  placeholder: string;
-  filters?: React.ReactNode;
-  meta: string;
-}) {
-  return (
-    <div className="workflow-toolbar">
-      <label>
-        <SearchIcon />
-        <span className="sr-only">搜索业务单据</span>
-        <input
-          type="search"
-          value={query}
-          placeholder={placeholder}
-          onChange={(event) => onQuery(event.target.value)}
-        />
-      </label>
-      {filters}
-      <small>
-        <i /> {meta}
-      </small>
-    </div>
-  );
-}
-
-type DimensionOption = { id: string; label: string };
-
-function WorkflowDimensionFilters({
-  legalEntityId,
-  legalEntityOptions,
-  onLegalEntity,
-  businessUnitId,
-  businessUnitOptions,
-  onBusinessUnit,
-}: {
-  legalEntityId: string;
-  legalEntityOptions: DimensionOption[];
-  onLegalEntity: (value: string) => void;
-  businessUnitId: string;
-  businessUnitOptions: DimensionOption[];
-  onBusinessUnit: (value: string) => void;
-}) {
-  return (
-    <div className="workflow-toolbar-filters">
-      <select
-        aria-label="筛选法定主体"
-        value={legalEntityId}
-        onChange={(event) => onLegalEntity(event.target.value)}
-      >
-        <option value="">全部法定主体</option>
-        {legalEntityOptions.map((option) => (
-          <option value={option.id} key={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label="筛选经营主体"
-        value={businessUnitId}
-        onChange={(event) => onBusinessUnit(event.target.value)}
-      >
-        <option value="">全部经营主体</option>
-        {businessUnitOptions.map((option) => (
-          <option value={option.id} key={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function dimensionOptions<T>(
-  rows: T[],
-  idOf: (row: T) => string | undefined,
-  labelOf: (row: T) => string | undefined,
-) {
-  const options = new Map<string, string>();
-  for (const row of rows) {
-    const id = idOf(row);
-    if (id) options.set(id, labelOf(row) ?? id);
-  }
-  return [...options].map(([id, label]) => ({ id, label }));
-}
-
-function dimensionLabel(name: string | undefined, code: string | undefined) {
-  if (name && code) return `${name} · ${code}`;
-  return name ?? code;
-}
-
-async function loadWorkflowStage<T>(path: string): Promise<{
-  items: T[];
-  error: ApiFailure | null;
-}> {
-  try {
-    const response = await request<Envelope<T>>(path);
-    return { items: response.items, error: null };
-  } catch (reason) {
-    return {
-      items: [],
-      error: toApiFailure(reason, "业务数据加载失败，请重试"),
-    };
-  }
-}
-
-function compactErrors<T extends string>(
-  errors: Record<T, ApiFailure | null>,
-): Partial<Record<T, ApiFailure>> {
-  return Object.fromEntries(
-    Object.entries(errors).filter((entry): entry is [string, ApiFailure] =>
-      Boolean(entry[1]),
-    ),
-  ) as Partial<Record<T, ApiFailure>>;
-}
-
-function workflowMetric(error: ApiFailure | undefined, value: string) {
-  return error ? "暂不可用" : value;
-}
-
-function workflowValue(error: ApiFailure | undefined, value: string) {
-  return error ? "—" : value;
-}
-
-function workflowNote(error: ApiFailure | undefined, value: string) {
-  return error ? "当前账号无权读取" : value;
-}
-
-function filterRows<T>(
-  rows: T[],
-  search: string,
-  terms: (row: T) => Array<string | null | undefined>,
-) {
-  if (!search) return rows;
-  return rows.filter((row) =>
-    terms(row).some((term) => term?.toLowerCase().includes(search)),
-  );
-}
-
-function sum<T>(rows: T[] | undefined, key: keyof T) {
-  return (rows ?? []).reduce((total, item) => total + Number(item[key]), 0);
-}
-
-function money(value: number) {
-  return `¥ ${formatAmount(value)}`;
-}
-
-function ratio(value: number, total: number) {
-  return total === 0 ? "—" : `${Math.round((value / total) * 100)}%`;
-}
-
-function returnConfirmation(
-  item: BusinessReturn,
-  side: "sales" | "purchase",
-): Extract<ModalState, { kind: "command" }> {
-  const sales = side === "sales";
-  return {
-    kind: "command",
-    title: `确认${sales ? "销售" : "采购"}退货`,
-    description: sales
-      ? "确认后商品按原出库冻结成本入库，并冲减对应未结经营应收与订单利润事实。"
-      : "确认后商品按当前移动平均成本出库，并按原收货价税金额冲减对应未结经营应付。",
-    path: `/api/v1/${sales ? "sales-returns" : "purchase-returns"}/${item.id}/confirm`,
-    body: { expectedVersion: item.version },
-    confirmLabel: "确认退货并写入业务事实",
-  };
 }

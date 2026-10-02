@@ -950,3 +950,9 @@ button.workflow-modal-scrim {
   border-radius: 0;
   padding: 0;
 }
+
+.fulfillment-queue { margin: 1rem 0; padding: 1rem; border: 1px solid var(--line); background: var(--panel); overflow-x: auto; }
+.fulfillment-queue summary { cursor: pointer; font-weight: 600; }
+.fulfillment-queue table { width: 100%; border-collapse: collapse; }
+.fulfillment-queue th, .fulfillment-queue td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--line); }
+.order-workflow .service-projects { padding: 0; }

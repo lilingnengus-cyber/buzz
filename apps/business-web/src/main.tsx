@@ -1,27 +1,25 @@
-import { route, WORKFLOW_NAV_ALIASES } from "./businessRoute";
-import { NAV_GROUPS, NAV, type Section } from "./businessNavigation";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import {
   type AgentQueryRun,
   type AgentQueryRunList,
   type ApiFailure,
+  type DataQuality,
   type Envelope,
   type GoodsReceipt,
-  type DataQuality,
   type ManagementReport,
   type ManagementSnapshot,
-  type OrderProfit,
-  type OperationsDashboard,
   type OperatingAlert,
   type OperatingIncident,
   type OperatingIncidentQueue,
+  type OperationsDashboard,
+  type OrderProfit,
   type Payable,
   type ProfitAdjustment,
   type ProfitabilityRow,
   type PurchaseOrder,
-  type Receipt,
   type ReadDiagnostics,
+  type Receipt,
   type Receivable,
   type ReportRun,
   type SalesOrder,
@@ -34,31 +32,30 @@ import {
   connectBusinessDockAuthBridge,
   readBusinessSession,
 } from "./businessDockBridge";
+import { NAV_GROUPS, type Section } from "./businessNavigation";
+import { WORKFLOW_NAV_ALIASES, route } from "./businessRoute";
+import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
+import { CrmPage } from "./CrmPage";
+import { CrmRegisters } from "./CrmRegisters";
 import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
 import { formatAmount, formatMoney } from "./formatters";
-import { InventoryLedger } from "./InventoryLedger";
-import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
-import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
-import { NumberingRulesCenter } from "./NumberingRulesCenter";
-import { OperatingUnitPreferences } from "./OperatingUnitPreferences";
-import { PageLoadFailure } from "./PageLoadFailure";
-import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
-import { OperatingTrendsView } from "./OperatingTrends";
 import { GoodsReceiptConfirmation } from "./GoodsReceiptConfirmation";
 import { GoodsReceiptEntry } from "./GoodsReceiptEntry";
-import { PurchaseOrderEntry } from "./PurchaseOrderEntry";
+import { InventoryLedger } from "./InventoryLedger";
+import { NumberingRulesCenter } from "./NumberingRulesCenter";
+import { OperatingTrendsView } from "./OperatingTrends";
+import { OperatingUnitPreferences } from "./OperatingUnitPreferences";
+import { PurchaseOrderWorkflowPage } from "./OrderWorkflowPages";
+import { PageLoadFailure } from "./PageLoadFailure";
+import { PAGE_ZOOM_STEPS, usePageZoom } from "./pageZoom";
+import { ProductMasterDataCenter } from "./ProductMasterDataCenter";
 import { PurchaseOrderConfirmation } from "./PurchaseOrderConfirmation";
-import { SalesOrderEntry } from "./SalesOrderEntry";
+import { PurchaseOrderEntry } from "./PurchaseOrderEntry";
 import { SalesOrderConfirmation } from "./SalesOrderConfirmation";
-import { ShipmentEntry } from "./ShipmentEntry";
+import { SalesOrderEntry } from "./SalesOrderEntry";
+import { SalesOrderWorkflowPage } from "./SalesWorkflowPages";
 import { ShipmentConfirmation } from "./ShipmentConfirmation";
-import {
-  PurchaseOrderWorkflowPage,
-  SalesOrderWorkflowPage,
-} from "./OrderWorkflowPages";
-import { CrmRegisters } from "./CrmRegisters";
-import { ServiceProjects } from "./ServiceProjects";
-import { CrmPage } from "./CrmPage";
+import { ShipmentEntry } from "./ShipmentEntry";
 import "./styles.css";
 
 type LoadState<T> = {
@@ -302,11 +299,10 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
   if (section === "quality") return <DataQualityView />;
   if (section === "incidents") return <OperatingIncidentsView />;
   if (section === "trends") return <OperatingTrendsView />;
-  if (section === "serviceProjects" || section === "serviceDeliverables")
+  if (section === "goodsOrders" || section === "serviceOrders")
     return (
-      <ServiceProjects
-        key={section}
-        tasks={section === "serviceDeliverables"}
+      <SalesOrderWorkflowPage
+        mode={section === "goodsOrders" ? "goods" : "service"}
       />
     );
   if (section === "crm") return <CrmPage key={id} initialId={id} />;
