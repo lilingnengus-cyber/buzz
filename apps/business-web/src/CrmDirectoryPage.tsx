@@ -251,7 +251,9 @@ export function CrmDirectoryPage() {
         <div>
           <p className="eyebrow">售前 CRM</p>
           <h1>联系人</h1>
-          <p className="crm-hint">统一维护客户联系人，多个商机共同引用。正式客户在核心数据中维护。</p>
+          <p className="crm-hint">
+            统一维护客户联系人，多个商机共同引用。正式客户在核心数据中维护。
+          </p>
         </div>
         {data.canManage && (
           <button
@@ -368,7 +370,15 @@ export function CrmDirectoryPage() {
                   </div>
                   <div className="crm-register-cell">
                     <span className="crm-mobile-label">所属客户</span>
-                    <strong>{item.companyName}</strong>
+                    {item.customerId ? (
+                      <a
+                        href={`/customers/${encodeURIComponent(item.customerId)}`}
+                      >
+                        <strong>{item.companyName}</strong>
+                      </a>
+                    ) : (
+                      <strong>{item.companyName}</strong>
+                    )}
                   </div>
                   <div className="crm-register-cell">
                     <span className="crm-mobile-label">联系方式</span>

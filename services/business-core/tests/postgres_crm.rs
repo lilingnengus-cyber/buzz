@@ -687,6 +687,21 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .unwrap(),
         0
     );
+    let formal_contacts = crm
+        .register(
+            actor,
+            &Filters {
+                account_id: Some(serde_json::from_value(converted["accountId"].clone()).unwrap()),
+                ..Default::default()
+            },
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        formal_contacts["items"][0]["customerId"],
+        converted["customerId"]
+    );
     let second = crm
         .save(
             actor,

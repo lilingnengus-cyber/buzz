@@ -87,6 +87,7 @@ export type CrmAccount = {
   version: number;
 };
 export type CrmContact = {
+  customerId?: string | null;
   id: string;
   accountId: string;
   version: number;
