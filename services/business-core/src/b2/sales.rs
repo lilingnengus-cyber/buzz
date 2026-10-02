@@ -736,6 +736,21 @@ impl SalesService {
         actor: Uuid,
         limit: i64,
     ) -> Result<Vec<SalesOrderSummary>, DomainError> {
+        self.list_orders_for_opportunity(actor, limit, None).await
+    }
+
+    /// List visible orders, optionally matching the explicit CRM source before applying the limit.
+    pub async fn list_orders_for_opportunity(
+        &self,
+        actor: Uuid,
+        limit: i64,
+        opportunity: Option<Uuid>,
+    ) -> Result<Vec<SalesOrderSummary>, DomainError> {
+        if let Some(id) = opportunity {
+            crate::crm::CrmService::new(self.store.clone())
+                .detail(actor, id, 0)
+                .await?;
+        }
         let snapshot = authorize(
             &self.store,
             actor,
@@ -747,7 +762,7 @@ impl SalesService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,SalesOrderSummary>("SELECT o.id,o.order_number,o.legal_entity_id,le.code AS legal_entity_code,le.name AS legal_entity_name,o.customer_id,c.code AS customer_code,c.name AS customer_name,o.business_unit_id,bu.code AS business_unit_code,bu.name AS business_unit_name,o.currency::text,o.lifecycle_status,o.hold_status,o.fulfillment_status,o.gross_amount,o.order_date,o.updated_at,o.version FROM sales_orders o JOIN business_legal_entities le ON le.id=o.legal_entity_id JOIN business_customers c ON c.id=o.customer_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE NOT EXISTS (SELECT 1 FROM sales_order_events de WHERE de.sales_order_id=o.id AND de.event_type='draft_deleted') AND o.legal_entity_id=ANY($1) AND o.customer_id=ANY($2) AND o.business_unit_id=ANY($3) ORDER BY o.updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,200)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,SalesOrderSummary>("SELECT o.id,o.order_number,o.legal_entity_id,le.code AS legal_entity_code,le.name AS legal_entity_name,o.customer_id,c.code AS customer_code,c.name AS customer_name,o.business_unit_id,bu.code AS business_unit_code,bu.name AS business_unit_name,o.currency::text,o.lifecycle_status,o.hold_status,o.fulfillment_status,o.gross_amount,o.order_date,o.updated_at,o.version FROM sales_orders o JOIN business_legal_entities le ON le.id=o.legal_entity_id JOIN business_customers c ON c.id=o.customer_id JOIN business_units bu ON bu.id=o.business_unit_id WHERE NOT EXISTS (SELECT 1 FROM sales_order_events de WHERE de.sales_order_id=o.id AND de.event_type='draft_deleted') AND o.legal_entity_id=ANY($1) AND o.customer_id=ANY($2) AND o.business_unit_id=ANY($3) AND ($5::text IS NULL OR o.customer_reference=$5) ORDER BY o.updated_at DESC,o.id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.business_unit_ids.into_iter().collect::<Vec<_>>()).bind(limit.clamp(1,200)).bind(opportunity.map(|id| format!("CRM:{id}"))).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

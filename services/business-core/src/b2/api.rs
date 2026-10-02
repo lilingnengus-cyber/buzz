@@ -178,6 +178,8 @@ impl B2ApiError {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ListQuery {
+    #[serde(default)]
+    opportunity_id: Option<Uuid>,
     #[serde(default = "default_limit")]
     pub(super) limit: i64,
     #[serde(default)]

@@ -383,6 +383,10 @@ export function SalesOrderEntry({
             </Field>
             <Field label="客户参考号">
               <input
+                readOnly={
+                  !!source ||
+                  /^CRM:[0-9a-f-]{36}$/i.test(original?.customerReference ?? "")
+                }
                 value={customerReference}
                 maxLength={120}
                 onChange={(event) => setCustomerReference(event.target.value)}

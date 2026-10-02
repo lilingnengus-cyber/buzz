@@ -727,6 +727,39 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         .await,
         Err(DomainError::NotFoundOrForbidden)
     ));
+    let sales = business_core::b2::SalesService::new(
+        PgStore::new(pool.clone()),
+        "SO".into(),
+        "SH".into(),
+        30,
+    );
+    assert!(matches!(
+        sales
+            .list_orders_for_opportunity(actor, 1, Some(conversion_id))
+            .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'sales_order:read') ON CONFLICT DO NOTHING").bind(role).execute(&pool).await.unwrap();
+    let converted_customer: Uuid = serde_json::from_value(converted["customerId"].clone()).unwrap();
+    for (number, reference) in [
+        ("SO-CRM-LINK", format!("CRM:{conversion_id}")),
+        ("SO-CRM-OTHER", format!("CRM:{second_id}")),
+    ] {
+        sqlx::query("INSERT INTO sales_orders(id,order_number,legal_entity_id,customer_id,salesperson_user_id,business_unit_id,currency,order_date,payment_terms_days,payment_terms_snapshot,subtotal_amount,discount_amount,net_amount,tax_amount,gross_amount,customer_reference,created_by_user_id,updated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,'CNY',current_date,30,'{}',10,0,10,0,10,$7,$5,$5,$8)").bind(Uuid::new_v4()).bind(number).bind(legal).bind(converted_customer).bind(actor).bind(unit).bind(reference).bind(Uuid::new_v4()).execute(&pool).await.unwrap();
+    }
+    let related = sales
+        .list_orders_for_opportunity(actor, 1, Some(conversion_id))
+        .await
+        .unwrap();
+    assert_eq!(related.len(), 1);
+    assert_eq!(related[0].order_number, "SO-CRM-LINK");
+    assert_eq!(sales.list_orders(actor, 200).await.unwrap().len(), 2);
+    assert!(matches!(
+        sales
+            .list_orders_for_opportunity(outsider, 200, Some(conversion_id))
+            .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
     // Revoking the business scope hides opportunities but not an owner's independent prospect.
     sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
         .bind(actor)
