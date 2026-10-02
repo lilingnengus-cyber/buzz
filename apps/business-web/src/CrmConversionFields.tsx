@@ -117,7 +117,7 @@ export function CrmConversionFields({ item }: { item: Opportunity }) {
         </label>
       </div>
       <p className="crm-hint">
-        同一客户下姓名和联系方式相同的联系人将复用。其他商机和已有跟进历史保留。
+        同一客户下姓名和联系方式相同的联系人将复用。成交后清空当前下一步与跟进日期，其他商机和已有跟进历史保留。
       </p>
     </section>
   );

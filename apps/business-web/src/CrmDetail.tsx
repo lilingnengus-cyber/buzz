@@ -203,24 +203,28 @@ export function CrmDetail({
                   ))}
                 </select>
               </label>
+              {stage !== "won" && (
+                <label>
+                  下次跟进日期
+                  <input
+                    type="date"
+                    name="nextFollowUp"
+                    defaultValue={item.nextFollowUp ?? ""}
+                  />
+                </label>
+              )}
+            </div>
+            {stage !== "won" && (
               <label>
-                下次跟进日期
+                下一步
                 <input
-                  type="date"
-                  name="nextFollowUp"
-                  defaultValue={item.nextFollowUp ?? ""}
+                  name="nextAction"
+                  maxLength={500}
+                  defaultValue={item.nextAction}
+                  placeholder="明确下一步要做什么"
                 />
               </label>
-            </div>
-            <label>
-              下一步
-              <input
-                name="nextAction"
-                maxLength={500}
-                defaultValue={item.nextAction}
-                placeholder="明确下一步要做什么"
-              />
-            </label>
+            )}
             {stage === "won" && (
               <CrmConversionFields key={item.id} item={item} />
             )}
