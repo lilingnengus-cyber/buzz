@@ -79,7 +79,9 @@ impl SalesService {
         )
         .await?;
         for line in &input.lines {
-            if !snapshot.scopes.warehouse_ids.contains(&line.warehouse_id)
+            if line
+                .warehouse_id
+                .is_some_and(|id| !snapshot.scopes.warehouse_ids.contains(&id))
                 || line
                     .business_unit_id
                     .is_some_and(|id| !snapshot.scopes.business_unit_ids.contains(&id))
@@ -189,7 +191,10 @@ impl SalesService {
         )
         .await?;
         for line in &input.lines {
-            if !snapshot.scopes.warehouse_ids.contains(&line.warehouse_id) {
+            if line
+                .warehouse_id
+                .is_some_and(|id| !snapshot.scopes.warehouse_ids.contains(&id))
+            {
                 return Err(DomainError::NotFoundOrForbidden);
             }
         }
@@ -317,7 +322,7 @@ impl SalesService {
             ));
         }
         let legal_entity: Uuid = order.get("legal_entity_id");
-        let lines=sqlx::query("SELECT id,warehouse_id,sku_id,ordered_quantity FROM sales_order_lines WHERE sales_order_id=$1 ORDER BY warehouse_id,sku_id,id").bind(order_id).fetch_all(&mut *tx).await?;
+        let lines=sqlx::query("SELECT id,warehouse_id,sku_id,ordered_quantity FROM sales_order_lines WHERE sales_order_id=$1 AND service_kind='goods' ORDER BY warehouse_id,sku_id,id").bind(order_id).fetch_all(&mut *tx).await?;
         let mut required = BTreeMap::<(Uuid, Uuid), Decimal>::new();
         for line in &lines {
             *required
@@ -364,7 +369,7 @@ impl SalesService {
             .execute(&mut *tx)
             .await?;
         }
-        sqlx::query("UPDATE sales_orders SET lifecycle_status='confirmed',fulfillment_status='reserved',confirmed_at=now(),updated_by_user_id=$2,trace_id=$3 WHERE id=$1").bind(order_id).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_orders SET lifecycle_status='confirmed',fulfillment_status=CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND service_kind='goods') THEN 'reserved' ELSE 'service_pending' END,confirmed_at=now(),updated_by_user_id=$2,trace_id=$3 WHERE id=$1").bind(order_id).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
         sqlx::query("INSERT INTO sales_order_events(id,sales_order_id,event_type,order_version,actor_user_id,trace_id) VALUES($1,$2,'confirmed',$3,$4,$5)").bind(Uuid::new_v4()).bind(order_id).bind(version).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         record(
@@ -378,17 +383,19 @@ impl SalesService {
             json!({"version":version}),
         )
         .await?;
-        record(
-            &mut tx,
-            trace_id,
-            actor,
-            "INVENTORY_RESERVED",
-            "inventory_reserved",
-            "sales_order",
-            order_id,
-            json!({"lineCount":lines.len()}),
-        )
-        .await?;
+        if !lines.is_empty() {
+            record(
+                &mut tx,
+                trace_id,
+                actor,
+                "INVENTORY_RESERVED",
+                "inventory_reserved",
+                "sales_order",
+                order_id,
+                json!({"lineCount":lines.len()}),
+            )
+            .await?;
+        }
         let result = CommandResult {
             id: order_id,
             number: order.get("order_number"),
@@ -550,7 +557,7 @@ impl SalesService {
                 "order has no cancellable quantity".into(),
             ));
         }
-        let lines=sqlx::query("SELECT l.id,l.ordered_quantity,l.shipped_quantity,r.id reservation_id,r.warehouse_id,r.sku_id,r.reserved_quantity,r.consumed_quantity,r.released_quantity FROM sales_order_lines l LEFT JOIN inventory_reservations r ON r.sales_order_line_id=l.id WHERE l.sales_order_id=$1 ORDER BY r.warehouse_id,r.sku_id,l.id FOR UPDATE OF l").bind(order_id).fetch_all(&mut *tx).await?;
+        let lines=sqlx::query("SELECT l.id,l.ordered_quantity,l.shipped_quantity+l.service_fulfilled_quantity shipped_quantity,r.id reservation_id,r.warehouse_id,r.sku_id,r.reserved_quantity,r.consumed_quantity,r.released_quantity FROM sales_order_lines l LEFT JOIN inventory_reservations r ON r.sales_order_line_id=l.id WHERE l.sales_order_id=$1 ORDER BY r.warehouse_id,r.sku_id,l.id FOR UPDATE OF l").bind(order_id).fetch_all(&mut *tx).await?;
         let total_shipped: Decimal = lines
             .iter()
             .map(|row| row.get::<Decimal, _>("shipped_quantity"))
@@ -892,7 +899,7 @@ async fn validate_order_master_data(
         return Err(DomainError::NotFoundOrForbidden);
     }
     for line in lines {
-        let row=sqlx::query("SELECT s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_warehouses w,business_skus s JOIN business_products p ON p.id=s.product_id WHERE w.id=$1 AND s.id=$2 AND w.status='active'").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let row=sqlx::query("SELECT s.status sku_status,p.base_uom_id,p.brand_id,p.status product_status FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=$2 AND ((p.service_kind='goods' AND EXISTS(SELECT 1 FROM business_warehouses w WHERE w.id=$1 AND w.status='active')) OR (p.service_kind<>'goods' AND $1::uuid IS NULL))").bind(line.warehouse_id).bind(line.sku_id).fetch_optional(&mut **tx).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         if row.get::<String, _>("sku_status") != "active"
             || row.get::<String, _>("product_status") != "active"
             || row.get::<Uuid, _>("base_uom_id") != line.unit_of_measure_id

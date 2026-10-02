@@ -69,6 +69,7 @@ type FormState = {
   barcode: string;
   precisionScale: string;
   allowZeroCost: boolean;
+  serviceKind: string;
   factorToBase: string;
   usageScope: "sales" | "purchase" | "both";
 };
@@ -94,6 +95,7 @@ const EMPTY_FORM: FormState = {
   barcode: "",
   precisionScale: "2",
   allowZeroCost: false,
+  serviceKind: "goods",
   factorToBase: "1",
   usageScope: "both",
 };
@@ -502,6 +504,7 @@ function ProductFormModal({
       barcode: form.barcode.trim() || null,
       precisionScale: Number(form.precisionScale),
       allowZeroCost: form.allowZeroCost,
+      serviceKind: type === "product" ? form.serviceKind : null,
       factorToBase: form.factorToBase,
       usageScope: form.usageScope,
       expectedVersion: record?.version ?? null,
@@ -636,6 +639,18 @@ function ProductFormModal({
                   {units.map(option)}
                 </select>
               </Field>
+              <label>
+                商品类型
+                <select
+                  value={form.serviceKind}
+                  disabled={Boolean(record)}
+                  onChange={(event) => set("serviceKind", event.target.value)}
+                >
+                  <option value="goods">实物商品</option>
+                  <option value="technical_service">技术服务</option>
+                  <option value="software_service">软件服务</option>
+                </select>
+              </label>
               <label className="product-check">
                 <input
                   type="checkbox"
@@ -916,6 +931,7 @@ function fromRecord(record: ProductMasterRecord): FormState {
     barcode: record.barcode ?? "",
     precisionScale: String(record.precisionScale ?? 2),
     allowZeroCost: record.allowZeroCost ?? false,
+    serviceKind: record.serviceKind ?? "goods",
     factorToBase: record.factorToBase ?? "1",
     usageScope: record.usageScope ?? "both",
   };
@@ -937,7 +953,13 @@ function attribute(item: ProductMasterRecord) {
 }
 function attributeNote(item: ProductMasterRecord) {
   if (item.resourceType === "product")
-    return item.allowZeroCost ? "允许零成本例外" : "要求有效库存成本";
+    return item.serviceKind === "technical_service"
+      ? "技术服务"
+      : item.serviceKind === "software_service"
+        ? "软件服务"
+        : item.allowZeroCost
+          ? "允许零成本例外"
+          : "要求有效库存成本";
   if (item.resourceType === "sku")
     return `${item.productCode} · ${item.unitOfMeasureCode}`;
   if (item.resourceType === "uom_conversion")

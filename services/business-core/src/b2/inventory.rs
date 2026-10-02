@@ -451,10 +451,10 @@ impl InventoryService {
             sqlx::query("UPDATE shipment_lines SET unit_cost=$2,total_cost=$3,cost_snapshot_at=now() WHERE id=$1").bind(line.get::<Uuid,_>("id")).bind(average).bind(cost).execute(&mut *tx).await?;
             record(&mut tx,trace_id,actor,"INVENTORY_MOVEMENT_POSTED","inventory_movement_posted","inventory_movement",movement,json!({"movementType":"sales_shipment","quantity":(-quantity).to_string(),"totalCost":(-cost).to_string()})).await?;
         }
-        let totals=sqlx::query("SELECT sum(ordered_quantity) ordered,sum(shipped_quantity) shipped,sum(cancelled_quantity) cancelled FROM sales_order_lines WHERE sales_order_id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).fetch_one(&mut *tx).await?;
+        let totals=sqlx::query("SELECT sum(ordered_quantity) ordered,sum(shipped_quantity+service_fulfilled_quantity) shipped,sum(cancelled_quantity) cancelled FROM sales_order_lines WHERE sales_order_id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).fetch_one(&mut *tx).await?;
         let complete: bool = totals.get::<Decimal, _>("ordered")
             == totals.get::<Decimal, _>("shipped") + totals.get::<Decimal, _>("cancelled");
-        sqlx::query("UPDATE sales_orders SET fulfillment_status=CASE WHEN $2 THEN 'shipped' ELSE 'partially_shipped' END,lifecycle_status=CASE WHEN $2 THEN 'completed' ELSE lifecycle_status END,completed_at=CASE WHEN $2 THEN now() ELSE completed_at END,updated_by_user_id=$3,trace_id=$4 WHERE id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).bind(complete).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_orders SET fulfillment_status=CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND service_kind<>'goods') THEN CASE WHEN $2 THEN 'fulfilled' ELSE 'partially_fulfilled' END ELSE CASE WHEN $2 THEN 'shipped' ELSE 'partially_shipped' END END,lifecycle_status=CASE WHEN $2 THEN 'completed' ELSE lifecycle_status END,completed_at=CASE WHEN $2 THEN now() ELSE completed_at END,updated_by_user_id=$3,trace_id=$4 WHERE id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).bind(complete).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let receivable_id = Uuid::new_v4();
         let receivable_number = next_number(
             &mut tx,
@@ -556,6 +556,10 @@ impl InventoryService {
                 "only confirmed shipments can be reversed".into(),
             ));
         }
+        sqlx::query("SELECT id FROM sales_orders WHERE id=$1 FOR UPDATE")
+            .bind(shipment.get::<Uuid, _>("sales_order_id"))
+            .fetch_one(&mut *tx)
+            .await?;
         let receivable=sqlx::query("SELECT id,original_amount,settled_amount,status FROM trade_receivables WHERE shipment_id=$1 FOR UPDATE").bind(shipment_id).fetch_one(&mut *tx).await?;
         if receivable.get::<Decimal, _>("settled_amount") > Decimal::ZERO {
             return Err(DomainError::ReceivableAlreadySettled);
@@ -598,7 +602,7 @@ impl InventoryService {
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO trade_receivable_events(id,receivable_id,event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,'reversed',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(receivable.get::<Uuid,_>("id")).bind(receivable.get::<Decimal,_>("original_amount")).bind(json!({"shipmentId":shipment_id})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE sales_orders SET lifecycle_status='confirmed',fulfillment_status=CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND shipped_quantity>0) THEN 'partially_shipped' ELSE 'reserved' END,completed_at=NULL,trace_id=$2 WHERE id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_orders SET lifecycle_status='confirmed',fulfillment_status=CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND service_kind<>'goods') THEN CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND shipped_quantity+service_fulfilled_quantity>0) THEN 'partially_fulfilled' ELSE 'reserved' END ELSE CASE WHEN EXISTS(SELECT 1 FROM sales_order_lines WHERE sales_order_id=$1 AND shipped_quantity>0) THEN 'partially_shipped' ELSE 'reserved' END END,completed_at=NULL,trace_id=$2 WHERE id=$1").bind(shipment.get::<Uuid,_>("sales_order_id")).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query(
             "UPDATE shipments SET status='reversed',reversed_at=now(),trace_id=$2 WHERE id=$1",
         )

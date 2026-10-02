@@ -9,7 +9,7 @@ const masters: Record<string, { id: string; code: string; name: string }> = {
   unit_of_measure: { id: "uom-1", code: "PCS", name: "件" },
 };
 
-async function installFixtures(page: Page) {
+async function installFixtures(page: Page, service = false) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -26,7 +26,8 @@ async function installFixtures(page: Page) {
     }
     if (url.pathname.startsWith("/api/v1/master-data/")) {
       const resource = url.pathname.split("/").at(-1) ?? "";
-      const value = masters[resource];
+      const value =
+        service && resource === "warehouse" ? undefined : masters[resource];
       await route.fulfill({
         json: {
           items: value
@@ -34,6 +35,10 @@ async function installFixtures(page: Page) {
                 {
                   resourceType: resource,
                   ...value,
+                  serviceKind:
+                    service && resource === "sku"
+                      ? "technical_service"
+                      : undefined,
                   status: "active",
                   legalEntityId:
                     resource === "legal_entity" ? null : "legal-entity-1",
@@ -101,4 +106,25 @@ test("销售草稿要求显式填写单价并原样提交", async ({ page }) => 
   expect(submitted[0]).toMatchObject({
     lines: [{ quantity: "1", unitPrice: "1.00" }],
   });
+});
+
+test("服务订单无需仓库并明确提交空仓库", async ({ page }) => {
+  await installFixtures(page, true);
+  let saved: any;
+  await page.route("**/api/v1/sales-orders", async (route) => {
+    if (route.request().method() === "POST") {
+      saved = route.request().postDataJSON();
+      return route.fulfill({ json: { number: "SO-SERVICE" } });
+    }
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/#sales");
+  await page.getByRole("button", { name: "新增销售订单" }).click();
+  const dialog = page.getByRole("dialog", { name: "新增销售订单" });
+  await expect(
+    dialog.getByRole("combobox", { name: "第 1 行仓库" }),
+  ).toBeDisabled();
+  await dialog.getByRole("spinbutton", { name: "第 1 行单价" }).fill("100");
+  await dialog.getByRole("button", { name: "保存销售订单草稿" }).click();
+  await expect.poll(() => saved?.lines?.[0]?.warehouseId).toBeNull();
 });

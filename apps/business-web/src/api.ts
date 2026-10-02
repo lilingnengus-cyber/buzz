@@ -37,6 +37,7 @@ export type AgentQueryRunList = {
 };
 
 export type MasterDataRecord = {
+  serviceKind?: string | null;
   resourceType: string;
   id: string;
   code: string;
@@ -205,6 +206,7 @@ export type ProductMasterType =
   | "uom_conversion";
 
 export type ProductMasterRecord = {
+  serviceKind?: "goods" | "technical_service" | "software_service";
   resourceType: ProductMasterType;
   id: string;
   code: string;
@@ -764,12 +766,13 @@ export type PurchaseRequisitionSummary = {
 };
 
 export type Receivable = {
+  serviceProjectId?: string | null;
   id: string;
   receivableNumber: string;
   legalEntityId: string;
   customerId: string;
   salesOrderId: string;
-  shipmentId: string;
+  shipmentId: string | null;
   currency: string;
   originalAmount: string;
   settledAmount: string;
