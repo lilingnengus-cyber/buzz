@@ -99,8 +99,12 @@ test("销售草稿要求显式填写单价并原样提交", async ({ page }) => 
   await expect(unitPrice).toHaveAttribute("placeholder", "必填");
   await save.click();
   expect(submitted).toHaveLength(0);
+  await expect(unitPrice).toBeFocused();
+  await expect(unitPrice).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByRole("alert")).toContainText("请填写第 1 行单价");
 
   await unitPrice.fill("1.00");
+  await expect(unitPrice).not.toHaveAttribute("aria-invalid", "true");
   await save.click();
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0]).toMatchObject({

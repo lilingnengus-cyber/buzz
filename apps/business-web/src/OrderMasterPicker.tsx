@@ -16,7 +16,7 @@ export function OrderMasterPicker({ label, value, items, disabled = false, noun 
   const selected = items.find((item) => item.id === value);
   const keyword = query.trim().toLocaleLowerCase();
   const matches = items.filter((item) => `${item.code} ${item.name}`.toLocaleLowerCase().includes(keyword));
-  return <div className={inLine ? "order-product-picker" : "entry-field"}>
+  return <div data-order-required={label} data-order-value={value} className={inLine ? "order-product-picker" : "entry-field"}>
     <CrmSearchSelect label={label} value={value} disabled={disabled}
       selectedLabel={selected ? `${selected.code} · ${selected.name}` : (placeholder ?? `请选择${noun}`)}
       query={query} onQuery={setQuery} onChange={onChange} showEmptyHint={false}

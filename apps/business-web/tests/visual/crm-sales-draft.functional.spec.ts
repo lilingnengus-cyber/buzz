@@ -131,6 +131,8 @@ test("已成交商机带入订单主体与客户，补充商品后只保存草�
   await page.screenshot({ path: "test-results/crm-sales-draft.png" });
   await drawer.getByRole("button", { name: "保存销售订单草稿" }).click();
   expect(writes).toHaveLength(0);
+  await expect(drawer.getByRole("combobox", { name: "第 1 行商品", exact: true })).toBeFocused();
+  await expect(drawer.getByRole("alert")).toContainText("请选择第 1 行商品");
   await drawer.getByRole("combobox", { name: "第 1 行商品", exact: true }).click();
   await drawer.getByRole("listbox", { name: "第 1 行商品", exact: true }).getByRole("option").first().click();
   await drawer.getByLabel("第 1 行仓库", { exact: true }).click();

@@ -104,5 +104,16 @@ for (const flow of ["sales", "purchase"] as const) {
     await expect(
       dialog.getByLabel(`第 2 行${warehouseLabel}`, { exact: true }),
     ).toContainText("warehouse-1");
+    const quantity = dialog.getByRole("spinbutton", { name: "第 1 行数量", exact: true });
+    await quantity.fill("0");
+    await dialog.getByRole("button", { name: purchase ? "保存采购订单草稿" : "保存销售订单草稿", exact: true }).click();
+    await expect(quantity).toBeFocused();
+    await expect(quantity).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByRole("alert")).toContainText("第 1 行数量");
+    await dialog.getByRole("button", { name: "请检查第 1 行数量的格式或取值范围", exact: true }).click();
+    await expect(quantity).toBeFocused();
+    await quantity.fill("1");
+    await expect(quantity).not.toHaveAttribute("aria-invalid", "true");
+
   });
 }

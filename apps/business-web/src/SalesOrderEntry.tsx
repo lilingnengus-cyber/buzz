@@ -1,3 +1,4 @@
+import { useOrderValidation } from "./OrderValidation";
 import "./order-entry-responsive.css";
 import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
@@ -53,6 +54,7 @@ export function SalesOrderEntry({
   onBusy?: (busy: boolean) => void;
 }) {
   const command = useCrmCommand();
+  const validation = useOrderValidation();
   const [source, setSource] = React.useState<CrmDetail["item"] | null>(null);
   const [original, setOriginal] = React.useState<
     SalesOrderDraftOptions["draft"] | null
@@ -238,6 +240,7 @@ export function SalesOrderEntry({
   };
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validation.validate(event.currentTarget as HTMLFormElement)) return;
     setNotice(null);
     if (!ready || busy) return;
     if (!legalEntityId || !customerId || !businessUnitId) {
@@ -344,7 +347,8 @@ export function SalesOrderEntry({
           {notice}
         </p>
       ) : (
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+          {validation.summary}
           <div className="entry-fields">
             <Field label="法律主体">
               <select
@@ -359,6 +363,7 @@ export function SalesOrderEntry({
             <OrderMasterPicker label="客户" noun="客户" inLine={false}
               value={customerId} items={availableCustomers} onChange={setCustomerId} />
             <OperatingUnitPicker
+              orderRequired
               label="经营主体"
               records={availableUnits}
               value={businessUnitId}
@@ -450,7 +455,7 @@ export function SalesOrderEntry({
                     <input
                       aria-label={`第 ${index + 1} 行${lineLabel(field)}`}
                       type="number"
-                      min="0"
+                      min={field === "quantity" ? "0.000001" : "0"}
                       step="0.000001"
                       value={line[field]}
                       placeholder={field === "unitPrice" ? "必填" : undefined}

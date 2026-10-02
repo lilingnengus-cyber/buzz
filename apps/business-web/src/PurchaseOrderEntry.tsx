@@ -1,3 +1,4 @@
+import { useOrderValidation } from "./OrderValidation";
 import "./order-entry-responsive.css";
 import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
@@ -52,6 +53,7 @@ export function PurchaseOrderEntry({
   orderId?: string;
   onDone: () => void;
 }) {
+  const validation = useOrderValidation();
   const [catalog, setCatalog] = React.useState<Catalog>(emptyCatalog);
   const [options, setOptions] = React.useState<PurchaseOrderEntryOptions>();
   const [loading, setLoading] = React.useState(true);
@@ -187,6 +189,7 @@ export function PurchaseOrderEntry({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validation.validate(event.currentTarget as HTMLFormElement)) return;
     setNotice("");
     if (!allowed) return;
     if (!legalEntityId || !supplierId || !businessUnitId) {
@@ -311,7 +314,8 @@ export function PurchaseOrderEntry({
       {loading ? (
         <p className="entry-loading">正在加载供应商、商品与收货仓库…</p>
       ) : (
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+          {validation.summary}
           {!allowed && (
             <div className="shipment-gate">
               当前角色没有{orderId ? "编辑采购订单草稿" : "创建采购订单"}
@@ -332,6 +336,7 @@ export function PurchaseOrderEntry({
             <OrderMasterPicker label="供应商" noun="供应商" inLine={false} disabled={!allowed}
               value={supplierId} items={availableSuppliers} onChange={setSupplierId} />
             <OperatingUnitPicker
+              orderRequired
               label="经营主体"
               records={availableBusinessUnits}
               value={businessUnitId}
@@ -433,7 +438,7 @@ export function PurchaseOrderEntry({
                     <input
                       aria-label={`第 ${index + 1} 行${lineLabel(field)}`}
                       type="number"
-                      min="0"
+                      min={field === "quantity" ? "0.000001" : "0"}
                       max={field === "taxPercent" ? "100" : undefined}
                       step="0.000001"
                       value={line[field]}
