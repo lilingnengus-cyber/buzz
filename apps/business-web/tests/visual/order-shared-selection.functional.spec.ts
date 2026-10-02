@@ -53,7 +53,10 @@ for (const flow of ["sales", "purchase"] as const) {
     const party = dialog.getByLabel(purchase ? "供应商" : "客户", {
       exact: true,
     });
-    await party.selectOption(`${purchase ? "supplier" : "customer"}-2`);
+    await party.click();
+    const partySearch = dialog.getByRole("combobox", { name: purchase ? "搜索供应商" : "搜索客户", exact: true });
+    await partySearch.fill(`${purchase ? "SUPPLIER" : "CUSTOMER"}-2`);
+    await partySearch.press("Enter");
     const product = dialog.getByRole("combobox", { name: "第 1 行商品", exact: true });
     await product.click();
     const search = dialog.getByRole("combobox", { name: "搜索第 1 行商品", exact: true });
@@ -66,9 +69,10 @@ for (const flow of ["sales", "purchase"] as const) {
     await expect(product).toContainText("sku-2");
     await expect(search).toHaveCount(0);
     const warehouseLabel = purchase ? "收货仓库" : "仓库";
-    await dialog
-      .getByLabel(`第 1 行${warehouseLabel}`, { exact: true })
-      .selectOption("warehouse-2");
+    await dialog.getByLabel(`第 1 行${warehouseLabel}`, { exact: true }).click();
+    const warehouseSearch = dialog.getByRole("combobox", { name: `搜索第 1 行${warehouseLabel}`, exact: true });
+    await warehouseSearch.fill("warehouse-2");
+    await warehouseSearch.press("Enter");
     await dialog
       .getByRole("button", { name: purchase ? "+ 添加采购行" : "+ 添加商品行" })
       .click();
@@ -77,12 +81,12 @@ for (const flow of ["sales", "purchase"] as const) {
       .selectOption("legal_entity-2");
     await expect(product).toContainText("sku-2");
     await expect(dialog.getByRole("combobox", { name: "第 2 行商品", exact: true })).toContainText("sku-1");
-    await expect(party).toHaveValue(`${purchase ? "supplier" : "customer"}-2`);
+    await expect(party).toContainText(`${purchase ? "supplier" : "customer"}-2`);
     await expect(
       dialog.getByLabel(`第 1 行${warehouseLabel}`, { exact: true }),
-    ).toHaveValue("warehouse-2");
+    ).toContainText("warehouse-2");
     await expect(
       dialog.getByLabel(`第 2 行${warehouseLabel}`, { exact: true }),
-    ).toHaveValue("warehouse-1");
+    ).toContainText("warehouse-1");
   });
 }

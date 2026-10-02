@@ -107,7 +107,7 @@ test("已成交商机带入订单主体与客户，补充商品后只保存草�
   await expect(drawer.getByLabel("法律主体", { exact: true })).toHaveValue(
     "legal",
   );
-  await expect(drawer.getByLabel("客户", { exact: true })).toHaveValue(
+  await expect(drawer.getByLabel("客户", { exact: true })).toContainText(
     "customer",
   );
   await expect(drawer.getByLabel("客户参考号", { exact: true })).toHaveValue(
@@ -133,9 +133,8 @@ test("已成交商机带入订单主体与客户，补充商品后只保存草�
   expect(writes).toHaveLength(0);
   await drawer.getByRole("combobox", { name: "第 1 行商品", exact: true }).click();
   await drawer.getByRole("listbox", { name: "第 1 行商品", exact: true }).getByRole("option").first().click();
-  await drawer
-    .getByLabel("第 1 行仓库", { exact: true })
-    .selectOption("warehouse");
+  await drawer.getByLabel("第 1 行仓库", { exact: true }).click();
+  await drawer.getByRole("listbox", { name: "第 1 行仓库", exact: true }).getByRole("option").first().click();
   await drawer.getByLabel("第 1 行单位", { exact: true }).selectOption("uom");
   await drawer.getByLabel("第 1 行单价", { exact: true }).fill("10");
   await drawer.getByRole("button", { name: "保存销售订单草稿" }).click();

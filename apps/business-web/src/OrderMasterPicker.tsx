@@ -2,7 +2,10 @@ import { useState } from "react";
 import type { MasterDataRecord } from "./api";
 import { CrmSearchSelect } from "./CrmSearchSelect";
 
-export function OrderProductPicker({ label, value, items, disabled = false, onChange }: {
+export function OrderMasterPicker({ label, value, items, disabled = false, noun = "商品", inLine = true, placeholder, onChange }: {
+  noun?: string;
+  inLine?: boolean;
+  placeholder?: string;
   label: string;
   value: string;
   items: MasterDataRecord[];
@@ -13,12 +16,12 @@ export function OrderProductPicker({ label, value, items, disabled = false, onCh
   const selected = items.find((item) => item.id === value);
   const keyword = query.trim().toLocaleLowerCase();
   const matches = items.filter((item) => `${item.code} ${item.name}`.toLocaleLowerCase().includes(keyword));
-  return <div className="order-product-picker">
+  return <div className={inLine ? "order-product-picker" : "entry-field"}>
     <CrmSearchSelect label={label} value={value} disabled={disabled}
-      selectedLabel={selected ? `${selected.code} · ${selected.name}` : "请选择商品"}
+      selectedLabel={selected ? `${selected.code} · ${selected.name}` : (placeholder ?? `请选择${noun}`)}
       query={query} onQuery={setQuery} onChange={onChange} showEmptyHint={false}
       options={matches.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))}>
-      {!matches.length && <p role="status" className="crm-hint">没有匹配的商品，请调整名称或编码</p>}
+      {!matches.length && <p role="status" className="crm-hint">没有匹配的{noun}，请调整名称或编码</p>}
     </CrmSearchSelect>
   </div>;
 }

@@ -1,4 +1,4 @@
-import { OrderProductPicker } from "./OrderProductPicker";
+import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
 import type { CrmDetail } from "./crm";
 import { useCrmCommand } from "./useCrmCommand";
@@ -355,15 +355,8 @@ export function SalesOrderEntry({
                 {catalog.legalEntities.map(option)}
               </select>
             </Field>
-            <Field label="客户">
-              <select
-                value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
-                required
-              >
-                {availableCustomers.map(option)}
-              </select>
-            </Field>
+            <OrderMasterPicker label="客户" noun="客户" inLine={false}
+              value={customerId} items={availableCustomers} onChange={setCustomerId} />
             <OperatingUnitPicker
               label="经营主体"
               records={availableUnits}
@@ -419,27 +412,12 @@ export function SalesOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <OrderProductPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                <OrderMasterPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
                   items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
-                <label>
-                  <span>仓库</span>
-                  <select
-                    aria-label={`第 ${index + 1} 行仓库`}
-                    disabled={isService(line.skuId)}
-                    value={isService(line.skuId) ? "" : line.warehouseId}
-                    onChange={(event) =>
-                      updateLine(line.key, "warehouseId", event.target.value)
-                    }
-                    required
-                  >
-                    {isService(line.skuId) ? (
-                      <option value="">服务无需仓库</option>
-                    ) : (
-                      source && <option value="">请选择仓库</option>
-                    )}
-                    {availableWarehouses.map(option)}
-                  </select>
-                </label>
+                <OrderMasterPicker label={`第 ${index + 1} 行仓库`} noun="仓库"
+                  disabled={isService(line.skuId)} placeholder={isService(line.skuId) ? "服务无需仓库" : "请选择仓库"}
+                  value={isService(line.skuId) ? "" : line.warehouseId} items={availableWarehouses}
+                  onChange={(value) => updateLine(line.key, "warehouseId", value)} />
                 <label>
                   <span>单位</span>
                   <select

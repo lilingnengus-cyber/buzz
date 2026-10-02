@@ -1,4 +1,4 @@
-import { OrderProductPicker } from "./OrderProductPicker";
+import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
 import {
   type CoreMasterRecord,
@@ -328,16 +328,8 @@ export function PurchaseOrderEntry({
                 {catalog.legalEntities.map(option)}
               </select>
             </Field>
-            <Field label="供应商">
-              <select
-                value={supplierId}
-                onChange={(event) => setSupplierId(event.target.value)}
-                disabled={!allowed}
-                required
-              >
-                {availableSuppliers.map(option)}
-              </select>
-            </Field>
+            <OrderMasterPicker label="供应商" noun="供应商" inLine={false} disabled={!allowed}
+              value={supplierId} items={availableSuppliers} onChange={setSupplierId} />
             <OperatingUnitPicker
               label="经营主体"
               records={availableBusinessUnits}
@@ -412,18 +404,11 @@ export function PurchaseOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <OrderProductPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                <OrderMasterPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
                   disabled={!allowed} items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
-                <LineSelect
-                  label={`第 ${index + 1} 行收货仓库`}
-                  value={line.warehouseId}
-                  disabled={!allowed}
-                  onChange={(value) =>
-                    updateLine(line.key, "warehouseId", value)
-                  }
-                >
-                  {availableWarehouses.map(option)}
-                </LineSelect>
+                <OrderMasterPicker label={`第 ${index + 1} 行收货仓库`} noun="仓库" disabled={!allowed}
+                  value={line.warehouseId} items={availableWarehouses}
+                  onChange={(value) => updateLine(line.key, "warehouseId", value)} />
                 <LineSelect
                   label={`第 ${index + 1} 行单位`}
                   value={line.unitOfMeasureId}
