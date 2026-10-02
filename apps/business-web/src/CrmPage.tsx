@@ -2,6 +2,7 @@ import React from "react";
 import { request } from "./api";
 import { formatMoney } from "./formatters";
 import { CrmForm } from "./CrmForm";
+import { CrmDrawer } from "./CrmDrawer";
 import { CrmDetail } from "./CrmDetail";
 import {
   CRM_STAGES,
@@ -13,51 +14,6 @@ import {
 } from "./crm";
 import "./crm.css";
 import "./crm-opportunities.css";
-function CrmDrawer({
-  children,
-  title,
-  onClose,
-}: {
-  children: React.ReactNode;
-  title: string;
-  onClose: () => void;
-}) {
-  const ref = React.useRef<HTMLDialogElement>(null);
-  React.useEffect(() => {
-    const dialog = ref.current;
-    const previousOverflow = document.body.style.overflow;
-    dialog?.showModal();
-    document.body.style.overflow = "hidden";
-    return () => {
-      dialog?.close();
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className="crm-drawer"
-      aria-label={title}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="crm-drawer-content">
-        <header className="crm-drawer-heading">
-          <strong>{title}</strong>
-          <button aria-label="关闭商机弹窗" onClick={onClose}>
-            关闭 ×
-          </button>
-        </header>
-        {children}
-      </div>
-    </dialog>
-  );
-}
 type List = { items: Opportunity[]; hasMore: boolean; canManage: boolean };
 export function CrmPage({ initialId }: { initialId?: string }) {
   const [data, setData] = React.useState<List>({
@@ -68,7 +24,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   const [options, setOptions] = React.useState<CrmOption[]>([]);
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("");
-  const [due, setDue] = React.useState(false);
+  const [due, setDue] = React.useState("open");
   const [offset, setOffset] = React.useState(0);
   const [selected, setSelected] = React.useState<string | null>(
     initialId ?? null,
@@ -90,7 +46,10 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       const params = new URLSearchParams({ offset: String(offset) });
       if (query.trim()) params.set("query", query.trim());
       if (stage) params.set("stage", stage);
-      if (due) params.set("dueBy", localDate());
+      if (due) {
+        params.set("followup", due);
+        params.set("today", localDate());
+      }
       Promise.all([
         request<List>(`/api/v1/crm/opportunities?${params}`),
         request<{ items: CrmOption[] }>("/api/v1/crm/options"),
@@ -189,15 +148,24 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
-        <button
-          aria-pressed={due}
-          onClick={() => {
-            setDue(!due);
-            setOffset(0);
-          }}
-        >
-          待跟进（今天及逾期）
-        </button>
+        <label>
+          跟进安排
+          <select
+            aria-label="跟进安排"
+            value={due}
+            onChange={(event) => {
+              setDue(event.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="open">进行中</option>
+            <option value="overdue">逾期</option>
+            <option value="today">今天</option>
+            <option value="upcoming">未来七天</option>
+            <option value="unscheduled">未安排</option>
+            <option value="">全部</option>
+          </select>
+        </label>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
       <nav className="crm-stage-nav" aria-label="按销售阶段筛选">
@@ -208,6 +176,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
               aria-pressed={stage === value}
               onClick={() => {
                 setStage(value);
+                if (value === "won" || value === "lost") setDue("");
                 setOffset(0);
               }}
             >

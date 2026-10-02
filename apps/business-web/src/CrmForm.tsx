@@ -1,4 +1,7 @@
 import React from "react";
+import { CrmAccountPicker, CrmContactPicker } from "./CrmDirectoryFields";
+import type { CrmAccount, CrmContact } from "./crm";
+import { useCrmDraft } from "./CrmDrawer";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import {
   rememberSyncedRecentOperatingUnit,
@@ -25,6 +28,7 @@ export function CrmForm({
   onCancel: () => void;
 }) {
   const request = useCrmCommand();
+  const draft = useCrmDraft();
   const entities = options.filter((o) => o.resourceType === "legal_entity");
   const [legal, setLegal] = React.useState(
     record?.legalEntityId ?? (entities.length === 1 ? entities[0].id : ""),
@@ -39,6 +43,35 @@ export function CrmForm({
       ),
   );
   const [customer, setCustomer] = React.useState(record?.customerId ?? "");
+  const [account, setAccount] = React.useState<CrmAccount | null>(
+    record?.accountId
+      ? {
+          id: record.accountId,
+          customerId: record.customerId,
+          name: record.companyName,
+          version: 0,
+        }
+      : null,
+  );
+  const [contact, setContact] = React.useState<CrmContact | null>(
+    record?.contactId && record.accountId
+      ? {
+          id: record.contactId,
+          accountId: record.accountId,
+          companyName: record.companyName,
+          contactName: record.contactName,
+          contactDetails: record.contactDetails,
+          version: 0,
+          opportunities: [],
+        }
+      : null,
+  );
+  const [contactName, setContactName] = React.useState(
+    record?.contactName ?? "",
+  );
+  const [contactDetails, setContactDetails] = React.useState(
+    record?.contactDetails ?? "",
+  );
   const [company, setCompany] = React.useState(record?.companyName ?? "");
   const [stage, setStage] = React.useState<CrmStage>(record?.stage ?? "new");
   const [busy, setBusy] = React.useState(false);
@@ -54,6 +87,7 @@ export function CrmForm({
     const form = new FormData(event.currentTarget);
     lock.current = true;
     setBusy(true);
+    draft.setBusy(true);
     setError("");
     try {
       const result = await request<{ id: string }>(
@@ -64,6 +98,8 @@ export function CrmForm({
             legalEntityId: legal,
             businessUnitId: unit,
             customerId: customer || null,
+            accountId: account?.id ?? null,
+            contactId: contact?.id ?? null,
             title: form.get("title"),
             companyName: company,
             contactName: form.get("contactName"),
@@ -78,19 +114,39 @@ export function CrmForm({
         },
       );
       void rememberSyncedRecentOperatingUnit("crm-opportunity", unit);
+      draft.saved();
       onSaved(result.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败，请重试");
     } finally {
       lock.current = false;
       setBusy(false);
+      draft.setBusy(false);
     }
   };
   return (
-    <form className="crm-form" onSubmit={submit}>
+    <form
+      className="crm-form"
+      onChangeCapture={(event) => {
+        if (
+          !(
+            event.target instanceof HTMLInputElement &&
+            event.target.type === "search"
+          )
+        )
+          draft.markDirty();
+      }}
+      onSubmit={submit}
+    >
       <div className="crm-heading">
         <h2>{record ? "编辑商机" : "新建商机"}</h2>
-        <button type="button" onClick={onCancel} disabled={busy}>
+        <button
+          type="button"
+          onClick={() => {
+            if (draft.confirmDiscard()) onCancel();
+          }}
+          disabled={busy}
+        >
           取消
         </button>
       </div>
@@ -100,6 +156,18 @@ export function CrmForm({
         </p>
       )}
       <div className="crm-fields">
+        <CrmAccountPicker
+          value={account}
+          onChange={(value) => {
+            setAccount(value);
+            setCustomer(value?.customerId ?? "");
+            setCompany(value?.name ?? "");
+            setContact(null);
+            setContactName("");
+            setContactDetails("");
+            draft.markDirty();
+          }}
+        />
         <label>
           商机名称
           <input
@@ -145,47 +213,68 @@ export function CrmForm({
           label="经营主体"
           records={units}
           value={unit}
-          onChange={setUnit}
+          onChange={(value) => {
+            setUnit(value);
+            draft.markDirty();
+          }}
           disabled={Boolean(record)}
           preferenceContext={record ? undefined : "crm-opportunity"}
           preferenceFallback={units.length === 1 ? units[0].id : ""}
         />
-        <label>
-          关联已有客户
-          <select
-            value={customer}
-            onChange={(e) => {
-              setCustomer(e.target.value);
-              const selected = options.find((o) => o.id === e.target.value);
-              if (selected) setCompany(selected.name);
-            }}
-          >
-            <option value="">暂不关联（潜在客户）</option>
-            {options
-              .filter((o) => o.resourceType === "customer")
-              .map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name} · {o.code}
-                </option>
-              ))}
-          </select>
-        </label>
+        {!account && (
+          <label>
+            关联已有客户
+            <select
+              value={customer}
+              onChange={(e) => {
+                setCustomer(e.target.value);
+                const selected = options.find((o) => o.id === e.target.value);
+                if (selected) setCompany(selected.name);
+              }}
+            >
+              <option value="">暂不关联（潜在客户）</option>
+              {options
+                .filter((o) => o.resourceType === "customer")
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} · {o.code}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label>
           客户公司
           <input
             value={company}
+            readOnly={Boolean(account)}
             onChange={(e) => setCompany(e.target.value)}
             required
             maxLength={160}
             placeholder="公司名称"
           />
         </label>
+        {account && (
+          <CrmContactPicker
+            key={account.id}
+            accountId={account.id}
+            value={contact}
+            onChange={(value) => {
+              setContact(value);
+              setContactName(value?.contactName ?? "");
+              setContactDetails(value?.contactDetails ?? "");
+              draft.markDirty();
+            }}
+          />
+        )}
         <label>
           联系人
           <input
             name="contactName"
             maxLength={100}
-            defaultValue={record?.contactName}
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            readOnly={Boolean(contact)}
           />
         </label>
         <label>
@@ -193,10 +282,17 @@ export function CrmForm({
           <input
             name="contactDetails"
             maxLength={200}
-            defaultValue={record?.contactDetails}
+            value={contactDetails}
+            onChange={(e) => setContactDetails(e.target.value)}
+            readOnly={Boolean(contact)}
             placeholder="电话、微信或邮箱"
           />
         </label>
+        {contact && (
+          <p className="crm-hint crm-wide">
+            联系人资料统一在“客户联系人”页面维护。
+          </p>
+        )}
         <label>
           预计金额
           <input

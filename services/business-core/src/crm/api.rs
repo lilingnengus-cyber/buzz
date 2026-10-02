@@ -18,12 +18,12 @@ impl IntoResponse for Error {
             DomainError::NotFoundOrForbidden => (
                 StatusCode::NOT_FOUND,
                 "not_found_or_forbidden",
-                "没有访问此商机的权限".to_string(),
+                "没有访问此 CRM 记录的权限".to_string(),
             ),
             DomainError::VersionConflict => (
                 StatusCode::CONFLICT,
                 "VERSION_CONFLICT",
-                "商机已更新，请刷新后重试".into(),
+                "记录已更新，请刷新后重试".into(),
             ),
             DomainError::IdempotencyConflict => (
                 StatusCode::CONFLICT,
@@ -36,7 +36,7 @@ impl IntoResponse for Error {
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
                     "service_unavailable",
-                    "暂时无法保存或读取商机，请重试".into(),
+                    "暂时无法保存或读取 CRM 记录，请重试".into(),
                 )
             }
         };
@@ -53,7 +53,16 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
         .route("/api/v1/crm/opportunities", get(list).post(create))
         .route("/api/v1/crm/options", get(options))
         .route("/api/v1/crm/followups", get(followups))
-        .route("/api/v1/crm/contacts", get(contacts))
+        .route("/api/v1/crm/contacts", get(contacts).post(create_contact))
+        .route(
+            "/api/v1/crm/contacts/{id}",
+            axum::routing::put(update_contact),
+        )
+        .route("/api/v1/crm/accounts", get(accounts).post(create_account))
+        .route(
+            "/api/v1/crm/accounts/{id}",
+            axum::routing::put(update_account),
+        )
         .route("/api/v1/crm/opportunities/{id}", get(detail).put(update))
         .route("/api/v1/crm/opportunities/{id}/followups", post(followup))
 }
@@ -179,6 +188,92 @@ async fn contacts(
 ) -> Result<Json<Value>, Error> {
     service(&s)
         .register(c.actor_user_id, &q, true)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn accounts(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(q): Query<Filters>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .accounts(c.actor_user_id, &q)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn create_account(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveAccount>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_account(
+            c.actor_user_id,
+            c.trace_id,
+            None,
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn update_account(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveAccount>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_account(
+            c.actor_user_id,
+            c.trace_id,
+            Some(id),
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn create_contact(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveContact>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_contact(
+            c.actor_user_id,
+            c.trace_id,
+            None,
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn update_contact(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveContact>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_contact(
+            c.actor_user_id,
+            c.trace_id,
+            Some(id),
+            key(&h, c.trace_id)?,
+            &input,
+        )
         .await
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))

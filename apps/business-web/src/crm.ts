@@ -11,6 +11,8 @@ export type Opportunity = {
   legalEntityId: string;
   businessUnitId: string;
   customerId: string | null;
+  accountId?: string | null;
+  contactId?: string | null;
   title: string;
   companyName: string;
   contactName: string;
@@ -72,3 +74,19 @@ export function amountMinor(value: string): number | null {
     throw new Error("预计金额超出范围");
   return amount;
 }
+
+export type CrmAccount = {
+  id: string;
+  customerId: string | null;
+  name: string;
+  version: number;
+};
+export type CrmContact = {
+  id: string;
+  accountId: string;
+  version: number;
+  companyName: string;
+  contactName: string;
+  contactDetails: string;
+  opportunities: { id: string; title: string }[];
+};

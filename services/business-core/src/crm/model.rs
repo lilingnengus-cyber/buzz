@@ -10,6 +10,8 @@ pub struct SaveOpportunity {
     pub legal_entity_id: Uuid,
     pub business_unit_id: Uuid,
     pub customer_id: Option<Uuid>,
+    pub account_id: Option<Uuid>,
+    pub contact_id: Option<Uuid>,
     pub title: String,
     pub company_name: String,
     #[serde(default)]
@@ -42,6 +44,8 @@ pub struct Opportunity {
     pub legal_entity_id: Uuid,
     pub business_unit_id: Uuid,
     pub customer_id: Option<Uuid>,
+    pub account_id: Option<Uuid>,
+    pub contact_id: Option<Uuid>,
     pub title: String,
     pub company_name: String,
     pub contact_name: String,
@@ -61,8 +65,11 @@ pub struct Opportunity {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Filters {
     pub query: Option<String>,
+    pub account_id: Option<Uuid>,
     pub stage: Option<String>,
     pub due_by: Option<NaiveDate>,
+    pub followup: Option<String>,
+    pub today: Option<NaiveDate>,
     #[serde(default)]
     pub offset: i64,
 }

@@ -1,5 +1,6 @@
 //! Minimal presales CRM, sharing Business Core identity, scopes and command audit.
 pub mod api;
+mod directory;
 mod model;
 mod registers;
 use crate::{
@@ -8,6 +9,7 @@ use crate::{
     },
     store::PgStore,
 };
+pub use directory::{SaveAccount, SaveContact};
 pub use model::{AddFollowup, Filters, Opportunity, SaveOpportunity};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -39,9 +41,16 @@ impl CrmService {
         if !(0..=100000).contains(&filters.offset) {
             return Err(DomainError::Invalid("无效页码".into()));
         }
-        let mut items=sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunities WHERE legal_entity_id=ANY($1) AND business_unit_id=ANY($2) AND (customer_id IS NULL OR customer_id=ANY($3)) AND ($4::text IS NULL OR strpos(lower(title||' '||company_name||' '||contact_name),lower($4))>0) AND ($5::text IS NULL OR stage=$5) AND ($6::date IS NULL OR (next_follow_up <= $6 AND stage NOT IN ('won','lost'))) ORDER BY next_follow_up ASC NULLS LAST,created_at DESC,id LIMIT 51 OFFSET $7")
+        if let Some(mode) = &filters.followup {
+            if !["overdue", "today", "upcoming", "unscheduled", "open"].contains(&mode.as_str())
+                || filters.today.is_none()
+            {
+                return Err(DomainError::Invalid("无效跟进筛选或本地日期".into()));
+            }
+        }
+        let mut items=sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunity_current WHERE legal_entity_id=ANY($1) AND business_unit_id=ANY($2) AND (customer_id IS NULL OR customer_id=ANY($3)) AND ($4::text IS NULL OR strpos(lower(title||' '||company_name||' '||contact_name),lower($4))>0) AND ($5::text IS NULL OR stage=$5) AND ($6::date IS NULL OR (next_follow_up <= $6 AND stage NOT IN ('won','lost'))) AND ($8::text IS NULL OR (stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN next_follow_up < $9::date WHEN 'today' THEN next_follow_up = $9::date WHEN 'upcoming' THEN next_follow_up > $9::date AND next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN next_follow_up IS NULL WHEN 'open' THEN true ELSE false END)) ORDER BY next_follow_up ASC NULLS LAST,created_at DESC,id LIMIT 51 OFFSET $7")
             .bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>())
-            .bind(filters.query.as_deref().map(str::trim)).bind(&filters.stage).bind(filters.due_by).bind(filters.offset)
+            .bind(filters.query.as_deref().map(str::trim)).bind(&filters.stage).bind(filters.due_by).bind(filters.offset).bind(&filters.followup).bind(filters.today)
             .fetch_all(self.store.pool()).await?;
         let has_more = items.len() > 50;
         items.truncate(50);
@@ -56,7 +65,7 @@ impl CrmService {
         permission: &str,
     ) -> Result<Opportunity, DomainError> {
         let s = self.scope(actor, permission).await?;
-        sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunities WHERE id=$1 AND legal_entity_id=ANY($2) AND business_unit_id=ANY($3) AND (customer_id IS NULL OR customer_id=ANY($4))")
+        sqlx::query_as::<_,Opportunity>("SELECT * FROM crm_opportunity_current WHERE id=$1 AND legal_entity_id=ANY($2) AND business_unit_id=ANY($3) AND (customer_id IS NULL OR customer_id=ANY($4))")
             .bind(id).bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>())
             .fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)
     }
@@ -125,6 +134,7 @@ impl CrmService {
         if !valid {
             return Err(DomainError::NotFoundOrForbidden);
         }
+        let (account_id, contact_id) = self.resolve_directory(actor, input, &mut tx).await?;
         let record_id = id.unwrap_or_else(Uuid::new_v4);
         let version: Option<i64> = if id.is_none() {
             sqlx::query_scalar("INSERT INTO crm_opportunities(id,legal_entity_id,business_unit_id,customer_id,title,company_name,contact_name,contact_details,stage,expected_amount_minor,currency,next_action,next_follow_up,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING version")
@@ -134,6 +144,12 @@ impl CrmService {
                 .bind(record_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?
         };
         let version = version.ok_or(DomainError::VersionConflict)?;
+        sqlx::query("UPDATE crm_opportunities SET account_id=$2,contact_id=$3 WHERE id=$1")
+            .bind(record_id)
+            .bind(account_id)
+            .bind(contact_id)
+            .execute(&mut *tx)
+            .await?;
         let result = json!({"id":record_id,"version":version,"traceId":trace});
         record(
             &mut tx,

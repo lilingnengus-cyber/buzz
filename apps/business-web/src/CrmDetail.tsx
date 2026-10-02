@@ -1,4 +1,5 @@
 import React from "react";
+import { useCrmDraft } from "./CrmDrawer";
 import { request as read } from "./api";
 import { useCrmCommand } from "./useCrmCommand";
 import { formatMoney } from "./formatters";
@@ -15,6 +16,7 @@ export function CrmDetail({
   onRefresh: () => Promise<void>;
 }) {
   const request = useCrmCommand();
+  const draft = useCrmDraft();
   const item = data.item;
   const [history, setHistory] = React.useState(data.followups);
   const [hasOlder, setHasOlder] = React.useState(data.hasOlderFollowups);
@@ -48,6 +50,7 @@ export function CrmDetail({
     const fields = new FormData(form);
     lock.current = true;
     setBusy(true);
+    draft.setBusy(true);
     setError("");
     try {
       await request(`/api/v1/crm/opportunities/${item.id}/followups`, {
@@ -60,12 +63,14 @@ export function CrmDetail({
           expectedVersion: item.version,
         }),
       });
+      draft.saved();
       await onRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "跟进保存失败，请重试");
     } finally {
       lock.current = false;
       setBusy(false);
+      draft.setBusy(false);
     }
   };
   return (
@@ -78,7 +83,15 @@ export function CrmDetail({
           <h2>{item.title}</h2>
           <p>{item.companyName}</p>
         </div>
-        {canManage && <button onClick={onEdit}>编辑商机</button>}
+        {canManage && (
+          <button
+            onClick={() => {
+              if (draft.confirmDiscard()) onEdit();
+            }}
+          >
+            编辑商机
+          </button>
+        )}
       </div>
       <dl className="crm-facts">
         <div>
@@ -112,7 +125,19 @@ export function CrmDetail({
         </p>
       )}
       {canManage && (
-        <form className="crm-form" onSubmit={submit}>
+        <form
+          className="crm-form"
+          onChangeCapture={(event) => {
+            if (
+              !(
+                event.target instanceof HTMLInputElement &&
+                event.target.type === "search"
+              )
+            )
+              draft.markDirty();
+          }}
+          onSubmit={submit}
+        >
           <h3>记录跟进</h3>
           {error && (
             <p role="alert" className="crm-error">

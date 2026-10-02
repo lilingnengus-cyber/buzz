@@ -1,6 +1,6 @@
 use business_core::{
     b2::DomainError,
-    crm::{AddFollowup, CrmService, Filters, SaveOpportunity},
+    crm::{AddFollowup, CrmService, Filters, SaveAccount, SaveContact, SaveOpportunity},
     PgStore,
 };
 use chrono::NaiveDate;
@@ -55,6 +55,8 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         legal_entity_id: legal,
         business_unit_id: unit,
         customer_id: Some(customer),
+        account_id: None,
+        contact_id: None,
         title: "企业采购".into(),
         company_name: "测试公司".into(),
         contact_name: "张经理".into(),
@@ -78,7 +80,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         first
     );
     let details = crm.detail(actor, id, 0).await.unwrap();
-    assert_eq!(details["item"]["companyName"], "测试公司");
+    assert_eq!(details["item"]["companyName"], "CRM Customer");
     assert!(matches!(
         crm.detail(outsider, id, 0).await,
         Err(DomainError::NotFoundOrForbidden)
@@ -239,6 +241,194 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     .await
     .unwrap();
     assert_eq!(audit, 3);
+    // Independent prospects and contacts, without organization bindings.
+    let account_input = SaveAccount {
+        name: "独立潜在客户".into(),
+        customer_id: None,
+        expected_version: None,
+    };
+    let account_result = crm
+        .save_account(actor, Uuid::new_v4(), None, "account-new", &account_input)
+        .await
+        .unwrap();
+    assert_eq!(
+        account_result,
+        crm.save_account(actor, Uuid::new_v4(), None, "account-new", &account_input)
+            .await
+            .unwrap()
+    );
+    let account_id: Uuid = serde_json::from_value(account_result["id"].clone()).unwrap();
+    let mut contact_input = SaveContact {
+        account_id,
+        name: "陈经理".into(),
+        details: "邮箱 A".into(),
+        expected_version: None,
+    };
+    let contact_result = crm
+        .save_contact(actor, Uuid::new_v4(), None, "contact-new", &contact_input)
+        .await
+        .unwrap();
+    let contact_id: Uuid = serde_json::from_value(contact_result["id"].clone()).unwrap();
+    assert_eq!(
+        contact_result,
+        crm.save_contact(actor, Uuid::new_v4(), None, "contact-new", &contact_input)
+            .await
+            .unwrap()
+    );
+    assert!(
+        crm.accounts(outsider, &Filters::default()).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        crm.save_contact(
+            outsider,
+            Uuid::new_v4(),
+            None,
+            "contact-denied",
+            &contact_input
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    input.customer_id = None;
+    input.account_id = Some(account_id);
+    input.contact_id = Some(contact_id);
+    input.stage = "contacting".into();
+    input.expected_version = None;
+    let mut linked_ids = Vec::new();
+    for (index, date) in [
+        Some("2026-10-01"),
+        Some("2026-10-02"),
+        Some("2026-10-09"),
+        None,
+    ]
+    .iter()
+    .enumerate()
+    {
+        input.next_follow_up = date.map(|value| value.parse().unwrap());
+        let result = crm
+            .save(
+                actor,
+                Uuid::new_v4(),
+                None,
+                &format!("directory-opportunity-{index}"),
+                &input,
+            )
+            .await
+            .unwrap();
+        linked_ids.push(serde_json::from_value::<Uuid>(result["id"].clone()).unwrap());
+    }
+    for mode in ["overdue", "today", "upcoming", "unscheduled"] {
+        let filters = Filters {
+            followup: Some(mode.into()),
+            today: Some("2026-10-02".parse().unwrap()),
+            ..Default::default()
+        };
+        assert_eq!(
+            crm.list(actor, &filters).await.unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1,
+            "{mode}"
+        );
+    }
+    assert!(matches!(
+        crm.list(
+            actor,
+            &Filters {
+                followup: Some("today".into()),
+                ..Default::default()
+            }
+        )
+        .await,
+        Err(DomainError::Invalid(_))
+    ));
+    contact_input.expected_version = Some(1);
+    contact_input.details = "更新后的邮箱".into();
+    crm.save_contact(
+        actor,
+        Uuid::new_v4(),
+        Some(contact_id),
+        "contact-edit",
+        &contact_input,
+    )
+    .await
+    .unwrap();
+    for linked_id in &linked_ids {
+        let result = crm.detail(actor, *linked_id, 0).await.unwrap();
+        assert_eq!(result["item"]["contactDetails"], "更新后的邮箱");
+        assert_eq!(result["item"]["version"], 2);
+    }
+    assert!(matches!(
+        crm.save_contact(
+            actor,
+            Uuid::new_v4(),
+            Some(contact_id),
+            "contact-stale",
+            &contact_input
+        )
+        .await,
+        Err(DomainError::VersionConflict)
+    ));
+    let renamed = SaveAccount {
+        name: "新客户名称".into(),
+        customer_id: None,
+        expected_version: Some(1),
+    };
+    crm.save_account(
+        actor,
+        Uuid::new_v4(),
+        Some(account_id),
+        "account-rename",
+        &renamed,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        crm.detail(actor, linked_ids[0], 0).await.unwrap()["item"]["companyName"],
+        "新客户名称"
+    );
+    let other = crm
+        .save_account(
+            actor,
+            Uuid::new_v4(),
+            None,
+            "other-account",
+            &SaveAccount {
+                name: "另一客户".into(),
+                customer_id: None,
+                expected_version: None,
+            },
+        )
+        .await
+        .unwrap();
+    input.account_id = Some(serde_json::from_value(other["id"].clone()).unwrap());
+    assert!(matches!(
+        crm.save(actor, Uuid::new_v4(), None, "wrong-contact", &input)
+            .await,
+        Err(DomainError::Invalid(_))
+    ));
+    // Revoking the business scope hides opportunities but not an owner's independent prospect.
+    sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
+        .bind(actor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(crm.list(actor, &Filters::default()).await.unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let visible_contacts = crm
+        .register(actor, &Filters::default(), true)
+        .await
+        .unwrap();
+    assert!(visible_contacts["items"][0]["opportunities"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     // Every CRM route stays behind the existing browser-session middleware.
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -250,6 +440,11 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             ("GET", "/api/v1/crm/opportunities".into()),
             ("GET", "/api/v1/crm/followups".into()),
             ("GET", "/api/v1/crm/contacts".into()),
+            ("GET", "/api/v1/crm/accounts".into()),
+            ("POST", "/api/v1/crm/accounts".into()),
+            ("POST", "/api/v1/crm/contacts".into()),
+            ("PUT", format!("/api/v1/crm/accounts/{account_id}")),
+            ("PUT", format!("/api/v1/crm/contacts/{contact_id}")),
             ("POST", "/api/v1/crm/opportunities".into()),
             ("PUT", format!("/api/v1/crm/opportunities/{id}")),
             ("POST", format!("/api/v1/crm/opportunities/{id}/followups")),
