@@ -12,6 +12,7 @@ import {
   type Opportunity,
 } from "./crm";
 import "./crm.css";
+import "./crm-opportunities.css";
 type List = { items: Opportunity[]; hasMore: boolean; canManage: boolean };
 export function CrmPage({ initialId }: { initialId?: string }) {
   const [data, setData] = React.useState<List>({
@@ -103,12 +104,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
     setNotice("跟进已保存");
   };
   return (
-    <section className="crm-page">
+    <section className="crm-page crm-opportunities">
       <header className="crm-heading">
         <div>
           <p className="eyebrow">售前 CRM</p>
           <h1>商机</h1>
-          <p className="crm-hint">记下客户需求，推进下一次沟通。</p>
+          <p className="crm-hint">从线索到成交，让每个商机都有下一步。</p>
         </div>
         {data.canManage && !creating && (
           <button
@@ -143,23 +144,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
-        <label>
-          阶段
-          <select
-            value={stage}
-            onChange={(e) => {
-              setStage(e.target.value);
-              setOffset(0);
-            }}
-          >
-            <option value="">全部阶段</option>
-            {Object.entries(CRM_STAGES).map(([k, v]) => (
-              <option value={k} key={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           aria-pressed={due}
           onClick={() => {
@@ -171,6 +155,22 @@ export function CrmPage({ initialId }: { initialId?: string }) {
         </button>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
+      <nav className="crm-stage-nav" aria-label="按销售阶段筛选">
+        {[["", "全部商机"], ...Object.entries(CRM_STAGES)].map(
+          ([value, label]) => (
+            <button
+              key={value}
+              aria-pressed={stage === value}
+              onClick={() => {
+                setStage(value);
+                setOffset(0);
+              }}
+            >
+              {label}
+            </button>
+          ),
+        )}
+      </nav>
       {error && (
         <p role="alert" className="crm-error">
           {error}{" "}
@@ -181,6 +181,23 @@ export function CrmPage({ initialId }: { initialId?: string }) {
         className={`crm-layout${selected || creating ? " crm-layout-open" : ""}`}
       >
         <div className="crm-register" aria-busy={loading}>
+          <div className="crm-list-caption">
+            <strong>
+              {stage
+                ? CRM_STAGES[stage as keyof typeof CRM_STAGES]
+                : "全部商机"}
+            </strong>
+            <span>
+              {loading ? "正在更新" : `本页 ${data.items.length} 个商机`} ·
+              点击商机查看与跟进
+            </span>
+          </div>
+          <div className="crm-list-columns" aria-hidden="true">
+            <span>商机 / 客户</span>
+            <span>销售阶段</span>
+            <span>预计金额</span>
+            <span>下一步 / 跟进日期</span>
+          </div>
           {loading ? (
             <p className="crm-empty" role="status">
               正在加载商机…
@@ -211,34 +228,36 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                   setNotice("");
                 }}
               >
-                <span className="crm-row-top">
+                <span className="crm-opportunity-identity">
                   <strong>{item.title}</strong>
-                  <span className={`crm-stage crm-stage-${item.stage}`}>
-                    {CRM_STAGES[item.stage]}
+                  <span className="crm-company">{item.companyName}</span>
+                  <span className="crm-contact">
+                    {item.contactName || "联系人待补充"}
                   </span>
                 </span>
-                <span className="crm-company">
-                  {item.companyName}
-                  {item.contactName && ` · ${item.contactName}`}
+                <span className={`crm-stage crm-stage-${item.stage}`}>
+                  {CRM_STAGES[item.stage]}
                 </span>
-                <span className="crm-row-bottom">
-                  <span className={isDue(item) ? "crm-due" : ""}>
-                    {item.nextFollowUp
-                      ? `${item.nextFollowUp} 跟进`
-                      : "未安排跟进"}
-                  </span>
-                  <span>
-                    {item.expectedAmountMinor == null
-                      ? "金额待确认"
-                      : formatMoney(
-                          item.currency,
-                          item.expectedAmountMinor / 100,
-                        )}
+                <span className="crm-opportunity-amount">
+                  {item.expectedAmountMinor == null
+                    ? "金额待确认"
+                    : formatMoney(
+                        item.currency,
+                        item.expectedAmountMinor / 100,
+                      )}
+                </span>
+                <span className="crm-opportunity-next">
+                  <span>{item.nextAction || "待安排下一步"}</span>
+                  <span
+                    className={isDue(item) ? "crm-due" : "crm-followup-date"}
+                  >
+                    {item.stage === "won" || item.stage === "lost"
+                      ? "已结束"
+                      : item.nextFollowUp
+                        ? `${item.nextFollowUp === localDate() ? "今天" : item.nextFollowUp} 跟进${isDue(item) && item.nextFollowUp < localDate() ? " · 已逾期" : ""}`
+                        : "未安排跟进日期"}
                   </span>
                 </span>
-                {item.nextAction && (
-                  <span className="crm-row-action">{item.nextAction}</span>
-                )}
               </button>
             ))
           )}

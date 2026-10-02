@@ -1,0 +1,192 @@
+/* Opportunity workspace: an action-led register with a persistent detail pane. */
+.crm-opportunities {
+  --crm-gap: 1rem;
+  --crm-navy: #19394b;
+  --crm-muted: #617581;
+  --crm-rule: #d6e1e5;
+  --crm-surface: #f6f9fa;
+  --crm-accent: #b77b23;
+}
+.crm-opportunities .crm-heading {
+  align-items: center;
+  margin-bottom: 1.75rem;
+}
+.crm-opportunities .crm-heading h1 {
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+.crm-opportunities .eyebrow {
+  color: var(--crm-accent);
+}
+.crm-opportunities .crm-toolbar {
+  margin: 0 0 1.25rem;
+}
+.crm-opportunities .crm-search {
+  max-width: 32rem;
+}
+.crm-opportunities .crm-stage-nav {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--crm-rule);
+  margin-bottom: 1.25rem;
+  gap: 1.5rem;
+}
+.crm-opportunities .crm-stage-nav button {
+  flex-shrink: 0;
+  padding: 0.85rem 0.2rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--crm-muted);
+}
+.crm-opportunities .crm-stage-nav button[aria-pressed="true"] {
+  color: var(--crm-navy);
+  font-weight: 700;
+  border-bottom-color: var(--crm-accent);
+}
+.crm-opportunities .crm-register {
+  gap: 0;
+  background: white;
+  border: 1px solid var(--crm-rule);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.crm-list-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+}
+.crm-list-caption strong {
+  font-size: 0.95rem;
+}
+.crm-list-caption > span {
+  color: var(--crm-muted);
+  font-size: 0.75rem;
+}
+.crm-list-columns,
+.crm-opportunities .crm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(5rem, 0.55fr) minmax(
+      6rem,
+      0.7fr
+    ) minmax(0, 1.15fr);
+  gap: 1.25rem;
+  align-items: center;
+}
+.crm-list-columns {
+  padding: 0.75rem 1.25rem;
+  color: var(--crm-muted);
+  background: var(--crm-surface);
+  font-size: 0.75rem;
+  border-block: 1px solid var(--crm-rule);
+}
+.crm-opportunities .crm-row {
+  padding: 1.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--crm-rule);
+  border-radius: 0;
+  background: white;
+  min-height: 7rem;
+}
+.crm-opportunities .crm-row:last-child {
+  border-bottom: 0;
+}
+.crm-opportunities .crm-row:hover {
+  background: var(--crm-surface);
+}
+.crm-opportunities .crm-row.selected {
+  background: #edf4f6;
+  box-shadow: inset 3px 0 var(--crm-accent);
+}
+.crm-opportunities .crm-row:focus-visible {
+  outline-offset: -3px;
+}
+.crm-opportunity-identity,
+.crm-opportunity-next {
+  min-width: 0;
+  display: grid;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.crm-opportunity-identity > strong {
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--crm-navy);
+}
+.crm-contact,
+.crm-followup-date {
+  color: var(--crm-muted);
+  font-size: 0.75rem;
+}
+.crm-opportunity-amount {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.crm-opportunity-next {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.crm-opportunity-next .crm-due {
+  font-size: 0.75rem;
+}
+.crm-opportunities .crm-row > .crm-stage {
+  justify-self: start;
+}
+.crm-opportunities .crm-layout-open {
+  grid-template-columns: minmax(18rem, 1fr) minmax(24rem, 1.1fr);
+  align-items: start;
+}
+.crm-opportunities .crm-layout-open .crm-list-columns {
+  display: none;
+}
+.crm-opportunities .crm-layout-open .crm-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem 1rem;
+}
+.crm-opportunities .crm-layout-open .crm-opportunity-next {
+  grid-column: 1 / -1;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--crm-rule);
+}
+.crm-opportunities .crm-panel {
+  border-color: var(--crm-rule);
+  border-top: 3px solid var(--crm-navy);
+}
+.crm-opportunities .crm-pagination {
+  padding: 1rem;
+  margin: 0;
+}
+@media (max-width: 1100px) {
+  .crm-opportunities .crm-layout-open {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .crm-opportunities {
+    padding: 1rem;
+  }
+  .crm-opportunities .crm-list-columns {
+    display: none;
+  }
+  .crm-opportunities .crm-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+  }
+  .crm-opportunities .crm-opportunity-next {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--crm-rule);
+    padding-top: 0.75rem;
+  }
+  .crm-opportunities .crm-stage-nav {
+    gap: 1.1rem;
+  }
+  .crm-opportunities .crm-search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+}

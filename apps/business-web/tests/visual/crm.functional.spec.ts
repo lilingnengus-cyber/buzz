@@ -230,8 +230,9 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "收起详情" }).click();
   await page
-    .getByRole("combobox", { name: "阶段", exact: true })
-    .selectOption("lost");
+    .getByRole("navigation", { name: "按销售阶段筛选" })
+    .getByRole("button", { name: "已流失", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "没有符合条件的商机" }),
   ).toBeVisible();
