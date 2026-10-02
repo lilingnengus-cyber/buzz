@@ -67,6 +67,9 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         next_action: "发送方案".into(),
         next_follow_up: NaiveDate::from_ymd_opt(2026, 9, 19),
         expected_version: None,
+        owner_user_id: None,
+        expected_close_date: None,
+        loss_reason: None,
     };
     let first = crm
         .save(actor, Uuid::new_v4(), None, "create-key-0001", &input)
@@ -115,6 +118,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         next_action: "确认报价".into(),
         next_follow_up: input.next_follow_up,
         expected_version: 1,
+        loss_reason: None,
     };
     let result = crm
         .followup(actor, Uuid::new_v4(), id, "followup-key-1", &note)
@@ -411,6 +415,166 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .await,
         Err(DomainError::Invalid(_))
     ));
+    // Assignment never grants access. Only an already eligible operator can own the record.
+    let owner_scope = business_core::crm::OwnerScope {
+        legal_entity_id: legal,
+        business_unit_id: unit,
+        customer_id: None,
+        query: None,
+    };
+    let owners = crm.owners(actor, &owner_scope).await.unwrap();
+    assert_eq!(owners["items"].as_array().unwrap().len(), 1);
+    assert!(matches!(
+        crm.owners(outsider, &owner_scope).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    input.account_id = Some(account_id);
+    input.expected_version = Some(3);
+    input.owner_user_id = Some(outsider);
+    input.expected_close_date = Some(Some("2026-11-01".parse().unwrap()));
+    assert!(matches!(
+        crm.save(
+            actor,
+            Uuid::new_v4(),
+            Some(linked_ids[0]),
+            "owner-denied",
+            &input
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$3)").bind(outsider).bind(legal).bind(actor).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$3)").bind(outsider).bind(unit).bind(actor).execute(&pool).await.unwrap();
+    assert_eq!(
+        crm.owners(actor, &owner_scope).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    crm.save(
+        actor,
+        Uuid::new_v4(),
+        Some(linked_ids[0]),
+        "owner-assign",
+        &input,
+    )
+    .await
+    .unwrap();
+    let assigned = crm.detail(actor, linked_ids[0], 0).await.unwrap();
+    assert_eq!(assigned["item"]["ownerUserId"], outsider.to_string());
+    assert_eq!(assigned["item"]["ownerName"], "Other User");
+    let mine = Filters {
+        mine: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        crm.list(actor, &mine).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(
+        crm.list(outsider, &mine).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    // Omitted fields from older clients preserve ownership and date; explicit null clears date.
+    input.expected_version = Some(4);
+    input.expected_close_date = None;
+    input.owner_user_id = None;
+    assert!(serde_json::to_value(&input)
+        .unwrap()
+        .get("expectedCloseDate")
+        .is_none());
+    crm.save(
+        actor,
+        Uuid::new_v4(),
+        Some(linked_ids[0]),
+        "old-client-save",
+        &input,
+    )
+    .await
+    .unwrap();
+    let preserved = crm.detail(actor, linked_ids[0], 0).await.unwrap();
+    assert_eq!(preserved["item"]["expectedCloseDate"], "2026-11-01");
+    assert_eq!(preserved["item"]["ownerUserId"], outsider.to_string());
+    input.expected_version = Some(5);
+    input.expected_close_date = Some(None);
+    let roundtrip: SaveOpportunity =
+        serde_json::from_value(serde_json::to_value(&input).unwrap()).unwrap();
+    assert_eq!(roundtrip.expected_close_date, Some(None));
+    crm.save(
+        actor,
+        Uuid::new_v4(),
+        Some(linked_ids[0]),
+        "clear-close-date",
+        &input,
+    )
+    .await
+    .unwrap();
+    assert!(
+        crm.detail(actor, linked_ids[0], 0).await.unwrap()["item"]["expectedCloseDate"].is_null()
+    );
+    input.expected_version = Some(6);
+    input.stage = "lost".into();
+    input.loss_reason = None;
+    assert!(matches!(
+        crm.save(
+            actor,
+            Uuid::new_v4(),
+            Some(linked_ids[0]),
+            "lost-no-reason",
+            &input
+        )
+        .await,
+        Err(DomainError::Invalid(_))
+    ));
+    input.loss_reason = Some("预算取消".into());
+    crm.save(
+        actor,
+        Uuid::new_v4(),
+        Some(linked_ids[0]),
+        "lost-with-reason",
+        &input,
+    )
+    .await
+    .unwrap();
+    let mut outcome = AddFollowup {
+        note: "客户反馈".into(),
+        stage: "lost".into(),
+        next_action: "".into(),
+        next_follow_up: None,
+        expected_version: 7,
+        loss_reason: Some("项目暂停".into()),
+    };
+    crm.followup(
+        actor,
+        Uuid::new_v4(),
+        linked_ids[0],
+        "lost-note-reason",
+        &outcome,
+    )
+    .await
+    .unwrap();
+    outcome.stage = "contacting".into();
+    outcome.expected_version = 8;
+    outcome.loss_reason = None;
+    crm.followup(
+        actor,
+        Uuid::new_v4(),
+        linked_ids[0],
+        "reopen-opportunity",
+        &outcome,
+    )
+    .await
+    .unwrap();
+    let reopened = crm.detail(actor, linked_ids[0], 0).await.unwrap();
+    assert_eq!(reopened["item"]["lossReason"], "");
+    assert_eq!(reopened["followups"][1]["lossReason"], "项目暂停");
     // Revoking the business scope hides opportunities but not an owner's independent prospect.
     sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
         .bind(actor)
@@ -437,6 +601,10 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         let router = business_core::router(state);
         for (method, path) in [
             ("GET", "/api/v1/crm/options".to_string()),
+            (
+                "GET",
+                format!("/api/v1/crm/owners?legalEntityId={legal}&businessUnitId={unit}"),
+            ),
             ("GET", "/api/v1/crm/opportunities".into()),
             ("GET", "/api/v1/crm/followups".into()),
             ("GET", "/api/v1/crm/contacts".into()),

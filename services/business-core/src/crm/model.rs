@@ -25,6 +25,16 @@ pub struct SaveOpportunity {
     pub next_action: String,
     pub next_follow_up: Option<NaiveDate>,
     pub expected_version: Option<i64>,
+    /// Omitted ownership preserves the existing owner; creates default to the caller.
+    pub owner_user_id: Option<Uuid>,
+    /// Missing preserves the date; explicit null clears it for older-client compatibility.
+    #[serde(
+        default,
+        deserialize_with = "optional_update",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expected_close_date: Option<Option<NaiveDate>>,
+    pub loss_reason: Option<String>,
 }
 /// A follow-up and the resulting next step, committed atomically.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +45,7 @@ pub struct AddFollowup {
     pub next_action: String,
     pub next_follow_up: Option<NaiveDate>,
     pub expected_version: i64,
+    pub loss_reason: Option<String>,
 }
 /// Persisted opportunity returned only within the actor's current scope.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -56,6 +67,9 @@ pub struct Opportunity {
     pub next_action: String,
     pub next_follow_up: Option<NaiveDate>,
     pub owner_user_id: Uuid,
+    pub owner_name: String,
+    pub expected_close_date: Option<NaiveDate>,
+    pub loss_reason: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub version: i64,
@@ -72,6 +86,8 @@ pub struct Filters {
     pub today: Option<NaiveDate>,
     #[serde(default)]
     pub offset: i64,
+    #[serde(default)]
+    pub mine: bool,
 }
 pub(super) fn text(value: &str, max: usize, required: bool) -> Result<(), DomainError> {
     if value.chars().count() > max || (required && value.trim().is_empty()) {
@@ -102,4 +118,25 @@ impl SaveOpportunity {
         }
         Ok(())
     }
+}
+
+fn optional_update<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+pub(super) fn loss_reason(
+    stage: &str,
+    supplied: Option<&str>,
+    previous: Option<&str>,
+) -> Result<String, DomainError> {
+    let reason = supplied.or(previous).unwrap_or("").trim();
+    text(reason, 1000, false)?;
+    if stage != "lost" {
+        return Ok(String::new());
+    }
+    if reason.is_empty() {
+        return Err(DomainError::Invalid("转为已流失时请填写流失原因".into()));
+    }
+    Ok(reason.to_string())
 }

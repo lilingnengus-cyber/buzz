@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmOwnerPicker } from "./CrmOwnerPicker";
 import { CrmAccountPicker, CrmContactPicker } from "./CrmDirectoryFields";
 import type { CrmAccount, CrmContact } from "./crm";
 import { useCrmDraft } from "./CrmDrawer";
@@ -74,6 +75,7 @@ export function CrmForm({
   );
   const [company, setCompany] = React.useState(record?.companyName ?? "");
   const [stage, setStage] = React.useState<CrmStage>(record?.stage ?? "new");
+  const [owner, setOwner] = React.useState(record?.ownerUserId ?? "");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const lock = React.useRef(false);
@@ -110,6 +112,9 @@ export function CrmForm({
             nextAction: form.get("nextAction"),
             nextFollowUp: form.get("nextFollowUp") || null,
             expectedVersion: record?.version ?? null,
+            ownerUserId: owner || null,
+            expectedCloseDate: form.get("expectedCloseDate") || null,
+            lossReason: stage === "lost" ? form.get("lossReason") : "",
           }),
         },
       );
@@ -293,6 +298,38 @@ export function CrmForm({
             <p className="crm-hint crm-wide">
               联系人资料统一在“客户联系人”页面维护。
             </p>
+          )}
+          <CrmOwnerPicker
+            legal={legal}
+            unit={unit}
+            customer={customer}
+            value={owner}
+            currentName={record?.ownerName}
+            onChange={(value) => {
+              setOwner(value);
+              draft.markDirty();
+            }}
+          />
+          <label>
+            预计成交日期
+            <input
+              type="date"
+              name="expectedCloseDate"
+              defaultValue={record?.expectedCloseDate ?? ""}
+            />
+          </label>
+          {stage === "lost" && (
+            <label className="crm-wide">
+              流失原因
+              <textarea
+                name="lossReason"
+                required
+                maxLength={1000}
+                rows={3}
+                defaultValue={record?.lossReason ?? ""}
+                placeholder="例如：预算取消、需求变化或选择其他供应商"
+              />
+            </label>
           )}
           <label>
             预计金额

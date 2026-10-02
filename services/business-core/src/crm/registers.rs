@@ -29,7 +29,7 @@ impl CrmService {
         } else {
             r#"SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,
                 'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,
-                'authorName',u.display_name,'opportunityId',o.id,'opportunityTitle',o.title,
+                'authorName',u.display_name,'lossReason',f.loss_reason,'opportunityId',o.id,'opportunityTitle',o.title,
                 'companyName',o.company_name,'contactName',o.contact_name)
               FROM crm_followups f JOIN crm_opportunity_current o ON o.id=f.opportunity_id
                 JOIN enterprise_users u ON u.id=f.author_user_id

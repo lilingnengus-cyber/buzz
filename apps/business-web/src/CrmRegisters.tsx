@@ -115,6 +115,9 @@ function CrmHistoryRegister() {
                 {item.contactName && ` · ${item.contactName}`}
               </p>
               <p className="crm-note-content">{item.note}</p>
+              {item.lossReason && (
+                <p className="crm-hint">流失原因：{item.lossReason}</p>
+              )}
               <div className="crm-note-meta">
                 <strong>{item.authorName}</strong>
                 <time dateTime={item.createdAt}>
