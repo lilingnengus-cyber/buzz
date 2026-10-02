@@ -83,6 +83,7 @@ const alternatePurchaseOrder = {
 };
 
 const inventoryBalance = {
+  currency: "CNY", currencyConflict: false, unitOfMeasureId: "uom", unitName: "件",
   legalEntityId: "legal-entity-1",
   warehouseId: "warehouse-1",
   skuId: "sku-1",
@@ -429,7 +430,7 @@ for (const zoom of ZOOMS) {
     await expect(page.locator(".balance-table tbody tr")).toHaveCount(1);
     await expectNoHorizontalOverflow(page.locator("main"));
     for (const value of await page
-      .locator(".inventory-equation strong")
+      .locator(".inventory-summary-amount")
       .all()) {
       await expectSingleLine(value);
       await expectNoTextClipping(value);

@@ -584,6 +584,10 @@ export type SalesOrderConfirmationPreview = {
 };
 
 export type InventoryBalance = {
+  currency?: string | null;
+  currencyConflict?: boolean;
+  unitOfMeasureId?: string;
+  unitName?: string;
   legalEntityId: string;
   warehouseId: string;
   skuId: string;
