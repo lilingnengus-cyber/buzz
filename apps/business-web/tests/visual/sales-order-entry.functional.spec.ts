@@ -99,8 +99,12 @@ test("销售草稿要求显式填写单价并原样提交", async ({ page }) => 
   await expect(unitPrice).toHaveAttribute("placeholder", "必填");
   await save.click();
   expect(submitted).toHaveLength(0);
+  await expect(unitPrice).toBeFocused();
+  await expect(unitPrice).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByRole("alert")).toContainText("请填写第 1 行单价");
 
   await unitPrice.fill("1.00");
+  await expect(unitPrice).not.toHaveAttribute("aria-invalid", "true");
   await save.click();
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0]).toMatchObject({
@@ -127,4 +131,27 @@ test("服务订单无需仓库并明确提交空仓库", async ({ page }) => {
   await dialog.getByRole("spinbutton", { name: "第 1 行单价" }).fill("100");
   await dialog.getByRole("button", { name: "保存销售订单草稿" }).click();
   await expect.poll(() => saved?.lines?.[0]?.warehouseId).toBeNull();
+});
+
+test("订单保存期间禁止关闭，成功后直接退出", async ({ page }) => {
+  await installFixtures(page);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/v1/sales-orders", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await pending;
+    await route.fulfill({ json: { id: "saved", number: "SO-SAVED" } });
+  });
+  await page.goto("/#sales");
+  await page.getByRole("button", { name: "新增销售订单", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新增销售订单", exact: true });
+  await dialog.getByRole("spinbutton", { name: "第 1 行单价", exact: true }).fill("10");
+  await dialog.getByRole("button", { name: "保存销售订单草稿", exact: true }).click();
+  try {
+    await expect(dialog.getByRole("button", { name: "关闭弹窗", exact: true })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+  } finally { release(); }
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "放弃未保存修改" })).toHaveCount(0);
 });

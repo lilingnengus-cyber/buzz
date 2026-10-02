@@ -1,3 +1,4 @@
+import { formatAmount } from "./formatters";
 import React from "react";
 import { request } from "./api";
 import { CrmDrawer, useCrmDraft } from "./CrmDrawer";
@@ -347,7 +348,7 @@ function ProjectDetail({
       {data.receivable && (
         <p role="status">
           应收 {data.receivable.number} · {data.receivable.currency}{" "}
-          {data.receivable.amount} · 未收 {data.receivable.openAmount} · 到期{" "}
+          {formatAmount(data.receivable.amount)} · 未收 {formatAmount(data.receivable.openAmount)} · 到期{" "}
           {data.receivable.dueDate}
         </p>
       )}
@@ -383,7 +384,7 @@ function ProjectDetail({
           {data.receivable && (
             <p role="status">
               应收 {data.receivable.number} · {data.receivable.currency}{" "}
-              {data.receivable.amount} · 未收 {data.receivable.openAmount} ·
+              {formatAmount(data.receivable.amount)} · 未收 {formatAmount(data.receivable.openAmount)} ·
               到期 {data.receivable.dueDate}
             </p>
           )}

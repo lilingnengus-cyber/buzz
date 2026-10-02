@@ -1,3 +1,7 @@
+import { useOrderDraft } from "./OrderDraft";
+import { useOrderValidation } from "./OrderValidation";
+import "./order-entry-responsive.css";
+import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
 import type { CrmDetail } from "./crm";
 import { useCrmCommand } from "./useCrmCommand";
@@ -51,6 +55,8 @@ export function SalesOrderEntry({
   onBusy?: (busy: boolean) => void;
 }) {
   const command = useCrmCommand();
+  const draftGuard = useOrderDraft();
+  const validation = useOrderValidation();
   const [source, setSource] = React.useState<CrmDetail["item"] | null>(null);
   const [original, setOriginal] = React.useState<
     SalesOrderDraftOptions["draft"] | null
@@ -236,6 +242,7 @@ export function SalesOrderEntry({
   };
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validation.validate(event.currentTarget as HTMLFormElement)) return;
     setNotice(null);
     if (!ready || busy) return;
     if (!legalEntityId || !customerId || !businessUnitId) {
@@ -250,6 +257,7 @@ export function SalesOrderEntry({
       setNotice("请补全商品行，并填写单价；数量须大于 0，单价不能为负。");
       return;
     }
+    draftGuard.setBusy(true);
     setBusy(true);
     onBusy?.(true);
     try {
@@ -293,10 +301,12 @@ export function SalesOrderEntry({
           catalog.units[0]?.id,
         ),
       ]);
+      draftGuard.saved();
       onDone();
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
+      draftGuard.setBusy(false);
       setBusy(false);
       onBusy?.(false);
     }
@@ -342,7 +352,13 @@ export function SalesOrderEntry({
           {notice}
         </p>
       ) : (
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate
+          onChangeCapture={(event) => { if (!(event.target instanceof HTMLInputElement && event.target.type === "search")) draftGuard.markDirty(); }}
+          onClickCapture={(event) => {
+            const button = (event.target as HTMLElement).closest("button");
+            if (button && (button.matches(".line-remove, .master-tree-choice") || button.textContent?.includes("添加商品行") || button.textContent?.includes("添加采购行"))) draftGuard.markDirty();
+          }} onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+          {validation.summary}
           <div className="entry-fields">
             <Field label="法律主体">
               <select
@@ -354,16 +370,10 @@ export function SalesOrderEntry({
                 {catalog.legalEntities.map(option)}
               </select>
             </Field>
-            <Field label="客户">
-              <select
-                value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
-                required
-              >
-                {availableCustomers.map(option)}
-              </select>
-            </Field>
+            <OrderMasterPicker label="客户" noun="客户" inLine={false}
+              value={customerId} items={availableCustomers} onChange={setCustomerId} />
             <OperatingUnitPicker
+              orderRequired
               label="经营主体"
               records={availableUnits}
               value={businessUnitId}
@@ -418,39 +428,12 @@ export function SalesOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <label>
-                  <span>商品 {index + 1}</span>
-                  <select
-                    aria-label={`第 ${index + 1} 行商品`}
-                    value={line.skuId}
-                    onChange={(event) =>
-                      updateLine(line.key, "skuId", event.target.value)
-                    }
-                    required
-                  >
-                    {source && <option value="">请选择商品</option>}
-                    {catalog.skus.map(option)}
-                  </select>
-                </label>
-                <label>
-                  <span>仓库</span>
-                  <select
-                    aria-label={`第 ${index + 1} 行仓库`}
-                    disabled={isService(line.skuId)}
-                    value={isService(line.skuId) ? "" : line.warehouseId}
-                    onChange={(event) =>
-                      updateLine(line.key, "warehouseId", event.target.value)
-                    }
-                    required
-                  >
-                    {isService(line.skuId) ? (
-                      <option value="">服务无需仓库</option>
-                    ) : (
-                      source && <option value="">请选择仓库</option>
-                    )}
-                    {availableWarehouses.map(option)}
-                  </select>
-                </label>
+                <OrderMasterPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                  items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
+                <OrderMasterPicker label={`第 ${index + 1} 行仓库`} noun="仓库"
+                  disabled={isService(line.skuId)} placeholder={isService(line.skuId) ? "服务无需仓库" : "请选择仓库"}
+                  value={isService(line.skuId) ? "" : line.warehouseId} items={availableWarehouses}
+                  onChange={(value) => updateLine(line.key, "warehouseId", value)} />
                 <label>
                   <span>单位</span>
                   <select
@@ -482,7 +465,7 @@ export function SalesOrderEntry({
                     <input
                       aria-label={`第 ${index + 1} 行${lineLabel(field)}`}
                       type="number"
-                      min="0"
+                      min={field === "quantity" ? "0.000001" : "0"}
                       step="0.000001"
                       value={line[field]}
                       placeholder={field === "unitPrice" ? "必填" : undefined}

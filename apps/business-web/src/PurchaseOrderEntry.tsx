@@ -1,3 +1,7 @@
+import { useOrderDraft } from "./OrderDraft";
+import { useOrderValidation } from "./OrderValidation";
+import "./order-entry-responsive.css";
+import { OrderMasterPicker } from "./OrderMasterPicker";
 import React from "react";
 import {
   type CoreMasterRecord,
@@ -50,6 +54,8 @@ export function PurchaseOrderEntry({
   orderId?: string;
   onDone: () => void;
 }) {
+  const draftGuard = useOrderDraft();
+  const validation = useOrderValidation();
   const [catalog, setCatalog] = React.useState<Catalog>(emptyCatalog);
   const [options, setOptions] = React.useState<PurchaseOrderEntryOptions>();
   const [loading, setLoading] = React.useState(true);
@@ -185,6 +191,7 @@ export function PurchaseOrderEntry({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validation.validate(event.currentTarget as HTMLFormElement)) return;
     setNotice("");
     if (!allowed) return;
     if (!legalEntityId || !supplierId || !businessUnitId) {
@@ -223,6 +230,7 @@ export function PurchaseOrderEntry({
       setNotice("折扣不能超过该行数量与单价的乘积。");
       return;
     }
+    draftGuard.setBusy(true);
     setBusy(true);
     try {
       const payload = {
@@ -266,10 +274,12 @@ export function PurchaseOrderEntry({
           ),
         ]);
       }
+      draftGuard.saved();
       onDone();
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
+      draftGuard.setBusy(false);
       setBusy(false);
     }
   }
@@ -309,7 +319,13 @@ export function PurchaseOrderEntry({
       {loading ? (
         <p className="entry-loading">正在加载供应商、商品与收货仓库…</p>
       ) : (
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate
+          onChangeCapture={(event) => { if (!(event.target instanceof HTMLInputElement && event.target.type === "search")) draftGuard.markDirty(); }}
+          onClickCapture={(event) => {
+            const button = (event.target as HTMLElement).closest("button");
+            if (button && (button.matches(".line-remove, .master-tree-choice") || button.textContent?.includes("添加商品行") || button.textContent?.includes("添加采购行"))) draftGuard.markDirty();
+          }} onInput={validation.clear} onChange={validation.clear} onClick={(event) => { if ((event.target as HTMLElement).closest("[role=option]")) validation.clear(); }}>
+          {validation.summary}
           {!allowed && (
             <div className="shipment-gate">
               当前角色没有{orderId ? "编辑采购订单草稿" : "创建采购订单"}
@@ -327,17 +343,10 @@ export function PurchaseOrderEntry({
                 {catalog.legalEntities.map(option)}
               </select>
             </Field>
-            <Field label="供应商">
-              <select
-                value={supplierId}
-                onChange={(event) => setSupplierId(event.target.value)}
-                disabled={!allowed}
-                required
-              >
-                {availableSuppliers.map(option)}
-              </select>
-            </Field>
+            <OrderMasterPicker label="供应商" noun="供应商" inLine={false} disabled={!allowed}
+              value={supplierId} items={availableSuppliers} onChange={setSupplierId} />
             <OperatingUnitPicker
+              orderRequired
               label="经营主体"
               records={availableBusinessUnits}
               value={businessUnitId}
@@ -411,24 +420,11 @@ export function PurchaseOrderEntry({
             </div>
             {lines.map((line, index) => (
               <div className="entry-line" key={line.key}>
-                <LineSelect
-                  label={`第 ${index + 1} 行商品`}
-                  value={line.skuId}
-                  disabled={!allowed}
-                  onChange={(value) => updateLine(line.key, "skuId", value)}
-                >
-                  {catalog.skus.map(option)}
-                </LineSelect>
-                <LineSelect
-                  label={`第 ${index + 1} 行收货仓库`}
-                  value={line.warehouseId}
-                  disabled={!allowed}
-                  onChange={(value) =>
-                    updateLine(line.key, "warehouseId", value)
-                  }
-                >
-                  {availableWarehouses.map(option)}
-                </LineSelect>
+                <OrderMasterPicker label={`第 ${index + 1} 行商品`} value={line.skuId}
+                  disabled={!allowed} items={catalog.skus} onChange={(value) => updateLine(line.key, "skuId", value)} />
+                <OrderMasterPicker label={`第 ${index + 1} 行收货仓库`} noun="仓库" disabled={!allowed}
+                  value={line.warehouseId} items={availableWarehouses}
+                  onChange={(value) => updateLine(line.key, "warehouseId", value)} />
                 <LineSelect
                   label={`第 ${index + 1} 行单位`}
                   value={line.unitOfMeasureId}
@@ -452,7 +448,7 @@ export function PurchaseOrderEntry({
                     <input
                       aria-label={`第 ${index + 1} 行${lineLabel(field)}`}
                       type="number"
-                      min="0"
+                      min={field === "quantity" ? "0.000001" : "0"}
                       max={field === "taxPercent" ? "100" : undefined}
                       step="0.000001"
                       value={line[field]}

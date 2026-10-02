@@ -14,6 +14,7 @@ export function OperatingUnitPicker({
   onChange,
   disabled = false,
   allowEmpty = false,
+  orderRequired = false,
   emptyLabel = "设为根节点",
   preferenceContext,
   preferenceFallback = "",
@@ -24,6 +25,7 @@ export function OperatingUnitPicker({
   onChange: (value: string) => void;
   disabled?: boolean;
   allowEmpty?: boolean;
+  orderRequired?: boolean;
   emptyLabel?: string;
   preferenceContext?: string;
   preferenceFallback?: string;
@@ -110,7 +112,7 @@ export function OperatingUnitPicker({
   };
 
   return (
-    <div className="master-tree-field wide">
+    <div className="master-tree-field wide" data-order-required={orderRequired ? label : undefined} data-order-value={value}>
       <span id={labelId}>{label}</span>
       <div
         ref={pickerRef}
