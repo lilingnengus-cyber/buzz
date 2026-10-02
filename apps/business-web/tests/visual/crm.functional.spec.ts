@@ -226,7 +226,7 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   ).toBeVisible();
   await page.goto("/#crmContacts");
   await expect(
-    page.getByRole("heading", { name: "客户联系人", exact: true }),
+    page.getByRole("heading", { name: "联系人", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "陈经理" })).toBeVisible();
   await page.reload();
