@@ -154,6 +154,10 @@ test("客户与联系人点击记录打开右侧详情，编辑保留未保存�
   await page.setViewportSize({ width: 520, height: 900 });
   await expect(contactDetail).toBeVisible();
   expect(Math.round((await contactDetail.boundingBox())!.width)).toBe(520);
+  await contactDetail
+    .getByRole("link", { name: "潜在客户", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/customers\/core-customer$/);
 });
 
 test("只读联系人也可查看右侧详情", async ({ page }) => {

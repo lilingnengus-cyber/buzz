@@ -25,7 +25,7 @@ function DirectoryForm({
 }) {
   const draft = useCrmDraft(),
     command = useCrmCommand();
-  const accountItem = item && "customerId" in item ? item : null;
+  const accountItem = item && "name" in item ? item : null;
   const contactItem = item && "accountId" in item ? item : null;
   const [account, setAccount] = React.useState<CrmAccount | null>(
     contactItem
