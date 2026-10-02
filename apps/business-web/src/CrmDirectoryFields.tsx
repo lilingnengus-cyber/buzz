@@ -4,7 +4,9 @@ import type { CrmAccount, CrmContact } from "./crm";
 export function CrmAccountPicker({
   value,
   onChange,
+  filter = false,
 }: {
+  filter?: boolean;
   value: CrmAccount | null;
   onChange: (value: CrmAccount | null) => void;
 }) {
@@ -42,9 +44,11 @@ export function CrmAccountPicker({
       ? [value, ...items]
       : items;
   return (
-    <div className="crm-wide crm-directory-picker">
+    <div
+      className={`crm-wide crm-directory-picker ${filter ? "crm-customer-filter" : ""}`}
+    >
       <label>
-        搜索客户档案
+        {filter ? "查找筛选客户" : "搜索客户档案"}
         <input
           type="search"
           maxLength={160}
@@ -54,15 +58,17 @@ export function CrmAccountPicker({
         />
       </label>
       <label>
-        客户档案
+        {filter ? "按客户筛选" : "客户档案"}
         <select
-          aria-label="客户档案"
+          aria-label={filter ? "按客户筛选" : "客户档案"}
           value={value?.id ?? ""}
           onChange={(e) =>
             onChange(choices.find((item) => item.id === e.target.value) ?? null)
           }
         >
-          <option value="">快速填写 / 暂不选择</option>
+          <option value="">
+            {filter ? "全部客户" : "快速填写 / 暂不选择"}
+          </option>
           {choices.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
