@@ -130,3 +130,5 @@
 本次继续使用上一版的来源参考号，没有新增关系表或数据库迁移。商机录单来源参考号设为只读；编辑具有规范 CRM UUID 参考号的订单时也保持只读。历史订单若参考号被改动，需核对并恢复对应来源才会出现在关联列表中。
 
 真实 PostgreSQL 测试验证商机与订单双重权限、同一客户不同商机隔离、过滤先于 limit、普通订单查询兼容；界面测试验证新草稿自动出现、正确详情链接、已完成状态与金额、失败重试及来源参考号只读。构建、类型检查和 Clippy 通过。
+
+关联订单已发布：实现 `c093f5e6f`，Core 镜像 `shiyue-business-core:crm-related-orders-20261002`，固定 ID `sha256:c0ceacc19627d1ec0ceee12e1ca2068c67be9e5a9cd649f11d8a6308b121ea3f`；迁移预检 head=78/pending=0，服务健康，证据 `crm-related-orders-20261002/release-evidence/release.aDU75QQs`。网页目录 `business-web-c093f5e6f`，公开 JS 已逐字节核对；未登录关联订单查询返回 401。15 项界面测试通过；数据库隔离验证通过，未在生产创建订单。
