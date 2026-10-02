@@ -1,4 +1,5 @@
 import React from "react";
+import { SalesOrderEntry } from "./SalesOrderEntry";
 import { CrmConversionFields } from "./CrmConversionFields";
 import { useCrmDraft } from "./CrmDrawer";
 import { request as read } from "./api";
@@ -19,6 +20,8 @@ export function CrmDetail({
   const request = useCrmCommand();
   const draft = useCrmDraft();
   const item = data.item;
+  const [orderEntry, setOrderEntry] = React.useState(false);
+  const [orderSaved, setOrderSaved] = React.useState(false);
   const [history, setHistory] = React.useState(data.followups);
   const [hasOlder, setHasOlder] = React.useState(data.hasOlderFollowups);
   const [historyLoading, setHistoryLoading] = React.useState(false);
@@ -93,6 +96,32 @@ export function CrmDetail({
       draft.setBusy(false);
     }
   };
+  if (orderEntry)
+    return (
+      <div
+        className="crm-sales-entry"
+        onChangeCapture={() => draft.markDirty()}
+      >
+        <button
+          disabled={busy}
+          onClick={() => draft.discard(() => setOrderEntry(false))}
+        >
+          返回商机
+        </button>
+        <SalesOrderEntry
+          opportunityId={item.id}
+          onBusy={(value) => {
+            setBusy(value);
+            draft.setBusy(value);
+          }}
+          onDone={() => {
+            draft.saved();
+            setOrderEntry(false);
+            setOrderSaved(true);
+          }}
+        />
+      </div>
+    );
   return (
     <div className="crm-detail">
       <div className="crm-heading">
@@ -153,9 +182,25 @@ export function CrmDetail({
         <strong>下一步</strong>
         <p>{item.nextAction || "记录一次跟进，安排下一步。"}</p>
       </div>
+      {orderSaved && (
+        <p role="status" className="crm-notice">
+          销售订单草稿已保存，可前往<a href="/#sales">销售订单</a>查看。
+        </p>
+      )}
       {item.stage === "won" && (
         <p className="crm-hint">
-          已成交。需要录单时，请前往<a href="#sales">销售订单</a>。
+          {canManage && item.customerId ? (
+            <button
+              className="primary"
+              onClick={() => draft.discard(() => setOrderEntry(true))}
+            >
+              创建销售订单草稿
+            </button>
+          ) : (
+            <>
+              已成交。需要录单时，请前往<a href="#sales">销售订单</a>。
+            </>
+          )}
         </p>
       )}
       {canManage && (

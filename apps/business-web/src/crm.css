@@ -334,3 +334,31 @@
 .crm-record-detail .crm-note-content {
   overflow-wrap: anywhere;
 }
+
+.crm-sales-entry .sales-entry {
+  margin-top: 1rem;
+  padding: 0;
+  border: 0;
+}
+.crm-sales-entry .entry-fields,
+.crm-sales-entry .entry-line {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.crm-sales-entry .entry-line-head {
+  display: none;
+}
+.crm-sales-entry .entry-line label > span {
+  display: block;
+}
+@media (max-width: 550px) {
+  .crm-sales-entry .entry-fields,
+  .crm-sales-entry .entry-line {
+    grid-template-columns: 1fr;
+  }
+}
+.crm-sales-entry .entry-line {
+  min-width: 0;
+}
+.crm-sales-entry .entry-line label {
+  min-width: 0;
+}
