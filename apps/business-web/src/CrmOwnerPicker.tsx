@@ -1,3 +1,4 @@
+import { CrmSearchSelect } from "./CrmSearchSelect";
 import React from "react";
 import { request } from "./api";
 export function CrmOwnerPicker({
@@ -55,42 +56,15 @@ export function CrmOwnerPicker({
   }, [legal, unit, customer, query]);
   return (
     <div className="crm-directory-picker crm-wide">
-      <label>
-        搜索负责人
-        <input
-          type="search"
-          value={query}
-          maxLength={100}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="同事姓名"
-        />
-      </label>
-      <label>
-        商机负责人
-        <select
-          aria-label="商机负责人"
-          disabled={!legal || !unit}
-          value={value}
-          onChange={(e) => {
-            setSelectedName(
-              items.find((item) => item.id === e.target.value)?.name ??
-                currentName ??
-                "当前负责人",
-            );
-            onChange(e.target.value);
-          }}
-        >
-          <option value="">{currentName ? "保持原负责人" : "当前账号"}</option>
-          {value && !items.some((item) => item.id === value) && (
-            <option value={value}>{selectedName}（当前选择）</option>
-          )}
-          {items.map((item) => (
-            <option value={item.id} key={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CrmSearchSelect label="商机负责人" value={value} query={query} onQuery={setQuery}
+        disabled={!legal || !unit} maxLength={100}
+        onChange={(id) => {
+          setSelectedName(items.find((item) => item.id === id)?.name ?? currentName ?? "当前负责人");
+          onChange(id);
+        }}
+        options={[{ value: "", label: currentName ? "保持原负责人" : "当前账号" },
+          ...(value && !items.some((item) => item.id === value) ? [{ value, label: selectedName + "（当前选择）" }] : []),
+          ...items.map((item) => ({ value: item.id, label: item.name }))]} />
       {error && (
         <p role="alert" className="crm-error">
           {error}

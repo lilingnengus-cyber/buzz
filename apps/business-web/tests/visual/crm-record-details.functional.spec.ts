@@ -271,14 +271,15 @@ test("客户筛选与搜索同时发送，清除后恢复全部客户", async ({
       name: "按客户筛选",
       exact: true,
     });
-    await expect(select.locator("option[value=prospect]")).toHaveCount(1);
+    await select.click();
+    await expect(page.getByRole("option", { name: /潜在客户/ }).last()).toBeVisible();
     const path = hash === "crmContacts" ? "contacts" : "followups";
     const filtered = page.waitForRequest(
       (r) =>
         r.url().includes(`/crm/${path}?`) &&
         new URL(r.url()).searchParams.get("accountId") === "prospect",
     );
-    await select.selectOption("prospect");
+    await page.getByRole("option", { name: /潜在客户/ }).last().click();
     expect(new URL((await filtered).url()).searchParams.get("offset")).toBe(
       "0",
     );
@@ -301,7 +302,8 @@ test("客户筛选与搜索同时发送，清除后恢复全部客户", async ({
         r.url().includes(`/crm/${path}?`) &&
         !new URL(r.url()).searchParams.has("accountId"),
     );
-    await select.selectOption("");
+    await select.click();
+    await page.getByRole("option", { name: "全部客户", exact: true }).click();
     expect(new URL((await cleared).url()).searchParams.get("query")).toBe(
       "张经理",
     );

@@ -116,7 +116,8 @@ test("分配负责人、预计成交日期、流失原因与重新跟进", async
   await drawer.getByRole("button", { name: "编辑商机" }).click();
   await drawer
     .getByRole("combobox", { name: "商机负责人", exact: true })
-    .selectOption("user-2");
+    .click();
+  await drawer.getByRole("option", { name: "李同事", exact: true }).click();
   await drawer.getByLabel("预计成交日期").fill("2026-11-30");
   await drawer.getByRole("button", { name: "保存商机", exact: true }).click();
   await expect(drawer.getByText("李同事", { exact: true })).toBeVisible();
