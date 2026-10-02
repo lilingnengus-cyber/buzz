@@ -361,8 +361,10 @@ function SalesOrderRegisterPage({ mode }: { mode: Mode }) {
                 toApiFailure(null, "业务数据加载失败")
               }
               resourceLabel={
-                salesStages.find((stage) => stage.id === tab)?.label ??
-                "销售闭环"
+                tab === "orders"
+                  ? "销售订单"
+                  : salesStages.find((stage) => stage.id === tab)?.label ??
+                    "销售闭环"
               }
               onRetry={refresh}
             />

@@ -165,7 +165,9 @@ impl OperationsService {
                 "only completed operating periods can be frozen".into(),
             ));
         }
-        if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4")
+        // This legacy generator does not record timezone boundaries. Keep its
+        // lookups and conflict target on the matching legacy partial index.
+        if let Some(row) = sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes IS NULL")
             .bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_optional(self.store.pool()).await?
         {
             return Ok(snapshot_result(&row, false, trace_id));
@@ -226,13 +228,13 @@ impl OperationsService {
         }))?));
         let id = Uuid::new_v4();
         let mut tx = self.store.pool().begin().await?;
-        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(cadence,period_start,currency,scope_hash) DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status")
+        let inserted = sqlx::query("INSERT INTO operating_report_snapshots(id,cadence,period_start,period_end,currency,scope_hash,payload,data_quality_status,source_hash,generated_by_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(cadence,period_start,currency,scope_hash) WHERE utc_offset_minutes IS NULL DO NOTHING RETURNING id,generated_at,source_hash,data_quality_status")
             .bind(id).bind(&input.cadence).bind(input.period_start).bind(period_end).bind(&input.currency).bind(&auth.effective_scope_hash).bind(&payload).bind(quality_status).bind(&source_hash).bind(actor).bind(trace_id).fetch_optional(&mut *tx).await?;
         let (row, created) = if let Some(row) = inserted {
             audit(&mut tx, trace_id, actor, "operating_snapshot.generate", "operating_report_snapshot", &id.to_string(), json!({"cadence":input.cadence,"periodStart":input.period_start,"periodEnd":period_end,"currency":input.currency,"sourceHash":source_hash})).await?;
             (row, true)
         } else {
-            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_one(&mut *tx).await?, false)
+            (sqlx::query("SELECT id,generated_at,source_hash,data_quality_status FROM operating_report_snapshots WHERE cadence=$1 AND period_start=$2 AND currency=$3 AND scope_hash=$4 AND utc_offset_minutes IS NULL").bind(&input.cadence).bind(input.period_start).bind(&input.currency).bind(&auth.effective_scope_hash).fetch_one(&mut *tx).await?, false)
         };
         tx.commit().await?;
         Ok(snapshot_result(&row, created, trace_id))
