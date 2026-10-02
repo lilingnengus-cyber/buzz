@@ -58,3 +58,9 @@ Findings corrected in this frontend round:
 - Visual fixtures retained the old sales navigation title, old detail selector, and obsolete indentation threshold from before abbreviation removal. Fixtures now model the current API and navigation; five pages are exercised at 80/100/125%, with stage selection, dialogs, row overflow and navigation persistence checks. Updated screenshots were inspected, including 125% sales/purchase rows, goods/service stages and order forms.
 
 Coverage evidence is recorded at release below. Remaining audit items: inventory balances do not expose currency or unit-of-measure, so cross-SKU and cross-entity headline sums require a source-level currency/unit review. Do not assume legal-entity currency without verifying inventory posting invariants. Receiving, payment and return transitions also need explicit coverage review against their backend test suites; page screenshots alone are insufficient. Production verification remains read-only.
+
+### Frontend audit release evidence
+
+2026-10-03 source 90b9a83fa, static tree business-web-90b9a83fa, JS index-DjP2IRSL.js, CSS index-gETDEarB.css. Final full Playwright run: 84 passed (66 functional + 18 visual); 43 unit tests, TypeScript, display-format checks and build passed. Public JS byte-identical to local artifact. Core /health returned status ok; no Core replacement or migration in this round. Rollback static tree: business-web-0c34ea2c9.
+
+Pacioli production read-only check: purchasing displayed six stages and CNY 2.00 for two loaded draft orders; inventory operations showed the explicit CNY turnover label and true empty data; goods and service pages displayed four stages and their empty registers; sales retained its five existing orders. No production test records or financial writes were performed. Overall self-check remains active for the remaining source/data-semantics and transition-coverage items above.
