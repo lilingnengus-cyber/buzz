@@ -25,7 +25,14 @@ for (const [resourceType, title] of [["customer", "客户"], ["supplier", "供�
     await row.click();
     const dialog = page.getByRole("dialog", { name: `${title}详情`, exact: true });
     const name = dialog.getByRole("textbox", { name: "名称 *", exact: true });
+    await name.fill("   ");
+    await dialog.getByRole("button", { name: "保存修订", exact: true }).click();
+    await expect(name).toBeFocused();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByRole("alert")).toContainText("请填写名称");
+    expect(writes).toHaveLength(0);
     await name.fill("修改内容");
+    await expect(name).not.toHaveAttribute("aria-invalid", "true");
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     const prompt = page.getByRole("dialog", { name: "放弃未保存修改", exact: true });
     await expect(prompt).toBeVisible();

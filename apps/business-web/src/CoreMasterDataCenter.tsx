@@ -1,3 +1,4 @@
+import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import { CoreCustomerContacts } from "./CoreCustomerContacts";
 import React from "react";
@@ -612,7 +613,7 @@ function MasterFormModal({
       busy={saving}
       onClose={guard.close}
     >
-      <form className="master-form" onSubmit={submit}>
+      <ValidatedMasterForm className="master-form" onSubmit={submit}>
         <div className="master-form-note">
           <b>{readOnly ? "只读详情" : record ? "受控修订" : "建立权威记录"}</b>
           <span>
@@ -640,6 +641,7 @@ function MasterFormModal({
           </Field>
           {type === "business_unit" && (
             <OperatingUnitPicker
+              orderRequired={!record}
               label="上级经营单元 *"
               records={units}
               value={form.parentBusinessUnitId}
@@ -710,7 +712,7 @@ function MasterFormModal({
             </button>
           )}
         </div>
-      </form>
+      </ValidatedMasterForm>
       {guard.prompt}
       {type === "customer" && record && (
         <CoreCustomerContacts customerId={record.id} customerName={record.name} />
