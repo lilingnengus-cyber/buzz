@@ -44,8 +44,18 @@ type Choices = {
   items: Choice[];
   owners: { id: string; name: string }[];
   currentUserId: string;
+  orderLines?: (RecordData & { amount: string; currency: string })[];
+  hasMoreOrders?: boolean;
 };
 type Detail = {
+  canAccept?: boolean;
+  receivable?: {
+    number: string;
+    amount: string;
+    openAmount: string;
+    currency: string;
+    dueDate: string;
+  };
   item: RecordData;
   tasks: RecordData[];
   acceptances: {
@@ -83,7 +93,11 @@ export function ServiceProjects({ tasks = false }: { tasks?: boolean }) {
     [busy, setBusy] = React.useState(false),
     [revision, setRevision] = React.useState(0),
     [selected, setSelected] = React.useState<string | null>(null),
-    [create, setCreate] = React.useState(false);
+    [create, setCreate] = React.useState(
+      () =>
+        !tasks &&
+        new URLSearchParams(window.location.hash.split("?")[1]).has("order"),
+    );
   React.useEffect(() => {
     let active = true;
     setBusy(true);
@@ -285,7 +299,11 @@ function ProjectDetail({
           返回详情
         </button>
         {mode === "accept" ? (
-          <AcceptanceForm project={p} onSaved={saved} />
+          <AcceptanceForm
+            project={p}
+            canAccept={!!data.canAccept}
+            onSaved={saved}
+          />
         ) : (
           <ServiceForm
             item={mode === "project" ? p : task}
@@ -313,6 +331,13 @@ function ProjectDetail({
         <a href={`/sales/orders/${p.sales_order_id}`}>
           查看订单与回款：{p.order_number}
         </a>
+      )}
+      {data.receivable && (
+        <p role="status">
+          应收 {data.receivable.number} · {data.receivable.currency}{" "}
+          {data.receivable.amount} · 未收 {data.receivable.openAmount} · 到期{" "}
+          {data.receivable.dueDate}
+        </p>
       )}
       {canManage && !closed && (
         <div>
@@ -342,6 +367,13 @@ function ProjectDetail({
             <a href={t.evidence_url} target="_blank" rel="noreferrer">
               交付凭据
             </a>
+          )}
+          {data.receivable && (
+            <p role="status">
+              应收 {data.receivable.number} · {data.receivable.currency}{" "}
+              {data.receivable.amount} · 未收 {data.receivable.openAmount} ·
+              到期 {data.receivable.dueDate}
+            </p>
           )}
           {canManage && !closed && (
             <button
@@ -390,6 +422,11 @@ function ServiceForm({
     [error, setError] = React.useState(""),
     [busy, setBusy] = React.useState(false);
   const lock = React.useRef(false);
+  const [sourceQuery, setSourceQuery] = React.useState(
+    () =>
+      new URLSearchParams(window.location.hash.split("?")[1]).get("order") ||
+      "",
+  );
   const [form, setForm] = React.useState({
     title: item?.title ?? "",
     legalEntityId: item?.legal_entity_id ?? "",
@@ -404,10 +441,13 @@ function ServiceForm({
     status: item?.status ?? "pending",
     description: item?.description ?? "",
     evidenceUrl: item?.evidence_url ?? "",
+    salesOrderLineId: item?.sales_order_line_id ?? "",
   });
   React.useEffect(() => {
     let active = true;
-    request<Choices>("/api/v1/service-project-options")
+    request<Choices>(
+      `/api/v1/service-project-options?query=${encodeURIComponent(sourceQuery)}`,
+    )
       .then((d) => {
         if (active) {
           setOptions(d);
@@ -421,7 +461,7 @@ function ServiceForm({
     return () => {
       active = false;
     };
-  }, []);
+  }, [sourceQuery]);
   const set = (k: keyof typeof form, v: string) => {
     draft.markDirty();
     setForm((f) => ({ ...f, [k]: v }));
@@ -452,7 +492,7 @@ function ServiceForm({
       {label}
       <select
         required
-        disabled={!!item}
+        disabled={!!item || !!form.salesOrderLineId}
         value={form[name]}
         onChange={(e) => set(name, e.target.value)}
       >
@@ -497,7 +537,7 @@ function ServiceForm({
             endsOn: form.endsOn || null,
             status: form.status,
             description: form.description,
-            salesOrderLineId: item?.sales_order_line_id ?? null,
+            salesOrderLineId: form.salesOrderLineId || null,
             renewalOfProjectId: item?.renewal_of_project_id ?? null,
             expectedVersion: item?.version ?? null,
           };
@@ -523,6 +563,66 @@ function ServiceForm({
         {field("title", "名称", "text", true)}
         {!project && (
           <>
+            <label>
+              关联已确认服务订单
+              <input
+                type="search"
+                placeholder="按订单号、客户或服务名称搜索"
+                aria-label="搜索服务订单"
+                disabled={!!item?.sales_order_line_id}
+                value={sourceQuery}
+                onChange={(e) => setSourceQuery(e.target.value)}
+              />
+              <select
+                aria-label="关联已确认服务订单"
+                value={form.salesOrderLineId}
+                disabled={!!item?.sales_order_line_id}
+                onChange={(e) => {
+                  const line = options?.orderLines?.find(
+                    (v) => v.id === e.target.value,
+                  );
+                  draft.markDirty();
+                  setForm((f) => ({
+                    ...f,
+                    salesOrderLineId: e.target.value,
+                    ...(line && !item
+                      ? {
+                          title: f.title || line.title,
+                          legalEntityId: line.legal_entity_id,
+                          businessUnitId: line.business_unit_id,
+                          customerId: line.customer_id,
+                          serviceKind: line.service_kind || f.serviceKind,
+                        }
+                      : {}),
+                  }));
+                }}
+              >
+                <option value="">暂不关联（验收通过前须关联）</option>
+                {item?.sales_order_line_id && (
+                  <option value={item.sales_order_line_id}>
+                    {item.order_number || "已关联订单"}
+                  </option>
+                )}
+                {options?.orderLines
+                  ?.filter(
+                    (v) =>
+                      !item ||
+                      (v.legal_entity_id === item.legal_entity_id &&
+                        v.business_unit_id === item.business_unit_id &&
+                        v.customer_id === item.customer_id &&
+                        v.service_kind === item.service_kind),
+                  )
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.order_number} · {v.title} · {v.customer_name} ·{" "}
+                      {v.currency} {v.amount}
+                    </option>
+                  ))}
+              </select>
+              {options?.hasMoreOrders && (
+                <small>仅显示前100项，请输入更具体的搜索词。</small>
+              )}
+            </label>
             {choices("legalEntityId", "法定主体", "legal_entity")}
             {choices("customerId", "客户", "customer")}
             <OperatingUnitPicker
@@ -540,14 +640,14 @@ function ServiceForm({
               }))}
               value={form.businessUnitId}
               onChange={(v) => set("businessUnitId", v)}
-              disabled={!!item}
+              disabled={!!item || !!form.salesOrderLineId}
             />
             {field("contactName", "联系人")}
             <label>
               服务类型
               <select
                 value={form.serviceKind}
-                disabled={!!item}
+                disabled={!!item || !!form.salesOrderLineId}
                 onChange={(e) => set("serviceKind", e.target.value)}
               >
                 <option value="technical_service">技术服务</option>
@@ -615,9 +715,11 @@ function ServiceForm({
 }
 function AcceptanceForm({
   project,
+  canAccept,
   onSaved,
 }: {
   project: RecordData;
+  canAccept: boolean;
   onSaved: () => void;
 }) {
   const draft = useCrmDraft(),
@@ -626,7 +728,7 @@ function AcceptanceForm({
   const [form, setForm] = React.useState({
       acceptedOn: localDay(),
       customerReviewer: "",
-      result: "passed",
+      result: canAccept && project.sales_order_line_id ? "passed" : "rejected",
       note: "",
       evidenceUrl: "",
     }),
@@ -663,7 +765,13 @@ function AcceptanceForm({
       }}
     >
       <h3>记录验收结果</h3>
-      <p>通过后完成交付，不自动产生应收或收款。</p>
+      <p>
+        验收通过将按关联订单服务行金额生成应收，并确认收入；到期日按验收日期加订单账期计算。收款另行登记。
+      </p>
+      {!project.sales_order_line_id && (
+        <p>请先编辑项目，关联已确认的服务销售订单。</p>
+      )}
+      {!canAccept && <p>当前账号没有验收记账权限，可记录未通过结果。</p>}
       {error && <p role="alert">{error}</p>}
       <fieldset disabled={busy}>
         <label>
@@ -690,7 +798,12 @@ function AcceptanceForm({
             value={form.result}
             onChange={(e) => set("result", e.target.value)}
           >
-            <option value="passed">通过</option>
+            <option
+              value="passed"
+              disabled={!canAccept || !project.sales_order_line_id}
+            >
+              通过并自动记账
+            </option>
             <option value="rejected">未通过</option>
           </select>
         </label>

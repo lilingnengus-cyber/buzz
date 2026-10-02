@@ -697,7 +697,7 @@ async fn shipped_order(
                 business_note: None,
                 lines: vec![SalesOrderLineInput {
                     sku_id: f.sku,
-                    warehouse_id: f.warehouse,
+                    warehouse_id: Some(f.warehouse),
                     unit_of_measure_id: f.uom,
                     quantity: dec(quantity),
                     unit_price: dec(price),

@@ -5,7 +5,7 @@ import { formatQuantity } from "./formatters";
 const READINESS = {
   ready: {
     title: "库存充足，可以确认",
-    note: "确认后将按下列数量全量预占库存。",
+    note: "实物行按下列数量预占库存；服务行由服务项目交付及验收。",
   },
   permission_required: {
     title: "当前角色不能确认订单",
@@ -60,7 +60,13 @@ export function SalesOrderConfirmation({
     );
   }
 
-  const message = READINESS[preview.readiness];
+  const message =
+    preview.readiness === "ready" && preview.lines.length === 0
+      ? {
+          title: "服务订单可以确认",
+          note: "无需预占库存。确认后创建服务项目，验收通过时自动记账。",
+        }
+      : READINESS[preview.readiness];
   return (
     <section
       className={`confirmation ${preview.canConfirm ? "ready" : "blocked"}`}

@@ -134,6 +134,7 @@ export function SalesOrderEntry({
               draft.lines.map((line) => ({
                 ...line,
                 key: crypto.randomUUID(),
+                warehouseId: line.warehouseId ?? "",
                 taxRate: String(Number(line.taxRate) * 100),
               })),
             );
@@ -229,6 +230,10 @@ export function SalesOrderEntry({
     );
   }
 
+  const isService = (sku: string) => {
+    const kind = catalog.skus.find((s) => s.id === sku)?.serviceKind;
+    return kind === "technical_service" || kind === "software_service";
+  };
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setNotice(null);
@@ -237,7 +242,11 @@ export function SalesOrderEntry({
       setNotice("请选择法律主体、客户和业务单元。");
       return;
     }
-    if (lines.some((line) => !isCompleteSalesOrderLine(line))) {
+    if (
+      lines.some(
+        (line) => !isCompleteSalesOrderLine(line, isService(line.skuId)),
+      )
+    ) {
       setNotice("请补全商品行，并填写单价；数量须大于 0，单价不能为负。");
       return;
     }
@@ -267,6 +276,7 @@ export function SalesOrderEntry({
             businessNote: businessNote.trim() || undefined,
             lines: lines.map(({ key: _key, ...line }) => ({
               ...line,
+              warehouseId: isService(line.skuId) ? null : line.warehouseId,
               taxRate: String(Number(line.taxRate) / 100),
             })),
           }),
@@ -426,13 +436,18 @@ export function SalesOrderEntry({
                   <span>仓库</span>
                   <select
                     aria-label={`第 ${index + 1} 行仓库`}
-                    value={line.warehouseId}
+                    disabled={isService(line.skuId)}
+                    value={isService(line.skuId) ? "" : line.warehouseId}
                     onChange={(event) =>
                       updateLine(line.key, "warehouseId", event.target.value)
                     }
                     required
                   >
-                    {source && <option value="">请选择仓库</option>}
+                    {isService(line.skuId) ? (
+                      <option value="">服务无需仓库</option>
+                    ) : (
+                      source && <option value="">请选择仓库</option>
+                    )}
                     {availableWarehouses.map(option)}
                   </select>
                 </label>

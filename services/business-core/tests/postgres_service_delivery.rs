@@ -1,3 +1,5 @@
+#[path = "support/service_mixed.rs"]
+mod service_mixed;
 use business_core::{
     b2::DomainError,
     service_delivery::{AcceptanceInput, DeliverableInput, Filters, ProjectInput, ServiceDelivery},
@@ -34,7 +36,7 @@ async fn service_delivery_keeps_acceptance_auditable_and_scoped() {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'service_delivery:read'),($1,'service_delivery:manage'),($1,'business_product_master:read'),($1,'business_product_master:manage')").bind(role).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'service_delivery:read'),($1,'service_delivery:manage'),($1,'business_product_master:read'),($1,'business_product_master:manage'),($1,'sales_order:read'),($1,'sales_order:create'),($1,'sales_order:confirm'),($1,'service_delivery:accept'),($1,'receivable:read')").bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by) VALUES($1,$3,$1),($2,$3,$1)").bind(actor).bind(outsider).bind(role).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'CRM_LE','CRM LE','CN','CNY')").bind(legal).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_legal_entities(id,code,name,country_code,functional_currency) VALUES($1,'CRM_LE_COMPAT','CRM Compatibility LE','CN','CNY')").bind(compatibility_legal).execute(&pool).await.unwrap();
@@ -51,6 +53,69 @@ async fn service_delivery_keeps_acceptance_auditable_and_scoped() {
     sqlx::query("INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(legal).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(unit).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO business_customer_scopes(enterprise_user_id,customer_id,granted_by) VALUES($1,$2,$1)").bind(actor).bind(customer).execute(&pool).await.unwrap();
+
+    let category_id = Uuid::new_v4();
+    let uom_id = Uuid::new_v4();
+    let product_id = Uuid::new_v4();
+    let sku_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO business_product_categories(id,code,name) VALUES($1,'SOFTWARE','软件')",
+    )
+    .bind(category_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO business_units_of_measure(id,code,name,precision_scale) VALUES($1,'YEAR','年',0)").bind(uom_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_products(id,code,name,category_id,base_uom_id,service_kind) VALUES($1,'SUB','订阅',$2,$3,'software_service')").bind(product_id).bind(category_id).bind(uom_id).execute(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO business_skus(id,product_id,code,name) VALUES($1,$2,'SUB_YEAR','年度订阅')",
+    )
+    .bind(sku_id)
+    .bind(product_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let sales = business_core::b2::SalesService::new(
+        PgStore::new(pool.clone()),
+        "SO".into(),
+        "SHP".into(),
+        30,
+    );
+    let order_input=serde_json::from_value(serde_json::json!({"legalEntityId":legal,"businessUnitId":unit,"customerId":customer,"currency":"CNY","orderDate":"2026-09-01","paymentTermsDays":30,"lines":[{"skuId":sku_id,"warehouseId":null,"unitOfMeasureId":uom_id,"quantity":"1","unitPrice":"100","discountAmount":"0","taxRate":"0.06"}]})).unwrap();
+    let order = sales
+        .create_order(actor, Uuid::new_v4(), "service-order-create", &order_input)
+        .await
+        .unwrap();
+    let preview = sales.confirmation_preview(actor, order.id).await.unwrap();
+    assert!(preview.can_confirm);
+    assert!(preview.lines.is_empty());
+    let confirmed = sales
+        .confirm_order(
+            actor,
+            Uuid::new_v4(),
+            order.id,
+            "service-order-confirm",
+            &business_core::b2::model::VersionCommand {
+                expected_version: 1,
+                reason_code: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(confirmed.status, "confirmed");
+    let line_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM sales_order_lines WHERE sales_order_id=$1")
+            .bind(order.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM inventory_reservations")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
     let mut input = ProjectInput {
         title: "软件实施".into(),
         legal_entity_id: legal,
@@ -179,6 +244,47 @@ async fn service_delivery_keeps_acceptance_auditable_and_scoped() {
         .unwrap();
     accept.expected_version = 7;
     accept.result = "passed".into();
+
+    assert!(matches!(
+        service
+            .accept(actor, Uuid::new_v4(), id, "service-unlinked-001", &accept)
+            .await,
+        Err(DomainError::Invalid(_))
+    ));
+    assert_eq!(
+        service.detail(actor, id).await.unwrap()["acceptances"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    input.sales_order_line_id = Some(line_id);
+    input.expected_version = Some(7);
+    service
+        .save_project(actor, Uuid::new_v4(), Some(id), "service-link-001", &input)
+        .await
+        .unwrap();
+    accept.expected_version = 8;
+    // A failed financial authorization rolls back the acceptance record and project transition.
+    sqlx::query("DELETE FROM business_role_permissions WHERE role_id=$1 AND permission_key='service_delivery:accept'").bind(role).execute(&pool).await.unwrap();
+    assert!(matches!(
+        service
+            .accept(actor, Uuid::new_v4(), id, "service-denied-001", &accept)
+            .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    assert_eq!(
+        service.detail(actor, id).await.unwrap()["item"]["status"],
+        "acceptance"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM trade_receivables")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'service_delivery:accept')").bind(role).execute(&pool).await.unwrap();
     let result = service
         .accept(actor, Uuid::new_v4(), id, "service-passed-001", &accept)
         .await
@@ -203,7 +309,42 @@ async fn service_delivery_keeps_acceptance_auditable_and_scoped() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(count, 0);
+    assert_eq!(count, 1);
+    assert_eq!(result["receivable"]["amount"], "106.000000");
+    assert_eq!(result["receivable"]["dueDate"], "2026-11-01");
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT lifecycle_status FROM sales_orders WHERE id=$1")
+            .bind(order.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        "completed"
+    );
+    let revenue: rust_decimal::Decimal = sqlx::query_scalar(
+        "SELECT sum(amount) FROM profit_facts WHERE source_type='service_acceptance'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(revenue, rust_decimal::Decimal::from(100));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM customer_receipts")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(matches!(
+        service
+            .accept(actor, Uuid::new_v4(), id, "service-second-pass", &accept)
+            .await,
+        Err(DomainError::VersionConflict)
+    ));
+    assert!(service.options(actor, None).await.unwrap()["orderLines"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
     let q = Filters {
         expiry: Some("expired".into()),
         today: NaiveDate::from_ymd_opt(2027, 9, 2),
@@ -264,4 +405,9 @@ async fn service_delivery_keeps_acceptance_auditable_and_scoped() {
             .await,
         Err(DomainError::Invalid(_))
     ));
+    service_mixed::check(
+        &pool,
+        (actor, legal, unit, customer, sku_id, uom_id, category_id),
+    )
+    .await;
 }

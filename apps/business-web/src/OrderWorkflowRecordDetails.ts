@@ -16,6 +16,7 @@ export type RecordDetailAction = {
   domain: "sales" | "purchase";
   title: string;
   subtitle: string;
+  serviceOrderNumber?: string;
   editDraft?: {
     kind: "sales-edit" | "purchase-edit";
     id: string;
@@ -74,6 +75,8 @@ export function salesOrderDetail(row: SalesOrder): RecordDetailAction {
       id: row.id,
       number: row.orderNumber,
     };
+  if (row.lifecycleStatus === "confirmed")
+    detail.serviceOrderNumber = row.orderNumber;
   return detail;
 }
 
@@ -125,7 +128,11 @@ export function receivableDetail(row: Receivable): RecordDetailAction {
         "status",
       ),
       detailField("销售订单 ID", row.salesOrderId, "id"),
-      detailField("出库单 ID", row.shipmentId, "id"),
+      detailField(
+        row.serviceProjectId ? "服务项目 ID" : "出库单 ID",
+        row.serviceProjectId || row.shipmentId || "—",
+        "id",
+      ),
       detailField("客户 ID", row.customerId, "id"),
       detailField("法定主体 ID", row.legalEntityId, "id"),
       detailField("记录版本", String(row.version)),
@@ -342,6 +349,9 @@ export function statusLabel(value: string) {
       confirmed: "已确认",
       unreserved: "未预占",
       reserved: "已预占",
+      service_pending: "待服务交付",
+      partially_fulfilled: "部分履约",
+      fulfilled: "已履约",
       unreceived: "未到货",
       received: "已到齐",
       cancelled: "已取消",

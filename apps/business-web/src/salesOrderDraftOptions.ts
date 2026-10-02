@@ -17,6 +17,8 @@ export type SalesOrderDraftOptions = {
     businessNote: string | null;
     lifecycleStatus: string;
     version: number;
-    lines: Omit<SalesOrderLineDraft, "key">[];
+    lines: (Omit<SalesOrderLineDraft, "key" | "warehouseId"> & {
+      warehouseId: string | null;
+    })[];
   };
 };

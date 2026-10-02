@@ -522,7 +522,7 @@ impl SettlementService {
             None,
         )
         .await?;
-        let rows=sqlx::query_as::<_,ReceivableView>("SELECT id,receivable_number,legal_entity_id,customer_id,sales_order_id,shipment_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND current_date>due_date) is_overdue,GREATEST(current_date-due_date,0)::int overdue_days,updated_at,version FROM trade_receivables WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query_as::<_,ReceivableView>("SELECT id,receivable_number,legal_entity_id,customer_id,sales_order_id,shipment_id,service_project_id,currency::text,original_amount,settled_amount,open_amount,due_date,status,(open_amount>0 AND current_date>due_date) is_overdue,GREATEST(current_date-due_date,0)::int overdue_days,updated_at,version FROM trade_receivables WHERE legal_entity_id=ANY($1) AND customer_id=ANY($2) AND ($3::uuid IS NULL OR customer_id=$3) ORDER BY due_date,id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.customer_ids.into_iter().collect::<Vec<_>>()).bind(customer).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         Ok(rows)
     }
 

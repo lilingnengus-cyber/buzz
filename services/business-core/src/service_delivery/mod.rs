@@ -1,4 +1,5 @@
 //! Service delivery is independent of physical inventory and settlement.
+mod accounting;
 pub mod api;
 mod model;
 mod options;
@@ -16,11 +17,20 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct ServiceDelivery {
     store: PgStore,
+    receivable_prefix: String,
 }
 impl ServiceDelivery {
     /// Bind the existing authenticated business store.
     pub fn new(store: PgStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            receivable_prefix: "AR".into(),
+        }
+    }
+    /// Use the configured receivable numbering fallback; governed rules still take precedence.
+    pub fn with_receivable_prefix(mut self, prefix: String) -> Self {
+        self.receivable_prefix = prefix;
+        self
     }
     async fn scope(
         &self,
@@ -109,12 +119,33 @@ impl ServiceDelivery {
     }
     /// Read immutable acceptance history and the project delivery items.
     pub async fn detail(&self, actor: Uuid, id: Uuid) -> Result<Value, DomainError> {
-        self.accessible(actor, id, "service_delivery:read").await?;
+        let scope = self.accessible(actor, id, "service_delivery:read").await?;
         let item:Value=sqlx::query_scalar("SELECT to_jsonb(p)||jsonb_build_object('customer_name',c.name,'owner_name',u.display_name,'sales_order_id',l.sales_order_id,'order_number',o.order_number) FROM service_projects p JOIN business_customers c ON c.id=p.customer_id JOIN enterprise_users u ON u.id=p.owner_user_id LEFT JOIN sales_order_lines l ON l.id=p.sales_order_line_id LEFT JOIN sales_orders o ON o.id=l.sales_order_id WHERE p.id=$1").bind(id).fetch_one(self.store.pool()).await?;
         let tasks:Vec<Value>=sqlx::query_scalar("SELECT to_jsonb(d) FROM service_deliverables d WHERE project_id=$1 ORDER BY created_at,id LIMIT 501").bind(id).fetch_all(self.store.pool()).await?;
         let acceptances:Vec<Value>=sqlx::query_scalar("SELECT to_jsonb(a) FROM service_acceptances a WHERE project_id=$1 ORDER BY created_at DESC,id LIMIT 101").bind(id).fetch_all(self.store.pool()).await?;
+        let can_accept = self
+            .accessible(actor, id, "service_delivery:accept")
+            .await
+            .is_ok();
+        let can_read_ar = authorize(
+            &self.store,
+            actor,
+            "receivable:read",
+            Some(scope.get("legal_entity_id")),
+            None,
+            Some(scope.get("customer_id")),
+            None,
+            Some(scope.get("business_unit_id")),
+        )
+        .await
+        .is_ok();
+        let receivable = if can_read_ar {
+            sqlx::query_scalar::<_,Value>("SELECT jsonb_build_object('id',id,'number',receivable_number,'amount',original_amount::text,'openAmount',open_amount::text,'currency',currency,'dueDate',due_date,'status',status) FROM trade_receivables WHERE service_project_id=$1").bind(id).fetch_optional(self.store.pool()).await?
+        } else {
+            None
+        };
         Ok(
-            json!({"item":item,"hasMoreTasks":tasks.len()>500,"tasks":tasks.into_iter().take(500).collect::<Vec<_>>(),"hasMoreAcceptances":acceptances.len()>100,"acceptances":acceptances.into_iter().take(100).collect::<Vec<_>>()}),
+            json!({"item":item,"canAccept":can_accept,"receivable":receivable,"hasMoreTasks":tasks.len()>500,"tasks":tasks.into_iter().take(500).collect::<Vec<_>>(),"hasMoreAcceptances":acceptances.len()>100,"acceptances":acceptances.into_iter().take(100).collect::<Vec<_>>()}),
         )
     }
 }

@@ -132,6 +132,13 @@ export function RecordDetail({
         ))}
       </dl>
       <footer>
+        {state.serviceOrderNumber && (
+          <a
+            href={`/#serviceProjects?order=${encodeURIComponent(state.serviceOrderNumber)}`}
+          >
+            创建服务项目
+          </a>
+        )}
         {state.editDraft && onEdit ? (
           <button
             type="button"

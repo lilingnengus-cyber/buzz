@@ -13,7 +13,7 @@ impl PgStore {
         offset: u32,
         limit: i64,
     ) -> Result<Vec<MasterDataRecord>, StoreError> {
-        let mut sql = QueryBuilder::<Postgres>::new("SELECT resource_type,id,code,name,status,CASE WHEN resource_type='business_unit' THEN NULL ELSE legal_entity_id END legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,CASE WHEN resource_type='business_unit' THEN (SELECT business_unit_path FROM core_master_data_maintenance tree WHERE tree.resource_type='business_unit' AND tree.id=business_master_data_directory.id) ELSE NULL END ancestor_path,version FROM business_master_data_directory WHERE status='active' AND resource_type=");
+        let mut sql = QueryBuilder::<Postgres>::new("SELECT resource_type,id,code,name,status,CASE WHEN resource_type='business_unit' THEN NULL ELSE legal_entity_id END legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,CASE WHEN resource_type='business_unit' THEN (SELECT business_unit_path FROM core_master_data_maintenance tree WHERE tree.resource_type='business_unit' AND tree.id=business_master_data_directory.id) ELSE NULL END ancestor_path,(SELECT p.service_kind FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=business_master_data_directory.id AND resource_type='sku') service_kind,version FROM business_master_data_directory WHERE status='active' AND resource_type=");
         sql.push_bind(resource_type.as_str());
         for (column, values) in [
             ("legal_entity_id", &snapshot.scopes.legal_entity_ids),

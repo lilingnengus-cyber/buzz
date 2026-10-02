@@ -57,8 +57,8 @@ impl SalesService {
         .await?;
         let mut lines = Vec::new();
         for line in rows {
-            let warehouse: Uuid = line.get("warehouse_id");
-            if !snapshot.scopes.warehouse_ids.contains(&warehouse) {
+            let warehouse: Option<Uuid> = line.get("warehouse_id");
+            if warehouse.is_some_and(|id| !snapshot.scopes.warehouse_ids.contains(&id)) {
                 return Err(DomainError::NotFoundOrForbidden);
             }
             lines.push(json!({

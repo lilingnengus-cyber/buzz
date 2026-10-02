@@ -16,6 +16,7 @@ for (const canManage of [true, false]) {
       customer_name: "测试客户",
       service_kind: "software_service",
       owner_name: "负责人",
+      sales_order_line_id: "line",
       starts_on: "2026-10-01",
       ends_on: "2027-09-30",
     };
@@ -46,6 +47,16 @@ for (const canManage of [true, false]) {
         return route.fulfill({
           json: {
             item,
+            canAccept: canManage,
+            receivable: acceptances.length
+              ? {
+                  number: "AR-1",
+                  amount: "106.00",
+                  openAmount: "106.00",
+                  currency: "CNY",
+                  dueDate: "2026-11-01",
+                }
+              : null,
             tasks: [],
             acceptances,
             hasMoreTasks: false,
@@ -94,6 +105,7 @@ for (const canManage of [true, false]) {
       drawer.getByRole("heading", { name: "验收记录" }),
     ).toBeVisible();
     await expect(drawer.getByText("已核对交付内容")).toBeVisible();
+    await expect(drawer.getByRole("status")).toContainText("应收 AR-1");
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({
       expectedVersion: 3,
@@ -111,3 +123,78 @@ for (const canManage of [true, false]) {
     await expect(drawer).not.toBeVisible();
   });
 }
+
+test("从订单创建服务项目，回填客户主体并保存来源", async ({ page }) => {
+  const line = {
+    id: "line",
+    order_number: "SO-100",
+    title: "年度软件",
+    legal_entity_id: "legal",
+    business_unit_id: "unit",
+    customer_id: "customer",
+    customer_name: "客户",
+    service_kind: "software_service",
+    amount: "106",
+    currency: "CNY",
+  };
+  let saved: any;
+  await page.route("**/api/**", async (route) => {
+    const req = route.request(),
+      url = new URL(req.url());
+    if (url.pathname === "/api/session")
+      return route.fulfill({
+        json: { authenticated: true, csrfToken: "csrf", displayName: "测试" },
+      });
+    if (url.pathname === "/api/v1/service-project-options")
+      return route.fulfill({
+        json: {
+          items: [
+            ["legal_entity", "legal", "法人"],
+            ["business_unit", "unit", "经营单元"],
+            ["customer", "customer", "客户"],
+          ].map(([resourceType, id, name]) => ({
+            resourceType,
+            id,
+            name,
+            code: id,
+            status: "active",
+          })),
+          owners: [{ id: "actor", name: "负责人" }],
+          currentUserId: "actor",
+          orderLines: [line],
+        },
+      });
+    if (
+      url.pathname === "/api/v1/service-projects" &&
+      req.method() === "POST"
+    ) {
+      saved = req.postDataJSON();
+      return route.fulfill({ json: { id: "project", version: 1 } });
+    }
+    return route.fulfill({
+      json: { items: [], canManage: true, hasMore: false },
+    });
+  });
+  await page.goto("/#serviceProjects?order=SO-100");
+  const drawer = page.getByRole("dialog");
+  await drawer
+    .getByRole("combobox", { name: "关联已确认服务订单" })
+    .selectOption("line");
+  await expect(drawer.getByLabel("名称", { exact: true })).toHaveValue(
+    "年度软件",
+  );
+  await expect(drawer.getByLabel("法定主体", { exact: true })).toBeDisabled();
+  await drawer.getByLabel("开始日期").fill("2026-10-01");
+  await drawer.getByLabel("结束日期").fill("2027-09-30");
+  await drawer.getByRole("button", { name: "保存", exact: true }).click();
+  await expect
+    .poll(() => saved)
+    .toMatchObject({
+      salesOrderLineId: "line",
+      legalEntityId: "legal",
+      businessUnitId: "unit",
+      customerId: "customer",
+      serviceKind: "software_service",
+    });
+  await expect(drawer).not.toBeVisible();
+});

@@ -182,7 +182,7 @@ impl PgStore {
         resource_id: Uuid,
     ) -> Result<MasterDataRecord, StoreError> {
         sqlx::query_as::<_, MasterDataRecord>(
-            "SELECT resource_type,id,code,name,status,legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,version FROM business_master_data_directory WHERE resource_type=$1 AND id=$2",
+            "SELECT resource_type,id,code,name,status,legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,(SELECT p.service_kind FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=business_master_data_directory.id AND resource_type='sku') service_kind,version FROM business_master_data_directory WHERE resource_type=$1 AND id=$2",
         )
         .bind(resource_type.as_str())
         .bind(resource_id)
@@ -207,7 +207,7 @@ impl PgStore {
         limit: i64,
     ) -> Result<Vec<MasterDataRecord>, StoreError> {
         let rows = sqlx::query_as::<_, MasterDataRecord>(
-            "SELECT resource_type,id,code,name,status,legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,version FROM business_master_data_directory WHERE resource_type=$1 AND status='active' ORDER BY code LIMIT $2",
+            "SELECT resource_type,id,code,name,status,legal_entity_id,warehouse_id,customer_id,supplier_id,brand_id,business_unit_id,(SELECT p.service_kind FROM business_skus s JOIN business_products p ON p.id=s.product_id WHERE s.id=business_master_data_directory.id AND resource_type='sku') service_kind,version FROM business_master_data_directory WHERE resource_type=$1 AND status='active' ORDER BY code LIMIT $2",
         )
         .bind(resource_type.as_str())
         .bind(limit.clamp(1, 200))

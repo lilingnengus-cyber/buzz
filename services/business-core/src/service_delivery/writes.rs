@@ -224,7 +224,7 @@ impl ServiceDelivery {
         tx.commit().await?;
         Ok(result)
     }
-    /// Append acceptance evidence, without any implicit receivable or receipt.
+    /// Append acceptance evidence and atomically recognize passed service revenue and receivables.
     pub async fn accept(
         &self,
         actor: Uuid,
@@ -267,6 +267,14 @@ impl ServiceDelivery {
         }
         let id = Uuid::new_v4();
         sqlx::query("INSERT INTO service_acceptances(id,project_id,accepted_on,customer_reviewer,result,note,evidence_url,actor_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(id).bind(project).bind(input.accepted_on).bind(input.customer_reviewer.trim()).bind(&input.result).bind(&input.note).bind(&input.evidence_url).bind(actor).bind(trace).execute(&mut *tx).await?;
+        let receivable = if input.result == "passed" {
+            Some(
+                self.recognize(&mut tx, actor, trace, project, id, input.accepted_on)
+                    .await?,
+            )
+        } else {
+            None
+        };
         sqlx::query(
             "UPDATE service_projects SET status=$2,version=version+1,updated_at=now() WHERE id=$1",
         )
@@ -289,7 +297,7 @@ impl ServiceDelivery {
             json!({"acceptanceId":id,"result":input.result}),
         )
         .await?;
-        let result = json!({"id":id,"version":input.expected_version+1,"traceId":trace});
+        let result = json!({"id":id,"version":input.expected_version+1,"traceId":trace,"receivable":receivable});
         finish_idempotent(&mut tx, actor, "service_project:accept", key, &result).await?;
         tx.commit().await?;
         Ok(result)

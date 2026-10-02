@@ -29,10 +29,13 @@ export function newSalesOrderLine(
   };
 }
 
-export function isCompleteSalesOrderLine(line: SalesOrderLineDraft) {
+export function isCompleteSalesOrderLine(
+  line: SalesOrderLineDraft,
+  service = false,
+) {
   return Boolean(
     line.skuId &&
-      line.warehouseId &&
+      (service || line.warehouseId) &&
       line.unitOfMeasureId &&
       validDecimal(line.quantity, (value) => value > 0) &&
       validDecimal(line.unitPrice, (value) => value >= 0),

@@ -58,6 +58,7 @@ pub struct AppState {
     pub(crate) master_data: crate::master_data::CoreMasterDataService,
     pub(crate) product_master: crate::product_master::ProductMasterService,
     pub(crate) numbering: crate::numbering::NumberingRuleService,
+    pub(crate) receivable_number_prefix: String,
     pub(crate) user_preferences: crate::user_preferences::UserPreferenceService,
     pub(crate) business_web_origins: [String; 2],
     pub(crate) business_session_cookie_name: String,
@@ -161,6 +162,7 @@ impl AppState {
             product_master,
             numbering,
             user_preferences,
+            receivable_number_prefix: config.receivable_number_prefix.clone(),
             business_web_origins: [
                 config.business_web_origin.clone(),
                 config.business_web_embed_origin.clone(),

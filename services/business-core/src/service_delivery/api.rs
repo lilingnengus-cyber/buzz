@@ -66,6 +66,7 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
 }
 fn service(state: &AppState) -> ServiceDelivery {
     ServiceDelivery::new(state.store.clone())
+        .with_receivable_prefix(state.receivable_number_prefix.clone())
 }
 fn key(headers: &HeaderMap, trace: Uuid) -> Result<&str, Error> {
     headers
@@ -195,6 +196,12 @@ async fn accept(
     h: HeaderMap,
     Json(input): Json<AcceptanceInput>,
 ) -> Result<Json<Value>, Error> {
+    if input.result == "passed" && !s.b2_enabled[2] {
+        return Err(Error(
+            DomainError::Invalid("应收功能未启用，无法验收记账".into()),
+            c.trace_id,
+        ));
+    }
     service(&s)
         .accept(
             c.actor_user_id,
@@ -208,12 +215,17 @@ async fn accept(
         .map_err(|e| Error(e, c.trace_id))
 }
 
+#[derive(serde::Deserialize)]
+struct OptionsQuery {
+    query: Option<String>,
+}
 async fn options(
     State(s): State<Arc<AppState>>,
     Extension(c): Extension<RequestContext>,
+    Query(q): Query<OptionsQuery>,
 ) -> Result<Json<Value>, Error> {
     service(&s)
-        .options(c.actor_user_id)
+        .options(c.actor_user_id, q.query.as_deref())
         .await
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))

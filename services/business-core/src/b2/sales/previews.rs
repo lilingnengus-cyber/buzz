@@ -46,7 +46,7 @@ impl SalesService {
         .fetch_one(self.store.pool())
         .await?;
         let rows = sqlx::query(
-            "SELECT l.sku_id,s.code sku_code,s.name sku_name,l.warehouse_id,w.code warehouse_code,w.name warehouse_name,sum(l.ordered_quantity) required_quantity,COALESCE(b.on_hand_quantity,0) on_hand_quantity,COALESCE(b.reserved_quantity,0) reserved_quantity,COALESCE(b.on_hand_quantity-b.reserved_quantity-b.quarantined_quantity,0) available_quantity FROM sales_order_lines l JOIN business_skus s ON s.id=l.sku_id JOIN business_warehouses w ON w.id=l.warehouse_id LEFT JOIN inventory_balances b ON b.legal_entity_id=$2 AND b.warehouse_id=l.warehouse_id AND b.sku_id=l.sku_id WHERE l.sales_order_id=$1 GROUP BY l.sku_id,s.code,s.name,l.warehouse_id,w.code,w.name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity ORDER BY w.code,s.code",
+            "SELECT l.sku_id,s.code sku_code,s.name sku_name,l.warehouse_id,w.code warehouse_code,w.name warehouse_name,sum(l.ordered_quantity) required_quantity,COALESCE(b.on_hand_quantity,0) on_hand_quantity,COALESCE(b.reserved_quantity,0) reserved_quantity,COALESCE(b.on_hand_quantity-b.reserved_quantity-b.quarantined_quantity,0) available_quantity FROM sales_order_lines l JOIN business_skus s ON s.id=l.sku_id JOIN business_warehouses w ON w.id=l.warehouse_id LEFT JOIN inventory_balances b ON b.legal_entity_id=$2 AND b.warehouse_id=l.warehouse_id AND b.sku_id=l.sku_id WHERE l.sales_order_id=$1 AND l.service_kind='goods' GROUP BY l.sku_id,s.code,s.name,l.warehouse_id,w.code,w.name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity ORDER BY w.code,s.code",
         )
         .bind(order_id)
         .bind(scope.0)
@@ -73,10 +73,9 @@ impl SalesService {
                 }
             })
             .collect::<Vec<_>>();
-        let all_available = !lines.is_empty()
-            && lines
-                .iter()
-                .all(|line| line.shortage_quantity.0 == Decimal::ZERO);
+        let all_available = lines
+            .iter()
+            .all(|line| line.shortage_quantity.0 == Decimal::ZERO);
         let lifecycle_status: String = order.get("lifecycle_status");
         let has_permission = snapshot.permission_keys.contains("sales_order:confirm");
         let readiness = if lifecycle_status != "draft" {

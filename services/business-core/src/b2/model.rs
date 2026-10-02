@@ -86,7 +86,7 @@ impl<'de> Deserialize<'de> for DecimalString {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SalesOrderLineInput {
     pub sku_id: Uuid,
-    pub warehouse_id: Uuid,
+    pub warehouse_id: Option<Uuid>,
     pub unit_of_measure_id: Uuid,
     pub quantity: DecimalString,
     pub unit_price: DecimalString,
@@ -330,7 +330,8 @@ pub struct ReceivableView {
     pub legal_entity_id: Uuid,
     pub customer_id: Uuid,
     pub sales_order_id: Uuid,
-    pub shipment_id: Uuid,
+    pub shipment_id: Option<Uuid>,
+    pub service_project_id: Option<Uuid>,
     pub currency: String,
     #[sqlx(try_from = "Decimal")]
     pub original_amount: DecimalString,

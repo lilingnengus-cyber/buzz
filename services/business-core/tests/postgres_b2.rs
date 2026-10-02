@@ -871,7 +871,7 @@ async fn create_order(
                 business_note: None,
                 lines: vec![SalesOrderLineInput {
                     sku_id: fixture.sku,
-                    warehouse_id: fixture.warehouse,
+                    warehouse_id: Some(fixture.warehouse),
                     unit_of_measure_id: fixture.uom,
                     quantity: dec(8),
                     unit_price: dec(100),
