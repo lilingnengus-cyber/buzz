@@ -65,6 +65,26 @@ async function seedRecords(page: Page, canManage: boolean) {
       return route.fulfill({
         json: { items: contacts, hasMore: false, canManage },
       });
+    if (path === "/api/v1/crm/opportunities")
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: "opp",
+              accountId: "prospect",
+              title: "年度采购",
+              stage: "contacting",
+            },
+            {
+              id: "other",
+              accountId: "other",
+              title: "同名客户商机",
+              stage: "won",
+            },
+          ],
+          hasMore: false,
+        },
+      });
     if (path === "/api/v1/crm/followups")
       return route.fulfill({ json: { items: notes, hasMore: false } });
     return route.fulfill({ json: { items: [] } });
@@ -206,4 +226,27 @@ test("跟进记录采用右侧详情，保留商机链接且不修改历史", as
   await detail.getByRole("link", { name: "打开商机继续跟进" }).click();
   await expect(page).toHaveURL(/#crm\?opportunity=opp$/);
   expect(writes).toHaveLength(0);
+});
+
+test("客户详情关联记录按客户 ID 隔离，联系人可直接编辑", async ({ page }) => {
+  await seedRecords(page, true);
+  await page.goto("/#crmContacts");
+  await page.getByRole("button", { name: "客户", exact: true }).click();
+  await page
+    .getByRole("button", { name: "查看客户：潜在客户", exact: true })
+    .click();
+  const detail = page.getByRole("dialog", { name: "客户详情", exact: true });
+  await expect(
+    detail.getByRole("link", { name: "年度采购 · 沟通中" }),
+  ).toHaveAttribute("href", "/#crm?opportunity=opp");
+  await expect(detail.getByText("同名客户商机")).toHaveCount(0);
+  await detail.getByRole("button", { name: "张经理 · 13800000000" }).click();
+  const contact = page.getByRole("dialog", { name: "联系人详情", exact: true });
+  await expect(contact).toBeVisible();
+  await contact.getByRole("button", { name: "编辑联系人" }).click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "编辑联系人", exact: true })
+      .getByLabel("联系方式", { exact: true }),
+  ).toHaveValue("13800000000");
 });

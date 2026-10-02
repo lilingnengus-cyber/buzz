@@ -408,8 +408,8 @@ export function CrmDirectoryPage() {
         <CrmDrawer
           title={
             editing.details
-              ? `${title}详情`
-              : `${editing.item ? "编辑" : "新建"}${title}`
+              ? `${editing.item && "contactName" in editing.item ? "联系人" : title}详情`
+              : `${editing.item ? "编辑" : "新建"}${editing.item && "contactName" in editing.item ? "联系人" : title}`
           }
           onClose={() => setEditing(null)}
         >
@@ -417,11 +417,16 @@ export function CrmDirectoryPage() {
             <CrmDirectoryDetail
               item={editing.item}
               canManage={data.canManage}
+              onContact={(item) => setEditing({ item, details: true })}
               onEdit={() => setEditing({ item: editing.item })}
             />
           ) : (
             <DirectoryForm
-              kind={kind}
+              kind={
+                editing.item && "contactName" in editing.item
+                  ? "contacts"
+                  : kind
+              }
               item={editing.item}
               onSaved={() => {
                 setEditing(null);
