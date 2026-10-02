@@ -26,3 +26,13 @@
 ## 发布要求
 
 部署前合并当前线上 CRM 更新，备份数据库。先准备包含迁移 79/80 和可空仓库/应收来源的兼容回退镜像，再迁移并发布 Core，最后切换前端。生产验收只读，不创建测试业务单据。发布结果另记。
+
+## 2026-10-03 发布结果
+
+- 实现 c5a1de50f，合并线上联系人/搜索更新 09cf904b1，发布源码 9b4da4b7d。
+- Core 镜像 shiyue-business-core:service-accounting-20261003，固定 ID sha256:d35e8adf4b40b144fa43bd4acd528b24e9348b0c00a10560ee131d26dcc55e0e。
+- 迁移 79/80 success，预检 head=80/pending=0，Core 健康。备份与数量核对保存在服务器 /opt/business-platform/releases/service-accounting-20261003/migration-evidence。迁移前后客户3、商品1、订单5、应收0、利润事实0均不变。
+- 兼容回退镜像 shiyue-business-core:service-accounting-compat-20261003，固定 ID sha256:b07d978e7e8687c8f7ef1aae95c4d573ca375ff2b5e7b5c68d039d9fb7742f59。保留新结构和可空来源适配，关闭服务交付新路由；原镜像缺少迁移 79/80，不能直接回退。发布证据 release-evidence/release.Mw4Fqjwf。
+- 前端 business-web-9b4da4b7d，JS index-B5X3Hwtk.js，CSS index-B4jzrHbo.css。公网 JS 与本地构建逐字节一致。
+- 27 项 Core 单元测试、严格 Clippy、类型与构建、9 项合并后的浏览器流程通过。独立 PostgreSQL 服务/混合订单及 B2 回归通过。B4 日报快照既有问题见上文。
+- 原生 Pacioli 使用现有生产登录，刷新后打开服务项目、新建项目抽屉及交付事项，订单关联、客户主体、负责人选项正常读取，Escape 正常关闭。只读检查；生产服务项目和验收记录均为0，没有创建测试业务或财务单据。
