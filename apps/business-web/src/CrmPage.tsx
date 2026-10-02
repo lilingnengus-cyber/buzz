@@ -13,6 +13,51 @@ import {
 } from "./crm";
 import "./crm.css";
 import "./crm-opportunities.css";
+function CrmDrawer({
+  children,
+  title,
+  onClose,
+}: {
+  children: React.ReactNode;
+  title: string;
+  onClose: () => void;
+}) {
+  const ref = React.useRef<HTMLDialogElement>(null);
+  React.useEffect(() => {
+    const dialog = ref.current;
+    const previousOverflow = document.body.style.overflow;
+    dialog?.showModal();
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog?.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="crm-drawer"
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="crm-drawer-content">
+        <header className="crm-drawer-heading">
+          <strong>{title}</strong>
+          <button aria-label="关闭商机弹窗" onClick={onClose}>
+            关闭 ×
+          </button>
+        </header>
+        {children}
+      </div>
+    </dialog>
+  );
+}
 type List = { items: Opportunity[]; hasMore: boolean; canManage: boolean };
 export function CrmPage({ initialId }: { initialId?: string }) {
   const [data, setData] = React.useState<List>({
@@ -177,9 +222,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           <button onClick={() => setRevision((v) => v + 1)}>重新加载</button>
         </p>
       )}
-      <div
-        className={`crm-layout${selected || creating ? " crm-layout-open" : ""}`}
-      >
+      <div className="crm-layout">
         <div className="crm-register" aria-busy={loading}>
           <div className="crm-list-caption">
             <strong>
@@ -193,7 +236,9 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             </span>
           </div>
           <div className="crm-list-columns" aria-hidden="true">
-            <span>商机 / 客户</span>
+            <span>商机</span>
+            <span>客户</span>
+            <span>联系人</span>
             <span>销售阶段</span>
             <span>预计金额</span>
             <span>下一步 / 跟进日期</span>
@@ -230,10 +275,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
               >
                 <span className="crm-opportunity-identity">
                   <strong>{item.title}</strong>
-                  <span className="crm-company">{item.companyName}</span>
-                  <span className="crm-contact">
-                    {item.contactName || "联系人待补充"}
-                  </span>
+                </span>
+                <span className="crm-company" data-label="客户">
+                  {item.companyName}
+                </span>
+                <span className="crm-contact" data-label="联系人">
+                  {item.contactName || "待补充"}
                 </span>
                 <span className={`crm-stage crm-stage-${item.stage}`}>
                   {CRM_STAGES[item.stage]}
@@ -280,21 +327,14 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           )}
         </div>
         {(selected || creating) && (
-          <aside
-            className="crm-panel"
-            aria-label={creating ? "新建商机" : "商机详情"}
+          <CrmDrawer
+            title={creating ? "新建商机" : "商机详情"}
+            onClose={() => {
+              setSelected(null);
+              setCreating(false);
+              setEditing(false);
+            }}
           >
-            {!creating && (
-              <button
-                className="crm-close"
-                onClick={() => {
-                  setSelected(null);
-                  setEditing(false);
-                }}
-              >
-                收起详情
-              </button>
-            )}
             {creating ? (
               <CrmForm
                 options={options}
@@ -330,7 +370,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                 />
               ))
             )}
-          </aside>
+          </CrmDrawer>
         )}
       </div>
     </section>

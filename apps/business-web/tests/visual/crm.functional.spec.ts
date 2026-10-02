@@ -165,7 +165,7 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
     page.getByRole("heading", { name: "商机", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "新建商机", exact: true }).click();
-  const form = page.getByRole("complementary", { name: "新建商机" });
+  const form = page.getByRole("dialog", { name: "新建商机" });
   await form.getByLabel("商机名称").fill("企业年度采购");
   await form.getByLabel("关联已有客户").selectOption("customer");
   await expect(form.getByLabel("客户公司")).toHaveValue("杭州示例企业");
@@ -174,7 +174,7 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   await form.getByLabel("下一步", { exact: true }).fill("发送初步方案");
   await form.getByLabel("下次跟进日期").fill("2026-09-20");
   await form.getByRole("button", { name: "保存商机", exact: true }).click();
-  const detail = page.getByRole("complementary", { name: "商机详情" });
+  const detail = page.getByRole("dialog", { name: "商机详情" });
   await expect(
     detail.getByRole("heading", { name: "企业年度采购" }),
   ).toBeVisible();
@@ -189,7 +189,9 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
     detail.getByText("客户确认需求，准备报价。", { exact: true }),
   ).toBeVisible();
   expect(writes).toBe(2);
+  await page.getByRole("button", { name: "关闭商机弹窗" }).click();
   await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.locator(".crm-row").filter({ hasText: "企业年度采购" }).click();
   await expect(
     detail.getByText("客户确认需求，准备报价。", { exact: true }),
   ).toBeVisible();
@@ -228,7 +230,12 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
   await expect(
     detail.getByRole("heading", { name: "企业年度采购" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "收起详情" }).click();
+  await page.keyboard.press("Escape");
+  await expect(detail).not.toBeVisible();
+  await page.locator(".crm-row").first().click();
+  await expect(detail).toBeVisible();
+  await page.mouse.click(10, 450);
+  await expect(detail).not.toBeVisible();
   await page
     .getByRole("navigation", { name: "按销售阶段筛选" })
     .getByRole("button", { name: "已流失", exact: true })
