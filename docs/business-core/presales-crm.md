@@ -175,3 +175,5 @@
 联系人读取接口返回当前档案关联的正式 `customerId`，列表与联系人右侧详情中的客户名称通过 `/customers/<customerId>` 打开现有核心客户详情。精确使用正式 ID，既不按名称推测也不将 CRM 档案 ID 当作核心客户 ID。历史潜在客户的 `customerId` 为空时保留普通名称，不生成链接。点击客户链接不触发联系人行详情，键盘访问沿用标准链接行为。既有核心客户权限检查仍由目标页面和服务端执行。
 
 无数据库迁移。8 项界面测试及真实 PostgreSQL 验证通过，覆盖链接目标、点击导航、联系人编辑及历史潜在客户无错误链接。构建、类型检查和 Clippy 通过；保留已上线的跟进筛选改动。
+
+发布完成：服务端固定镜像 `sha256:c72ca247d3ccaa5a48d4e1c8e9927a33a663ab5bc7bb07c3bd7458f7b04f189e`，迁移预检 head 78、pending 0，健康检查通过；证据目录 `/opt/business-platform/releases/crm-contact-links-20261002/release-evidence/release.u4UNTsUR`。网页切换为 `business-web-331006959`，公开 JS `index-CGpb4Axg.js` 已与本地构建逐字节核对。未在生产创建测试业务记录。
