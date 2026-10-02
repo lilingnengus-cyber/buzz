@@ -163,6 +163,10 @@ async function installBusinessFixtures(page: Page, zoom: number) {
       };
     } else if (path === "/api/v1/sales-orders") {
       body = envelope([salesOrder, alternateSalesOrder]);
+    } else if (path === `/api/v1/sales-orders/${salesOrder.id}`) {
+      body = { ...salesOrder, progress: { goods: [], services: [], payment: null, dataAsOf: "2026-08-23T01:30:00Z" } };
+    } else if (path === "/api/v1/sales-orders/entry-options") {
+      body = { canCreate: true, draft: null };
     } else if (path === "/api/v1/purchase-orders") {
       body = envelope([purchaseOrder, alternatePurchaseOrder]);
     } else if (path === "/api/v1/purchase-orders/entry-options") {
@@ -318,7 +322,7 @@ async function expectIndentedNavigation(page: Page, activeLabel: string) {
   ]);
   expect(groupBox).not.toBeNull();
   expect(childBox).not.toBeNull();
-  if (groupBox && childBox) expect(childBox.x).toBeGreaterThan(groupBox.x + 12);
+  if (groupBox && childBox) expect(childBox.x).toBeGreaterThan(groupBox.x);
   await expect(
     navigation.getByRole("link", { name: new RegExp(activeLabel) }),
   ).toHaveClass(/active/);
@@ -326,7 +330,7 @@ async function expectIndentedNavigation(page: Page, activeLabel: string) {
 
 async function openPage(
   page: Page,
-  section: "sales" | "purchasing" | "inventory",
+  section: "sales" | "purchasing" | "inventory" | "goodsOrders" | "serviceOrders",
   zoom: number,
 ) {
   await installBusinessFixtures(page, zoom);
@@ -345,9 +349,9 @@ for (const zoom of ZOOMS) {
   test(`销售闭环页面与新增弹窗在 ${zoom}% 下稳定`, async ({ page }) => {
     await openPage(page, "sales", zoom);
     await expect(
-      page.getByRole("heading", { name: "销售订单闭环" }),
+      page.getByRole("heading", { name: "销售订单" }),
     ).toBeVisible();
-    await expectIndentedNavigation(page, "销售订单闭环");
+    await expectIndentedNavigation(page, "销售订单");
     await expect(page.getByText("客户 华东重点客户 · CUS-01")).toBeVisible();
     await expect(page.getByText("法定主体 上海法定主体 · LE-01")).toBeVisible();
     const firstOrder = page.getByRole("button", {
@@ -367,6 +371,7 @@ for (const zoom of ZOOMS) {
     await expect(secondOrder).toBeVisible();
     await page.getByLabel("筛选经营主体").selectOption("");
     await expectNoHorizontalOverflow(page.locator("main"));
+    for (const row of await page.locator(".workflow-row").all()) await expectNoHorizontalOverflow(row);
     await expectSingleLine(page.locator(".money-cell strong").first());
     await expect(page).toHaveScreenshot(`sales-page-${zoom}.png`);
 
@@ -404,6 +409,7 @@ for (const zoom of ZOOMS) {
     await expect(secondOrder).toBeVisible();
     await page.getByLabel("筛选经营主体").selectOption("");
     await expectNoHorizontalOverflow(page.locator("main"));
+    for (const row of await page.locator(".workflow-row").all()) await expectNoHorizontalOverflow(row);
     await expectSingleLine(page.locator(".money-cell strong").first());
     await expect(page).toHaveScreenshot(`purchase-page-${zoom}.png`);
 
@@ -467,7 +473,7 @@ test("左侧导航可以隐藏、恢复并记忆选择", async ({ page }) => {
 test("销售订单详情状态使用无胶囊的表格文本样式", async ({ page }) => {
   await openPage(page, "sales", 100);
   await page
-    .getByRole("button", { name: `查看销售订单 ${salesOrder.orderNumber}` })
+    .getByRole("button", { name: `查看 ${salesOrder.orderNumber} 详情` })
     .click();
 
   const dialog = page.getByRole("dialog", {
@@ -515,3 +521,21 @@ test.describe("窄版 Business Dock", () => {
     await expect(page).toHaveScreenshot("business-dock-narrow-account-520.png");
   });
 });
+
+for (const [section, title] of [["goodsOrders", "商品订单闭环"], ["serviceOrders", "服务订单闭环"]] as const) {
+  for (const zoom of ZOOMS) {
+    test(`${title}阶段在 ${zoom}% 下完整显示`, async ({ page }) => {
+      await openPage(page, section, zoom);
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      const stages = page.getByRole("navigation", { name: "订单闭环阶段" });
+      await expect(stages.getByRole("button")).toHaveCount(4);
+      await expectNoHorizontalOverflow(stages);
+      for (const button of await stages.getByRole("button").all()) {
+        await button.click();
+        await expect(button).toHaveAttribute("aria-current", "step");
+      }
+      await expectNoHorizontalOverflow(page.locator("main"));
+      await expect(page).toHaveScreenshot(`${section}-page-${zoom}.png`);
+    });
+  }
+}

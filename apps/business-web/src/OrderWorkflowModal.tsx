@@ -156,7 +156,7 @@ export function RecordDetail({
           </div>
         ))}
       </dl>
-      {state.salesOrderId && <SalesOrderProgress id={state.salesOrderId} />}
+      {state.salesOrderId && <SalesOrderProgress id={state.salesOrderId} initial={state.salesProgress} />}
       <footer>
         {state.serviceOrderNumber && (
           <a

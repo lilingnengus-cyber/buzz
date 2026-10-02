@@ -16,7 +16,7 @@ type Line = {
   projectTitle: string | null;
   projectStatus: string | null;
 };
-type Progress = {
+export type Progress = {
   goods: Line[] | null;
   services: Line[] | null;
   payment: { receivableCount: number; amount: string; settled: string; open: string; overdue: string } | null;
@@ -26,7 +26,9 @@ const projectStatus: Record<string, string> = {
   pending: "待开始", paused: "已暂停", draft: "草稿", active: "交付中", delivery: "交付中", acceptance: "待验收", completed: "已完成", cancelled: "已取消",
 };
 
-export function SalesOrderProgress({ id }: { id: string }) {
+export type SalesProgressSnapshot = { currency: string; progress: Progress };
+
+export function SalesOrderProgress({ id, initial }: { id: string; initial?: SalesProgressSnapshot }) {
   const [data, setData] = React.useState<{ currency: string; progress: Progress } | null>(null);
   const [error, setError] = React.useState<ApiFailure | null>(null);
   const [revision, refresh] = React.useState(0);
@@ -34,6 +36,7 @@ export function SalesOrderProgress({ id }: { id: string }) {
     let active = true;
     setData(null);
     setError(null);
+    if (revision === 0 && initial) { setData(initial); return; }
     void request<{ currency: string; progress: Progress }>(`/api/v1/sales-orders/${encodeURIComponent(id)}`)
       .then((value) => {
         if (!value.progress) throw new Error("暂未获取到订单进度，请刷新重试");
@@ -41,7 +44,7 @@ export function SalesOrderProgress({ id }: { id: string }) {
       })
       .catch((reason: unknown) => { if (active) setError(toApiFailure(reason)); });
     return () => { active = false; };
-  }, [id, revision]);
+  }, [id, revision, initial]);
   return <section className="sales-order-progress" aria-label="履约与回款进度">
     <header><h3>履约与回款进度</h3><button type="button" onClick={() => refresh(v => v + 1)}>刷新进度</button></header>
     {error ? <PageLoadFailure failure={error} resourceLabel="订单进度" onRetry={() => refresh(v => v + 1)} /> : !data ? <p role="status">正在读取订单进度…</p> : <>

@@ -956,3 +956,21 @@ button.workflow-modal-scrim {
 .fulfillment-queue table { width: 100%; border-collapse: collapse; }
 .fulfillment-queue th, .fulfillment-queue td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--line); }
 .order-workflow .service-projects { padding: 0; }
+
+/* Size the workflow to its dock, including page zoom, rather than the viewport. */
+.order-workflow { container-type: inline-size; }
+.workflow-rail {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 8px;
+  overflow: visible;
+}
+.workflow-rail > i { display: none; }
+.workflow-rail button { min-width: 0; }
+.workflow-rail button strong, .workflow-rail button small { overflow-wrap: anywhere; }
+@container (max-width: 900px) {
+  .workflow-columns { display: none; }
+  .workflow-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .workflow-row > :nth-child(4) { grid-column: 2; }
+  .workflow-row > :nth-child(5) { grid-column: 1 / -1; grid-row: auto; }
+  .workflow-row-actions { justify-content: flex-start; }
+}

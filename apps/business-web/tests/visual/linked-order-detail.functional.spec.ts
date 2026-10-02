@@ -44,6 +44,7 @@ for (const domain of ["sales", "purchase"] as const) {
                 warehouseLabels: ["WH-000001 · 杭州仓"],
               }
             : {}),
+          ...(domain === "sales" ? { progress: { goods: [], services: [], payment: null, dataAsOf: "2026-10-03T00:00:00Z" } } : {}),
           currency: "CNY",
           grossAmount: "23.45",
           lifecycleStatus: "draft",

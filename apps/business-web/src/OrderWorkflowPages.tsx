@@ -1,3 +1,4 @@
+import { formatMoney } from "./formatters";
 import React from "react";
 import {
   type ApiFailure,
@@ -25,10 +26,8 @@ import {
   dimensionOptions,
   filterRows,
   loadWorkflowStage,
-  money,
   ratio,
   returnConfirmation,
-  sum,
   workflowMetric,
   workflowNote,
   workflowValue,
@@ -185,13 +184,9 @@ function PurchaseOrderRegisterPage() {
     item.reasonCode,
     item.status,
   ]);
-  const openPayable = (data?.payables ?? []).reduce(
-    (total, item) => total + Number(item.openAmount),
-    0,
-  );
-  const receivedOrders = (data?.orders ?? []).filter(
-    (item) => item.receivingStatus === "fully_received",
-  ).length;
+  const activePayables = payables.filter(item => item.status !== "reversed");
+  const openPayable = currencyTotals(activePayables, item => item.openAmount);
+  const receivedOrders = orders.filter(item => item.receivingStatus === "fully_received").length;
   const refresh = () => setRevision((value) => value + 1);
   const done = () => {
     setModal(null);
@@ -237,7 +232,7 @@ function PurchaseOrderRegisterPage() {
             data?.errors.receiving,
             `${data?.receipts.length ?? 0} 次`,
           ),
-          workflowMetric(data?.errors.payables, `待付 ${money(openPayable)}`),
+          workflowMetric(data?.errors.payables, `待付 ${openPayable}`),
           workflowMetric(
             data?.errors.settlement,
             `${data?.payments.length ?? 0} 笔`,
@@ -251,14 +246,14 @@ function PurchaseOrderRegisterPage() {
       <WorkflowPulse
         items={[
           {
-            label: "采购总额",
+            label: "已加载采购金额",
             value: workflowValue(
               data?.errors.orders,
-              money(sum(data?.orders, "grossAmount")),
+              currencyTotals(orders, item => item.grossAmount),
             ),
             note: workflowNote(
               data?.errors.orders,
-              `${data?.orders.length ?? 0} 张订单`,
+              `筛选后 ${orders.length} 张订单，含草稿`,
             ),
           },
           {
@@ -266,15 +261,15 @@ function PurchaseOrderRegisterPage() {
             value: workflowValue(data?.errors.orders, String(receivedOrders)),
             note: workflowNote(
               data?.errors.orders,
-              `到货率 ${ratio(receivedOrders, data?.orders.length ?? 0)}`,
+              `已加载订单到货率 ${ratio(receivedOrders, orders.length)}`,
             ),
           },
           {
-            label: "经营应付余额",
-            value: workflowValue(data?.errors.payables, money(openPayable)),
+            label: "已加载应付余额",
+            value: workflowValue(data?.errors.payables, openPayable),
             note: workflowNote(
               data?.errors.payables,
-              `${(data?.payables ?? []).filter((item) => item.status !== "settled").length} 笔未结`,
+              `${activePayables.filter(item => Number(item.openAmount) > 0).length} 笔未结，按币种分别统计`,
             ),
           },
         ]}
@@ -399,4 +394,10 @@ function PurchaseOrderRegisterPage() {
       )}
     </WorkflowPage>
   );
+}
+
+function currencyTotals<T extends { currency: string }>(rows: T[], amount: (row: T) => string) {
+  const totals = new Map<string, number>();
+  for (const row of rows) totals.set(row.currency, (totals.get(row.currency) ?? 0) + Number(amount(row)));
+  return totals.size ? [...totals].sort(([a], [b]) => a.localeCompare(b)).map(([currency, total]) => formatMoney(currency, total)).join(" / ") : "暂无记录";
 }
