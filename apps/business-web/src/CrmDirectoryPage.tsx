@@ -1,5 +1,6 @@
 import React from "react";
 import { request } from "./api";
+import { CrmDirectoryDetail } from "./CrmRecordDetails";
 import { CrmDrawer, useCrmDraft } from "./CrmDrawer";
 import { CrmAccountPicker } from "./CrmDirectoryFields";
 import { useCrmCommand } from "./useCrmCommand";
@@ -210,6 +211,7 @@ export function CrmDirectoryPage() {
   const [error, setError] = React.useState("");
   const [editing, setEditing] = React.useState<{
     item: CrmAccount | CrmContact | null;
+    details?: boolean;
   } | null>(null);
   React.useEffect(() => {
     let active = true;
@@ -311,7 +313,32 @@ export function CrmDirectoryPage() {
           </p>
         ) : (
           data.items.map((item) => (
-            <article key={item.id} className="crm-register-card">
+            <article
+              key={item.id}
+              className="crm-register-card crm-clickable-record"
+              role="button"
+              tabIndex={0}
+              aria-haspopup="dialog"
+              aria-label={`查看${title}：${"contactName" in item ? item.contactName : item.name}`}
+              onClick={(event) => {
+                if (
+                  !(
+                    event.target instanceof Element &&
+                    event.target.closest("a, button")
+                  )
+                )
+                  setEditing({ item, details: true });
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  ["Enter", " "].includes(event.key)
+                ) {
+                  event.preventDefault();
+                  setEditing({ item, details: true });
+                }
+              }}
+            >
               {"contactName" in item ? (
                 <>
                   <div className="crm-heading">
@@ -379,17 +406,29 @@ export function CrmDirectoryPage() {
       )}
       {editing && (
         <CrmDrawer
-          title={`${editing.item ? "编辑" : "新建"}${title}`}
+          title={
+            editing.details
+              ? `${title}详情`
+              : `${editing.item ? "编辑" : "新建"}${title}`
+          }
           onClose={() => setEditing(null)}
         >
-          <DirectoryForm
-            kind={kind}
-            item={editing.item}
-            onSaved={() => {
-              setEditing(null);
-              setRevision((v) => v + 1);
-            }}
-          />
+          {editing.details && editing.item ? (
+            <CrmDirectoryDetail
+              item={editing.item}
+              canManage={data.canManage}
+              onEdit={() => setEditing({ item: editing.item })}
+            />
+          ) : (
+            <DirectoryForm
+              kind={kind}
+              item={editing.item}
+              onSaved={() => {
+                setEditing(null);
+                setRevision((v) => v + 1);
+              }}
+            />
+          )}
         </CrmDrawer>
       )}
     </section>

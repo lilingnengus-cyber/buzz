@@ -189,7 +189,7 @@ test("售前 CRM 新建、跟进、筛选和刷新", async ({ page }) => {
     detail.getByText("客户确认需求，准备报价。", { exact: true }),
   ).toBeVisible();
   expect(writes).toBe(2);
-  await page.getByRole("button", { name: "关闭商机弹窗" }).click();
+  await page.getByRole("button", { name: "关闭详情弹窗" }).click();
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.locator(".crm-row").filter({ hasText: "企业年度采购" }).click();
   await expect(

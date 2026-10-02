@@ -320,3 +320,17 @@
   display: grid;
   gap: 0.5rem;
 }
+
+.crm-clickable-record {
+  cursor: pointer;
+}
+.crm-clickable-record:hover {
+  border-color: var(--blue);
+}
+.crm-clickable-record:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: -3px;
+}
+.crm-record-detail .crm-note-content {
+  overflow-wrap: anywhere;
+}

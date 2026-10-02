@@ -1,6 +1,8 @@
 import React from "react";
 import { CrmDirectoryPage } from "./CrmDirectoryPage";
 import { request } from "./api";
+import { CrmDrawer } from "./CrmDrawer";
+import { CrmFollowupDetail } from "./CrmRecordDetails";
 import { CRM_STAGES, type Followup } from "./crm";
 import "./crm.css";
 
@@ -20,6 +22,7 @@ export function CrmRegisters({ view }: { view: "followups" | "contacts" }) {
 function CrmHistoryRegister() {
   const view = "followups";
   const title = "跟进记录";
+  const [selected, setSelected] = React.useState<Note | null>(null);
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
@@ -101,7 +104,32 @@ function CrmHistoryRegister() {
           </div>
         ) : (
           data.items.map((item) => (
-            <article className="crm-register-card" key={item.id}>
+            <article
+              className="crm-register-card crm-clickable-record"
+              key={item.id}
+              role="button"
+              tabIndex={0}
+              aria-haspopup="dialog"
+              aria-label={`查看跟进：${item.opportunityTitle}`}
+              onClick={(event) => {
+                if (
+                  !(
+                    event.target instanceof Element &&
+                    event.target.closest("a, button")
+                  )
+                )
+                  setSelected(item);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  ["Enter", " "].includes(event.key)
+                ) {
+                  event.preventDefault();
+                  setSelected(item);
+                }
+              }}
+            >
               <div className="crm-row-top">
                 <a href={opportunityLink(item.opportunityId)}>
                   {item.opportunityTitle}
@@ -131,6 +159,11 @@ function CrmHistoryRegister() {
           ))
         )}
       </div>
+      {selected && (
+        <CrmDrawer title="跟进记录详情" onClose={() => setSelected(null)}>
+          <CrmFollowupDetail item={selected} />
+        </CrmDrawer>
+      )}
       {!error && (offset > 0 || data.hasMore) && (
         <nav className="crm-pagination" aria-label={`${title}分页`}>
           <button
