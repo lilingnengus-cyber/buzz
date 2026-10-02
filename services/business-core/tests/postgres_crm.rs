@@ -324,6 +324,65 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .unwrap();
         linked_ids.push(serde_json::from_value::<Uuid>(result["id"].clone()).unwrap());
     }
+    // Historical note dates intentionally differ from current opportunity dates.
+    for opportunity in &linked_ids {
+        sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up) VALUES($1,$2,$3,'schedule-filter-test','contacting','historical action','2020-01-01')")
+            .bind(Uuid::new_v4()).bind(opportunity).bind(actor).execute(&pool).await.unwrap();
+    }
+    for (index, mode) in ["overdue", "today", "upcoming", "unscheduled"]
+        .iter()
+        .enumerate()
+    {
+        let filters = Filters {
+            followup: Some((*mode).into()),
+            today: Some("2026-10-02".parse().unwrap()),
+            query: Some("schedule-filter-test".into()),
+            ..Default::default()
+        };
+        let result = crm.register(actor, &filters, false).await.unwrap();
+        assert_eq!(result["items"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            result["items"][0]["opportunityId"],
+            linked_ids[index].to_string()
+        );
+        assert_eq!(result["items"][0]["nextFollowUp"], "2020-01-01");
+        assert!(
+            crm.register(outsider, &filters, false).await.unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(crm
+            .register(
+                actor,
+                &Filters {
+                    offset: 1,
+                    ..filters
+                },
+                false
+            )
+            .await
+            .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+    assert!(matches!(
+        crm.register(
+            actor,
+            &Filters {
+                followup: Some("today".into()),
+                ..Default::default()
+            },
+            false
+        )
+        .await,
+        Err(DomainError::Invalid(_))
+    ));
+    sqlx::query("DELETE FROM crm_followups WHERE note='schedule-filter-test'")
+        .execute(&pool)
+        .await
+        .unwrap();
     for mode in ["overdue", "today", "upcoming", "unscheduled"] {
         let filters = Filters {
             followup: Some(mode.into()),

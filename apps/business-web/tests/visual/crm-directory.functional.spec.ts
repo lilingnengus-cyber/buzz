@@ -156,10 +156,12 @@ test("客户联系人独立建档、复用及未保存保护", async ({ page }) 
   await page.getByRole("button", { name: "放弃修改", exact: true }).click();
   await expect(followup).not.toBeVisible();
   await page.goto("/#crm");
+  await expect(page.getByLabel("跟进安排")).toHaveCount(0);
+  await page.goto("/#crmFollowups");
   for (const value of ["overdue", "today", "upcoming", "unscheduled", ""]) {
     const fetched = page.waitForRequest(
       (req) =>
-        req.url().includes("/api/v1/crm/opportunities?") &&
+        req.url().includes("/api/v1/crm/followups?") &&
         (new URL(req.url()).searchParams.get("followup") ?? "") === value,
     );
     await page.getByLabel("跟进安排").selectOption(value);

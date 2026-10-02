@@ -5,7 +5,7 @@ import { request } from "./api";
 import { CrmDrawer } from "./CrmDrawer";
 import { CrmFollowupDetail } from "./CrmRecordDetails";
 import { CrmAccountPicker } from "./CrmDirectoryFields";
-import { CRM_STAGES, type CrmAccount, type Followup } from "./crm";
+import { CRM_STAGES, localDate, type CrmAccount, type Followup } from "./crm";
 import "./crm.css";
 import "./crm-opportunities.css";
 import "./crm-registers.css";
@@ -44,6 +44,7 @@ function CrmHistoryRegister() {
   const title = "跟进记录";
   const [selected, setSelected] = React.useState<Note | null>(null);
   const [account, setAccount] = React.useState<CrmAccount | null>(null);
+  const [due, setDue] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
@@ -62,6 +63,10 @@ function CrmHistoryRegister() {
         query: query.trim(),
         offset: String(offset),
       });
+      if (due) {
+        params.set("followup", due);
+        params.set("today", localDate());
+      }
       if (account) params.set("accountId", account.id);
       request<Register>(`/api/v1/crm/${view}?${params}`)
         .then((result) => {
@@ -81,7 +86,7 @@ function CrmHistoryRegister() {
       active = false;
       clearTimeout(timer);
     };
-  }, [view, query, offset, revision, title, account]);
+  }, [view, query, offset, revision, title, account, due]);
   return (
     <section className="crm-page crm-opportunities crm-history-page">
       <header className="crm-heading">
@@ -126,8 +131,31 @@ function CrmHistoryRegister() {
             }}
           />
         </label>
+        <label>
+          跟进安排
+          <select
+            aria-label="跟进安排"
+            value={due}
+            onChange={(event) => {
+              setDue(event.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="open">进行中</option>
+            <option value="overdue">逾期</option>
+            <option value="today">今天</option>
+            <option value="upcoming">未来七天</option>
+            <option value="unscheduled">未安排</option>
+            <option value="">全部</option>
+          </select>
+        </label>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
+      {due && (
+        <p className="crm-hint">
+          按关联商机当前的跟进安排筛选；记录内日期保留当时安排，历史记录不代表当前待办。
+        </p>
+      )}
       <CrmAccountPicker
         filter
         value={account}
