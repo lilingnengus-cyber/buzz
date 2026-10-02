@@ -768,6 +768,10 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             ("POST", "/api/v1/crm/opportunities".into()),
             ("PUT", format!("/api/v1/crm/opportunities/{id}")),
             ("POST", format!("/api/v1/crm/opportunities/{id}/followups")),
+            (
+                "POST",
+                format!("/api/v1/crm/opportunities/{id}/convert-customer"),
+            ),
         ] {
             let response = router
                 .clone()
