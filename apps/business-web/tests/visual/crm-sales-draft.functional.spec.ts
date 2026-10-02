@@ -218,5 +218,7 @@ test("关联订单展示状态、金额与正确链接，读取失败可重试",
   await expect(link).toHaveAttribute("href", "/sales/orders/order");
   await expect(link).toContainText("已完成");
   await expect(link).toContainText("1,250");
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/crm-related-orders.png" });
   expect(reads).toBe(2);
 });
