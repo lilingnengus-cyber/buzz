@@ -26,28 +26,30 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
     null,
   );
   const [modal, setModal] = React.useState<Modal | null>(null);
-  const [notice, setNotice] = React.useState("");
+  const [loadErrors, setLoadErrors] = React.useState({ counts: "正在读取盘点任务…", aging: "正在读取库龄…", turnover: "正在读取周转…" });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly reloads server state after a command.
   React.useEffect(() => {
-    Promise.all([
-      request<Envelope<InventoryCountSummary>>(
-        "/api/v1/inventory-counts?limit=100",
-      ),
-      request<{ items: InventoryAgingItem[] }>(
-        "/api/v1/inventory-aging?thresholdDays=90&limit=100",
-      ),
-      request<InventoryTurnover>(
-        `/api/v1/inventory-turnover?period=${month()}&currency=CNY`,
-      ),
-    ])
-      .then(([countResult, agingResult, turnoverResult]) => {
-        setCounts(countResult.items);
-        setAging(agingResult.items);
-        setTurnover(turnoverResult);
-        setNotice("");
-      })
-      .catch((error: Error) => setNotice(error.message));
+    let active = true;
+    setCounts([]);
+    setAging([]);
+    setTurnover(null);
+    setLoadErrors({ counts: "正在读取盘点任务…", aging: "正在读取库龄…", turnover: "正在读取周转…" });
+    void Promise.allSettled([
+      request<Envelope<InventoryCountSummary>>("/api/v1/inventory-counts?limit=100"),
+      request<{ items: InventoryAgingItem[] }>("/api/v1/inventory-aging?thresholdDays=90&limit=100"),
+      request<InventoryTurnover>(`/api/v1/inventory-turnover?period=${month()}&currency=CNY`),
+    ]).then(([countResult, agingResult, turnoverResult]) => {
+      if (!active) return;
+      if (countResult.status === "fulfilled") setCounts(countResult.value.items);
+      if (agingResult.status === "fulfilled") setAging(agingResult.value.items);
+      if (turnoverResult.status === "fulfilled") setTurnover(turnoverResult.value);
+      setLoadErrors({
+        counts: countResult.status === "fulfilled" ? "" : "盘点任务读取失败，请检查权限或重试。",
+        aging: agingResult.status === "fulfilled" ? "" : "库龄读取失败，请检查权限或重试。",
+        turnover: turnoverResult.status === "fulfilled" ? "" : "周转数据读取失败，请检查权限或重试。",
+      });
+    });
+    return () => { active = false; };
   }, [revision]);
 
   const refresh = () => {
@@ -59,7 +61,8 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
     ["counting", "counted"].includes(item.status),
   ).length;
   const sluggishValues = aging.reduce((totals, item) => {
-    const currency = item.currency ?? "未标币种";
+    if (!item.currency) return totals;
+    const currency = item.currency;
     totals.set(
       currency,
       (totals.get(currency) ?? 0) + number(item.inventoryValue),
@@ -81,36 +84,38 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
       <div className="inventory-health">
         <Metric
           label="冻结中的盘点"
-          value={`${frozen} 个`}
-          note="按仓库 / SKU 冻结"
+          value={loadErrors.counts ? "—" : `${frozen} 个`}
+          note="已加载任务，按仓库 / SKU 冻结"
         />
         <Metric
-          label="本月库存周转"
+          label="本月库存周转（CNY）"
           value={turnover?.turnoverRate ? `${turnover.turnoverRate} 次` : "—"}
           note={
-            turnover?.turnoverDays
+            loadErrors.turnover ? loadErrors.turnover : turnover?.excludedCurrencyBalances
+              ? `${turnover.excludedCurrencyBalances} 条余额币种待核对，暂不计算周转率`
+              : turnover?.turnoverDays
               ? `${turnover.turnoverDays} 天`
               : "暂无出库成本"
           }
         />
         <Metric
           label="90 天以上商品"
-          value={`${aging.length} 个`}
-          note="按最后出库日"
+          value={loadErrors.aging ? "—" : `${aging.length} 个`}
+          note="已加载记录，按最后出库日"
         />
         <Metric
           label="呆滞库存价值"
           value={
-            sluggishValues.size <= 1 && sluggishEntry
+            loadErrors.aging ? "—" : sluggishValues.size <= 1 && sluggishEntry
               ? formatMoney(sluggishEntry[0], sluggishEntry[1])
               : sluggishValues.size > 1
                 ? `${sluggishValues.size} 个币种`
                 : formatMoney("CNY", 0)
           }
-          note={sluggishValues.size > 1 ? "分币种查看明细" : "经营管理口径"}
+          note={aging.some((item) => !item.currency) ? "币种待核对记录未计入金额" : sluggishValues.size > 1 ? "分币种查看明细" : "经营管理口径"}
         />
       </div>
-      {notice && <p className="inventory-count-notice">{notice}</p>}
+      {Object.values(loadErrors).some(Boolean) && <div role="status" className="inventory-count-notice">{Object.values(loadErrors).filter(Boolean).join(" ")} <button type="button" onClick={() => setRevision(value => value + 1)}>重新读取库存健康</button></div>}
       <div className="inventory-count-table">
         <div className="inventory-count-head">
           <span>盘点任务</span>
@@ -161,7 +166,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
             </div>
           </article>
         ))}
-        {counts.length === 0 && (
+        {!loadErrors.counts && counts.length === 0 && (
           <p className="inventory-count-empty">
             暂无盘点任务。新建后，所选库存范围立即冻结。
           </p>
@@ -178,7 +183,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
               <span>{item.daysWithoutIssue} 天未出库</span>
               <span>在手 {formatQuantity(item.onHandQuantity)}</span>
               <span>
-                {formatMoney(item.currency ?? "CNY", item.inventoryValue)}
+                {item.currency ? formatMoney(item.currency, item.inventoryValue) : "币种待核对"}
               </span>
             </div>
           ))}

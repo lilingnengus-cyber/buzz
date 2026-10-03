@@ -18,6 +18,10 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         "inventory_opening:create",
         "inventory_opening:post",
         "shipment:create",
+        "customer_receipt:create",
+        "customer_receipt:confirm",
+        "receivable_allocation:create",
+        "receivable_allocation:reverse",
         "shipment:confirm",
         "shipment:reverse",
         "sales_order:cancel",
@@ -167,6 +171,10 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         .unwrap(),
         2
     );
+    let progress = sales.order_detail(actor, order.id).await.unwrap();
+    assert_eq!(progress["progress"]["goods"][0]["complete"], true);
+    assert_eq!(progress["progress"]["services"][0]["complete"], true);
+    assert_eq!(progress["progress"]["payment"]["amount"], "110.000000");
     inventory
         .reverse_shipment(
             actor,
@@ -211,4 +219,68 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         .receivables_for_source(Uuid::new_v4(), None, 1, Some("service"))
         .await
         .is_err());
+
+    let progress = sales.order_detail(actor, order.id).await.unwrap();
+    assert_eq!(progress["progress"]["goods"][0]["complete"], false);
+    assert_eq!(progress["progress"]["goods"][0]["remaining"], "1.000000");
+    assert_eq!(progress["progress"]["services"][0]["complete"], true);
+    assert_eq!(progress["progress"]["payment"]["amount"], "100.000000");
+    let receivable_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM trade_receivables WHERE service_project_id=$1")
+            .bind(project_id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let receipt = settlement.create_receipt(actor,Uuid::new_v4(),"progress-receipt", &serde_json::from_value(serde_json::json!({"legalEntityId":legal,"customerId":customer,"currency":"CNY","receiptDate":"2026-10-03","amount":"80","paymentMethod":"bank_transfer"})).unwrap()).await.unwrap();
+    settlement
+        .confirm_receipt(
+            actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "progress-confirm",
+            &version(1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        sales.order_detail(actor, order.id).await.unwrap()["progress"]["payment"]["settled"],
+        "0.000000"
+    );
+    settlement.apply_receipt(actor,Uuid::new_v4(),receipt.id,"progress-apply", &serde_json::from_value(serde_json::json!({"expectedReceiptVersion":2,"allocations":[{"receivableId":receivable_id,"amount":"40"}]})).unwrap()).await.unwrap();
+    let progress = sales.order_detail(actor, order.id).await.unwrap();
+    assert_eq!(progress["progress"]["payment"]["settled"], "40.000000");
+    assert_eq!(progress["progress"]["payment"]["open"], "60.000000");
+    let allocation: Uuid =
+        sqlx::query_scalar("SELECT id FROM receivable_allocations WHERE receipt_id=$1")
+            .bind(receipt.id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let ar_version: i64 = sqlx::query_scalar("SELECT version FROM trade_receivables WHERE id=$1")
+        .bind(receivable_id)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    settlement.reverse_allocation(actor,Uuid::new_v4(),allocation,"progress-reverse", &serde_json::from_value(serde_json::json!({"expectedReceiptVersion":3,"expectedReceivableVersion":ar_version})).unwrap()).await.unwrap();
+    assert_eq!(
+        sales.order_detail(actor, order.id).await.unwrap()["progress"]["payment"]["settled"],
+        "0.000000"
+    );
+    sqlx::query(
+        "DELETE FROM business_warehouse_scopes WHERE enterprise_user_id=$1 AND warehouse_id=$2",
+    )
+    .bind(actor)
+    .bind(warehouse)
+    .execute(pool)
+    .await
+    .unwrap();
+    let scoped = sales.order_detail(actor, order.id).await.unwrap();
+    assert!(scoped["progress"]["goods"].is_null());
+    assert!(scoped["progress"]["services"].is_array());
+    sqlx::query("DELETE FROM business_role_permissions WHERE role_id=$1 AND permission_key IN ('service_delivery:read','receivable:read')").bind(role).execute(pool).await.unwrap();
+    let restricted = sales.order_detail(actor, order.id).await.unwrap();
+    assert!(restricted["progress"]["goods"].is_null());
+    assert!(restricted["progress"]["services"].is_null());
+    assert!(restricted["progress"]["payment"].is_null());
+    assert!(sales.order_detail(Uuid::new_v4(), order.id).await.is_err());
 }

@@ -23,6 +23,7 @@ function ReturnEntry({ side, onDone }: { side: Side; onDone: () => void }) {
   const [quantities, setQuantities] = React.useState<Record<string, string>>(
     {},
   );
+  const [canCreate, setCanCreate] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState("");
@@ -33,6 +34,7 @@ function ReturnEntry({ side, onDone }: { side: Side; onDone: () => void }) {
       .then((result) => {
         if (!active) return;
         setOptions(result.items);
+        setCanCreate(result.canCreate);
         setSourceId(result.items[0]?.sourceId ?? "");
         if (!result.canCreate)
           setNotice(`当前角色没有${copy.documentLabel}权限。`);
@@ -53,6 +55,7 @@ function ReturnEntry({ side, onDone }: { side: Side; onDone: () => void }) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!canCreate || busy) return;
     setNotice("");
     if (!sourceId || selected.length === 0) {
       setNotice(`请选择来源${copy.sourceLabel}并填写至少一行退货数量。`);
@@ -240,7 +243,7 @@ function ReturnEntry({ side, onDone }: { side: Side; onDone: () => void }) {
             <span>
               本次选择 {selected.length} 行；保存草稿不会改变库存与往来余额。
             </span>
-            <button type="submit" disabled={busy || lines.length === 0}>
+            <button type="submit" disabled={!canCreate || busy || lines.length === 0}>
               {busy ? "正在保存…" : `保存${copy.documentLabel}草稿`}
             </button>
           </footer>

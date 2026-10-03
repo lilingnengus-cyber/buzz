@@ -125,3 +125,15 @@
     grid-template-columns: 1fr;
   }
 }
+
+.sales-order-progress { padding: 1rem; border-bottom: 1px solid var(--line); }
+.sales-order-progress > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.sales-order-progress h3, .sales-order-progress h4 { margin: .6rem 0; }
+.sales-order-progress p { color: var(--muted); font-size: .875rem; line-height: 1.6; }
+.sales-order-progress section { margin: 1rem 0; }
+.sales-order-progress button { padding: .6rem .8rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
+.order-progress-table { overflow-x: auto; }
+.order-progress-table table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.order-progress-table th, .order-progress-table td { padding: .6rem; text-align: left; border-bottom: 1px solid var(--line); }
+.order-progress-table th { color: var(--muted); white-space: nowrap; }
+.order-progress-table small { display: block; color: var(--muted); margin-top: .25rem; }

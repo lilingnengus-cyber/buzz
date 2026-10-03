@@ -1,3 +1,4 @@
+import { InventorySummary } from "./InventorySummary";
 import React from "react";
 import {
   type ApiFailure,
@@ -12,6 +13,7 @@ import { InventoryCountPanel } from "./InventoryCountPanel";
 import { ReplenishmentPanel } from "./ReplenishmentPanel";
 import {
   formatAmount,
+  formatMoney,
   formatQuantity,
   formatSignedQuantity,
 } from "./formatters";
@@ -69,16 +71,6 @@ export function InventoryLedger({ skuId }: { skuId?: string }) {
         item.skuId.toLowerCase().includes(normalizedKeyword) ||
         item.movementType.toLowerCase().includes(normalizedKeyword)),
   );
-  const totals = balances.reduce(
-    (result, item) => ({
-      onHand: result.onHand + Number(item.onHandQuantity),
-      reserved: result.reserved + Number(item.reservedQuantity),
-      quarantined: result.quarantined + Number(item.quarantinedQuantity),
-      available: result.available + Number(item.availableQuantity),
-      value: result.value + Number(item.inventoryValue),
-    }),
-    { onHand: 0, reserved: 0, quarantined: 0, available: 0, value: 0 },
-  );
   const warehouses = Array.from(
     new Set(balances.map((item) => item.warehouseId)),
   );
@@ -99,7 +91,7 @@ export function InventoryLedger({ skuId }: { skuId?: string }) {
         </button>
       </div>
 
-      {!state.error && <InventoryEquation totals={totals} />}
+      {!state.error && state.data && <InventorySummary rows={visibleBalances} />}
 
       <nav className="inventory-ledger-tabs">
         {VIEWS.map((item) => (
@@ -171,51 +163,6 @@ export function InventoryLedger({ skuId }: { skuId?: string }) {
       {state.data && view === "replenishment" && (
         <ReplenishmentPanel onChanged={refresh} />
       )}
-    </section>
-  );
-}
-
-function InventoryEquation({
-  totals,
-}: {
-  totals: {
-    onHand: number;
-    reserved: number;
-    quarantined: number;
-    available: number;
-    value: number;
-  };
-}) {
-  return (
-    <section className="inventory-equation">
-      <div className="inventory-equation-item on-hand">
-        <span>在手库存</span>
-        <strong>{formatQuantity(totals.onHand)}</strong>
-        <small>全部仓库账面数量</small>
-      </div>
-      <i>−</i>
-      <div className="inventory-equation-item reserved">
-        <span>销售预占</span>
-        <strong>{formatQuantity(totals.reserved)}</strong>
-        <small>已确认订单锁定</small>
-      </div>
-      <i>−</i>
-      <div className="inventory-equation-item quarantined">
-        <span>退货隔离</span>
-        <strong>{formatQuantity(totals.quarantined)}</strong>
-        <small>等待质检处置</small>
-      </div>
-      <i>=</i>
-      <div className="inventory-equation-item available">
-        <span>可用库存</span>
-        <strong>{formatQuantity(totals.available)}</strong>
-        <small>当前可承诺数量</small>
-      </div>
-      <div className="inventory-equation-value">
-        <span>库存账面值</span>
-        <strong>{formatAmount(totals.value)}</strong>
-        <small>按移动平均成本汇总</small>
-      </div>
     </section>
   );
 }
@@ -323,7 +270,7 @@ function BalanceTable({ items }: { items: InventoryBalance[] }) {
                 <td data-label="商品 / 仓库">
                   <code title={item.skuId}>{shortId(item.skuId)}</code>
                   <small title={item.warehouseId}>
-                    仓库 {shortId(item.warehouseId)} · v{item.version}
+                    仓库 {shortId(item.warehouseId)} · {item.unitName ?? "单位待核对"} · v{item.version}
                   </small>
                 </td>
                 <td data-label="在手">{formatQuantity(item.onHandQuantity)}</td>
@@ -344,10 +291,10 @@ function BalanceTable({ items }: { items: InventoryBalance[] }) {
                 <td data-label="移动均价">
                   {item.averageUnitCost === null
                     ? "—"
-                    : formatAmount(item.averageUnitCost)}
+                    : item.currency && !item.currencyConflict ? formatMoney(item.currency, item.averageUnitCost) : "币种待核对"}
                 </td>
                 <td data-label="库存价值">
-                  {formatAmount(item.inventoryValue)}
+                  {item.currency && !item.currencyConflict ? formatMoney(item.currency, item.inventoryValue) : "币种待核对"}
                 </td>
                 <td data-label="更新时间">{formatInstant(item.updatedAt)}</td>
               </tr>

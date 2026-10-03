@@ -15,8 +15,14 @@ export function CrmAccountPicker({
   const [items, setItems] = React.useState<CrmAccount[]>([]);
   const [error, setError] = React.useState("");
   const [more, setMore] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [revision, setRevision] = React.useState(0);
   React.useEffect(() => {
     let active = true;
+    setItems([]);
+    setMore(false);
+    setError("");
+    setLoading(true);
     const timer = setTimeout(() => {
       request<{ items: CrmAccount[]; hasMore: boolean }>(
         `/api/v1/crm/accounts?query=${encodeURIComponent(query)}`,
@@ -33,13 +39,14 @@ export function CrmAccountPicker({
             setItems([]);
             setError("客户档案加载失败，请调整搜索重试");
           }
-        });
+        })
+        .finally(() => { if (active) setLoading(false); });
     }, 200);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, revision]);
   const choices =
     value && !items.some((item) => item.id === value.id)
       ? [value, ...items]
@@ -51,12 +58,14 @@ export function CrmAccountPicker({
       <CrmSearchSelect label={filter ? "按客户筛选" : "客户档案"}
         value={value?.id ?? ""} query={query} onQuery={setQuery}
         onChange={(id) => onChange(choices.find((item) => item.id === id) ?? null)}
+        showEmptyHint={!loading}
         options={[{ value: "", label: filter ? "全部客户" : "快速填写 / 暂不选择" },
           ...choices.map((item) => ({ value: item.id, label: item.name + (item.customerId ? "" : "（潜在客户）") }))]} />
       {more && (
         <p className="crm-hint">匹配超过 50 个客户，请输入更完整的名称。</p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {loading && <p role="status" className="crm-hint">正在读取候选记录…</p>}
+      {error && <p role="alert">{error} <button type="button" onClick={() => setRevision((value) => value + 1)}>重新读取候选</button></p>}
     </div>
   );
 }
@@ -73,8 +82,14 @@ export function CrmContactPicker({
   const [items, setItems] = React.useState<CrmContact[]>([]);
   const [error, setError] = React.useState("");
   const [more, setMore] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [revision, setRevision] = React.useState(0);
   React.useEffect(() => {
     let active = true;
+    setItems([]);
+    setMore(false);
+    setError("");
+    setLoading(true);
     const timer = setTimeout(() => {
       request<{ items: CrmContact[]; hasMore: boolean }>(
         `/api/v1/crm/contacts?accountId=${encodeURIComponent(accountId)}&query=${encodeURIComponent(query)}`,
@@ -91,13 +106,14 @@ export function CrmContactPicker({
             setItems([]);
             setError("联系人加载失败，请调整搜索重试");
           }
-        });
+        })
+        .finally(() => { if (active) setLoading(false); });
     }, 200);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [accountId, query]);
+  }, [accountId, query, revision]);
   const choices =
     value && !items.some((item) => item.id === value.id)
       ? [value, ...items]
@@ -106,10 +122,12 @@ export function CrmContactPicker({
     <div className="crm-wide crm-directory-picker">
       <CrmSearchSelect label="选择联系人" value={value?.id ?? ""} query={query} onQuery={setQuery}
         onChange={(id) => onChange(choices.find((item) => item.id === id) ?? null)}
+        showEmptyHint={!loading}
         options={[{ value: "", label: "填写新联系人 / 暂不填写" },
           ...choices.map((item) => ({ value: item.id, label: `${item.contactName} · ${item.contactDetails || "未填写联系方式"}` }))]} />
       {more && <p className="crm-hint">匹配超过 50 人，请继续搜索。</p>}
-      {error && <p role="alert">{error}</p>}
+      {loading && <p role="status" className="crm-hint">正在读取候选记录…</p>}
+      {error && <p role="alert">{error} <button type="button" onClick={() => setRevision((value) => value + 1)}>重新读取候选</button></p>}
     </div>
   );
 }

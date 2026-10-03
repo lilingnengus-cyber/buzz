@@ -5,7 +5,7 @@ use super::{
     },
     model::{CommandResult, DecimalString, VersionCommand},
 };
-use crate::store::PgStore;
+use crate::{b3::common::authorize as authorize_purchase, store::PgStore};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -358,7 +358,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        authorize_purchase(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -542,7 +542,7 @@ impl ReturnService {
         let status = balance_status(receivable.get("settled_amount"), new_open);
         sqlx::query("UPDATE trade_receivables SET original_amount=$2,open_amount=$3,status=$4,trace_id=$5 WHERE id=$1").bind(ret.get::<Uuid,_>("receivable_id")).bind(new_original).bind(new_open).bind(status).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO trade_receivable_events(id,receivable_id,event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,'sales_return_reduced',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(ret.get::<Uuid,_>("receivable_id")).bind(sales_total).bind(json!({"salesReturnId":id})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE sales_returns SET status='confirmed',inspection_status='pending',sales_amount=$2,cost_amount=$3,confirmed_by_user_id=$4,confirmed_at=now(),trace_id=$5 WHERE id=$1").bind(id).bind(money(sales_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sales_returns SET version=version+1,status='confirmed',inspection_status='pending',sales_amount=$2,cost_amount=$3,confirmed_by_user_id=$4,confirmed_at=now(),trace_id=$5 WHERE id=$1").bind(id).bind(money(sales_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
         return_event(&mut tx,"sales",id,"confirmed",version,(actor,trace_id),json!({"salesAmount":money(sales_total).to_string(),"costAmount":money(cost_total).to_string()})).await?;
         record(
@@ -584,7 +584,7 @@ impl ReturnService {
         .fetch_optional(self.store.pool())
         .await?
         .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
+        authorize_purchase(
             &self.store,
             actor,
             "goods_receipt:reverse",
@@ -682,7 +682,7 @@ impl ReturnService {
         let status = balance_status(payable.get("settled_amount"), new_open);
         sqlx::query("UPDATE trade_payables SET original_amount=$2,open_amount=$3,status=$4,trace_id=$5 WHERE id=$1").bind(ret.get::<Uuid,_>("payable_id")).bind(new_original).bind(new_open).bind(status).bind(trace_id).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO trade_payable_events(id,payable_id,event_type,amount,payload,actor_user_id,trace_id) VALUES($1,$2,'purchase_return_reduced',$3,$4,$5,$6)").bind(Uuid::new_v4()).bind(ret.get::<Uuid,_>("payable_id")).bind(gross_total).bind(json!({"purchaseReturnId":id})).bind(actor).bind(trace_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE purchase_returns SET status='confirmed',net_amount=$2,tax_amount=$3,gross_amount=$4,inventory_cost_amount=$5,confirmed_by_user_id=$6,confirmed_at=now(),trace_id=$7 WHERE id=$1").bind(id).bind(money(net_total)).bind(money(tax_total)).bind(money(gross_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE purchase_returns SET version=version+1,status='confirmed',net_amount=$2,tax_amount=$3,gross_amount=$4,inventory_cost_amount=$5,confirmed_by_user_id=$6,confirmed_at=now(),trace_id=$7 WHERE id=$1").bind(id).bind(money(net_total)).bind(money(tax_total)).bind(money(gross_total)).bind(money(cost_total)).bind(actor).bind(trace_id).execute(&mut *tx).await?;
         let version = input.expected_version + 1;
         return_event(&mut tx,"purchase",id,"confirmed",version,(actor,trace_id),json!({"grossAmount":money(gross_total).to_string(),"inventoryCostAmount":money(cost_total).to_string()})).await?;
         record(
@@ -771,17 +771,31 @@ impl ReturnService {
             .fetch_optional(self.store.pool())
             .await?
             .ok_or(DomainError::NotFoundOrForbidden)?;
-        authorize(
-            &self.store,
-            actor,
-            permission,
-            Some(pre.get("legal_entity_id")),
-            Some(pre.get("warehouse_id")),
-            Some(pre.get("partner_id")),
-            None,
-            None,
-        )
-        .await?;
+        if side == "sales" {
+            authorize(
+                &self.store,
+                actor,
+                permission,
+                Some(pre.get("legal_entity_id")),
+                Some(pre.get("warehouse_id")),
+                Some(pre.get("partner_id")),
+                None,
+                None,
+            )
+            .await?;
+        } else {
+            authorize_purchase(
+                &self.store,
+                actor,
+                permission,
+                Some(pre.get("legal_entity_id")),
+                Some(pre.get("warehouse_id")),
+                Some(pre.get("partner_id")),
+                None,
+                None,
+            )
+            .await?;
+        }
         let hash = request_hash(input)?;
         let mut tx = self.store.pool().begin().await?;
         if let Some(mut replay) =

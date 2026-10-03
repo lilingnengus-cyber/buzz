@@ -2,6 +2,9 @@
 mod fixture;
 use fixture::*;
 
+#[path = "support/inventory_currency_audit.rs"]
+mod inventory_currency_audit;
+
 #[path = "support/order_draft_deletion_b2.rs"]
 mod order_draft_deletion;
 
@@ -87,6 +90,14 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .await
         .unwrap();
     assert_eq!(posted.status, "posted");
+    let balance = inventory
+        .balances(fixture.actor, Some(fixture.sku), 10)
+        .await
+        .unwrap();
+    assert_eq!(balance[0].currency.as_deref(), Some("CNY"));
+    assert!(!balance[0].currency_conflict);
+    assert_eq!(balance[0].unit_of_measure_id, fixture.uom);
+    assert!(!balance[0].unit_name.is_empty());
     let replay = inventory
         .post_opening(
             fixture.actor,
@@ -808,6 +819,8 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .unwrap();
     assert!(audit_count >= 15);
     assert_eq!(audit_count, outbox_count);
+
+    inventory_currency_audit::check(&pool, &fixture, &inventory, date).await;
 
     let mut order_reads = Vec::with_capacity(100);
     let mut inventory_reads = Vec::with_capacity(100);

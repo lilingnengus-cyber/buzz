@@ -664,24 +664,35 @@ impl InventoryService {
             None,
         )
         .await?;
-        let rows=sqlx::query("SELECT legal_entity_id,warehouse_id,sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,on_hand_quantity-reserved_quantity-quarantined_quantity available_quantity,inventory_value,average_unit_cost,last_movement_id,updated_at,version FROM inventory_balances WHERE legal_entity_id=ANY($1) AND warehouse_id=ANY($2) AND ($3::uuid IS NULL OR sku_id=$3) ORDER BY updated_at DESC LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(sku).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query("SELECT b.*,b.on_hand_quantity-b.reserved_quantity-b.quarantined_quantity available_quantity,p.base_uom_id,u.name unit_name,ARRAY(SELECT DISTINCT m.currency::text FROM inventory_movements m WHERE m.legal_entity_id=b.legal_entity_id AND m.warehouse_id=b.warehouse_id AND m.sku_id=b.sku_id ORDER BY m.currency::text) currencies FROM inventory_balances b JOIN business_skus s ON s.id=b.sku_id JOIN business_products p ON p.id=s.product_id JOIN business_units_of_measure u ON u.id=p.base_uom_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND ($3::uuid IS NULL OR b.sku_id=$3) ORDER BY b.updated_at DESC,b.legal_entity_id,b.warehouse_id,b.sku_id LIMIT $4").bind(snapshot.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(snapshot.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(sku).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         Ok(rows
             .into_iter()
-            .map(|row| InventoryBalanceView {
-                legal_entity_id: row.get("legal_entity_id"),
-                warehouse_id: row.get("warehouse_id"),
-                sku_id: row.get("sku_id"),
-                on_hand_quantity: DecimalString(row.get("on_hand_quantity")),
-                reserved_quantity: DecimalString(row.get("reserved_quantity")),
-                quarantined_quantity: DecimalString(row.get("quarantined_quantity")),
-                available_quantity: DecimalString(row.get("available_quantity")),
-                inventory_value: DecimalString(row.get("inventory_value")),
-                average_unit_cost: row
-                    .get::<Option<Decimal>, _>("average_unit_cost")
-                    .map(DecimalString),
-                last_movement_id: row.get("last_movement_id"),
-                updated_at: row.get("updated_at"),
-                version: row.get("version"),
+            .map(|row| {
+                let currencies: Vec<String> = row.get("currencies");
+                InventoryBalanceView {
+                    currency: if currencies.len() == 1 {
+                        currencies.first().cloned()
+                    } else {
+                        None
+                    },
+                    currency_conflict: currencies.len() > 1,
+                    unit_of_measure_id: row.get("base_uom_id"),
+                    unit_name: row.get("unit_name"),
+                    legal_entity_id: row.get("legal_entity_id"),
+                    warehouse_id: row.get("warehouse_id"),
+                    sku_id: row.get("sku_id"),
+                    on_hand_quantity: DecimalString(row.get("on_hand_quantity")),
+                    reserved_quantity: DecimalString(row.get("reserved_quantity")),
+                    quarantined_quantity: DecimalString(row.get("quarantined_quantity")),
+                    available_quantity: DecimalString(row.get("available_quantity")),
+                    inventory_value: DecimalString(row.get("inventory_value")),
+                    average_unit_cost: row
+                        .get::<Option<Decimal>, _>("average_unit_cost")
+                        .map(DecimalString),
+                    last_movement_id: row.get("last_movement_id"),
+                    updated_at: row.get("updated_at"),
+                    version: row.get("version"),
+                }
             })
             .collect())
     }

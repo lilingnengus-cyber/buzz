@@ -584,6 +584,10 @@ export type SalesOrderConfirmationPreview = {
 };
 
 export type InventoryBalance = {
+  currency?: string | null;
+  currencyConflict?: boolean;
+  unitOfMeasureId?: string;
+  unitName?: string;
   legalEntityId: string;
   warehouseId: string;
   skuId: string;
@@ -677,6 +681,7 @@ export type InventoryTurnover = {
   currency: string;
   issuedProductCost: string;
   endingInventoryValue: string;
+  excludedCurrencyBalances?: number;
   turnoverRate: string | null;
   turnoverDays: string | null;
   dataAsOf: string;

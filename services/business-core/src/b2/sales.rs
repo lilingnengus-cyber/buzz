@@ -1,5 +1,6 @@
 mod detail;
 mod previews;
+mod progress;
 
 use super::{
     common::{

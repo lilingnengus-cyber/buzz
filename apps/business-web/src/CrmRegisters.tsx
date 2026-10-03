@@ -27,19 +27,8 @@ function CrmHistoryRegister() {
   const [creating, setCreating] = React.useState(false);
   const [canManage, setCanManage] = React.useState(false);
   const [notice, setNotice] = React.useState("");
-  React.useEffect(() => {
-    let active = true;
-    request<{ canManage: boolean }>("/api/v1/crm/opportunities?offset=0")
-      .then((r) => {
-        if (active) setCanManage(r.canManage);
-      })
-      .catch(() => {
-        if (active) setCanManage(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [permissionError, setPermissionError] = React.useState("");
+  const [permissionRevision, setPermissionRevision] = React.useState(0);
   const view = "followups";
   const title = "跟进记录";
   const [selected, setSelected] = React.useState<Note | null>(null);
@@ -48,6 +37,24 @@ function CrmHistoryRegister() {
   const [query, setQuery] = React.useState("");
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
+  React.useEffect(() => {
+    let active = true;
+    setCanManage(false);
+    setPermissionError("");
+    request<{ canManage: boolean }>("/api/v1/crm/opportunities?offset=0")
+      .then((r) => {
+        if (active) setCanManage(r.canManage);
+      })
+      .catch((reason) => {
+        if (active)
+          setPermissionError(
+            reason instanceof Error ? reason.message : "权限读取失败",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [revision, permissionRevision]);
   const [data, setData] = React.useState<Register>({
     items: [],
     hasMore: false,
@@ -104,6 +111,14 @@ function CrmHistoryRegister() {
         )}
       </header>
       {notice && <p role="status">{notice}</p>}
+      {permissionError && (
+        <p role="alert" className="crm-error">
+          跟进录入权限读取失败：{permissionError}{" "}
+          <button onClick={() => setPermissionRevision((v) => v + 1)}>
+            重试录入权限
+          </button>
+        </p>
+      )}
       {creating && (
         <CrmDrawer title="新建跟进" onClose={() => setCreating(false)}>
           <CrmFollowupCreate

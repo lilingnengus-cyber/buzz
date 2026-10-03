@@ -1,3 +1,4 @@
+import { SalesOrderProgress } from "./SalesOrderProgress";
 import { OrderDraftContext } from "./OrderDraft";
 import { DiscardPrompt } from "./CrmDrawer";
 import React from "react";
@@ -155,6 +156,7 @@ export function RecordDetail({
           </div>
         ))}
       </dl>
+      {state.salesOrderId && <SalesOrderProgress id={state.salesOrderId} initial={state.salesProgress} />}
       <footer>
         {state.serviceOrderNumber && (
           <a

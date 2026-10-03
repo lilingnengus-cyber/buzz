@@ -21,6 +21,9 @@ export function CrmPage({ initialId }: { initialId?: string }) {
     canManage: false,
   });
   const [options, setOptions] = React.useState<CrmOption[]>([]);
+  const [optionsLoading, setOptionsLoading] = React.useState(true);
+  const [optionsError, setOptionsError] = React.useState("");
+  const [optionsRevision, setOptionsRevision] = React.useState(0);
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("");
   const [mine, setMine] = React.useState(false);
@@ -47,14 +50,10 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       if (query.trim()) params.set("query", query.trim());
       if (stage) params.set("stage", stage);
       if (mine) params.set("mine", "true");
-      Promise.all([
-        request<List>(`/api/v1/crm/opportunities?${params}`),
-        request<{ items: CrmOption[] }>("/api/v1/crm/options"),
-      ])
-        .then(([list, choices]) => {
+      request<List>(`/api/v1/crm/opportunities?${params}`)
+        .then((list) => {
           if (current) {
             setData(list);
-            setOptions(choices.items);
           }
         })
         .catch((e) => {
@@ -72,6 +71,18 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       clearTimeout(timer);
     };
   }, [query, stage, mine, offset, revision]);
+  React.useEffect(() => {
+    let active = true;
+    setOptions([]);
+    setOptionsLoading(true);
+    setOptionsError("");
+    request<{ items: CrmOption[] }>("/api/v1/crm/options")
+      .then((result) => { if (active) setOptions(result.items); })
+      .catch((failure: Error) => { if (active) setOptionsError(failure.message); })
+      .finally(() => { if (active) setOptionsLoading(false); });
+    return () => { active = false; };
+  }, [revision, optionsRevision]);
+  const canEdit = data.canManage && !error && !optionsLoading && !optionsError;
   React.useEffect(() => {
     let current = true;
     setDetail(null);
@@ -112,7 +123,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           <h1>商机</h1>
           <p className="crm-hint">集中管理客户需求与销售进展。</p>
         </div>
-        {data.canManage && !creating && (
+        {canEdit && !creating && (
           <button
             className="primary"
             onClick={() => {
@@ -125,7 +136,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             新建商机
           </button>
         )}
-        {data.canManage && (
+        {canEdit && (
           <button onClick={() => setImporting(true)}>批量导入</button>
         )}
       </header>
@@ -135,6 +146,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           onClose={() => setImporting(false)}
           onChanged={() => setRevision((v) => v + 1)}
         />
+      )}
+      {optionsError && (
+        <p role="alert" className="crm-error">
+          商机录入选项读取失败，暂时无法新建或编辑：{optionsError}{" "}
+          <button onClick={() => setOptionsRevision((value) => value + 1)}>重试录入选项</button>
+        </p>
       )}
       {notice && (
         <p role="status" className="crm-notice">
@@ -323,6 +340,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                   key={`${detail.item.id}-${detail.item.version}`}
                   data={detail}
                   canManage={data.canManage}
+                  canEdit={canEdit}
                   onEdit={() => setEditing(true)}
                   onDeleted={() => {
                     window.history.replaceState(null, "", "#crm");
