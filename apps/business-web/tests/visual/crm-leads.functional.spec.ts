@@ -97,6 +97,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   await drawer.getByLabel("线索名称", { exact: true }).fill("年度采购需求");
   await drawer.getByRole("button", { name: "保存线索", exact: true }).click();
   drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
+  await page.goto("/embed/crm/leads/lead");
   await expect(
     drawer.getByRole("heading", { name: "年度采购需求" }),
   ).toBeVisible();
@@ -119,6 +120,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
     .click();
   await expect(page).toHaveURL(/opportunity=opp/);
   expect(conversions).toBe(1);
+  await page.goto("/embed/crm/opportunities/opp");
   await expect(
     page.getByRole("link", { name: "查看来源线索" }),
   ).toHaveAttribute("href", "/#crmLeads?lead=lead");

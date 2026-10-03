@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod crm;
 mod master_data;
 pub use master_data::{MasterDataKind, SearchMasterDataInput, MASTER_DATA_READ};
 
@@ -533,7 +534,9 @@ pub fn valid_biz_uri(value: &str) -> bool {
         ("customer", Some("receivables")) | ("supplier", Some("payables")) => true,
         (_, None) => matches!(
             kind,
-            "agent-query"
+            "crm-lead"
+                | "crm-opportunity"
+                | "agent-query"
                 | "sales-order"
                 | "shipment"
                 | "customer-receipt"

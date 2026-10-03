@@ -452,3 +452,12 @@ async fn convert_lead(
         .map(Json)
         .map_err(|e| Error(e, c.trace_id))
 }
+
+/// Fixed CRM agent surface, mounted behind service authentication and current actor checks.
+pub fn service_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/v1/agent-crm/leads", get(leads).post(create_lead))
+        .route("/v1/agent-crm/leads/{id}", get(lead_detail))
+        .route("/v1/agent-crm/leads/{id}/followups", post(lead_followup))
+        .route("/v1/agent-crm/leads/{id}/convert", post(convert_lead))
+}

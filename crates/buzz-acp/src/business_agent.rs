@@ -16,47 +16,9 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 16] = [
-    "business_master_data:read",
-    "business_master_data:manage",
-    "sales_order:read",
-    "purchase_order:read",
-    "inventory:read",
-    "receivable:read",
-    "payable:read",
-    "order_profit:read",
-    "business_anomaly:read",
-    "business_action:read",
-    "sales_order:create",
-    "shipment:create",
-    "purchase_order:create",
-    "goods_receipt:create",
-    "customer_receipt:create",
-    "supplier_payment:create",
-];
-
-fn chat_approval_scope(content: &str) -> Option<&'static str> {
-    let mut parts = content.split_whitespace();
-    if !matches!(parts.next()?, "/approve" | "/reject") {
-        return None;
-    }
-    let scope = match parts.next()? {
-        "sales-order" => "sales_order:approve",
-        "purchase-order" => "purchase_order:approve",
-        _ => return None,
-    };
-    let _: Uuid = parts.next()?.parse().ok()?;
-    let version = parts.next()?.strip_prefix('v')?.parse::<i64>().ok()?;
-    let hash = parts.next()?;
-    if parts.next().is_some()
-        || version <= 0
-        || hash.len() != 64
-        || !hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return None;
-    }
-    Some(scope)
-}
+#[path = "business_scopes.rs"]
+mod scopes;
+use scopes::{chat_approval_scope, AGENT_SCOPES};
 
 #[derive(Clone)]
 pub(crate) struct BusinessAgentHostConfig {
@@ -588,7 +550,8 @@ impl BusinessAgentHostConfig {
             .copied()
             .filter(|scope| {
                 self.draft_write_enabled
-                    || (!scope.ends_with(":create") && *scope != "business_master_data:manage")
+                    || (!scope.ends_with(":create")
+                        && !matches!(*scope, "business_master_data:manage" | "crm:manage"))
             })
             .collect::<Vec<_>>();
         if self.chat_approval_enabled {
@@ -872,7 +835,7 @@ mod tests {
 
     #[test]
     fn agent_scope_allowlist_has_only_draft_writes() {
-        assert_eq!(AGENT_SCOPES.len(), 16);
+        assert_eq!(AGENT_SCOPES.len(), 18);
         assert!(AGENT_SCOPES.contains(&"business_master_data:read"));
         assert!(AGENT_SCOPES.contains(&"business_master_data:manage"));
         assert!(AGENT_SCOPES.contains(&"business_anomaly:read"));
@@ -886,9 +849,12 @@ mod tests {
         let read_only = AGENT_SCOPES
             .iter()
             .copied()
-            .filter(|scope| !scope.ends_with(":create") && *scope != "business_master_data:manage")
+            .filter(|scope| {
+                !scope.ends_with(":create")
+                    && !matches!(*scope, "business_master_data:manage" | "crm:manage")
+            })
             .collect::<Vec<_>>();
-        assert_eq!(read_only.len(), 9);
+        assert_eq!(read_only.len(), 10);
         assert!(read_only.iter().all(|scope| scope.ends_with(":read")));
     }
 

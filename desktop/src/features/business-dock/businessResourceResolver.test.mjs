@@ -16,6 +16,18 @@ const config = {
 
 for (const [name, url, type, id] of [
   [
+    "CRM lead",
+    "https://biz.example.com/embed/crm/leads/lead-1",
+    "crm_lead",
+    "lead-1",
+  ],
+  [
+    "CRM opportunity",
+    "https://biz.example.com/embed/crm/opportunities/opp-1",
+    "crm_opportunity",
+    "opp-1",
+  ],
+  [
     "agent query",
     "https://biz.example.com/embed/agent-queries/fc84644d-43ac-462f-8a30-456e04a2e9a3",
     "agent_query",
@@ -333,4 +345,16 @@ test("validates structured resources and rejects sensitive metadata", () => {
     isBusinessResource({ ...resource, path: "/embed/invoices/../admin" }),
     false,
   );
+});
+
+test("CRM deep links open the matching record page", () => {
+  for (const [kind, type, prefix] of [
+    ["crm-lead", "crm_lead", "leads"],
+    ["crm-opportunity", "crm_opportunity", "opportunities"],
+  ]) {
+    const resource = parseBusinessUrl(`biz://${kind}/abc-123`, config);
+    assert.equal(resource.type, type);
+    assert.equal(resource.id, "abc-123");
+    assert.equal(resource.path, `/embed/crm/${prefix}/abc-123`);
+  }
 });

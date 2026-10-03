@@ -12,7 +12,9 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-const AGENT_SCOPES: [&str; 18] = [
+const AGENT_SCOPES: [&str; 20] = [
+    "crm:read",
+    "crm:manage",
     "business_master_data:read",
     "business_master_data:manage",
     "sales_order:read",
@@ -36,12 +38,13 @@ const AGENT_SCOPES: [&str; 18] = [
 fn scope_is_allowed(scope: &str, draft_write_enabled: bool, chat_approval_enabled: bool) -> bool {
     AGENT_SCOPES.contains(&scope)
         && (draft_write_enabled
-            || (!scope.ends_with(":create") && scope != "business_master_data:manage"))
+            || (!scope.ends_with(":create")
+                && !matches!(scope, "business_master_data:manage" | "crm:manage")))
         && (chat_approval_enabled || !scope.ends_with(":approve"))
 }
 
 fn is_agent_write_scope(scope: &str) -> bool {
-    scope.ends_with(":create") || scope == "business_master_data:manage"
+    scope.ends_with(":create") || matches!(scope, "business_master_data:manage" | "crm:manage")
 }
 
 #[derive(Debug, Clone)]
@@ -793,6 +796,9 @@ mod tests {
         assert!(!AGENT_SCOPES.contains(&"sales_order:confirm"));
         assert!(!AGENT_SCOPES.contains(&"payment:execute"));
         assert!(scope_is_allowed("sales_order:read", false, false));
+        assert!(!scope_is_allowed("crm:manage", false, false));
+        assert!(scope_is_allowed("crm:manage", true, false));
+        assert!(scope_is_allowed("crm:read", false, false));
         assert!(!scope_is_allowed("sales_order:create", false, false));
         assert!(scope_is_allowed("sales_order:create", true, false));
         assert!(!scope_is_allowed(

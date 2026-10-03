@@ -1,6 +1,8 @@
 import type { BusinessDockConfig } from "@/features/business-dock/businessDockConfig";
 
 export type BusinessResourceType =
+  | "crm_lead"
+  | "crm_opportunity"
   | "agent_query"
   | "sales_order"
   | "shipment"
@@ -208,6 +210,20 @@ const ROUTES: readonly RouteDefinition[] = [
     prefix: "/embed/goods-receipts/",
     entity: true,
     label: "采购收货",
+  },
+  {
+    type: "crm_lead",
+    deepLink: "crm-lead",
+    prefix: "/embed/crm/leads/",
+    entity: true,
+    label: "线索",
+  },
+  {
+    type: "crm_opportunity",
+    deepLink: "crm-opportunity",
+    prefix: "/embed/crm/opportunities/",
+    entity: true,
+    label: "商机",
   },
   {
     type: "customer",
