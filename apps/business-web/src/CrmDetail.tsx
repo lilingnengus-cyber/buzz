@@ -8,10 +8,12 @@ import { CRM_STAGES, type CrmDetail as Detail } from "./crm";
 export function CrmDetail({
   data,
   canManage,
+  canEdit = canManage,
   onEdit,
 }: {
   data: Detail;
   canManage: boolean;
+  canEdit?: boolean;
   onEdit: () => void;
 }) {
   const draft = useCrmDraft();
@@ -79,7 +81,7 @@ export function CrmDetail({
           <h2>{item.title}</h2>
           <p>{item.companyName}</p>
         </div>
-        {canManage && (
+        {canEdit && (
           <button
             onClick={() => {
               draft.discard(onEdit);
