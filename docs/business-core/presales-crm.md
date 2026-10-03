@@ -388,3 +388,5 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 发布：提交 `65e7daacd` 的网页部署到 `business-web-65e7daacd`，公开 JS `index-C1TsL2pW.js` 与本地构建逐字节一致。Core/Gateway/Read API 固定镜像分别为 `sha256:542a81b4ac4b883430091d78adf58aa2d0bbc659f38753da12cff3e4aa1080da`、`sha256:48ba4143e0dd9ac8d035c4680aaefda9c9c9ac31fc32b8b93ad624d4e1721704`、`sha256:aeb5151662b7e410ce09ef9bdcda7a0e6eeac6c6b57ec4f620c6ec0c09a42a6d`。迁移头 82，pending=0；三个容器内部健康检查通过，公开 Read API 健康返回 200，未授权的浏览器线索读取、Agent 线索查询及新建均返回 401。证据与固定镜像回滚配置在 `/opt/business-platform/releases/crm-agent-20261003/deployment`。首次健康检查误用了网关 3110 端口并自动回滚，修正为实际 3100 端口后重新发布成功；保留兼容数据库 82 的旧逻辑网关回滚镜像。
 
 发布后线索/商机/跟进/核心客户/联系人/销售订单数量为 `0/1/1/3/1/5`，与发布前一致。Pacioli 已替换附带的 buzz-acp、business-read-mcp 及企业助手配置指向的 MCP 程序，旧程序备份在本机 `Library/Application Support/com.shiyueshizi.pacioli/backups/crm-agent-20261003`，应用签名验证通过。Mac 锁屏阻止在原生界面重启企业助手，目前运行中的助手仍需重启才能加载新范围和工具；未发送真实聊天验收消息，未完成原生会话新工具验收。
+
+原生运行补充：Mac 解锁后，通过 Pacioli 的拾玥_BizOS 资料页“Restart agent”重启成功，界面恢复 Online/Running，新的附带 buzz-acp 进程重新连接生产 relay。读取和草稿写入开关均启用；安装版 MCP 在 production 配置下完成 initialize/tools/list，注册 45 个固定工具，包含全部五个 CRM 工具。此工具目录检查使用无实际权限的本地占位凭据，未调用业务工具、未请求业务数据、未代发聊天消息；真实会话的线索查询/写入验收仍未执行。
