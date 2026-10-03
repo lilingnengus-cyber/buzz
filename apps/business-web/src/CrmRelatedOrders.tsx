@@ -14,9 +14,11 @@ const statuses: Record<string, string> = {
 export function CrmRelatedOrders({
   opportunityId,
   revision,
+  workflowMode,
 }: {
   opportunityId: string;
   revision: number;
+  workflowMode?: "goods" | "service";
 }) {
   const [items, setItems] = React.useState<SalesOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -51,6 +53,12 @@ export function CrmRelatedOrders({
           刷新关联订单
         </button>
       </header>
+      {!workflowMode && items.length > 0 && !loading && !error && (
+        <p className="crm-workflow-links">
+          <a href={`/#goodsOrders?opportunity=${encodeURIComponent(opportunityId)}`}>查看此商机商品订单闭环</a>{" · "}
+          <a href={`/#serviceOrders?opportunity=${encodeURIComponent(opportunityId)}`}>查看此商机服务订单闭环</a>
+        </p>
+      )}
       {loading ? (
         <p role="status" className="crm-hint">
           正在读取订单…
@@ -63,7 +71,7 @@ export function CrmRelatedOrders({
       ) : items.length ? (
         <>
           {items.map((o) => (
-            <RelatedOrder key={o.id} order={o} />
+            <RelatedOrder key={o.id} order={o} workflowMode={workflowMode} />
           ))}
           {items.length === 200 && (
             <p className="crm-hint">显示最近 200 笔关联订单。</p>
@@ -78,7 +86,7 @@ export function CrmRelatedOrders({
   );
 }
 
-function RelatedOrder({ order }: { order: SalesOrder }) {
+function RelatedOrder({ order, workflowMode }: { order: SalesOrder; workflowMode?: "goods" | "service" }) {
   const [expanded, setExpanded] = React.useState(false);
   return (
     <article className="crm-related-order-card" aria-label={`关联订单 ${order.orderNumber}`}>
@@ -90,9 +98,9 @@ function RelatedOrder({ order }: { order: SalesOrder }) {
         <span>{formatMoney(order.currency, order.grossAmount)}</span>
         <span className="crm-stage">{statuses[order.lifecycleStatus] || order.lifecycleStatus}</span>
       </a>
-      <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
+      <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
         <summary>履约、验收与回款汇总</summary>
-        {expanded && <SalesOrderProgress id={order.id} summaryOnly />}
+        {expanded && <SalesOrderProgress id={order.id} summaryOnly={!workflowMode} fulfillmentKind={workflowMode} />}
       </details>
     </article>
   );

@@ -28,7 +28,7 @@ const projectStatus: Record<string, string> = {
 
 export type SalesProgressSnapshot = { currency: string; progress: Progress };
 
-export function SalesOrderProgress({ id, initial, summaryOnly = false }: { id: string; initial?: SalesProgressSnapshot; summaryOnly?: boolean }) {
+export function SalesOrderProgress({ id, initial, summaryOnly = false, fulfillmentKind }: { id: string; initial?: SalesProgressSnapshot; summaryOnly?: boolean; fulfillmentKind?: "goods" | "service" }) {
   const [data, setData] = React.useState<{ currency: string; progress: Progress } | null>(null);
   const [error, setError] = React.useState<ApiFailure | null>(null);
   const [revision, refresh] = React.useState(0);
@@ -48,8 +48,8 @@ export function SalesOrderProgress({ id, initial, summaryOnly = false }: { id: s
   return <section className="sales-order-progress" aria-label="履约与回款进度">
     <header><h3>履约与回款进度</h3><button type="button" onClick={() => refresh(v => v + 1)}>刷新进度</button></header>
     {error ? <PageLoadFailure failure={error} resourceLabel="订单进度" onRetry={() => refresh(v => v + 1)} /> : !data ? <p role="status">正在读取订单进度…</p> : <>
-      <LineProgress title="商品交付" lines={data.progress.goods} summaryOnly={summaryOnly} />
-      <LineProgress title="服务验收" lines={data.progress.services} service summaryOnly={summaryOnly} />
+      {fulfillmentKind !== "service" && <LineProgress title="商品交付" lines={data.progress.goods} summaryOnly={summaryOnly} />}
+      {fulfillmentKind !== "goods" && <LineProgress title="服务验收" lines={data.progress.services} service summaryOnly={summaryOnly} />}
       <section aria-label="回款进度"><h4>回款进度</h4>
         {data.progress.payment === null ? <p>当前权限无法查看回款进度。</p> : <>
           <dl className="record-detail-grid">

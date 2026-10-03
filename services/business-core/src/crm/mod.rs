@@ -142,10 +142,8 @@ impl CrmService {
         .await?;
         let previous = if let Some(id) = id {
             let old = self.accessible(actor, id, "crm:manage").await?;
-            if old.legal_entity_id != input.legal_entity_id
-                || old.business_unit_id != input.business_unit_id
-            {
-                return Err(DomainError::Invalid("商机所属主体不可更改".into()));
+            if old.legal_entity_id != input.legal_entity_id {
+                return Err(DomainError::Invalid("商机法人主体不可更改".into()));
             }
             Some(old)
         } else {
@@ -174,12 +172,16 @@ impl CrmService {
         }
         let owner = input
             .owner_user_id
-            .or(previous.as_ref().map(|old| old.owner_user_id))
+            .or(previous
+                .as_ref()
+                .filter(|old| old.business_unit_id == input.business_unit_id)
+                .map(|old| old.owner_user_id))
             .unwrap_or(actor);
-        if previous
-            .as_ref()
-            .is_none_or(|old| old.owner_user_id != owner || old.customer_id != input.customer_id)
-        {
+        if previous.as_ref().is_none_or(|old| {
+            old.owner_user_id != owner
+                || old.customer_id != input.customer_id
+                || old.business_unit_id != input.business_unit_id
+        }) {
             authorize(
                 &self.store,
                 owner,
@@ -215,11 +217,11 @@ impl CrmService {
                 .bind(record_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?
         };
         let version = version.ok_or(DomainError::VersionConflict)?;
-        sqlx::query("UPDATE crm_opportunities SET account_id=$2,contact_id=$3,owner_user_id=$4,expected_close_date=$5,loss_reason=$6 WHERE id=$1")
+        sqlx::query("UPDATE crm_opportunities SET account_id=$2,contact_id=$3,owner_user_id=$4,expected_close_date=$5,loss_reason=$6,business_unit_id=$7 WHERE id=$1")
             .bind(record_id)
             .bind(account_id)
             .bind(contact_id)
-            .bind(owner).bind(close_date).bind(&loss_reason)
+            .bind(owner).bind(close_date).bind(&loss_reason).bind(input.business_unit_id)
             .execute(&mut *tx)
             .await?;
         if previous
@@ -268,7 +270,7 @@ impl CrmService {
             "crm.opportunity.saved",
             "crm_opportunity",
             record_id,
-            json!({"version":version,"stage":input.stage,"ownerUserId":owner,"expectedCloseDate":close_date,"lossReason":loss_reason}),
+            json!({"version":version,"stage":input.stage,"ownerUserId":owner,"expectedCloseDate":close_date,"lossReason":loss_reason,"businessUnitId":input.business_unit_id,"previousBusinessUnitId":previous.as_ref().map(|old| old.business_unit_id)}),
         )
         .await?;
         finish_idempotent(&mut tx, actor, "crm:save", key, &result).await?;

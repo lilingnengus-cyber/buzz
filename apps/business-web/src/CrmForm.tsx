@@ -224,9 +224,9 @@ export function CrmForm({
             value={unit}
             onChange={(value) => {
               setUnit(value);
+              setOwner("");
               draft.markDirty();
             }}
-            disabled={Boolean(record)}
             preferenceContext={record ? undefined : "crm-opportunity"}
             preferenceFallback={units.length === 1 ? units[0].id : ""}
           />
@@ -307,7 +307,7 @@ export function CrmForm({
             unit={unit}
             customer={customer}
             value={owner}
-            currentName={record?.ownerName}
+            currentName={record?.businessUnitId === unit ? record.ownerName : undefined}
             onChange={(value) => {
               setOwner(value);
               draft.markDirty();

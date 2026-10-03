@@ -1,4 +1,5 @@
 import React from "react";
+import { OpportunityWorkflow } from "./OpportunityWorkflow";
 import {
   type ApiFailure,
   type BusinessReturn,
@@ -121,6 +122,14 @@ export function SalesOrderWorkflowPage({
   id?: string;
   mode?: Mode;
 }) {
+  const [opportunity, setOpportunity] = React.useState(() => new URLSearchParams(location.hash.split("?")[1]).get("opportunity") || "");
+  React.useEffect(() => {
+    const sync = () => setOpportunity(new URLSearchParams(location.hash.split("?")[1]).get("opportunity") || "");
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  if (!id && mode !== "orders" && opportunity)
+    return <OpportunityWorkflow key={`${mode}:${opportunity}`} id={opportunity} mode={mode} />;
   return id ? (
     <LinkedOrderDetail key={id} domain="sales" id={id} />
   ) : (
