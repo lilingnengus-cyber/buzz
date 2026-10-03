@@ -390,3 +390,7 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 发布后线索/商机/跟进/核心客户/联系人/销售订单数量为 `0/1/1/3/1/5`，与发布前一致。Pacioli 已替换附带的 buzz-acp、business-read-mcp 及企业助手配置指向的 MCP 程序，旧程序备份在本机 `Library/Application Support/com.shiyueshizi.pacioli/backups/crm-agent-20261003`，应用签名验证通过。Mac 锁屏阻止在原生界面重启企业助手，目前运行中的助手仍需重启才能加载新范围和工具；未发送真实聊天验收消息，未完成原生会话新工具验收。
 
 原生运行补充：Mac 解锁后，通过 Pacioli 的拾玥_BizOS 资料页“Restart agent”重启成功，界面恢复 Online/Running，新的附带 buzz-acp 进程重新连接生产 relay。读取和草稿写入开关均启用；安装版 MCP 在 production 配置下完成 initialize/tools/list，注册 45 个固定工具，包含全部五个 CRM 工具。此工具目录检查使用无实际权限的本地占位凭据，未调用业务工具、未请求业务数据、未代发聊天消息；真实会话的线索查询/写入验收仍未执行。
+
+真实聊天验收第一次：已获用户授权，向拾玥_BizOS 发送“查询待筛选线索，不修改数据”。源消息 `606527d40e768dfd5421bcc4a92bfe741c462df3034a1c50fef076c11a229267` 返回企业账号授权失败，工具尚未执行。网关响应实际为 503：IAM 在加载账号全部权限时，无法解析无关审批能力上的旧 `fresh_signed_chat_command` 约束，事务回滚，尚未形成授权审计决策。
+
+修复 `b6151be29` 将权限约束解析限定在本回合请求的能力；不修改任何账号权限，相关能力上的未知约束仍拒绝，已知审批约束仍保留。10 项网关单元测试和 Clippy 通过，覆盖无关约束隔离、未知约束拒绝与已知约束保留。网关已单独部署为 `sha256:c3d1188e3310e518eb12b23438ca219600fef10164303a68741cbc84e0525a2b` 并通过内部健康检查，回滚证据在 `/opt/business-platform/releases/crm-agent-20261003/iam-isolation-deployment`；Core、Read API、数据库迁移和前端没有改动。重试时 Mac 再次自动锁屏，已请求解锁；尚未获得成功的真实聊天线索查询结果。
