@@ -334,3 +334,7 @@ macOS Pacioli 生产只读验收：销售订单、商品订单闭环、服务订
 发布保留最新线上库存与退货后端，以 inventory-currency-20261003 源码为基线移植 CRM 改动。Core 镜像 shiyue-business-core:crm-delete-current-20261003，固定 ID sha256:5e53fc63b10f32d76d327e855ff017ca502db3e185f4a653549e8684437a13e8；兼容回退镜像 crm-delete-current-compat-20261003 包含迁移 81。备份及迁移证据位于 /opt/business-platform/releases/crm-delete-current-20261003/deletion-migration-evidence，发布证据 deletion-release-evidence/release.4VyrIQgq。预检 head=81/pending=0，服务健康；迁移前后商机1、跟进1、客户3、联系人1、销售订单5均不变，已删除商机为0。
 
 网页合并线上 18a3452b3、7ecde38c7 后发布为 business-web-beeffd2ca，公开 JS index-CXudU2OO.js 与本地构建逐字节一致。未执行生产商机删除；浏览器写入验收使用模拟接口，真实业务写入使用本地隔离数据库。
+
+### 2026-10-03 Pacioli 原生客户端删除取消验收
+
+通过 macOS Pacioli 的 Business Dock 验收生产页面，复用既有登录会话。初始页面仍为旧资源，使用 Dock 刷新后删除按钮正常显示。打开现有商机详情并进入删除确认，确认提示包含跟进列表隐藏及客户/联系人/订单保留；点击取消后详情与跟进保留，再次打开并按 Escape 仅关闭确认框，关闭详情返回列表后仍显示原商机。未点击确认删除、未发送消息、未修改生产业务记录。独立浏览器未登录，未用其替代原生客户端验收。
