@@ -344,3 +344,26 @@ test("历史潜在客户联系人不生成核心客户链接", async ({ page }) 
   ).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("link")).toHaveCount(0);
 });
+
+test("跟进权限失败保留历史，独立重试和刷新可恢复录入", async ({ page }) => {
+  await seedRecords(page, true);
+  let fails = true;
+  await page.route("**/api/v1/crm/opportunities?offset=0", (route) => fails
+    ? route.fulfill({ status: 503, json: { message: "权限服务暂不可用" } })
+    : route.fulfill({ json: { items: [], hasMore: false, canManage: true } }));
+  await page.goto("/#crmFollowups");
+  await expect(page.getByRole("button", { name: "查看跟进：年度采购" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("跟进录入权限读取失败");
+  await expect(page.getByRole("button", { name: "新建跟进", exact: true })).toHaveCount(0);
+  fails = false;
+  await page.getByRole("button", { name: "重试录入权限" }).click();
+  await expect(page.getByRole("button", { name: "新建跟进", exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  fails = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("跟进录入权限读取失败");
+  await expect(page.getByRole("button", { name: "新建跟进", exact: true })).toHaveCount(0);
+  fails = false;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.getByRole("button", { name: "新建跟进", exact: true })).toBeVisible();
+});
