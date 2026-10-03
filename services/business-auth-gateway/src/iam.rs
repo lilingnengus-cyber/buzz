@@ -35,12 +35,14 @@ impl Store {
         requested_scopes: &[String],
         trace_id: Uuid,
     ) -> Result<TurnDecision, Rejection> {
-        let independent_agent = load_independent_agent_authority(tx, agent_id).await?;
+        let independent_agent =
+            load_independent_agent_authority(tx, agent_id, requested_scopes).await?;
         let human = load_authority(
             tx,
             "human",
             &enterprise_user_id.to_string(),
             PrincipalKind::Human,
+            requested_scopes,
         )
         .await?;
         let requested = requested_scopes
@@ -128,6 +130,7 @@ impl Store {
 async fn load_independent_agent_authority(
     tx: &mut Transaction<'_, Postgres>,
     external_id: &str,
+    requested_scopes: &[String],
 ) -> Result<Option<ResolvedAuthority>, Rejection> {
     let row = sqlx::query(
         "SELECT id,kind,status FROM business_iam.principals
@@ -141,7 +144,7 @@ async fn load_independent_agent_authority(
     let Some(row) = row else {
         return Ok(None);
     };
-    load_authority_from_row(tx, PrincipalKind::IndependentAgent, row)
+    load_authority_from_row(tx, PrincipalKind::IndependentAgent, row, requested_scopes)
         .await
         .map(Some)
 }
@@ -151,6 +154,7 @@ async fn load_authority(
     kind_name: &str,
     external_id: &str,
     kind: PrincipalKind,
+    requested_scopes: &[String],
 ) -> Result<Option<ResolvedAuthority>, Rejection> {
     let row = sqlx::query(
         "SELECT id,kind,status FROM business_iam.principals
@@ -164,13 +168,16 @@ async fn load_authority(
     let Some(row) = row else {
         return Ok(None);
     };
-    load_authority_from_row(tx, kind, row).await.map(Some)
+    load_authority_from_row(tx, kind, row, requested_scopes)
+        .await
+        .map(Some)
 }
 
 async fn load_authority_from_row(
     tx: &mut Transaction<'_, Postgres>,
     kind: PrincipalKind,
     row: sqlx::postgres::PgRow,
+    requested_scopes: &[String],
 ) -> Result<ResolvedAuthority, Rejection> {
     let principal_id: Uuid = row.get("id");
     let status = match row.get::<String, _>("status").as_str() {
@@ -207,23 +214,21 @@ async fn load_authority_from_row(
     for grant in rows {
         let capability = Capability::parse(grant.get::<String, _>("capability"))
             .map_err(|_| Rejection::Database)?;
+        let Some(obligations) = requested_obligations(
+            &capability,
+            requested_scopes,
+            grant.get::<Value, _>("permission_obligations"),
+            grant.get::<Value, _>("grant_obligations"),
+        )?
+        else {
+            continue;
+        };
         let data_scope = serde_json::from_value::<DataScope>(grant.get("data_scope"))
             .map_err(|_| Rejection::Database)?;
-        let permission_obligations = serde_json::from_value::<BTreeSet<Obligation>>(
-            grant.get::<Value, _>("permission_obligations"),
-        )
-        .map_err(|_| Rejection::Database)?;
-        let grant_obligations = serde_json::from_value::<BTreeSet<Obligation>>(
-            grant.get::<Value, _>("grant_obligations"),
-        )
-        .map_err(|_| Rejection::Database)?;
         entitlements.push(Entitlement {
             capability,
             data_scope,
-            obligations: permission_obligations
-                .union(&grant_obligations)
-                .cloned()
-                .collect(),
+            obligations,
         });
     }
     Ok(ResolvedAuthority {
@@ -235,4 +240,78 @@ async fn load_authority_from_row(
             entitlements,
         },
     })
+}
+
+// Unrequested entitlements cannot grant authority to this turn. Decode only the
+// requested capabilities; unknown obligations on a requested capability fail closed.
+fn requested_obligations(
+    capability: &Capability,
+    requested_scopes: &[String],
+    permission: Value,
+    assignment: Value,
+) -> Result<Option<BTreeSet<Obligation>>, Rejection> {
+    if !requested_scopes
+        .iter()
+        .any(|scope| scope == capability.as_str())
+    {
+        return Ok(None);
+    }
+    let permission = serde_json::from_value::<BTreeSet<Obligation>>(permission)
+        .map_err(|_| Rejection::Database)?;
+    let assignment = serde_json::from_value::<BTreeSet<Obligation>>(assignment)
+        .map_err(|_| Rejection::Database)?;
+    Ok(Some(permission.union(&assignment).cloned().collect()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn unrelated_approval_constraints_do_not_block_crm_reads() {
+        let scope = vec!["crm:read".to_string()];
+        let approval = Capability::parse("sales_order:approve").unwrap();
+        assert!(requested_obligations(
+            &approval,
+            &scope,
+            json!(["fresh_signed_chat_command"]),
+            json!([])
+        )
+        .unwrap()
+        .is_none());
+        let read = Capability::parse("crm:read").unwrap();
+        assert_eq!(
+            requested_obligations(&read, &scope, json!([]), json!([])).unwrap(),
+            Some(BTreeSet::new())
+        );
+    }
+    #[test]
+    fn requested_unknown_constraints_fail_closed() {
+        let scope = vec!["sales_order:approve".to_string()];
+        let approval = Capability::parse("sales_order:approve").unwrap();
+        assert!(requested_obligations(
+            &approval,
+            &scope,
+            json!(["fresh_signed_chat_command"]),
+            json!([])
+        )
+        .is_err());
+    }
+    #[test]
+    fn requested_known_constraints_are_preserved() {
+        let scope = vec!["crm:manage".to_string()];
+        let capability = Capability::parse("crm:manage").unwrap();
+        let got = requested_obligations(
+            &capability,
+            &scope,
+            json!(["human_approval"]),
+            json!(["dual_control"]),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            got,
+            BTreeSet::from([Obligation::HumanApproval, Obligation::DualControl])
+        );
+    }
 }
