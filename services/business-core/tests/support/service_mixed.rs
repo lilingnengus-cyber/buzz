@@ -1,5 +1,6 @@
 use business_core::{
     b2::{model::VersionCommand, InventoryService, SalesService},
+    crm::{AddFollowup, CrmService, SaveOpportunity},
     service_delivery::{AcceptanceInput, ProjectInput, ServiceDelivery},
     PgStore,
 };
@@ -15,6 +16,8 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
             .await
             .unwrap();
     for permission in [
+        "crm:read",
+        "crm:manage",
         "inventory_opening:create",
         "inventory_opening:post",
         "shipment:create",
@@ -70,7 +73,48 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
     .execute(pool)
     .await
     .is_err());
-    let input=serde_json::from_value(serde_json::json!({"legalEntityId":legal,"customerId":customer,"businessUnitId":unit,"currency":"CNY","orderDate":"2026-10-01","lines":[{"skuId":service_sku,"warehouseId":null,"unitOfMeasureId":uom,"quantity":"1","unitPrice":"100"},{"skuId":sku,"warehouseId":warehouse,"unitOfMeasureId":uom,"quantity":"1","unitPrice":"10"}]})).unwrap();
+    // Start the mixed fulfillment workflow from a real CRM transition.
+    let crm = CrmService::new(PgStore::new(pool.clone()));
+    let opportunity: SaveOpportunity = serde_json::from_value(serde_json::json!({
+        "legalEntityId": legal,
+        "businessUnitId": unit,
+        "customerId": customer,
+        "title": "设备与软件采购",
+        "companyName": "CRM Customer",
+        "contactName": "张经理",
+        "stage": "quoting",
+        "expectedAmountMinor": 11000,
+        "currency": "CNY"
+    }))
+    .unwrap();
+    let saved = crm
+        .save(
+            actor,
+            Uuid::new_v4(),
+            None,
+            "mixed-crm-create",
+            &opportunity,
+        )
+        .await
+        .unwrap();
+    let opportunity_id: Uuid = serde_json::from_value(saved["id"].clone()).unwrap();
+    let won = AddFollowup {
+        note: "客户确认设备和年度软件采购".into(),
+        stage: "won".into(),
+        next_action: "".into(),
+        next_follow_up: None,
+        expected_version: 1,
+        loss_reason: None,
+    };
+    let result = crm
+        .followup(actor, Uuid::new_v4(), opportunity_id, "mixed-crm-won", &won)
+        .await
+        .unwrap();
+    assert_eq!(result["version"], 2);
+    let source = crm.detail(actor, opportunity_id, 0).await.unwrap();
+    assert_eq!(source["item"]["stage"], "won");
+    assert_eq!(source["followups"].as_array().unwrap().len(), 1);
+    let input=serde_json::from_value(serde_json::json!({"legalEntityId":legal,"customerId":customer,"businessUnitId":unit,"currency":"CNY","orderDate":"2026-10-01","customerReference":format!("CRM:{opportunity_id}"),"lines":[{"skuId":service_sku,"warehouseId":null,"unitOfMeasureId":uom,"quantity":"1","unitPrice":"100"},{"skuId":sku,"warehouseId":warehouse,"unitOfMeasureId":uom,"quantity":"1","unitPrice":"10"}]})).unwrap();
     let order = sales
         .create_order(actor, Uuid::new_v4(), "mixed-order-create", &input)
         .await
@@ -171,10 +215,22 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
         .unwrap(),
         2
     );
+    let linked = sales
+        .list_orders_for_opportunity(actor, 200, Some(opportunity_id))
+        .await
+        .unwrap();
+    assert_eq!(linked.len(), 1);
+    assert_eq!(linked[0].id, order.id);
+    assert_eq!(linked[0].lifecycle_status, "completed");
+    assert!(sales
+        .list_orders_for_opportunity(Uuid::new_v4(), 200, Some(opportunity_id))
+        .await
+        .is_err());
     let progress = sales.order_detail(actor, order.id).await.unwrap();
     assert_eq!(progress["progress"]["goods"][0]["complete"], true);
     assert_eq!(progress["progress"]["services"][0]["complete"], true);
     assert_eq!(progress["progress"]["payment"]["amount"], "110.000000");
+    check_full_payment(pool, actor, legal, customer, order.id).await;
     inventory
         .reverse_shipment(
             actor,
@@ -283,4 +339,105 @@ pub async fn check(pool: &PgPool, ids: (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid
     assert!(restricted["progress"]["services"].is_null());
     assert!(restricted["progress"]["payment"].is_null());
     assert!(sales.order_detail(Uuid::new_v4(), order.id).await.is_err());
+}
+
+async fn check_full_payment(pool: &PgPool, actor: Uuid, legal: Uuid, customer: Uuid, order: Uuid) {
+    let settlement =
+        business_core::b2::SettlementService::new(PgStore::new(pool.clone()), "RCPT".into());
+    let sales = SalesService::new(PgStore::new(pool.clone()), "SO".into(), "SHP".into(), 30);
+    let receivables = sqlx::query("SELECT id,original_amount::text AS amount FROM trade_receivables WHERE sales_order_id=$1 ORDER BY id")
+        .bind(order).fetch_all(pool).await.unwrap();
+    assert_eq!(receivables.len(), 2);
+    let allocations: Vec<_> = receivables
+        .iter()
+        .map(|row| {
+            serde_json::json!({
+                "receivableId": row.get::<Uuid, _>("id"),
+                "amount": row.get::<String, _>("amount")
+            })
+        })
+        .collect();
+    let receipt = settlement
+        .create_receipt(
+            actor,
+            Uuid::new_v4(),
+            "crm-full-payment-create",
+            &serde_json::from_value(serde_json::json!({
+                "legalEntityId": legal, "customerId": customer, "currency": "CNY",
+                "receiptDate": "2026-10-03", "amount": "110", "paymentMethod": "bank_transfer"
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    settlement
+        .confirm_receipt(
+            actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "crm-full-payment-confirm",
+            &VersionCommand {
+                expected_version: 1,
+                reason_code: None,
+            },
+        )
+        .await
+        .unwrap();
+    let command = serde_json::from_value(
+        serde_json::json!({"expectedReceiptVersion":2,"allocations":allocations}),
+    )
+    .unwrap();
+    let applied = settlement
+        .apply_receipt(
+            actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "crm-full-payment-apply",
+            &command,
+        )
+        .await
+        .unwrap();
+    let replay = settlement
+        .apply_receipt(
+            actor,
+            Uuid::new_v4(),
+            receipt.id,
+            "crm-full-payment-apply",
+            &command,
+        )
+        .await
+        .unwrap();
+    assert!(replay.idempotent_replay);
+    assert_eq!(replay.id, applied.id);
+    assert_eq!(replay.version, applied.version);
+    let complete = sales.order_detail(actor, order).await.unwrap();
+    assert_eq!(complete["progress"]["goods"][0]["complete"], true);
+    assert_eq!(complete["progress"]["services"][0]["complete"], true);
+    assert_eq!(complete["progress"]["payment"]["settled"], "110.000000");
+    assert_eq!(complete["progress"]["payment"]["open"], "0.000000");
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM receivable_allocations WHERE receipt_id=$1 AND allocation_type='apply' AND status='active'")
+        .bind(receipt.id).fetch_one(pool).await.unwrap(), 2);
+    // Restore settlement before the existing shipment and partial-payment reversal scenarios.
+    let rows = sqlx::query("SELECT a.id,r.version FROM receivable_allocations a JOIN trade_receivables r ON r.id=a.receivable_id WHERE a.receipt_id=$1 ORDER BY a.id")
+        .bind(receipt.id).fetch_all(pool).await.unwrap();
+    for (index, row) in rows.iter().enumerate() {
+        settlement
+            .reverse_allocation(
+                actor,
+                Uuid::new_v4(),
+                row.get("id"),
+                &format!("crm-full-payment-reverse-{index}"),
+                &serde_json::from_value(serde_json::json!({
+                    "expectedReceiptVersion": 3 + index as i64,
+                    "expectedReceivableVersion": row.get::<i64, _>("version")
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        sales.order_detail(actor, order).await.unwrap()["progress"]["payment"]["settled"],
+        "0.000000"
+    );
 }
