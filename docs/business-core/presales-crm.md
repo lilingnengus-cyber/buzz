@@ -394,3 +394,5 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 真实聊天验收第一次：已获用户授权，向拾玥_BizOS 发送“查询待筛选线索，不修改数据”。源消息 `606527d40e768dfd5421bcc4a92bfe741c462df3034a1c50fef076c11a229267` 返回企业账号授权失败，工具尚未执行。网关响应实际为 503：IAM 在加载账号全部权限时，无法解析无关审批能力上的旧 `fresh_signed_chat_command` 约束，事务回滚，尚未形成授权审计决策。
 
 修复 `b6151be29` 将权限约束解析限定在本回合请求的能力；不修改任何账号权限，相关能力上的未知约束仍拒绝，已知审批约束仍保留。10 项网关单元测试和 Clippy 通过，覆盖无关约束隔离、未知约束拒绝与已知约束保留。网关已单独部署为 `sha256:c3d1188e3310e518eb12b23438ca219600fef10164303a68741cbc84e0525a2b` 并通过内部健康检查，回滚证据在 `/opt/business-platform/releases/crm-agent-20261003/iam-isolation-deployment`；Core、Read API、数据库迁移和前端没有改动。重试时 Mac 再次自动锁屏，已请求解锁；尚未获得成功的真实聊天线索查询结果。
+
+真实聊天查询复验通过：客户端解锁后重试同一句只读查询，源消息 `a62b39c6730f4ee85645502852fb1ef85c3defe6b62d264f09f3f741d569b4a3` 得到“暂无待筛选线索”，附查询记录链接。Trace ID `05dbf639-3613-4471-b22f-2685ade69a64` 的服务端审计完整记录 `AGENT_TURN_AUTHORIZED`、`AGENT_DELEGATION_ISSUED`、`BUSINESS_MCP_TOOL_CALLED` / `BUSINESS_MCP_TOOL_SUCCEEDED`（`search_crm_leads`，结果 0）、`AGENT_BUSINESS_RESPONSE_EMITTED` 和 `AGENT_DELEGATION_REVOKED`，均成功。生产线索仍为 0，没有写入业务数据。当前账号的本次授权仍拒绝 `crm:manage`（另有既存的业务行动、异常、订单利润读取能力未授权）；本次仅验证线索读取，没有调整任何授权，也没有验收线索写入。查询记录链接的 AX 点击未产生可确认的页面变化，因此不作为链接打开成功证据。
