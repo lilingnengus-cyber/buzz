@@ -3,7 +3,6 @@ import { request } from "./api";
 import { useCrmCommand } from "./useCrmCommand";
 import { useCrmDraft } from "./CrmDrawer";
 import { CrmSearchSelect } from "./CrmSearchSelect";
-import type { CrmOption } from "./crm";
 import type { Lead } from "./crmLeads";
 
 export function CrmLeadForm({
@@ -25,27 +24,16 @@ export function CrmLeadForm({
   const [owners, setOwners] = React.useState<{ id: string; name: string }[]>(
     [],
   );
-  const [customers, setCustomers] = React.useState<CrmOption[]>([]);
   const [owner, setOwner] = React.useState(record?.ownerUserId ?? "");
-  const [customer, setCustomer] = React.useState(record?.customerId ?? "");
   const [ownerQuery, setOwnerQuery] = React.useState("");
-  const [customerQuery, setCustomerQuery] = React.useState("");
   React.useEffect(() => {
     let active = true;
     setOptionError("");
-    Promise.all([
-      request<{ items: { id: string; name: string }[] }>(
-        "/api/v1/crm/leads/owners",
-      ),
-      request<{ items: CrmOption[] }>("/api/v1/crm/options"),
-    ])
-      .then(([people, options]) => {
-        if (active) {
-          setOwners(people.items);
-          setCustomers(
-            options.items.filter((o) => o.resourceType === "customer"),
-          );
-        }
+    request<{ items: { id: string; name: string }[] }>(
+      "/api/v1/crm/leads/owners",
+    )
+      .then((people) => {
+        if (active) setOwners(people.items);
       })
       .catch((e) => {
         if (active)
@@ -91,7 +79,7 @@ export function CrmLeadForm({
               body: JSON.stringify({
                 ...body,
                 ownerUserId: owner || null,
-                customerId: customer || null,
+                customerId: record?.customerId ?? null,
                 nextFollowUp: form.get("nextFollowUp") || null,
                 expectedVersion: record?.version ?? null,
               }),
@@ -125,9 +113,9 @@ export function CrmLeadForm({
         )}
         {optionError && (
           <p role="alert">
-            关联选项加载失败：{optionError}{" "}
+            负责人加载失败：{optionError}{" "}
             <button type="button" onClick={() => setRevision((v) => v + 1)}>
-              重试选项
+              重试负责人
             </button>
           </p>
         )}
@@ -179,28 +167,6 @@ export function CrmLeadForm({
             ]}
             onChange={(v) => {
               setOwner(v);
-              draft.markDirty();
-            }}
-          />
-          <CrmSearchSelect
-            label="关联已有客户"
-            value={customer}
-            query={customerQuery}
-            onQuery={setCustomerQuery}
-            options={[
-              { value: "", label: "暂不关联" },
-              ...customers
-                .filter((o) => `${o.name} ${o.code}`.includes(customerQuery))
-                .map((o) => ({ value: o.id, label: o.name })),
-            ]}
-            selectedLabel={
-              customer
-                ? (customers.find((o) => o.id === customer)?.name ??
-                  "已关联客户")
-                : "暂不关联"
-            }
-            onChange={(v) => {
-              setCustomer(v);
               draft.markDirty();
             }}
           />

@@ -94,6 +94,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   await page.goto("/#crmLeads");
   await page.getByRole("button", { name: "新建线索", exact: true }).click();
   let drawer = page.getByRole("dialog", { name: "新建线索", exact: true });
+  await expect(drawer.getByRole("combobox", { name: "关联已有客户", exact: true })).toHaveCount(0);
   await drawer.getByLabel("线索名称", { exact: true }).fill("年度采购需求");
   await drawer.getByRole("button", { name: "保存线索", exact: true }).click();
   drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
@@ -244,4 +245,68 @@ test("统一跟进页选择线索并记录，取消只确认一次", async ({ pa
   await drawer.getByRole("button", { name: "保存跟进", exact: true }).click();
   await expect.poll(() => writes).toBe(1);
   await expect(drawer).toBeHidden();
+});
+
+test("线索编辑移除客户关联控件与查询，保留已有记录关联", async ({ page }) => {
+  let item = {
+    id: "lead",
+    title: "既有线索",
+    companyName: "客户甲",
+    contactName: "",
+    contactDetails: "",
+    source: "",
+    summary: "",
+    nextAction: "",
+    nextFollowUp: null,
+    ownerUserId: "me",
+    ownerName: "自己",
+    status: "new",
+    customerId: "existing-customer",
+    version: 1,
+  };
+  let optionReads = 0;
+  let writes = 0;
+  await page.route("**/api/**", async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (path === "/api/session")
+      return route.fulfill({
+        json: { authenticated: true, csrfToken: "csrf" },
+      });
+    if (path === "/api/v1/crm/options") {
+      optionReads++;
+      return route.fulfill({ status: 503, json: { message: "不可用" } });
+    }
+    if (path.endsWith("/owners"))
+      return route.fulfill({ json: { items: [{ id: "me", name: "自己" }] } });
+    if (path === "/api/v1/crm/leads/lead" && req.method() === "PUT") {
+      const body = req.postDataJSON();
+      expect(body.customerId).toBe("existing-customer");
+      expect(body.expectedVersion).toBe(1);
+      writes++;
+      item = { ...item, ...body, version: 2 };
+      return route.fulfill({ json: { id: "lead", transferred: false } });
+    }
+    if (path === "/api/v1/crm/leads/lead")
+      return route.fulfill({
+        json: { item, followups: [], hasMore: false, duplicates: [] },
+      });
+    return route.fulfill({
+      json: { items: [item], hasMore: false, canManage: true },
+    });
+  });
+  await page.goto("/#crmLeads");
+  await page.getByRole("button", { name: /既有线索.*客户甲/ }).click();
+  const drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
+  await drawer.getByRole("button", { name: "编辑线索", exact: true }).click();
+  await expect(
+    drawer.getByRole("combobox", { name: "关联已有客户", exact: true }),
+  ).toHaveCount(0);
+  await drawer.getByLabel("线索名称", { exact: true }).fill("已修改线索");
+  await drawer.getByRole("button", { name: "保存线索", exact: true }).click();
+  await expect(
+    drawer.getByRole("heading", { name: "已修改线索" }),
+  ).toBeVisible();
+  expect(writes).toBe(1);
+  expect(optionReads).toBe(0);
 });
