@@ -1,5 +1,6 @@
 import React from "react";
 import { LEAD_STATUSES, leadLink, type Lead } from "./crmLeads";
+import { CrmLeadFollowupCreate } from "./CrmLeadFollowupCreate";
 import { CrmFollowupCreate } from "./CrmFollowupCreate";
 import { CrmDirectoryPage } from "./CrmDirectoryPage";
 import { request } from "./api";
@@ -26,6 +27,7 @@ export function CrmRegisters({ view }: { view: "followups" | "contacts" }) {
   return view === "contacts" ? <CrmDirectoryPage /> : <CrmHistoryRegister />;
 }
 function CrmHistoryRegister() {
+  const [creatingLead, setCreatingLead] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [canManage, setCanManage] = React.useState(false);
   const [notice, setNotice] = React.useState("");
@@ -106,6 +108,7 @@ function CrmHistoryRegister() {
             统一查看线索与商机的沟通历史。
           </p>
         </div>
+        {canManage && <button onClick={() => setCreatingLead(true)}>线索跟进</button>}
         {canManage && (
           <button className="primary" onClick={() => setCreating(true)}>
             新建跟进
@@ -121,6 +124,7 @@ function CrmHistoryRegister() {
           </button>
         </p>
       )}
+      {creatingLead && <CrmDrawer title="线索跟进" onClose={() => setCreatingLead(false)}><CrmLeadFollowupCreate onSaved={async () => {setCreatingLead(false);setRevision(v=>v+1);setNotice("线索跟进已保存");}}/></CrmDrawer>}
       {creating && (
         <CrmDrawer title="新建跟进" onClose={() => setCreating(false)}>
           <CrmFollowupCreate

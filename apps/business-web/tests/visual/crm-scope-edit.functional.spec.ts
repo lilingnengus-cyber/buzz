@@ -56,6 +56,6 @@ test("编辑经营主体后刷新负责人候选，失败可重试并保存", as
   await drawer.getByRole("option", { name: "目标负责人", exact: true }).click();
   await drawer.getByRole("button", { name: "保存商机", exact: true }).click();
   await expect(drawer.getByText("目标负责人", { exact: true })).toBeVisible();
-  expect(writes).toBe(1);
+  await expect.poll(() => writes).toBe(1);
   expect(targetReads).toBe(2);
 });

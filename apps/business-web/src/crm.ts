@@ -44,6 +44,7 @@ export type CrmOption = {
   descendantCount: number | null;
 };
 export type Followup = {
+  sourceLeadId?: string | null;
   id: string;
   note: string;
   lossReason?: string;

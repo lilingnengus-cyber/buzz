@@ -42,7 +42,7 @@ pub struct ConvertLead {
     pub expected_version: i64,
     pub opportunity: super::super::SaveOpportunity,
 }
-/// Persisted lead, exposed only to its owner.
+/// Persisted lead, exposed only to its owner or creator.
 #[derive(Debug, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Lead {

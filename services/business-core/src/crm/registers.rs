@@ -52,7 +52,7 @@ impl CrmService {
                 'authorName',u.display_name,'lossReason',f.disqualification_reason,'opportunityId',l.id,'opportunityTitle',l.title,
                 'companyName',l.company_name,'contactName',l.contact_name)
               FROM crm_lead_followups f JOIN crm_leads l ON l.id=f.lead_id JOIN enterprise_users u ON u.id=f.author_user_id
-              WHERE l.owner_user_id=$6 AND l.status!='converted'
+              WHERE (l.owner_user_id=$6 OR l.created_by_user_id=$6) AND l.status!='converted'
                 AND ($4::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||f.note),lower($4))>0)
                 AND ($7::uuid IS NULL OR EXISTS(SELECT 1 FROM crm_accounts a WHERE a.id=$7 AND a.customer_id=l.customer_id))
                 AND ($8::text IS NULL OR (l.status IN ('new','contacting') AND CASE $8 WHEN 'overdue' THEN l.next_follow_up < $9::date WHEN 'today' THEN l.next_follow_up = $9::date WHEN 'upcoming' THEN l.next_follow_up > $9::date AND l.next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN l.next_follow_up IS NULL WHEN 'open' THEN true ELSE false END))

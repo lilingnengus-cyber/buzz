@@ -83,7 +83,7 @@ impl CrmService {
             return Err(DomainError::Invalid("无效页码".into()));
         }
         let item = self.accessible(actor, id, "crm:read").await?;
-        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name,'lossReason',f.loss_reason) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
+        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'sourceLeadId',f.source_lead_id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name,'lossReason',f.loss_reason) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
             .bind(id).bind(offset).fetch_all(self.store.pool()).await?;
         let source_lead: Option<Uuid> =
             sqlx::query_scalar("SELECT id FROM crm_leads WHERE converted_opportunity_id=$1")
@@ -240,7 +240,7 @@ impl CrmService {
                 .bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(&loss_reason).execute(&mut *tx).await?;
         }
         if let Some((lead_id, _)) = lead {
-            sqlx::query("UPDATE crm_leads SET status='converted',converted_opportunity_id=$2,version=version+1,updated_at=now() WHERE id=$1").bind(lead_id).bind(record_id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE crm_leads SET status='converted',converted_opportunity_id=$2,owner_user_id=$3,version=version+1,updated_at=now() WHERE id=$1").bind(lead_id).bind(record_id).bind(owner).execute(&mut *tx).await?;
             sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,created_at,source_lead_id,loss_reason) SELECT gen_random_uuid(),$2,author_user_id,note,'contacting',next_action,next_follow_up,created_at,lead_id,disqualification_reason FROM crm_lead_followups WHERE lead_id=$1").bind(lead_id).bind(record_id).execute(&mut *tx).await?;
             let summary: String = sqlx::query_scalar("SELECT summary FROM crm_leads WHERE id=$1")
                 .bind(lead_id)
