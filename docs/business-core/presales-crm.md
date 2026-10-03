@@ -384,3 +384,7 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 回复优先使用按已配置工作台地址生成的 HTTPS Dock 链接，现有安装版可导航到 `/embed/crm/leads/{id}` 或 `/embed/crm/opportunities/{id}`。网页路由直接打开对应右侧详情；原生源码补齐 `biz://crm-lead` / `biz://crm-opportunity` 解析，下次完整原生打包后生效。
 
 验证：固定工具注册、权限开关、写入结果 ID/版本/资源一致性、操作者不可覆盖、跨委托幂等标识均通过测试。模拟 ACP/模型运行确认 45 个固定工具可见；四项线索浏览器流程覆盖 HTTPS 直达线索/商机详情。前端 43 项单元测试、Dock 34 项测试、TypeScript、Rust 格式/Clippy 和文件大小检查通过。模拟验收未发送真实聊天消息，未新增生产线索。
+
+发布：提交 `65e7daacd` 的网页部署到 `business-web-65e7daacd`，公开 JS `index-C1TsL2pW.js` 与本地构建逐字节一致。Core/Gateway/Read API 固定镜像分别为 `sha256:542a81b4ac4b883430091d78adf58aa2d0bbc659f38753da12cff3e4aa1080da`、`sha256:48ba4143e0dd9ac8d035c4680aaefda9c9c9ac31fc32b8b93ad624d4e1721704`、`sha256:aeb5151662b7e410ce09ef9bdcda7a0e6eeac6c6b57ec4f620c6ec0c09a42a6d`。迁移头 82，pending=0；三个容器内部健康检查通过，公开 Read API 健康返回 200，未授权的浏览器线索读取、Agent 线索查询及新建均返回 401。证据与固定镜像回滚配置在 `/opt/business-platform/releases/crm-agent-20261003/deployment`。首次健康检查误用了网关 3110 端口并自动回滚，修正为实际 3100 端口后重新发布成功；保留兼容数据库 82 的旧逻辑网关回滚镜像。
+
+发布后线索/商机/跟进/核心客户/联系人/销售订单数量为 `0/1/1/3/1/5`，与发布前一致。Pacioli 已替换附带的 buzz-acp、business-read-mcp 及企业助手配置指向的 MCP 程序，旧程序备份在本机 `Library/Application Support/com.shiyueshizi.pacioli/backups/crm-agent-20261003`，应用签名验证通过。Mac 锁屏阻止在原生界面重启企业助手，目前运行中的助手仍需重启才能加载新范围和工具；未发送真实聊天验收消息，未完成原生会话新工具验收。
