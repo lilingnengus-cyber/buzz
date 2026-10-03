@@ -342,6 +342,13 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                   canManage={data.canManage}
                   canEdit={canEdit}
                   onEdit={() => setEditing(true)}
+                  onDeleted={() => {
+                    window.history.replaceState(null, "", "#crm");
+                    setSelected(null);
+                    setDetail(null);
+                    setRevision((v) => v + 1);
+                    setNotice("商机已删除");
+                  }}
                 />
               ))
             )}

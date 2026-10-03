@@ -28,9 +28,9 @@ impl CrmService {
             r#"SELECT jsonb_build_object('id',c.id,'accountId',c.account_id,'customerId',a.customer_id,'version',c.version,
               'companyName',COALESCE(b.name,a.name),'contactName',c.name,'contactDetails',c.details,
               'opportunities',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',o.id,'title',o.title) ORDER BY o.title,o.id)
-                FROM crm_opportunities o WHERE o.contact_id=c.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND (o.customer_id IS NULL OR o.customer_id=ANY($3))),'[]'::jsonb))
+                FROM crm_opportunities o WHERE o.deleted_at IS NULL AND o.contact_id=c.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND (o.customer_id IS NULL OR o.customer_id=ANY($3))),'[]'::jsonb))
               FROM crm_contacts c JOIN crm_accounts a ON a.id=c.account_id LEFT JOIN business_customers b ON b.id=a.customer_id
-              WHERE ((a.customer_id IS NOT NULL AND a.customer_id=ANY($3)) OR (a.customer_id IS NULL AND (a.owner_user_id=$6 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.account_id=a.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND o.customer_id IS NULL))))
+              WHERE ((a.customer_id IS NOT NULL AND a.customer_id=ANY($3)) OR (a.customer_id IS NULL AND (a.owner_user_id=$6 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.deleted_at IS NULL AND o.account_id=a.id AND o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2) AND o.customer_id IS NULL))))
                 AND ($4::text IS NULL OR strpos(lower(COALESCE(b.name,a.name)||' '||c.name||' '||c.details),lower($4))>0)
                 AND ($7::uuid IS NULL OR c.account_id=$7) AND $8::text IS NULL AND $9::date IS NULL
               ORDER BY COALESCE(b.name,a.name),c.name,c.id LIMIT 51 OFFSET $5"#
