@@ -57,7 +57,7 @@ Findings corrected in this frontend round:
 - Workflow stage CSS assumed five stages despite six purchase stages. Stages now wrap by available width. At 125% zoom, narrow order rows put action buttons on their own line so they are not clipped. Tests assert row overflow rather than only the outer page.
 - Visual fixtures retained the old sales navigation title, old detail selector, and obsolete indentation threshold from before abbreviation removal. Fixtures now model the current API and navigation; five pages are exercised at 80/100/125%, with stage selection, dialogs, row overflow and navigation persistence checks. Updated screenshots were inspected, including 125% sales/purchase rows, goods/service stages and order forms.
 
-Coverage evidence is recorded at release below. The subsequent inventory read-model release adds explicit units and currency ambiguity handling; see inventory-ledger.md. Receiving and payment/reversal suites passed in isolated databases. Dedicated sales/purchase return coverage remains open, as does review of other inventory readers that use the latest movement currency. Production verification remains read-only.
+Coverage evidence is recorded at release below. The subsequent inventory read-model release adds explicit units and currency ambiguity handling; see inventory-ledger.md. Receiving and payment/reversal suites passed in isolated databases. Dedicated sales/purchase return regressions and entry permission checks now pass and were released (see returns.md). Review of other inventory readers that use the latest movement currency and analytics failed-read states remains open. Production verification remains read-only.
 
 ### Frontend audit release evidence
 
