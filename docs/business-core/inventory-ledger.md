@@ -21,3 +21,5 @@ The local PostgreSQL B2 test now verifies single-currency metadata and a deliber
 Frontend pointer is `business-web-2810ee31d`; public HTML references `index-DMZBkE6X.js` and `index-DdiLmMSU.css`. Public JS is byte-identical to the tested local build. Previous frontend is `business-web-90b9a83fa`; previous Core image is `sha256:bde9d6c16fd111aa89fa588122d54420d98dc4b00e4f785a0bab5d9d04ddc0ff`. No migrations or production business writes were performed.
 
 Post-release native Pacioli verification was attempted but could not run because the Mac was locked. It remains pending; browser tests and public asset checks do not replace that check. The overall workflow audit remains active, including dedicated return transitions and the currency semantics of aging/count readers.
+
+Further source audit confirmed the aging view uses the last movement currency (migration 0014), while count options and create validation use legal-entity functional currency. These do not establish that historic balance valuation has that currency. This remains an open audit item; subsequent fixes must preserve historical movement facts and reject or clearly identify ambiguous valuation.

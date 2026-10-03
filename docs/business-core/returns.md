@@ -82,3 +82,5 @@ Open audit items remain: return analytics must distinguish failed/loading reads 
 ### Analytics failure handling
 
 Return analytics now distinguishes loading/failure from an actual successful empty response, exposes retry, cancels stale state updates on unmount, and labels the rate's CNY scope. A browser regression injects a 503, verifies zero amounts are absent, retries successfully, and verifies CNY 20.00 / 10.00%. The two return-entry regressions also pass against this build.
+
+Analytics frontend release: 2026-10-03 source/static tree 4a347aa0f, JS index-B3Z-ubbP.js, CSS index-DdiLmMSU.css. Public JS matches the tested artifact; Core health remains ok. Rollback tree business-web-75ff844bb. No backend replacement, migrations, or production business writes in this round. Failure/retry behavior was verified in mocked browser tests, not by disrupting production.
