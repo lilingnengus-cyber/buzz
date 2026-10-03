@@ -391,3 +391,18 @@
     grid-column: 1 / -1;
   }
 }
+
+.crm-related-order-card {
+  margin: .75rem 0;
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.crm-related-order-card summary {
+  padding: .75rem 1rem;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: .875rem;
+}
+.crm-related-order-card .sales-order-progress {
+  border-bottom: 0;
+}
