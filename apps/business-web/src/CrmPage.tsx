@@ -1,5 +1,4 @@
 import React from "react";
-import { CrmImport } from "./CrmImport";
 import { request } from "./api";
 import { formatMoney } from "./formatters";
 import { CrmForm } from "./CrmForm";
@@ -33,7 +32,6 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   );
   const [detail, setDetail] = React.useState<Detail | null>(null);
   const [editing, setEditing] = React.useState(false);
-  const [importing, setImporting] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
@@ -136,17 +134,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             新建商机
           </button>
         )}
-        {canEdit && (
-          <button onClick={() => setImporting(true)}>批量导入</button>
-        )}
       </header>
-      {importing && (
-        <CrmImport
-          options={options}
-          onClose={() => setImporting(false)}
-          onChanged={() => setRevision((v) => v + 1)}
-        />
-      )}
       {optionsError && (
         <p role="alert" className="crm-error">
           商机录入选项读取失败，暂时无法新建或编辑：{optionsError}{" "}

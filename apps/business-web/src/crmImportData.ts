@@ -1,14 +1,12 @@
-import { amountMinor, CRM_STAGES } from "./crm.ts";
 export const IMPORT_HEADERS = [
-  "商机名称",
+  "线索名称",
   "客户公司",
   "联系人",
   "联系方式",
-  "阶段",
-  "预计金额",
-  "币种",
-  "预计成交日期",
-  "流失原因",
+  "来源",
+  "需求摘要",
+  "下一步",
+  "跟进日期",
 ];
 export function parseTable(source: string): string[][] {
   const text = source.replace(/^\uFEFF/, "");
@@ -65,74 +63,47 @@ function date(value: string, label: string) {
     throw new Error(`${label}须为有效的 YYYY-MM-DD 日期`);
   return value;
 }
-export function importRows(
-  text: string,
-  legalEntityId: string,
-  businessUnitId: string,
-) {
-  if (!legalEntityId || !businessUnitId)
-    throw new Error("请选择法人主体和经营主体");
+export function importRows(text: string) {
   if (new TextEncoder().encode(text).length > 1024 * 1024)
     throw new Error("文件不能超过 1 MB");
   const [headers, ...rows] = parseTable(text);
-  if (!headers || !rows.length) throw new Error("请提供表头及至少一条商机");
-  if (rows.length > 200) throw new Error("每批最多导入 200 条商机");
+  if (!headers || !rows.length) throw new Error("请提供表头及至少一条线索");
+  if (rows.length > 200) throw new Error("每批最多导入 200 条线索");
   if (
     new Set(headers).size !== headers.length ||
     headers.some((h) => !IMPORT_HEADERS.includes(h))
   )
-    throw new Error("表头重复或不受支持，请使用导入模板");
-  if (!["商机名称", "客户公司"].every((h) => headers.includes(h)))
-    throw new Error("缺少商机名称或客户公司列");
+    throw new Error("表头重复或不受支持，请使用线索导入模板");
+  if (!headers.includes("线索名称")) throw new Error("缺少线索名称列");
   const seen = new Set<string>();
   return rows.map((cells, index) => {
-    const title = cells[headers.indexOf("商机名称")] || "";
+    const title = cells[headers.indexOf("线索名称")] || "";
     try {
       if (cells.length !== headers.length) throw new Error("列数与表头不一致");
       const get = (name: string) => cells[headers.indexOf(name)] || "";
-      const stageLabel = get("阶段") || "新线索";
-      const stage = Object.entries(CRM_STAGES).find(
-        ([key, label]) => key === stageLabel || label === stageLabel,
-      )?.[0];
-      if (!stage) throw new Error("未知商机阶段");
-      if (stage === "won")
-        throw new Error(
-          "成交商机请先以沟通中导入，再通过跟进记录确认正式客户资料",
-        );
       for (const [name, max] of [
-        ["商机名称", 160],
+        ["线索名称", 160],
         ["客户公司", 160],
         ["联系人", 100],
         ["联系方式", 200],
-        ["流失原因", 1000],
-      ] as const)
+        ["来源", 100],
+        ["需求摘要", 4000],
+        ["下一步", 500],
+      ] as const) {
         if (Array.from(get(name)).length > max)
           throw new Error(`${name}超过 ${max} 字`);
-      if (!title || !get("客户公司")) throw new Error("商机名称和客户公司必填");
-      if (get("联系方式") && !get("联系人"))
-        throw new Error("填写联系方式时须填写联系人");
-      if (stage === "lost" && !get("流失原因"))
-        throw new Error("已流失商机须填写流失原因");
-      const currency = get("币种") || "CNY";
-      if (!/^[A-Z]{3}$/.test(currency))
-        throw new Error("币种须为三位大写代码，例如 CNY");
+      }
+      if (!title) throw new Error("线索名称必填");
       const payload = {
-        legalEntityId,
-        businessUnitId,
-        customerId: null,
-        accountId: null,
-        contactId: null,
         title,
         companyName: get("客户公司"),
         contactName: get("联系人"),
         contactDetails: get("联系方式"),
-        stage,
-        expectedAmountMinor: amountMinor(get("预计金额")),
-        currency,
-        nextAction: "",
-        nextFollowUp: null,
-        expectedCloseDate: date(get("预计成交日期"), "预计成交日期"),
-        lossReason: stage === "lost" ? get("流失原因") : "",
+        source: get("来源"),
+        summary: get("需求摘要"),
+        nextAction: get("下一步"),
+        nextFollowUp: date(get("跟进日期"), "跟进日期"),
+        customerId: null,
         ownerUserId: null,
         expectedVersion: null,
       };
@@ -155,5 +126,5 @@ export async function importKey(payload: object) {
     "SHA-256",
     new TextEncoder().encode(JSON.stringify(payload)),
   );
-  return `crm-import-v1-${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  return `crm-lead-import-v1-${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }

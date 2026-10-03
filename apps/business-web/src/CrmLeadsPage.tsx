@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmLeadImport } from "./CrmLeadImport";
 import { request } from "./api";
 import { CrmSearchSelect } from "./CrmSearchSelect";
 import { CrmDrawer } from "./CrmDrawer";
@@ -17,6 +18,7 @@ import "./crm-opportunities.css";
 import "./crm-leads.css";
 type LeadList = { items: Lead[]; hasMore: boolean; canManage: boolean };
 export function CrmLeadsPage({ initialId }: { initialId?: string }) {
+  const [importing, setImporting] = React.useState(false);
   const [owner, setOwner] = React.useState("");
   const [ownerQuery, setOwnerQuery] = React.useState("");
   const [owners, setOwners] = React.useState<{ id: string; name: string }[]>(
@@ -121,7 +123,11 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             新建线索
           </button>
         )}
+        {data.canManage && !error && (
+          <button onClick={() => setImporting(true)}>批量导入</button>
+        )}
       </header>
+      {importing && <CrmLeadImport onClose={() => setImporting(false)} onChanged={() => setRevision((v) => v + 1)} />}
       {notice && (
         <p role="status" className="crm-notice">
           {notice}

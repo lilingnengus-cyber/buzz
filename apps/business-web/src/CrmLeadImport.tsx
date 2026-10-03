@@ -1,10 +1,7 @@
 import React from "react";
 import { request } from "./api";
 import { CrmDrawer, useCrmDraft } from "./CrmDrawer";
-import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import { IMPORT_HEADERS, importRows, importKey } from "./crmImportData";
-import { CRM_STAGES, type CrmOption, type CrmStage } from "./crm";
-import { formatMoney } from "./formatters";
 type Row = ReturnType<typeof importRows>[number] & {
   status?: string;
   id?: string;
@@ -20,39 +17,21 @@ function download(text: string, name: string) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function CrmImport({
-  options,
+export function CrmLeadImport({
   onClose,
   onChanged,
 }: {
-  options: CrmOption[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   return (
-    <CrmDrawer title="批量导入商机" onClose={onClose}>
-      <ImportForm options={options} onChanged={onChanged} />
+    <CrmDrawer title="批量导入线索" onClose={onClose}>
+      <ImportForm onChanged={onChanged} />
     </CrmDrawer>
   );
 }
-function ImportForm({
-  options,
-  onChanged,
-}: {
-  options: CrmOption[];
-  onChanged: () => void;
-}) {
+function ImportForm({ onChanged }: { onChanged: () => void }) {
   const draft = useCrmDraft();
-  const entities = options.filter(
-      (o) => o.resourceType === "legal_entity" && o.status === "active",
-    ),
-    units = options.filter(
-      (o) => o.resourceType === "business_unit" && o.status === "active",
-    );
-  const [legal, setLegal] = React.useState(
-    entities.length === 1 ? entities[0].id : "",
-  );
-  const [unit, setUnit] = React.useState(units.length === 1 ? units[0].id : "");
   const [source, setSource] = React.useState("");
   const [rows, setRows] = React.useState<Row[]>([]);
   const [error, setError] = React.useState("");
@@ -66,7 +45,7 @@ function ImportForm({
   };
   const preview = () => {
     try {
-      setRows(importRows(source, legal, unit));
+      setRows(importRows(source));
       setError("");
     } catch (e) {
       setRows([]);
@@ -88,14 +67,11 @@ function ImportForm({
         setRows(result.map((r) => ({ ...r })));
         try {
           row.key ||= await importKey(row.payload);
-          const saved = await request<{ id: string }>(
-            "/api/v1/crm/opportunities",
-            {
-              method: "POST",
-              headers: { "idempotency-key": row.key },
-              body: JSON.stringify(row.payload),
-            },
-          );
+          const saved = await request<{ id: string }>("/api/v1/crm/leads", {
+            method: "POST",
+            headers: { "idempotency-key": row.key },
+            body: JSON.stringify(row.payload),
+          });
           row.id = saved.id;
           row.status = "已保存（重复提交不会新建）";
         } catch (e) {
@@ -115,47 +91,20 @@ function ImportForm({
     <div className="crm-form">
       <p>
         支持 UTF-8 CSV 文件或粘贴 Excel 表格，含表头，每批最多 200 条、1
-        MB。商机名称和客户公司必填。
+        MB。仅线索名称必填。
       </p>
       <p className="crm-hint">
-        统一使用下方主体，负责人为当前账号。客户按潜在客户录入并复用同账号的同名档案，不按名称自动关联正式客户。只新增商机，不覆盖已有记录；相同主体和全部字段完全相同的导入会复用此前结果。
+        导入为待筛选线索，负责人为当前账号。不会创建商机或正式客户；筛选后可从线索详情转为商机。只新增、不覆盖已有记录；同一账号全部字段完全相同的导入会复用此前结果。
       </p>
       <button
         disabled={busy}
         onClick={() =>
-          download(IMPORT_HEADERS.join(",") + "\r\n", "商机导入模板.csv")
+          download(IMPORT_HEADERS.join(",") + "\r\n", "线索导入模板.csv")
         }
       >
         下载 CSV 模板
       </button>
       <fieldset className="crm-edit-fields" disabled={busy || started}>
-        <label>
-          法人主体
-          <select
-            value={legal}
-            onChange={(e) => {
-              setLegal(e.target.value);
-              invalidate();
-            }}
-          >
-            <option value="">请选择</option>
-            {entities.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <OperatingUnitPicker
-          label="经营主体"
-          records={units}
-          value={unit}
-          onChange={(v) => {
-            setUnit(v);
-            invalidate();
-          }}
-          disabled={busy || started}
-        />
         <label>
           上传 CSV
           <input
@@ -218,9 +167,9 @@ function ImportForm({
               <thead>
                 <tr>
                   <th>行</th>
-                  <th>商机 / 客户</th>
-                  <th>阶段 / 金额</th>
-                  <th>预计成交日期 / 流失原因</th>
+                  <th>线索 / 公司 / 联系人</th>
+                  <th>来源 / 需求摘要</th>
+                  <th>下一步 / 跟进日期</th>
                   <th>校验及结果</th>
                 </tr>
               </thead>
@@ -238,27 +187,20 @@ function ImportForm({
                       {r.payload?.contactDetails}
                     </td>
                     <td>
-                      {r.payload && CRM_STAGES[r.payload.stage as CrmStage]}
+                      {r.payload?.source || "未填写来源"}
                       <br />
-                      {r.payload?.expectedAmountMinor == null
-                        ? "未填写"
-                        : formatMoney(
-                            r.payload.currency,
-                            r.payload.expectedAmountMinor / 100,
-                          )}
+                      {r.payload?.summary}
                     </td>
                     <td>
-                      预计成交：{r.payload?.expectedCloseDate || "未安排"}
+                      {r.payload?.nextAction || "未安排下一步"}
                       <br />
-                      {r.payload?.lossReason}
+                      {r.payload?.nextFollowUp || "未安排跟进日期"}
                     </td>
                     <td>
                       {r.error || r.status || "待导入"}
                       {r.id && (
-                        <a
-                          href={`/#crm?opportunity=${encodeURIComponent(r.id)}`}
-                        >
-                          查看商机
+                        <a href={`/#crmLeads?lead=${encodeURIComponent(r.id)}`}>
+                          查看线索
                         </a>
                       )}
                     </td>

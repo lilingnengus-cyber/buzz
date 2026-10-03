@@ -3,50 +3,48 @@ import test from "node:test";
 import { parseTable, importRows, importKey } from "./crmImportData.ts";
 test("CSV quotes, BOM, CRLF and spreadsheet paste", () => {
   assert.deepEqual(
-    parseTable('\uFEFF商机名称,客户公司\r\n"年度,采购","客户""甲"\r\n'),
+    parseTable('\uFEFF线索名称,客户公司\r\n"年度,采购","客户""甲"\r\n'),
     [
-      ["商机名称", "客户公司"],
+      ["线索名称", "客户公司"],
       ["年度,采购", '客户"甲'],
     ],
   );
-  assert.deepEqual(parseTable("商机名称\t客户公司\n年度\t客户"), [
-    ["商机名称", "客户公司"],
+  assert.deepEqual(parseTable("线索名称\t客户公司\n年度\t客户"), [
+    ["线索名称", "客户公司"],
     ["年度", "客户"],
   ]);
   assert.throws(() => parseTable('"bad'), /引号/);
 });
-test("validate dates, duplicates, currency, conversion and precise money", () => {
+test("lead import accepts only title, validates optional dates, limits and duplicates", () => {
   const rows = importRows(
-    "商机名称,客户公司,预计金额,预计成交日期\n项目,客户,12.34,2026-10-02\n项目,客户,12.34,2026-10-02\n坏日期,客户,1,2026-02-30",
-    "le",
-    "bu",
+    "线索名称,跟进日期\n项目,2026-10-02\n项目,2026-10-02\n坏日期,2026-02-30",
   );
-  assert.equal(rows[0].payload.expectedAmountMinor, 1234);
+  assert.equal(rows[0].payload.companyName, "");
+  assert.equal(rows[0].payload.nextFollowUp, "2026-10-02");
+  assert.equal(rows[0].payload.ownerUserId, null);
+  assert.equal(rows[0].payload.customerId, null);
+  assert.equal(rows[0].payload.expectedVersion, null);
   assert.match(rows[1].error, /重复/);
   assert.match(rows[2].error, /日期/);
+  assert.match(importRows("线索名称\n" + "字".repeat(161))[0].error, /160/);
   assert.match(
-    importRows("商机名称,客户公司,阶段\n项目,客户,已成交", "le", "bu")[0].error,
-    /正式客户/,
+    importRows("线索名称,需求摘要\n项目," + "字".repeat(4001))[0].error,
+    /4000/,
   );
   assert.throws(
-    () =>
-      importRows(
-        "商机名称,客户公司\n" + Array(201).fill("项目,客户").join("\n"),
-        "le",
-        "bu",
-      ),
+    () => importRows("线索名称\n" + Array(201).fill("项目").join("\n")),
     /200/,
   );
-  assert.throws(
-    () => importRows("商机名称,客户公司,未知\n项目,客户,x", "le", "bu"),
-    /表头/,
-  );
+  assert.throws(() => importRows("线索名称,阶段\n项目,已成交"), /表头/);
+  assert.throws(() => importRows("商机名称,客户公司\n项目,客户"), /表头/);
+  assert.throws(() => importRows("线索名称\n" + "字".repeat(400000)), /1 MB/);
 });
-test("identical import retains idempotency identity; changed scope does not", async () => {
-  const a = importRows("商机名称,客户公司\n项目,客户", "le", "bu")[0].payload;
+test("identical lead import retains its identity; changed content does not", async () => {
+  const a = importRows("线索名称,客户公司\n项目,客户")[0].payload;
   assert.equal(await importKey(a), await importKey({ ...a }));
+  assert.match(await importKey(a), /^crm-lead-import-v1-/);
   assert.notEqual(
     await importKey(a),
-    await importKey({ ...a, businessUnitId: "other" }),
+    await importKey({ ...a, nextAction: "联系客户" }),
   );
 });
