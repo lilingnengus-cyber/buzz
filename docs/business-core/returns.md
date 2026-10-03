@@ -78,3 +78,7 @@ The shared sales/purchase return entry previously displayed a denied-permission 
 Pacioli production session was available after refresh. Read-only native checks opened goods/sales return and purchasing/purchase return stages and both new-draft modals. Both showed the correct empty-source notice and disabled save; no draft was submitted. Purchasing still showed two loaded draft orders totaling CNY 2.00. Inventory showed zero warehouse/SKU combinations and the empty-balance notice. These production checks prove navigation and empty/read states; non-empty transactional behavior is covered by isolated PostgreSQL and browser tests above.
 
 Open audit items remain: return analytics must distinguish failed/loading reads from actual zero data; other inventory readers using latest-movement currency need reconciliation with the balance currency contract.
+
+### Analytics failure handling
+
+Return analytics now distinguishes loading/failure from an actual successful empty response, exposes retry, cancels stale state updates on unmount, and labels the rate's CNY scope. A browser regression injects a 503, verifies zero amounts are absent, retries successfully, and verifies CNY 20.00 / 10.00%. The two return-entry regressions also pass against this build.

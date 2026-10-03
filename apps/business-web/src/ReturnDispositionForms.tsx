@@ -297,13 +297,33 @@ function PurchaseLogisticsForm({
 
 export function ReturnAnalyticsPanel({ side }: { side: "sales" | "purchase" }) {
   const [data, setData] = React.useState<ReturnAnalytics | null>(null);
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
+  const [attempt, setAttempt] = React.useState(0);
   React.useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setData(null);
+    setError("");
     request<ReturnAnalytics>(
       `/api/v1/return-analytics?period=${month()}&currency=CNY`,
     )
-      .then(setData)
-      .catch(() => setData(null));
-  }, []);
+      .then((result) => { if (active) setData(result); })
+      .catch((failure: Error) => { if (active) setError(failure.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [attempt]);
+  if (loading || error) return (
+    <section className="return-analytics" aria-label="本月退货经营指标" aria-busy={loading}>
+      <div>
+        <span>本月退货指标 · CNY</span>
+        {loading ? <p role="status">正在读取退货指标…</p> : <>
+          <p role="alert">退货指标读取失败：{error}</p>
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>重试退货指标</button>
+        </>}
+      </div>
+    </section>
+  );
   const items = data?.items ?? [];
   const sales = side === "sales";
   const amount = total(
@@ -319,7 +339,7 @@ export function ReturnAnalyticsPanel({ side }: { side: "sales" | "purchase" }) {
   return (
     <section className="return-analytics" aria-label="本月退货经营指标">
       <div>
-        <span>本月退货率</span>
+        <span>本月退货率 · CNY</span>
         <strong>
           {base === 0 ? "—" : `${((amount / base) * 100).toFixed(2)}%`}
         </strong>
