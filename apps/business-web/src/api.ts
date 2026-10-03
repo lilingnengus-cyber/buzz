@@ -681,6 +681,7 @@ export type InventoryTurnover = {
   currency: string;
   issuedProductCost: string;
   endingInventoryValue: string;
+  excludedCurrencyBalances?: number;
   turnoverRate: string | null;
   turnoverDays: string | null;
   dataAsOf: string;

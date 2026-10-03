@@ -23,3 +23,11 @@ Frontend pointer is `business-web-2810ee31d`; public HTML references `index-DMZB
 Post-release native Pacioli verification was attempted but could not run because the Mac was locked. It remains pending; browser tests and public asset checks do not replace that check. The overall workflow audit remains active, including dedicated return transitions and the currency semantics of aging/count readers.
 
 Further source audit confirmed the aging view uses the last movement currency (migration 0014), while count options and create validation use legal-entity functional currency. These do not establish that historic balance valuation has that currency. This remains an open audit item; subsequent fixes must preserve historical movement facts and reject or clearly identify ambiguous valuation.
+
+## Aging, turnover and count currency correction (pending release)
+
+Aging now derives currency from the full movement history for each balance, matching the balance read contract. Unknown/mixed aging values show a review label and are excluded from known-currency headline sums. Turnover ending value includes only balances with a single matching history currency; excluded ambiguous balances are counted explicitly and suppress the ratio.
+
+Count options retain the existing functional-currency policy but include only balances whose entire movement history matches it. Create and post recheck history while holding balance locks and reject unknown/mixed/mismatching currency before any valuation adjustment. Historical movement facts and the database aging view are unchanged; these protections do not perform currency conversion or reconcile historic errors.
+
+The B2 isolated PostgreSQL regression exercises eligible CNY options, successful count creation/cancellation, mixed CNY/USD postings, unknown aging currency, exclusion from options, rejected mixed-currency count creation, and suppressed turnover with excluded count. The backend all-target clippy check passes. Two browser inventory-health regressions pass, including missing-currency valuation and suppression notice. Post protection is implemented but a dedicated mutation-between-create-and-post regression remains outstanding before release.

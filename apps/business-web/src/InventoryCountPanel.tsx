@@ -61,7 +61,8 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
     ["counting", "counted"].includes(item.status),
   ).length;
   const sluggishValues = aging.reduce((totals, item) => {
-    const currency = item.currency ?? "未标币种";
+    if (!item.currency) return totals;
+    const currency = item.currency;
     totals.set(
       currency,
       (totals.get(currency) ?? 0) + number(item.inventoryValue),
@@ -90,7 +91,9 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
           label="本月库存周转（CNY）"
           value={turnover?.turnoverRate ? `${turnover.turnoverRate} 次` : "—"}
           note={
-            loadErrors.turnover ? loadErrors.turnover : turnover?.turnoverDays
+            loadErrors.turnover ? loadErrors.turnover : turnover?.excludedCurrencyBalances
+              ? `${turnover.excludedCurrencyBalances} 条余额币种待核对，暂不计算周转率`
+              : turnover?.turnoverDays
               ? `${turnover.turnoverDays} 天`
               : "暂无出库成本"
           }
@@ -109,7 +112,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
                 ? `${sluggishValues.size} 个币种`
                 : formatMoney("CNY", 0)
           }
-          note={sluggishValues.size > 1 ? "分币种查看明细" : "经营管理口径"}
+          note={aging.some((item) => !item.currency) ? "币种待核对记录未计入金额" : sluggishValues.size > 1 ? "分币种查看明细" : "经营管理口径"}
         />
       </div>
       {Object.values(loadErrors).some(Boolean) && <div role="status" className="inventory-count-notice">{Object.values(loadErrors).filter(Boolean).join(" ")} <button type="button" onClick={() => setRevision(value => value + 1)}>重新读取库存健康</button></div>}
@@ -180,7 +183,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
               <span>{item.daysWithoutIssue} 天未出库</span>
               <span>在手 {formatQuantity(item.onHandQuantity)}</span>
               <span>
-                {formatMoney(item.currency ?? "CNY", item.inventoryValue)}
+                {item.currency ? formatMoney(item.currency, item.inventoryValue) : "币种待核对"}
               </span>
             </div>
           ))}

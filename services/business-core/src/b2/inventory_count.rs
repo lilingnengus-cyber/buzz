@@ -146,7 +146,7 @@ impl InventoryCountService {
             None,
         )
         .await?;
-        sqlx::query_as::<_, InventoryCountOption>("SELECT b.legal_entity_id,e.functional_currency::text currency,b.warehouse_id,w.code warehouse_code,w.name warehouse_name,b.sku_id,s.code sku_code,s.name sku_name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity,b.inventory_value,b.average_unit_cost FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id JOIN business_skus s ON s.id=b.sku_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND NOT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=b.legal_entity_id AND t.warehouse_id=b.warehouse_id AND l.sku_id=b.sku_id) ORDER BY w.code,s.code LIMIT 1000")
+        sqlx::query_as::<_, InventoryCountOption>("SELECT b.legal_entity_id,e.functional_currency::text currency,b.warehouse_id,w.code warehouse_code,w.name warehouse_name,b.sku_id,s.code sku_code,s.name sku_name,b.on_hand_quantity,b.reserved_quantity,b.quarantined_quantity,b.inventory_value,b.average_unit_cost FROM inventory_balances b JOIN business_legal_entities e ON e.id=b.legal_entity_id JOIN business_warehouses w ON w.id=b.warehouse_id JOIN business_skus s ON s.id=b.sku_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND (SELECT array_agg(DISTINCT m.currency::text) FROM inventory_movements m WHERE m.legal_entity_id=b.legal_entity_id AND m.warehouse_id=b.warehouse_id AND m.sku_id=b.sku_id)=ARRAY[e.functional_currency::text] AND NOT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=b.legal_entity_id AND t.warehouse_id=b.warehouse_id AND l.sku_id=b.sku_id) ORDER BY w.code,s.code LIMIT 1000")
             .bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>())
             .bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>())
             .fetch_all(self.store.pool()).await.map_err(Into::into)
@@ -258,6 +258,16 @@ impl InventoryCountService {
         let balances=sqlx::query("SELECT sku_id,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=ANY($3) ORDER BY sku_id FOR UPDATE").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_all(&mut *tx).await?;
         if balances.len() != input.sku_ids.len() {
             return Err(DomainError::NotFoundOrForbidden);
+        }
+        for sku in &input.sku_ids {
+            ensure_count_currency(
+                &mut tx,
+                input.legal_entity_id,
+                input.warehouse_id,
+                *sku,
+                &input.currency,
+            )
+            .await?;
         }
         let overlap:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM inventory_count_tasks t JOIN inventory_count_lines l ON l.inventory_count_id=t.id WHERE t.status IN ('counting','counted') AND t.legal_entity_id=$1 AND t.warehouse_id=$2 AND l.sku_id=ANY($3))").bind(input.legal_entity_id).bind(input.warehouse_id).bind(&input.sku_ids).fetch_one(&mut *tx).await?;
         if overlap {
@@ -454,6 +464,14 @@ impl InventoryCountService {
         let mut variance_lines = 0usize;
         for line in &lines {
             let balance=sqlx::query("SELECT on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost FROM inventory_balances WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3 FOR UPDATE").bind(task.get::<Uuid,_>("legal_entity_id")).bind(task.get::<Uuid,_>("warehouse_id")).bind(line.get::<Uuid,_>("sku_id")).fetch_one(&mut *tx).await?;
+            ensure_count_currency(
+                &mut tx,
+                task.get("legal_entity_id"),
+                task.get("warehouse_id"),
+                line.get("sku_id"),
+                &task.get::<String, _>("currency"),
+            )
+            .await?;
             ensure_snapshot(&balance, line)?;
             let actual = line
                 .get::<Option<Decimal>, _>("actual_on_hand_quantity")
@@ -609,7 +627,7 @@ impl InventoryCountService {
             None,
         )
         .await?;
-        let rows=sqlx::query("SELECT legal_entity_id,warehouse_id,sku_id,sku_code,sku_name,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost,currency,last_issue_date,days_without_issue,aging_bucket FROM inventory_aging_current WHERE legal_entity_id=ANY($1) AND warehouse_id=ANY($2) AND days_without_issue>=$3 ORDER BY days_without_issue DESC,inventory_value DESC LIMIT $4").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(threshold_days.clamp(0,3650)).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
+        let rows=sqlx::query("SELECT legal_entity_id,warehouse_id,sku_id,sku_code,sku_name,on_hand_quantity,reserved_quantity,quarantined_quantity,inventory_value,average_unit_cost,(SELECT CASE WHEN count(DISTINCT m.currency)=1 THEN min(m.currency::text) ELSE NULL END FROM inventory_movements m WHERE m.legal_entity_id=a.legal_entity_id AND m.warehouse_id=a.warehouse_id AND m.sku_id=a.sku_id) currency,last_issue_date,days_without_issue,aging_bucket FROM inventory_aging_current a WHERE legal_entity_id=ANY($1) AND warehouse_id=ANY($2) AND days_without_issue>=$3 ORDER BY days_without_issue DESC,inventory_value DESC LIMIT $4").bind(scope.scopes.legal_entity_ids.into_iter().collect::<Vec<_>>()).bind(scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>()).bind(threshold_days.clamp(0,3650)).bind(limit.clamp(1,500)).fetch_all(self.store.pool()).await?;
         let items=rows.into_iter().map(|row|json!({"legalEntityId":row.get::<Uuid,_>("legal_entity_id"),"warehouseId":row.get::<Uuid,_>("warehouse_id"),"skuId":row.get::<Uuid,_>("sku_id"),"skuCode":row.get::<String,_>("sku_code"),"skuName":row.get::<String,_>("sku_name"),"onHandQuantity":row.get::<Decimal,_>("on_hand_quantity").to_string(),"reservedQuantity":row.get::<Decimal,_>("reserved_quantity").to_string(),"quarantinedQuantity":row.get::<Decimal,_>("quarantined_quantity").to_string(),"inventoryValue":row.get::<Decimal,_>("inventory_value").to_string(),"averageUnitCost":row.get::<Option<Decimal>,_>("average_unit_cost").map(|v|v.to_string()),"currency":row.get::<Option<String>,_>("currency"),"lastIssueDate":row.get::<Option<NaiveDate>,_>("last_issue_date"),"daysWithoutIssue":row.get::<i32,_>("days_without_issue"),"agingBucket":row.get::<String,_>("aging_bucket")})).collect::<Vec<_>>();
         Ok(
             json!({"items":items,"thresholdDays":threshold_days,"dataAsOf":Utc::now(),"warning":"库存库龄按最后一次出库日期计算，属于经营管理口径"}),
@@ -650,8 +668,10 @@ impl InventoryCountService {
             .collect::<Vec<_>>();
         let warehouses = scope.scopes.warehouse_ids.into_iter().collect::<Vec<_>>();
         let cost:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(l.total_cost),0) FROM shipment_lines l JOIN shipments s ON s.id=l.shipment_id WHERE s.status='confirmed' AND s.shipment_date>=$1 AND s.shipment_date<$2 AND s.currency=$3 AND s.legal_entity_id=ANY($4) AND s.warehouse_id=ANY($5)").bind(start).bind(end).bind(currency).bind(&entities).bind(&warehouses).fetch_one(self.store.pool()).await?;
-        let value:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(b.inventory_value),0) FROM inventory_balances b LEFT JOIN inventory_movements m ON m.id=b.last_movement_id WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND m.currency=$3").bind(&entities).bind(&warehouses).bind(currency).fetch_one(self.store.pool()).await?;
-        let rate = if value == Decimal::ZERO {
+        let value:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(b.inventory_value),0) FROM inventory_balances b WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND (SELECT array_agg(DISTINCT m.currency::text) FROM inventory_movements m WHERE m.legal_entity_id=b.legal_entity_id AND m.warehouse_id=b.warehouse_id AND m.sku_id=b.sku_id)=ARRAY[$3::text]").bind(&entities).bind(&warehouses).bind(currency).fetch_one(self.store.pool()).await?;
+        let ambiguous: i64 = sqlx::query_scalar("SELECT count(*) FROM inventory_balances b WHERE b.legal_entity_id=ANY($1) AND b.warehouse_id=ANY($2) AND (SELECT count(DISTINCT m.currency) FROM inventory_movements m WHERE m.legal_entity_id=b.legal_entity_id AND m.warehouse_id=b.warehouse_id AND m.sku_id=b.sku_id)<>1")
+            .bind(&entities).bind(&warehouses).fetch_one(self.store.pool()).await?;
+        let rate = if value == Decimal::ZERO || ambiguous > 0 {
             None
         } else {
             Some((cost / value).round_dp(8))
@@ -660,7 +680,7 @@ impl InventoryCountService {
             .filter(|v| *v > Decimal::ZERO)
             .map(|v| (Decimal::from(days) / v).round_dp(2));
         Ok(
-            json!({"managementPeriod":period,"currency":currency,"issuedProductCost":cost.to_string(),"endingInventoryValue":value.to_string(),"turnoverRate":rate.map(|v|v.to_string()),"turnoverDays":days_value.map(|v|v.to_string()),"dataAsOf":Utc::now(),"warning":"周转率使用当期销售出库成本/期末库存价值，属于经营管理近似口径"}),
+            json!({"managementPeriod":period,"currency":currency,"issuedProductCost":cost.to_string(),"endingInventoryValue":value.to_string(),"excludedCurrencyBalances":ambiguous,"turnoverRate":rate.map(|v|v.to_string()),"turnoverDays":days_value.map(|v|v.to_string()),"dataAsOf":Utc::now(),"warning":"周转率使用当期销售出库成本/期末库存价值，属于经营管理近似口径"}),
         )
     }
 
@@ -751,6 +771,22 @@ async fn count_event(
     payload: Value,
 ) -> Result<(), DomainError> {
     sqlx::query("INSERT INTO inventory_count_events(id,inventory_count_id,event_type,count_version,payload,actor_user_id,trace_id) VALUES($1,$2,$3,$4,$5,$6,$7)").bind(Uuid::new_v4()).bind(id).bind(event).bind(version).bind(payload).bind(actor).bind(trace).execute(&mut **tx).await?;
+    Ok(())
+}
+
+// Call while the balance row is locked so a currency check cannot race a posting.
+async fn ensure_count_currency(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    entity: Uuid,
+    warehouse: Uuid,
+    sku: Uuid,
+    currency: &str,
+) -> Result<(), DomainError> {
+    let currencies: Vec<String> = sqlx::query_scalar("SELECT DISTINCT currency::text FROM inventory_movements WHERE legal_entity_id=$1 AND warehouse_id=$2 AND sku_id=$3")
+        .bind(entity).bind(warehouse).bind(sku).fetch_all(&mut **tx).await?;
+    if currencies.len() != 1 || currencies[0] != currency {
+        return Err(DomainError::Invalid("inventory valuation currency is unknown, mixed, or differs from the count currency; reconcile movement history before counting".into()));
+    }
     Ok(())
 }
 

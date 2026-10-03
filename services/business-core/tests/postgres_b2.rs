@@ -817,6 +817,43 @@ async fn b2_postgres_closed_loop_and_concurrency() {
     assert!(audit_count >= 15);
     assert_eq!(audit_count, outbox_count);
 
+    let counts =
+        business_core::b2::InventoryCountService::new(PgStore::new(pool.clone()), "COUNT".into());
+    assert_eq!(
+        counts.options(fixture.actor).await.unwrap()[0].currency,
+        "CNY"
+    );
+    assert_eq!(
+        counts.aging(fixture.actor, 0, 10).await.unwrap()["items"][0]["currency"],
+        "CNY"
+    );
+    let count_input = business_core::b2::CreateInventoryCount {
+        legal_entity_id: fixture.legal_entity,
+        warehouse_id: fixture.warehouse,
+        count_date: date,
+        currency: "CNY".into(),
+        business_note: None,
+        sku_ids: vec![fixture.sku],
+    };
+    let count = counts
+        .create(
+            fixture.actor,
+            Uuid::new_v4(),
+            "audit-count-valid",
+            &count_input,
+        )
+        .await
+        .unwrap();
+    counts
+        .cancel(
+            fixture.actor,
+            Uuid::new_v4(),
+            count.id,
+            "audit-count-cancel",
+            &version(1),
+        )
+        .await
+        .unwrap();
     // Existing ledgers can contain mixed currencies; the read model must not invent a denomination.
     let mixed = inventory
         .create_opening(
@@ -853,7 +890,33 @@ async fn b2_postgres_closed_loop_and_concurrency() {
         .unwrap();
     assert!(balance[0].currency.is_none());
     assert!(balance[0].currency_conflict);
+    assert!(counts.options(fixture.actor).await.unwrap().is_empty());
+    assert!(counts.aging(fixture.actor, 0, 10).await.unwrap()["items"][0]["currency"].is_null());
+    assert!(matches!(
+        counts
+            .create(
+                fixture.actor,
+                Uuid::new_v4(),
+                "audit-count-mixed",
+                &count_input
+            )
+            .await,
+        Err(DomainError::Invalid(_))
+    ));
+    assert_eq!(
+        counts
+            .turnover(fixture.actor, "2026-08", "CNY")
+            .await
+            .unwrap()["endingInventoryValue"],
+        "0"
+    );
 
+    let turnover = counts
+        .turnover(fixture.actor, "2026-08", "CNY")
+        .await
+        .unwrap();
+    assert_eq!(turnover["excludedCurrencyBalances"], 1);
+    assert!(turnover["turnoverRate"].is_null());
     let mut order_reads = Vec::with_capacity(100);
     let mut inventory_reads = Vec::with_capacity(100);
     let mut receivable_reads = Vec::with_capacity(100);
