@@ -12,6 +12,11 @@ const repoRoot = path.resolve(
   "..",
 );
 const expectedTools = [
+  "search_crm_leads",
+  "get_crm_lead",
+  "create_crm_lead",
+  "record_crm_lead_followup",
+  "convert_crm_lead",
   "analyze_cross_domain_risks",
   "analyze_inventory_risks",
   "analyze_order_profit_risks",
@@ -93,7 +98,8 @@ await new Promise((resolve, reject) => {
 
 const address = modelServer.address();
 assert(address && typeof address !== "string");
-const agent = spawn(path.join(repoRoot, "target/debug/buzz-agent"), [], {
+const binaryDirectory = process.env.BUSINESS_ACCEPTANCE_BINARY_DIR ?? path.join(repoRoot, "target/debug");
+const agent = spawn(path.join(binaryDirectory, "buzz-agent"), [], {
   cwd: repoRoot,
   env: {
     ...process.env,
@@ -151,7 +157,7 @@ try {
     mcpServers: [
       {
         name: "business-read-mcp",
-        command: path.join(repoRoot, "target/debug/business-read-mcp"),
+        command: process.env.BUSINESS_ACCEPTANCE_MCP_BINARY ?? path.join(binaryDirectory, "business-read-mcp"),
         args: [],
         env: [
           { name: "BUSINESS_READ_ADAPTER", value: "mock" },

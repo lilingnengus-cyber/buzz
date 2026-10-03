@@ -1,9 +1,11 @@
+import { LEAD_STATUSES, leadLink, type Lead } from "./crmLeads";
 import { useEffect, useState } from "react";
 import { request } from "./api";
 import type { CrmAccount, CrmContact, Opportunity, Followup } from "./crm";
 import { CRM_STAGES } from "./crm";
 
 export type CrmFollowupRecord = Followup & {
+  leadId?: string; leadStatus?: Lead["status"]; sourceLeadId?: string;
   opportunityId: string;
   opportunityTitle: string;
   companyName: string;
@@ -194,7 +196,7 @@ export function CrmFollowupDetail({ item }: { item: CrmFollowupRecord }) {
       <header className="crm-heading">
         <div>
           <span className={`crm-stage crm-stage-${item.stage}`}>
-            {CRM_STAGES[item.stage]}
+            {item.leadStatus ? LEAD_STATUSES[item.leadStatus] : CRM_STAGES[item.stage]}
           </span>
           <h2>{item.opportunityTitle}</h2>
           <p className="crm-hint">{item.companyName}</p>
@@ -233,8 +235,8 @@ export function CrmFollowupDetail({ item }: { item: CrmFollowupRecord }) {
         <strong>下一步</strong>
         <p>{item.nextAction || "未安排"}</p>
       </div>
-      <a href={`/#crm?opportunity=${encodeURIComponent(item.opportunityId)}`}>
-        查看关联商机
+      <a href={item.leadId ? leadLink(item.leadId) : `/#crm?opportunity=${encodeURIComponent(item.opportunityId)}`}>
+        {item.leadId ? "查看关联线索" : "查看关联商机"}
       </a>
     </div>
   );

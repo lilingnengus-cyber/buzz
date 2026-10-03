@@ -35,6 +35,7 @@ import {
 import { NAV_GROUPS, type Section } from "./businessNavigation";
 import { WORKFLOW_NAV_ALIASES, route } from "./businessRoute";
 import { CoreMasterDataCenter } from "./CoreMasterDataCenter";
+import { CrmLeadsPage } from "./CrmLeadsPage";
 import { CrmPage } from "./CrmPage";
 import { CrmRegisters } from "./CrmRegisters";
 import { resolveBusinessEnvironmentLabel } from "./environmentLabel";
@@ -305,6 +306,7 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
         mode={section === "goodsOrders" ? "goods" : "service"}
       />
     );
+  if (section === "crmLeads") return <CrmLeadsPage key={id} initialId={id} />;
   if (section === "crm") return <CrmPage key={id} initialId={id} />;
   if (section === "crmFollowups" || section === "crmContacts")
     return (

@@ -221,7 +221,7 @@ test("跟进与联系人列表分列展示，窄屏没有横向溢出", async ({
   await expect(
     page.locator(".crm-followup-grid.crm-register-columns > span"),
   ).toHaveText([
-    "商机",
+    "线索 / 商机",
     "客户",
     "联系人",
     "阶段",

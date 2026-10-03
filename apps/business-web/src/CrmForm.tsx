@@ -1,4 +1,5 @@
 import React from "react";
+import type { Lead } from "./crmLeads";
 import { CrmOwnerPicker } from "./CrmOwnerPicker";
 import { CrmAccountPicker, CrmContactPicker } from "./CrmDirectoryFields";
 import type { CrmAccount, CrmContact } from "./crm";
@@ -19,11 +20,13 @@ import {
 
 export function CrmForm({
   record,
+  lead,
   options,
   onSaved,
   onCancel,
 }: {
   record?: Opportunity;
+  lead?: Lead;
   options: CrmOption[];
   onSaved: (id: string) => void;
   onCancel: () => void;
@@ -43,7 +46,7 @@ export function CrmForm({
         units.length === 1 ? units[0].id : "",
       ),
   );
-  const [customer, setCustomer] = React.useState(record?.customerId ?? "");
+  const [customer, setCustomer] = React.useState(record?.customerId ?? lead?.customerId ?? "");
   const [account, setAccount] = React.useState<CrmAccount | null>(
     record?.accountId
       ? {
@@ -68,14 +71,14 @@ export function CrmForm({
       : null,
   );
   const [contactName, setContactName] = React.useState(
-    record?.contactName ?? "",
+    record?.contactName ?? lead?.contactName ?? "",
   );
   const [contactDetails, setContactDetails] = React.useState(
-    record?.contactDetails ?? "",
+    record?.contactDetails ?? lead?.contactDetails ?? "",
   );
-  const [company, setCompany] = React.useState(record?.companyName ?? "");
-  const [stage, setStage] = React.useState<CrmStage>(record?.stage ?? "new");
-  const [owner, setOwner] = React.useState(record?.ownerUserId ?? "");
+  const [company, setCompany] = React.useState(record?.companyName ?? lead?.companyName ?? "");
+  const [stage, setStage] = React.useState<CrmStage>(record?.stage ?? (lead ? "contacting" : "new"));
+  const [owner, setOwner] = React.useState(record?.ownerUserId ?? lead?.ownerUserId ?? "");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const lock = React.useRef(false);
@@ -98,30 +101,23 @@ export function CrmForm({
     draft.setBusy(true);
     setError("");
     try {
-      const result = await request<{ id: string }>(
-        `/api/v1/crm/opportunities${record ? `/${record.id}` : ""}`,
-        {
-          method: record ? "PUT" : "POST",
-          body: JSON.stringify({
-            legalEntityId: legal,
-            businessUnitId: unit,
-            customerId: customer || null,
-            accountId: account?.id ?? null,
-            contactId: contact?.id ?? null,
-            title: form.get("title"),
-            companyName: company,
-            contactName: form.get("contactName"),
-            contactDetails: form.get("contactDetails"),
-            stage,
-            expectedAmountMinor: amountMinor(String(form.get("amount") ?? "")),
-            currency: form.get("currency"),
-            nextAction: record?.nextAction ?? "",
-            nextFollowUp: record?.nextFollowUp ?? null,
-            expectedVersion: record?.version ?? null,
-            ownerUserId: owner || null,
+      const opportunity = {
+            legalEntityId: legal, businessUnitId: unit, customerId: customer || null,
+            accountId: account?.id ?? null, contactId: contact?.id ?? null,
+            title: form.get("title"), companyName: company, contactName: form.get("contactName"),
+            contactDetails: form.get("contactDetails"), stage,
+            expectedAmountMinor: amountMinor(String(form.get("amount") ?? "")), currency: form.get("currency"),
+            nextAction: record?.nextAction ?? lead?.nextAction ?? "",
+            nextFollowUp: record?.nextFollowUp ?? lead?.nextFollowUp ?? null,
+            expectedVersion: record?.version ?? null, ownerUserId: owner || null,
             expectedCloseDate: form.get("expectedCloseDate") || null,
             lossReason: stage === "lost" ? form.get("lossReason") : "",
-          }),
+      };
+      const result = await request<{ id: string }>(
+        lead ? `/api/v1/crm/leads/${lead.id}/convert` : `/api/v1/crm/opportunities${record ? `/${record.id}` : ""}`,
+        {
+          method: record ? "PUT" : "POST",
+          body: JSON.stringify(lead ? { expectedVersion: lead.version, opportunity } : opportunity),
         },
       );
       void rememberSyncedRecentOperatingUnit("crm-opportunity", unit);
@@ -151,7 +147,7 @@ export function CrmForm({
     >
       <fieldset className="crm-edit-fields" disabled={busy}>
         <div className="crm-heading">
-          <h2>{record ? "编辑商机" : "新建商机"}</h2>
+          <h2>{lead ? "确认转为商机" : record ? "编辑商机" : "新建商机"}</h2>
           <button
             type="button"
             onClick={() => {
@@ -186,13 +182,14 @@ export function CrmForm({
               name="title"
               required
               maxLength={160}
-              defaultValue={record?.title}
+              defaultValue={record?.title ?? lead?.title}
               placeholder="例如：杭州客户采购项目"
             />
           </label>
           <label>
             阶段
             <select
+              disabled={Boolean(lead)}
               value={stage}
               onChange={(e) => setStage(e.target.value as CrmStage)}
             >
@@ -366,7 +363,7 @@ export function CrmForm({
           </label>
         </div>
         <button className="primary" disabled={busy} type="submit">
-          {busy ? "保存中…" : "保存商机"}
+          {busy ? "保存中…" : lead ? "确认转为商机" : "保存商机"}
         </button>
       </fieldset>
     </form>

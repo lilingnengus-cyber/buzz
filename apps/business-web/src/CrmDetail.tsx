@@ -76,6 +76,7 @@ export function CrmDetail({
     );
   return (
     <div className="crm-detail">
+      {data.sourceLeadId && <p className="crm-hint"><a href={`/#crmLeads?lead=${encodeURIComponent(data.sourceLeadId)}`}>查看来源线索</a></p>}
       <div className="crm-heading">
         <div>
           <span className={`crm-stage crm-stage-${item.stage}`}>
@@ -168,7 +169,7 @@ export function CrmDetail({
             <div className="crm-note-meta">
               <strong>{note.authorName}</strong>
               <time>{new Date(note.createdAt).toLocaleString("zh-CN")}</time>
-              <span>{CRM_STAGES[note.stage]}</span>
+              <span>{note.sourceLeadId ? "线索转入" : CRM_STAGES[note.stage]}</span>
             </div>
             <p>{note.note}</p>
             {note.lossReason && (

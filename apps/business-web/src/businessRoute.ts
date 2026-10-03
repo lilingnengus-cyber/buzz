@@ -26,8 +26,13 @@ export function route(): { section: Section; id?: string; embed: boolean } {
       id: decodeURIComponent(agentQuery[1]),
       embed,
     };
+  const lead = clean.match(/^\/crm\/leads\/([^/]+)$/);
+  if (lead) return { section: "crmLeads", id: decodeURIComponent(lead[1]), embed };
+  const opportunity = clean.match(/^\/crm\/opportunities\/([^/]+)$/);
+  if (opportunity) return { section: "crm", id: decodeURIComponent(opportunity[1]), embed };
   if (clean === "/crm/followups") return { section: "crmFollowups", embed };
   if (clean === "/crm/contacts") return { section: "crmContacts", embed };
+  if (clean === "/crm/leads") return { section: "crmLeads", embed };
   if (clean === "/crm") return { section: "crm", embed };
   const customer = clean.match(/^\/customers\/([^/]+)$/);
   if (customer)
@@ -64,6 +69,7 @@ export function route(): { section: Section; id?: string; embed: boolean } {
   const [hashSection, hashQuery = ""] = window.location.hash
     .slice(1)
     .split("?");
+  if (hashSection === "crmLeads") return { section: "crmLeads", id: new URLSearchParams(hashQuery).get("lead") ?? undefined, embed };
   if (hashSection === "crm")
     return {
       section: "crm",

@@ -44,6 +44,7 @@ export type CrmOption = {
   descendantCount: number | null;
 };
 export type Followup = {
+  sourceLeadId?: string | null;
   id: string;
   note: string;
   lossReason?: string;
@@ -54,6 +55,7 @@ export type Followup = {
   authorName: string;
 };
 export type CrmDetail = {
+  sourceLeadId?: string | null;
   item: Opportunity;
   followups: Followup[];
   hasOlderFollowups: boolean;

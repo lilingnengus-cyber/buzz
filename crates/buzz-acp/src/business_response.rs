@@ -162,7 +162,9 @@ impl TurnObserver for BusinessResponseCapture {
 }
 
 fn is_business_read_tool(title: &str) -> bool {
-    const TOOLS: [&str; 17] = [
+    const TOOLS: [&str; 19] = [
+        "search_crm_leads",
+        "get_crm_lead",
         "search_business_master_data",
         "get_sales_order",
         "search_sales_orders",

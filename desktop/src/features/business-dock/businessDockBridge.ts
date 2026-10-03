@@ -90,6 +90,8 @@ const ACTION_RESOURCE_TYPES = new Set<BusinessResource["type"]>([
   "sales_order",
   "shipment",
   "purchase_order",
+  "crm_lead",
+  "crm_opportunity",
   "customer",
   "supplier",
   "inventory",

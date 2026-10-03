@@ -323,6 +323,21 @@ macOS Pacioli 生产只读验收：销售订单、商品订单闭环、服务订
 
 5 项针对性浏览器流程及全站 94 项浏览器流程通过，覆盖桌面/520px 窄屏、多币种、按需请求、只读零写入、部分权限、失败重试及刷新清除；类型、展示格式、文件大小和 diff 检查通过。窄屏截图已检查无横向溢出。
 
+### 2026-10-03 商机删除
+
+商机右侧详情增加“删除商机”，内嵌确认对话框明确说明保留客户、联系人和订单。取消不写入；提交期间锁定退出，失败保留详情及提示，成功关闭并刷新列表、清除详情深链接。仅 crm:manage 用户可见操作；服务端重新核对权限及范围，要求当前版本和幂等键，重试返回同一结果。
+
+迁移 81 增加 deleted_at，当前视图排除已删除商机。跟进历史与审计记录保留，日常跟进列表及联系人关联商机不再显示已删除条目；保存、跟进和成交转换也拦截已删除记录。客户、联系人及关联销售订单不删除。
+
+真实 PostgreSQL CRM 集成测试通过，覆盖无权限拒绝、版本冲突、重复删除请求、列表/详情隐藏、跟进历史及客户/订单保留；合并线上更新后 12 项 CRM 浏览器流程通过，随后合入关联订单进度更新，删除与销售草稿 4 项、订单进度 2 项通过。构建、类型及展示格式检查通过。
+
+发布保留最新线上库存与退货后端，以 inventory-currency-20261003 源码为基线移植 CRM 改动。Core 镜像 shiyue-business-core:crm-delete-current-20261003，固定 ID sha256:5e53fc63b10f32d76d327e855ff017ca502db3e185f4a653549e8684437a13e8；兼容回退镜像 crm-delete-current-compat-20261003 包含迁移 81。备份及迁移证据位于 /opt/business-platform/releases/crm-delete-current-20261003/deletion-migration-evidence，发布证据 deletion-release-evidence/release.4VyrIQgq。预检 head=81/pending=0，服务健康；迁移前后商机1、跟进1、客户3、联系人1、销售订单5均不变，已删除商机为0。
+
+网页合并线上 18a3452b3、7ecde38c7 后发布为 business-web-beeffd2ca，公开 JS index-CXudU2OO.js 与本地构建逐字节一致。未执行生产商机删除；浏览器写入验收使用模拟接口，真实业务写入使用本地隔离数据库。
+
+### 2026-10-03 Pacioli 原生客户端删除取消验收
+
+通过 macOS Pacioli 的 Business Dock 验收生产页面，复用既有登录会话。初始页面仍为旧资源，使用 Dock 刷新后删除按钮正常显示。打开现有商机详情并进入删除确认，确认提示包含跟进列表隐藏及客户/联系人/订单保留；点击取消后详情与跟进保留，再次打开并按 Escape 仅关闭确认框，关闭详情返回列表后仍显示原商机。未点击确认删除、未发送消息、未修改生产业务记录。独立浏览器未登录，未用其替代原生客户端验收。
 发布结果：`business-web-7ecde38c7`，公开入口 JS `assets/index-CgAZLvn_.js`，公开资源与本地构建 SHA-256 一致，IAM 与 Business Core 健康检查通过。保留原前端 `business-web-18a3452b3` 回滚指针，无服务端变更。
 
 Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正常，无登录或查询错误。当前生产商机没有可查看的关联订单，新增汇总的完整展示、失败、权限及多币种场景由上述隔离浏览器数据验证；未新增或修改生产业务记录，验收前的跟随设置已恢复。
@@ -346,3 +361,43 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 发布提交 `ea8d37ba1`。Core 镜像 `shiyue-business-core:crm-unit-owner-20261003`，固定 ID `sha256:8497e9aae5a0d2bbf817745d0297e201b836f68b8f9b8092c23454a71c0f5d97`；预检数据库及发布迁移均为 81、pending=0，健康检查通过。发布证据 `/opt/business-platform/releases/crm-unit-owner-20261003/release-evidence/release.ZS0MdAMr` 保留此前镜像回滚配置。网页 `business-web-ea8d37ba1`，入口 JS `assets/index-3VjtyWJW.js`，公开资源与本地 SHA256 一致，IAM/Core 健康。
 
 验证：99 项完整网页 Playwright、43 项网页单元测试、27 项 Core 单元测试、真实 PostgreSQL CRM 集成测试、TypeScript/展示格式检查、构建、严格 Clippy、Rust fmt 与文件大小检查通过。原生 `/Applications/Pacioli.app` 刷新生产 Business Dock 后登录延续；既有年度采购项目编辑可展开包含 5 个经营单元的树，负责人下拉显示 Business Administrator 和 authentik Default Admin。取消编辑后既有负责人、客户、联系人与历史跟进保持完整，没有保存生产表单；恢复原先的跟随聊天链接设置。未运行全仓 just ci，未创建 PR。
+
+## 2026-10-03 线索筛选与转商机
+
+售前 CRM 导航在商机前增加线索。仅名称必填，支持公司、联系人、联系方式、来源、需求摘要、负责人、已有客户及独立的下一步/跟进日期。列表支持关键词、状态、负责人、逾期筛选和分页；点击记录打开右侧详情，编辑及关闭沿用未保存保护。
+
+线索按创建者或负责人限制可见范围，读写分别要求 crm:read/crm:manage；分配不授予任何业务范围。状态为待筛选、跟进中、已转商机、已淘汰。筛选跟进保存不可变历史，淘汰原因必填，可重新跟进。相同公司或联系方式仅提示当前可见范围内的潜在重复，不自动合并。
+
+转商机先打开预填确认表单，选择法定主体、经营单元并补齐客户公司，初始为沟通中。服务端在同一事务内校验线索版本、目标范围与负责人，创建商机、复制完整跟进与需求摘要并记录来源，最后标记线索已转换；幂等重试不重复创建，失败不部分写入。转换后源线索只读，负责人随商机初始分配以便追溯。不会创建正式核心客户，仍沿用成交确认建档流程。
+
+统一跟进页包含线索及商机历史，可从线索跟进入口直接录入；已转换线索的历史在商机中展示一次，原线索详情仍保留历史。迁移 82 只增加线索表、线索历史表及商机跟进来源字段。
+
+验证：隔离 PostgreSQL 覆盖最低字段建档、权限隔离、疑似重复、淘汰/恢复、失败回滚、幂等转换、禁止再次转换、4000 字完整保留及正式客户数量不变。浏览器覆盖新建/详情/跟进/转换、未保存关闭、只读权限及历史导航；并回归既有 CRM 删除、成交、联系人、主体修改与订单关联。
+
+发布验证：前端 `business-web-55de91512`，公开 JS `index-C1m5rd5x.js` 与本地构建逐字节一致。服务端镜像 `sha256:9e1f28b4bd835f860d927f0a45cc7465b4b40e2167a55bf9425e962fe7b4c0ad`，迁移头 82，迁移检查 pending=0，健康检查通过；未登录线索请求返回 401。发布证据 `/opt/business-platform/releases/crm-leads-20261003/lead-release-evidence/release.Y0jtVUJl`，数据库备份和兼容回滚配置保存在同级 `lead-migration-evidence`。发布前后商机/跟进/正式客户/联系人/销售订单数量均为 `1/1/3/1/5`，生产线索数量为 0，未写入生产测试记录。保留前端 `business-web-ea8d37ba1` 回滚指针及兼容数据库 82 的旧业务逻辑镜像。
+
+补充验收：4 项线索浏览器流程通过，包括统一跟进页录入与取消只确认一次；负责人分配后的创建者/接手人可见范围、负责人筛选和旧版本拒绝已在隔离数据库验证。类型、展示格式、43 项前端单元测试、Clippy 和文件大小检查通过。原生已登录会话内的新线索实写未执行。
+
+## 2026-10-03 企业助手线索工具
+
+新增固定工具 `search_crm_leads`、`get_crm_lead`、`create_crm_lead`、`record_crm_lead_followup`、`convert_crm_lead`。新增仅名称必填，其他信息按用户提供保存；下一步与跟进日期独立。跟进读取当前版本，淘汰需要原因，转商机先向用户展示业务主体及转换内容并取得明确确认；初始阶段固定为沟通中，不创建正式客户、联系人或订单。确认由助手交互与工具参数约束，不是独立签名审批命令。
+
+固定 MCP/Read API/Core 路径沿用发消息人的短期委托和当前 IAM 权限，读写分别要求 crm:read/crm:manage；现有写入开关覆盖 CRM 写入。调用方不能覆盖操作者，源聊天事件与工具名构成幂等标识，跨委托重试保持同一标识，Core 继续验证版本、可见范围、目标经营范围和负责人。读取返回有限当前字段，不返回联系方式、需求摘要及自由文本跟进历史；链接指向获授权的详情页。
+
+回复优先使用按已配置工作台地址生成的 HTTPS Dock 链接，现有安装版可导航到 `/embed/crm/leads/{id}` 或 `/embed/crm/opportunities/{id}`。网页路由直接打开对应右侧详情；原生源码补齐 `biz://crm-lead` / `biz://crm-opportunity` 解析，下次完整原生打包后生效。
+
+验证：固定工具注册、权限开关、写入结果 ID/版本/资源一致性、操作者不可覆盖、跨委托幂等标识均通过测试。模拟 ACP/模型运行确认 45 个固定工具可见；四项线索浏览器流程覆盖 HTTPS 直达线索/商机详情。前端 43 项单元测试、Dock 34 项测试、TypeScript、Rust 格式/Clippy 和文件大小检查通过。模拟验收未发送真实聊天消息，未新增生产线索。
+
+发布：提交 `65e7daacd` 的网页部署到 `business-web-65e7daacd`，公开 JS `index-C1TsL2pW.js` 与本地构建逐字节一致。Core/Gateway/Read API 固定镜像分别为 `sha256:542a81b4ac4b883430091d78adf58aa2d0bbc659f38753da12cff3e4aa1080da`、`sha256:48ba4143e0dd9ac8d035c4680aaefda9c9c9ac31fc32b8b93ad624d4e1721704`、`sha256:aeb5151662b7e410ce09ef9bdcda7a0e6eeac6c6b57ec4f620c6ec0c09a42a6d`。迁移头 82，pending=0；三个容器内部健康检查通过，公开 Read API 健康返回 200，未授权的浏览器线索读取、Agent 线索查询及新建均返回 401。证据与固定镜像回滚配置在 `/opt/business-platform/releases/crm-agent-20261003/deployment`。首次健康检查误用了网关 3110 端口并自动回滚，修正为实际 3100 端口后重新发布成功；保留兼容数据库 82 的旧逻辑网关回滚镜像。
+
+发布后线索/商机/跟进/核心客户/联系人/销售订单数量为 `0/1/1/3/1/5`，与发布前一致。Pacioli 已替换附带的 buzz-acp、business-read-mcp 及企业助手配置指向的 MCP 程序，旧程序备份在本机 `Library/Application Support/com.shiyueshizi.pacioli/backups/crm-agent-20261003`，应用签名验证通过。Mac 锁屏阻止在原生界面重启企业助手，目前运行中的助手仍需重启才能加载新范围和工具；未发送真实聊天验收消息，未完成原生会话新工具验收。
+
+原生运行补充：Mac 解锁后，通过 Pacioli 的拾玥_BizOS 资料页“Restart agent”重启成功，界面恢复 Online/Running，新的附带 buzz-acp 进程重新连接生产 relay。读取和草稿写入开关均启用；安装版 MCP 在 production 配置下完成 initialize/tools/list，注册 45 个固定工具，包含全部五个 CRM 工具。此工具目录检查使用无实际权限的本地占位凭据，未调用业务工具、未请求业务数据、未代发聊天消息；真实会话的线索查询/写入验收仍未执行。
+
+真实聊天验收第一次：已获用户授权，向拾玥_BizOS 发送“查询待筛选线索，不修改数据”。源消息 `606527d40e768dfd5421bcc4a92bfe741c462df3034a1c50fef076c11a229267` 返回企业账号授权失败，工具尚未执行。网关响应实际为 503：IAM 在加载账号全部权限时，无法解析无关审批能力上的旧 `fresh_signed_chat_command` 约束，事务回滚，尚未形成授权审计决策。
+
+修复 `b6151be29` 将权限约束解析限定在本回合请求的能力；不修改任何账号权限，相关能力上的未知约束仍拒绝，已知审批约束仍保留。10 项网关单元测试和 Clippy 通过，覆盖无关约束隔离、未知约束拒绝与已知约束保留。网关已单独部署为 `sha256:c3d1188e3310e518eb12b23438ca219600fef10164303a68741cbc84e0525a2b` 并通过内部健康检查，回滚证据在 `/opt/business-platform/releases/crm-agent-20261003/iam-isolation-deployment`；Core、Read API、数据库迁移和前端没有改动。重试时 Mac 再次自动锁屏，已请求解锁；尚未获得成功的真实聊天线索查询结果。
+
+真实聊天查询复验通过：客户端解锁后重试同一句只读查询，源消息 `a62b39c6730f4ee85645502852fb1ef85c3defe6b62d264f09f3f741d569b4a3` 得到“暂无待筛选线索”，附查询记录链接。Trace ID `05dbf639-3613-4471-b22f-2685ade69a64` 的服务端审计完整记录 `AGENT_TURN_AUTHORIZED`、`AGENT_DELEGATION_ISSUED`、`BUSINESS_MCP_TOOL_CALLED` / `BUSINESS_MCP_TOOL_SUCCEEDED`（`search_crm_leads`，结果 0）、`AGENT_BUSINESS_RESPONSE_EMITTED` 和 `AGENT_DELEGATION_REVOKED`，均成功。生产线索仍为 0，没有写入业务数据。当前账号的本次授权仍拒绝 `crm:manage`（另有既存的业务行动、异常、订单利润读取能力未授权）；本次仅验证线索读取，没有调整任何授权，也没有验收线索写入。查询记录链接的 AX 点击未产生可确认的页面变化，因此不作为链接打开成功证据。
+
+CRM 写入授权补充（2026-10-03）：用户明确要求执行账号权限配置。安装版 Authority ledger 缺少 `VITE_BUSINESS_IAM_ADMIN_URL`，在线管理 UI 无法提交申请；使用独立 `shiyueshizi_business_iam_admin` 数据库管理凭据进行一次离线维护。事务锁定并核对当前 Human 主体及版本，只新增该主体的 `crm:manage` 直接授权，完整复制既存 `crm:read` 的法人、业务单元、客户维度范围及附加约束，不改角色、其他能力或独立 Agent。权限变更与 `OFFLINE_CRM_PERMISSION_GRANT` 审计在同一事务提交，审计明确标记离线维护，不伪造 OIDC 证据或在线审批。审计 Trace `68b1fc13-9d32-40db-95a6-e353e6bc2a30`；执行 SQL 与结果保存在服务器 `crm-agent-20261003/crm-permission-evidence`。新增授权后的真实只读查询 Trace `f7d89daa-9079-4a22-9698-628d38eb90f4` 确认本次委托已允许 `crm:manage`，其余未授权能力仍拒绝；线索/商机/正式客户/联系人数量为 `0/1/3/1`。这验证权限配置和委托生效，不代表业务写入验收通过；实际测试线索与转换仍需取得明确测试记录授权。

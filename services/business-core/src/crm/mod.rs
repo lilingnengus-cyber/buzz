@@ -8,6 +8,7 @@ pub use conversion::ConvertCustomer;
 mod model;
 mod ownership;
 pub use ownership::OwnerScope;
+mod leads;
 mod registers;
 use crate::{
     b2::common::{
@@ -16,6 +17,7 @@ use crate::{
     store::PgStore,
 };
 pub use directory::{SaveAccount, SaveContact};
+pub use leads::{ConvertLead, LeadFilters, LeadFollowup, SaveLead};
 pub use model::{AddFollowup, Filters, Opportunity, SaveOpportunity};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -81,11 +83,16 @@ impl CrmService {
             return Err(DomainError::Invalid("无效页码".into()));
         }
         let item = self.accessible(actor, id, "crm:read").await?;
-        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name,'lossReason',f.loss_reason) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
+        let notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'sourceLeadId',f.source_lead_id,'note',f.note,'stage',f.stage,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name,'lossReason',f.loss_reason) FROM crm_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE opportunity_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2")
             .bind(id).bind(offset).fetch_all(self.store.pool()).await?;
+        let source_lead: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM crm_leads WHERE converted_opportunity_id=$1")
+                .bind(id)
+                .fetch_optional(self.store.pool())
+                .await?;
         let has_more = notes.len() > 100;
         Ok(
-            json!({"item":item,"followups":notes.into_iter().take(100).collect::<Vec<_>>(),"hasOlderFollowups":has_more}),
+            json!({"item":item,"sourceLeadId":source_lead,"followups":notes.into_iter().take(100).collect::<Vec<_>>(),"hasOlderFollowups":has_more}),
         )
     }
     /// Return active, scoped choices without requiring unrelated master-data manage access.
@@ -103,6 +110,18 @@ impl CrmService {
         id: Option<Uuid>,
         key: &str,
         input: &SaveOpportunity,
+    ) -> Result<Value, DomainError> {
+        self.save_from_lead(actor, trace, id, key, input, None)
+            .await
+    }
+    async fn save_from_lead(
+        &self,
+        actor: Uuid,
+        trace: Uuid,
+        id: Option<Uuid>,
+        key: &str,
+        input: &SaveOpportunity,
+        lead: Option<(Uuid, i64)>,
     ) -> Result<Value, DomainError> {
         input.validate()?;
         if input.stage == "won" && input.customer_id.is_none() {
@@ -134,12 +153,22 @@ impl CrmService {
             return Err(DomainError::Invalid("更新需要当前版本".into()));
         }
         let mut tx = self.store.pool().begin().await?;
-        let hash = request_hash(&(id, input))?;
+        let hash = if let Some(lead) = lead {
+            request_hash(&(id, input, lead))?
+        } else {
+            request_hash(&(id, input))?
+        };
         if let Some(result) =
             begin_idempotent::<Value>(&mut tx, actor, "crm:save", key, &hash).await?
         {
             tx.commit().await?;
             return Ok(result);
+        }
+        if let Some((lead_id, version)) = lead {
+            let status = self.lock_lead(&mut tx, actor, lead_id, version).await?;
+            if status == "disqualified" {
+                return Err(DomainError::Invalid("请先重新跟进，再转为商机".into()));
+            }
         }
         let owner = input
             .owner_user_id
@@ -209,6 +238,28 @@ impl CrmService {
             sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,loss_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
                 .bind(Uuid::new_v4()).bind(record_id).bind(actor).bind(format!("商机资料更新：阶段为{label}。"))
                 .bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(&loss_reason).execute(&mut *tx).await?;
+        }
+        if let Some((lead_id, _)) = lead {
+            sqlx::query("UPDATE crm_leads SET status='converted',converted_opportunity_id=$2,owner_user_id=$3,version=version+1,updated_at=now() WHERE id=$1").bind(lead_id).bind(record_id).bind(owner).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,created_at,source_lead_id,loss_reason) SELECT gen_random_uuid(),$2,author_user_id,note,'contacting',next_action,next_follow_up,created_at,lead_id,disqualification_reason FROM crm_lead_followups WHERE lead_id=$1").bind(lead_id).bind(record_id).execute(&mut *tx).await?;
+            let summary: String = sqlx::query_scalar("SELECT summary FROM crm_leads WHERE id=$1")
+                .bind(lead_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            if !summary.trim().is_empty() {
+                sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,source_lead_id) VALUES($1,$2,$3,$4,'contacting',$5,$6,$7)").bind(Uuid::new_v4()).bind(record_id).bind(actor).bind(summary).bind(&input.next_action).bind(input.next_follow_up).bind(lead_id).execute(&mut *tx).await?;
+            }
+            record(
+                &mut tx,
+                trace,
+                actor,
+                "crm.lead.converted",
+                "crm.lead.converted",
+                "crm_lead",
+                lead_id,
+                json!({"opportunityId":record_id}),
+            )
+            .await?;
         }
         let result = json!({"id":record_id,"version":version,"traceId":trace});
         record(
