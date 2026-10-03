@@ -1,6 +1,8 @@
 import React from "react";
 import { request, type Envelope, type SalesOrder } from "./api";
 import { formatMoney } from "./formatters";
+import { SalesOrderProgress } from "./SalesOrderProgress";
+import "./order-workflow-detail.css";
 const statuses: Record<string, string> = {
   draft: "草稿",
   confirmed: "已确认",
@@ -23,6 +25,7 @@ export function CrmRelatedOrders({
   React.useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setItems([]);
     setError("");
     request<Envelope<SalesOrder>>(
       `/api/v1/sales-orders?opportunityId=${encodeURIComponent(opportunityId)}&limit=200`,
@@ -42,7 +45,12 @@ export function CrmRelatedOrders({
   }, [opportunityId, revision, retry]);
   return (
     <section className="crm-related-orders">
-      <h3>关联销售订单</h3>
+      <header className="crm-heading">
+        <h3>关联销售订单</h3>
+        <button type="button" disabled={loading} onClick={() => setRetry((v) => v + 1)}>
+          刷新关联订单
+        </button>
+      </header>
       {loading ? (
         <p role="status" className="crm-hint">
           正在读取订单…
@@ -55,20 +63,7 @@ export function CrmRelatedOrders({
       ) : items.length ? (
         <>
           {items.map((o) => (
-            <a
-              className="crm-related-order"
-              key={o.id}
-              href={`/sales/orders/${encodeURIComponent(o.id)}`}
-            >
-              <div>
-                <strong>{o.orderNumber}</strong>
-                <span className="crm-hint">{o.orderDate}</span>
-              </div>
-              <span>{formatMoney(o.currency, Number(o.grossAmount))}</span>
-              <span className="crm-stage">
-                {statuses[o.lifecycleStatus] || o.lifecycleStatus}
-              </span>
-            </a>
+            <RelatedOrder key={o.id} order={o} />
           ))}
           {items.length === 200 && (
             <p className="crm-hint">显示最近 200 笔关联订单。</p>
@@ -80,5 +75,25 @@ export function CrmRelatedOrders({
         </p>
       )}
     </section>
+  );
+}
+
+function RelatedOrder({ order }: { order: SalesOrder }) {
+  const [expanded, setExpanded] = React.useState(false);
+  return (
+    <article className="crm-related-order-card" aria-label={`关联订单 ${order.orderNumber}`}>
+      <a className="crm-related-order" href={`/sales/orders/${encodeURIComponent(order.id)}`}>
+        <div>
+          <strong>{order.orderNumber}</strong>
+          <span className="crm-hint">{order.orderDate}</span>
+        </div>
+        <span>{formatMoney(order.currency, order.grossAmount)}</span>
+        <span className="crm-stage">{statuses[order.lifecycleStatus] || order.lifecycleStatus}</span>
+      </a>
+      <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
+        <summary>履约、验收与回款汇总</summary>
+        {expanded && <SalesOrderProgress id={order.id} summaryOnly />}
+      </details>
+    </article>
   );
 }
