@@ -1,4 +1,5 @@
 import React from "react";
+import { LEAD_STATUSES, leadLink, type Lead } from "./crmLeads";
 import { CrmFollowupCreate } from "./CrmFollowupCreate";
 import { CrmDirectoryPage } from "./CrmDirectoryPage";
 import { request } from "./api";
@@ -11,6 +12,7 @@ import "./crm-opportunities.css";
 import "./crm-registers.css";
 
 type Note = Followup & {
+  leadId?: string; leadStatus?: Lead["status"]; sourceLeadId?: string;
   opportunityId: string;
   opportunityTitle: string;
   companyName: string;
@@ -101,7 +103,7 @@ function CrmHistoryRegister() {
           <p className="eyebrow">售前 CRM</p>
           <h1>{title}</h1>
           <p className="crm-hint">
-            统一记录客户沟通，更新关联商机的阶段和下一步。
+            统一查看线索与商机的沟通历史。
           </p>
         </div>
         {canManage && (
@@ -168,7 +170,7 @@ function CrmHistoryRegister() {
       </div>
       {due && (
         <p className="crm-hint">
-          按关联商机当前的跟进安排筛选；记录内日期保留当时安排，历史记录不代表当前待办。
+          按关联线索或商机当前的跟进安排筛选；记录内日期保留当时安排，历史记录不代表当前待办。
         </p>
       )}
       <CrmAccountPicker
@@ -204,7 +206,7 @@ function CrmHistoryRegister() {
             aria-hidden="true"
           >
             {[
-              "商机",
+              "线索 / 商机",
               "客户",
               "联系人",
               "阶段",
@@ -259,9 +261,9 @@ function CrmHistoryRegister() {
                 }}
               >
                 <div className="crm-register-cell">
-                  <a href={opportunityLink(item.opportunityId)}>
+                  <a href={item.leadId ? leadLink(item.leadId) : opportunityLink(item.opportunityId)}>
                     {item.opportunityTitle}
-                  </a>
+                  </a><small>{item.leadId ? "线索" : item.sourceLeadId ? "线索转入" : "商机"}</small>
                 </div>
                 <div className="crm-register-cell">{item.companyName}</div>
                 <div className="crm-register-cell">
@@ -269,7 +271,7 @@ function CrmHistoryRegister() {
                 </div>
                 <div className="crm-register-cell">
                   <span className={`crm-stage crm-stage-${item.stage}`}>
-                    {CRM_STAGES[item.stage]}
+                    {item.leadStatus ? LEAD_STATUSES[item.leadStatus] : CRM_STAGES[item.stage]}
                   </span>
                 </div>
                 <div className="crm-register-cell">

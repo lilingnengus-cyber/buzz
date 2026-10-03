@@ -1,0 +1,5 @@
+.crm-leads .crm-lead-columns, .crm-leads .crm-lead-row { display: grid; grid-template-columns: minmax(12rem, 2fr) minmax(6rem, 1fr) minmax(6rem, .8fr) minmax(10rem, 1.5fr) minmax(7rem, 1fr); gap: 1rem; }
+.crm-lead-columns { padding: 1rem; background: var(--surface-alt, #e3edf0); font-size: .875rem; }
+.crm-lead-row span { min-width: 0; overflow-wrap: anywhere; }
+.crm-lead-row small { display: block; margin-top: .5rem; }
+@media (max-width: 760px) { .crm-leads .crm-lead-columns { display:none; } .crm-leads .crm-lead-row { grid-template-columns: 1fr 1fr; } .crm-leads .crm-lead-row > :first-child { grid-column: 1 / -1; } }

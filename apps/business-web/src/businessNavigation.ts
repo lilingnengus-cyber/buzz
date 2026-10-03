@@ -4,6 +4,7 @@ export type Section =
   | "quality"
   | "incidents"
   | "trends"
+  | "crmLeads"
   | "crm"
   | "crmFollowups"
   | "crmContacts"
@@ -62,6 +63,7 @@ export const NAV_GROUPS: Array<{
     label: "售前 CRM",
     index: "03",
     items: [
+      { id: "crmLeads", label: "线索" },
       { id: "crm", label: "商机" },
       { id: "crmFollowups", label: "跟进记录" },
       { id: "crmContacts", label: "联系人" },

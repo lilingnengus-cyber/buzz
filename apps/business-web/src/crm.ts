@@ -54,6 +54,7 @@ export type Followup = {
   authorName: string;
 };
 export type CrmDetail = {
+  sourceLeadId?: string | null;
   item: Opportunity;
   followups: Followup[];
   hasOlderFollowups: boolean;

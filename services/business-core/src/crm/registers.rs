@@ -35,17 +35,28 @@ impl CrmService {
                 AND ($7::uuid IS NULL OR c.account_id=$7) AND $8::text IS NULL AND $9::date IS NULL
               ORDER BY COALESCE(b.name,a.name),c.name,c.id LIMIT 51 OFFSET $5"#
         } else {
-            r#"SELECT jsonb_build_object('id',f.id,'note',f.note,'stage',f.stage,
+            r#"SELECT payload FROM (SELECT f.created_at,f.id,jsonb_build_object('id',f.id,'sourceLeadId',f.source_lead_id,'note',f.note,'stage',f.stage,
                 'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,
                 'authorName',u.display_name,'lossReason',f.loss_reason,'opportunityId',o.id,'opportunityTitle',o.title,
-                'companyName',o.company_name,'contactName',o.contact_name)
+                'companyName',o.company_name,'contactName',o.contact_name) payload
               FROM crm_followups f JOIN crm_opportunity_current o ON o.id=f.opportunity_id
                 JOIN enterprise_users u ON u.id=f.author_user_id
               WHERE o.legal_entity_id=ANY($1) AND o.business_unit_id=ANY($2)
                 AND (o.customer_id IS NULL OR o.customer_id=ANY($3))
                 AND ($4::text IS NULL OR strpos(lower(o.title||' '||o.company_name||' '||o.contact_name||' '||f.note),lower($4))>0)
               AND $6::uuid IS NOT NULL AND ($7::uuid IS NULL OR o.account_id=$7)
-              AND ($8::text IS NULL OR (o.stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN o.next_follow_up < $9::date WHEN 'today' THEN o.next_follow_up = $9::date WHEN 'upcoming' THEN o.next_follow_up > $9::date AND o.next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN o.next_follow_up IS NULL WHEN 'open' THEN true ELSE false END)) ORDER BY f.created_at DESC,f.id DESC LIMIT 51 OFFSET $5"#
+              AND ($8::text IS NULL OR (o.stage NOT IN ('won','lost') AND CASE $8 WHEN 'overdue' THEN o.next_follow_up < $9::date WHEN 'today' THEN o.next_follow_up = $9::date WHEN 'upcoming' THEN o.next_follow_up > $9::date AND o.next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN o.next_follow_up IS NULL WHEN 'open' THEN true ELSE false END))
+              UNION ALL
+              SELECT f.created_at,f.id,jsonb_build_object('id',f.id,'leadId',l.id,'leadStatus',f.status,'note',f.note,'stage',CASE WHEN f.status='disqualified' THEN 'lost' ELSE f.status END,
+                'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,
+                'authorName',u.display_name,'lossReason',f.disqualification_reason,'opportunityId',l.id,'opportunityTitle',l.title,
+                'companyName',l.company_name,'contactName',l.contact_name)
+              FROM crm_lead_followups f JOIN crm_leads l ON l.id=f.lead_id JOIN enterprise_users u ON u.id=f.author_user_id
+              WHERE l.owner_user_id=$6 AND l.status!='converted'
+                AND ($4::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||f.note),lower($4))>0)
+                AND ($7::uuid IS NULL OR EXISTS(SELECT 1 FROM crm_accounts a WHERE a.id=$7 AND a.customer_id=l.customer_id))
+                AND ($8::text IS NULL OR (l.status IN ('new','contacting') AND CASE $8 WHEN 'overdue' THEN l.next_follow_up < $9::date WHEN 'today' THEN l.next_follow_up = $9::date WHEN 'upcoming' THEN l.next_follow_up > $9::date AND l.next_follow_up <= $9::date + 7 WHEN 'unscheduled' THEN l.next_follow_up IS NULL WHEN 'open' THEN true ELSE false END))
+              ) history ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $5"#
         };
         let mut items: Vec<Value> = sqlx::query_scalar(sql)
             .bind(

@@ -50,6 +50,11 @@ impl IntoResponse for Error {
 /// Mount within the authenticated Business Core browser surface.
 pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/v1/crm/leads", get(leads).post(create_lead))
+        .route("/api/v1/crm/leads/owners", get(lead_owners))
+        .route("/api/v1/crm/leads/{id}", get(lead_detail).put(update_lead))
+        .route("/api/v1/crm/leads/{id}/followups", post(lead_followup))
+        .route("/api/v1/crm/leads/{id}/convert", post(convert_lead))
         .route("/api/v1/crm/opportunities", get(list).post(create))
         .route("/api/v1/crm/options", get(options))
         .route(
@@ -328,6 +333,115 @@ async fn delete(
 ) -> Result<Json<Value>, Error> {
     service(&s)
         .delete(
+            c.actor_user_id,
+            c.trace_id,
+            id,
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn leads(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Query(f): Query<super::LeadFilters>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .leads(c.actor_user_id, &f)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn lead_owners(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .lead_owners(c.actor_user_id)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn lead_detail(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    Query(f): Query<super::LeadFilters>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .lead_detail(c.actor_user_id, id, f.offset)
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn create_lead(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveLead>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_lead(
+            c.actor_user_id,
+            c.trace_id,
+            None,
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn update_lead(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::SaveLead>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .save_lead(
+            c.actor_user_id,
+            c.trace_id,
+            Some(id),
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn lead_followup(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::LeadFollowup>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .lead_followup(
+            c.actor_user_id,
+            c.trace_id,
+            id,
+            key(&h, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+async fn convert_lead(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::ConvertLead>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .convert_lead(
             c.actor_user_id,
             c.trace_id,
             id,

@@ -1,3 +1,5 @@
+#[path = "support/lead_checks.rs"]
+mod lead_checks;
 use business_core::{
     b2::DomainError,
     crm::{AddFollowup, CrmService, Filters, SaveAccount, SaveContact, SaveOpportunity},
@@ -914,6 +916,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
     .fetch_one(&pool)
     .await
     .unwrap());
+    lead_checks::check(&pool, &crm, actor, outsider, legal, unit).await;
     // Revoking the business scope hides opportunities but not an owner's independent prospect.
     sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
         .bind(actor)

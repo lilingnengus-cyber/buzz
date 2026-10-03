@@ -76,6 +76,7 @@ export function CrmDetail({
     );
   return (
     <div className="crm-detail">
+      {data.sourceLeadId && <p className="crm-hint"><a href={`/#crmLeads?lead=${encodeURIComponent(data.sourceLeadId)}`}>查看来源线索</a></p>}
       <div className="crm-heading">
         <div>
           <span className={`crm-stage crm-stage-${item.stage}`}>
