@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmDelete } from "./CrmDelete";
 import { CrmRelatedOrders } from "./CrmRelatedOrders";
 import { SalesOrderEntry } from "./SalesOrderEntry";
 import { useCrmDraft } from "./CrmDrawer";
@@ -9,10 +10,12 @@ export function CrmDetail({
   data,
   canManage,
   onEdit,
+  onDeleted,
 }: {
   data: Detail;
   canManage: boolean;
   onEdit: () => void;
+  onDeleted: () => void;
 }) {
   const draft = useCrmDraft();
   const item = data.item;
@@ -89,6 +92,7 @@ export function CrmDetail({
           </button>
         )}
       </div>
+      {canManage && <CrmDelete item={item} onDeleted={onDeleted} />}
       <dl className="crm-facts">
         <div>
           <dt>商机负责人</dt>

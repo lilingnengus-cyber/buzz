@@ -59,11 +59,13 @@ impl CrmService {
             tx.commit().await?;
             return Ok(result);
         }
-        let version: i64 =
-            sqlx::query_scalar("SELECT version FROM crm_opportunities WHERE id=$1 FOR UPDATE")
-                .bind(id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let version: i64 = sqlx::query_scalar(
+            "SELECT version FROM crm_opportunities WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(DomainError::NotFoundOrForbidden)?;
         if version != input.expected_version {
             return Err(DomainError::VersionConflict);
         }

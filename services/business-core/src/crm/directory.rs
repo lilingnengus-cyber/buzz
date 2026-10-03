@@ -31,7 +31,7 @@ impl CrmService {
         permission: &str,
     ) -> Result<Option<Uuid>, DomainError> {
         let s = self.scope(actor, permission).await?;
-        let customer: Option<Option<Uuid>> = sqlx::query_scalar("SELECT a.customer_id FROM crm_accounts a WHERE a.id=$1 AND ((a.customer_id IS NOT NULL AND a.customer_id=ANY($3)) OR (a.customer_id IS NULL AND (a.owner_user_id=$2 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.account_id=a.id AND o.legal_entity_id=ANY($4) AND o.business_unit_id=ANY($5) AND o.customer_id IS NULL))))")
+        let customer: Option<Option<Uuid>> = sqlx::query_scalar("SELECT a.customer_id FROM crm_accounts a WHERE a.id=$1 AND ((a.customer_id IS NOT NULL AND a.customer_id=ANY($3)) OR (a.customer_id IS NULL AND (a.owner_user_id=$2 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.deleted_at IS NULL AND o.account_id=a.id AND o.legal_entity_id=ANY($4) AND o.business_unit_id=ANY($5) AND o.customer_id IS NULL))))")
             .bind(id).bind(actor).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).fetch_optional(self.store.pool()).await?;
         customer.ok_or(DomainError::NotFoundOrForbidden)
     }
@@ -42,7 +42,7 @@ impl CrmService {
         if !(0..=100000).contains(&filters.offset) {
             return Err(DomainError::Invalid("无效页码".into()));
         }
-        let mut items: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',a.id,'customerId',a.customer_id,'name',COALESCE(c.name,a.name),'version',a.version) FROM crm_accounts a LEFT JOIN business_customers c ON c.id=a.customer_id WHERE ((a.customer_id IS NOT NULL AND a.customer_id=ANY($2)) OR (a.customer_id IS NULL AND (a.owner_user_id=$1 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.account_id=a.id AND o.legal_entity_id=ANY($3) AND o.business_unit_id=ANY($4) AND o.customer_id IS NULL)))) AND ($5::text IS NULL OR strpos(lower(COALESCE(c.name,a.name)),lower($5))>0) ORDER BY COALESCE(c.name,a.name),a.id LIMIT 51 OFFSET $6")
+        let mut items: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',a.id,'customerId',a.customer_id,'name',COALESCE(c.name,a.name),'version',a.version) FROM crm_accounts a LEFT JOIN business_customers c ON c.id=a.customer_id WHERE ((a.customer_id IS NOT NULL AND a.customer_id=ANY($2)) OR (a.customer_id IS NULL AND (a.owner_user_id=$1 OR EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.deleted_at IS NULL AND o.account_id=a.id AND o.legal_entity_id=ANY($3) AND o.business_unit_id=ANY($4) AND o.customer_id IS NULL)))) AND ($5::text IS NULL OR strpos(lower(COALESCE(c.name,a.name)),lower($5))>0) ORDER BY COALESCE(c.name,a.name),a.id LIMIT 51 OFFSET $6")
             .bind(actor).bind(s.scopes.customer_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.legal_entity_ids.iter().copied().collect::<Vec<_>>()).bind(s.scopes.business_unit_ids.iter().copied().collect::<Vec<_>>()).bind(filters.query.as_deref().map(str::trim)).bind(filters.offset).fetch_all(self.store.pool()).await?;
         let has_more = items.len() > 50;
         items.truncate(50);

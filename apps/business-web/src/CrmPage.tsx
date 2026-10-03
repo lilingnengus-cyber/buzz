@@ -324,6 +324,12 @@ export function CrmPage({ initialId }: { initialId?: string }) {
                   data={detail}
                   canManage={data.canManage}
                   onEdit={() => setEditing(true)}
+                  onDeleted={() => {
+                    setSelected(null);
+                    setDetail(null);
+                    setRevision((v) => v + 1);
+                    setNotice("商机已删除");
+                  }}
                 />
               ))
             )}

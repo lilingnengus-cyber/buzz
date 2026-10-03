@@ -834,6 +834,86 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             .await,
         Err(DomainError::NotFoundOrForbidden)
     ));
+    let version = crm.detail(actor, conversion_id, 0).await.unwrap()["item"]["version"]
+        .as_i64()
+        .unwrap();
+    let delete = business_core::crm::DeleteOpportunity {
+        expected_version: version,
+    };
+    assert!(matches!(
+        crm.delete(
+            outsider,
+            Uuid::new_v4(),
+            conversion_id,
+            "delete-denied",
+            &delete
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    assert!(matches!(
+        crm.delete(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "delete-stale",
+            &business_core::crm::DeleteOpportunity {
+                expected_version: version - 1
+            }
+        )
+        .await,
+        Err(DomainError::VersionConflict)
+    ));
+    let deleted = crm
+        .delete(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "delete-success",
+            &delete,
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted["deleted"], true);
+    assert_eq!(
+        deleted,
+        crm.delete(
+            actor,
+            Uuid::new_v4(),
+            conversion_id,
+            "delete-success",
+            &delete
+        )
+        .await
+        .unwrap()
+    );
+    assert!(matches!(
+        crm.detail(actor, conversion_id, 0).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    assert!(
+        !crm.list(actor, &Filters::default()).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["id"] == conversion_id.to_string())
+    );
+    assert!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM crm_followups WHERE opportunity_id=$1")
+            .bind(conversion_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            > 0
+    );
+    assert_eq!(sales.list_orders(actor, 200).await.unwrap().len(), 2);
+    assert!(sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM business_customers WHERE id=$1)"
+    )
+    .bind(converted_customer)
+    .fetch_one(&pool)
+    .await
+    .unwrap());
     // Revoking the business scope hides opportunities but not an owner's independent prospect.
     sqlx::query("DELETE FROM business_unit_scopes WHERE enterprise_user_id=$1")
         .bind(actor)
@@ -874,6 +954,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
             ("PUT", format!("/api/v1/crm/contacts/{contact_id}")),
             ("POST", "/api/v1/crm/opportunities".into()),
             ("PUT", format!("/api/v1/crm/opportunities/{id}")),
+            ("DELETE", format!("/api/v1/crm/opportunities/{id}")),
             ("POST", format!("/api/v1/crm/opportunities/{id}/followups")),
             (
                 "POST",

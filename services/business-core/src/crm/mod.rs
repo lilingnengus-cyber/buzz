@@ -1,6 +1,8 @@
 //! Minimal presales CRM, sharing Business Core identity, scopes and command audit.
 pub mod api;
 mod conversion;
+mod deletion;
+pub use deletion::DeleteOpportunity;
 mod directory;
 pub use conversion::ConvertCustomer;
 mod model;
@@ -180,7 +182,7 @@ impl CrmService {
             sqlx::query_scalar("INSERT INTO crm_opportunities(id,legal_entity_id,business_unit_id,customer_id,title,company_name,contact_name,contact_details,stage,expected_amount_minor,currency,next_action,next_follow_up,owner_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING version")
                 .bind(record_id).bind(input.legal_entity_id).bind(input.business_unit_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(actor).fetch_optional(&mut *tx).await?
         } else {
-            sqlx::query_scalar("UPDATE crm_opportunities SET customer_id=$2,title=$3,company_name=$4,contact_name=$5,contact_details=$6,stage=$7,expected_amount_minor=$8,currency=$9,next_action=$10,next_follow_up=$11,version=version+1,updated_at=now() WHERE id=$1 AND version=$12 RETURNING version")
+            sqlx::query_scalar("UPDATE crm_opportunities SET customer_id=$2,title=$3,company_name=$4,contact_name=$5,contact_details=$6,stage=$7,expected_amount_minor=$8,currency=$9,next_action=$10,next_follow_up=$11,version=version+1,updated_at=now() WHERE id=$1 AND version=$12 AND deleted_at IS NULL RETURNING version")
                 .bind(record_id).bind(input.customer_id).bind(input.title.trim()).bind(input.company_name.trim()).bind(input.contact_name.trim()).bind(input.contact_details.trim()).bind(&input.stage).bind(input.expected_amount_minor).bind(&input.currency).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).fetch_optional(&mut *tx).await?
         };
         let version = version.ok_or(DomainError::VersionConflict)?;
@@ -253,7 +255,7 @@ impl CrmService {
             input.loss_reason.as_deref(),
             Some(&previous.loss_reason),
         )?;
-        let version:Option<i64>=sqlx::query_scalar("UPDATE crm_opportunities SET stage=$2,next_action=$3,next_follow_up=$4,loss_reason=$6,version=version+1,updated_at=now() WHERE id=$1 AND version=$5 RETURNING version")
+        let version:Option<i64>=sqlx::query_scalar("UPDATE crm_opportunities SET stage=$2,next_action=$3,next_follow_up=$4,loss_reason=$6,version=version+1,updated_at=now() WHERE id=$1 AND version=$5 AND deleted_at IS NULL RETURNING version")
             .bind(id).bind(&input.stage).bind(input.next_action.trim()).bind(input.next_follow_up).bind(input.expected_version).bind(&loss_reason).fetch_optional(&mut *tx).await?;
         let version = version.ok_or(DomainError::VersionConflict)?;
         sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action,next_follow_up,loss_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")

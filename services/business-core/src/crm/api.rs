@@ -68,7 +68,10 @@ pub fn browser_routes() -> Router<Arc<AppState>> {
             "/api/v1/crm/accounts/{id}",
             axum::routing::put(update_account),
         )
-        .route("/api/v1/crm/opportunities/{id}", get(detail).put(update))
+        .route(
+            "/api/v1/crm/opportunities/{id}",
+            get(detail).put(update).delete(delete),
+        )
         .route("/api/v1/crm/opportunities/{id}/followups", post(followup))
 }
 fn service(state: &AppState) -> CrmService {
@@ -309,6 +312,26 @@ async fn convert_customer(
             c.trace_id,
             id,
             key(&headers, c.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|e| Error(e, c.trace_id))
+}
+
+async fn delete(
+    State(s): State<Arc<AppState>>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    h: HeaderMap,
+    Json(input): Json<super::DeleteOpportunity>,
+) -> Result<Json<Value>, Error> {
+    service(&s)
+        .delete(
+            c.actor_user_id,
+            c.trace_id,
+            id,
+            key(&h, c.trace_id)?,
             &input,
         )
         .await
