@@ -192,3 +192,54 @@ test("只读线索隐藏录入，跟进历史导航到线索", async ({ page }) 
     page.getByRole("button", { name: "线索跟进", exact: true }),
   ).toHaveCount(0);
 });
+
+test("统一跟进页选择线索并记录，取消只确认一次", async ({ page }) => {
+  const item = {
+    id: "lead",
+    title: "线索跟进测试",
+    companyName: "公司甲",
+    status: "new",
+    version: 1,
+    nextAction: "",
+    nextFollowUp: null,
+  };
+  let writes = 0;
+  await page.route("**/api/**", async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (path === "/api/session")
+      return route.fulfill({
+        json: { authenticated: true, csrfToken: "csrf" },
+      });
+    if (path === "/api/v1/crm/leads/lead/followups") {
+      expect(req.postDataJSON().note).toBe("已沟通需求");
+      writes++;
+      return route.fulfill({ json: { id: "lead", version: 2 } });
+    }
+    if (path === "/api/v1/crm/leads/lead")
+      return route.fulfill({ json: { item, followups: [], duplicates: [] } });
+    if (path === "/api/v1/crm/leads")
+      return route.fulfill({ json: { items: [item], hasMore: false } });
+    return route.fulfill({
+      json: { items: [], canManage: true, hasMore: false },
+    });
+  });
+  await page.goto("/#crmFollowups");
+  await page.getByRole("button", { name: "线索跟进", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "线索跟进", exact: true });
+  await expect(drawer.getByRole("status")).toHaveCount(0);
+  await drawer.getByRole("combobox", { name: "关联线索", exact: true }).click();
+  await drawer.getByRole("option", { name: "线索跟进测试 · 公司甲" }).click();
+  await drawer.getByLabel("沟通内容").fill("未保存沟通");
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "放弃未保存修改" }),
+  ).toHaveCount(0);
+  await drawer.getByRole("combobox", { name: "关联线索", exact: true }).click();
+  await drawer.getByRole("option", { name: "线索跟进测试 · 公司甲" }).click();
+  await drawer.getByLabel("沟通内容").fill("已沟通需求");
+  await drawer.getByRole("button", { name: "保存跟进", exact: true }).click();
+  await expect.poll(() => writes).toBe(1);
+  await expect(drawer).toBeHidden();
+});

@@ -44,6 +44,40 @@ pub async fn check(
             .unwrap()
             .is_empty()
     );
+    let delegated = SaveLead {
+        title: "交给其他负责人".into(),
+        owner_user_id: Some(outsider),
+        ..Default::default()
+    };
+    let assigned = crm
+        .save_lead(actor, trace, None, "lead-assigned", &delegated)
+        .await
+        .unwrap();
+    let assigned_id: Uuid = serde_json::from_value(assigned["id"].clone()).unwrap();
+    assert!(crm.lead_detail(outsider, assigned_id, 0).await.is_ok());
+    assert!(crm.lead_detail(actor, assigned_id, 0).await.is_ok());
+    let owned = crm
+        .leads(
+            actor,
+            &LeadFilters {
+                owner_user_id: Some(outsider),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(owned["items"].as_array().unwrap().len(), 1);
+    assert_eq!(owned["items"][0]["id"], assigned["id"]);
+    let stale = SaveLead {
+        title: "旧版本修改".into(),
+        expected_version: Some(99),
+        ..Default::default()
+    };
+    assert!(matches!(
+        crm.save_lead(actor, trace, Some(id), "lead-stale", &stale)
+            .await,
+        Err(DomainError::VersionConflict)
+    ));
     let duplicate = crm
         .save_lead(actor, trace, None, "lead-duplicate", &input)
         .await
