@@ -342,3 +342,7 @@ Pacioli 生产登录刷新后，商机列表和年度采购项目右侧详情正
 编辑商机开放经营主体树形选择。变更经营主体后清空原负责人选择、默认当前账号，并重新查询新业务范围内的可分配负责人；负责人读取提供加载状态和失败重试。法人主体仍固定，分配不会增加任何权限。服务端同时校验原记录和目标范围、负责人资格，按版本保存经营主体与负责人并记录前后经营主体审计。省略负责人且经营主体未变时继续保留原负责人。
 
 隔离 PostgreSQL 验证目标范围无权限、目标负责人无权限、原范围权限撤销和版本冲突均拒绝，授权的主体迁移持久化成功；浏览器模拟读取失败后重试、切换经营主体重新读取候选并保存正确主体/负责人。生产验收仅读取和打开表单。
+
+发布提交 `ea8d37ba1`。Core 镜像 `shiyue-business-core:crm-unit-owner-20261003`，固定 ID `sha256:8497e9aae5a0d2bbf817745d0297e201b836f68b8f9b8092c23454a71c0f5d97`；预检数据库及发布迁移均为 81、pending=0，健康检查通过。发布证据 `/opt/business-platform/releases/crm-unit-owner-20261003/release-evidence/release.ZS0MdAMr` 保留此前镜像回滚配置。网页 `business-web-ea8d37ba1`，入口 JS `assets/index-3VjtyWJW.js`，公开资源与本地 SHA256 一致，IAM/Core 健康。
+
+验证：99 项完整网页 Playwright、43 项网页单元测试、27 项 Core 单元测试、真实 PostgreSQL CRM 集成测试、TypeScript/展示格式检查、构建、严格 Clippy、Rust fmt 与文件大小检查通过。原生 `/Applications/Pacioli.app` 刷新生产 Business Dock 后登录延续；既有年度采购项目编辑可展开包含 5 个经营单元的树，负责人下拉显示 Business Administrator 和 authentik Default Admin。取消编辑后既有负责人、客户、联系人与历史跟进保持完整，没有保存生产表单；恢复原先的跟随聊天链接设置。未运行全仓 just ci，未创建 PR。
