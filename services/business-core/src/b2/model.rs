@@ -308,9 +308,13 @@ impl From<Decimal> for DecimalString {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryBalanceView {
+    /// Sole currency in the balance's complete movement history; unknown or mixed is None.
     pub currency: Option<String>,
+    /// Whether movement history contains more than one distinct currency.
     pub currency_conflict: bool,
+    /// Product base unit used to group quantities without inventing conversions.
     pub unit_of_measure_id: Uuid,
+    /// Display name of the current product base unit.
     pub unit_name: String,
     pub legal_entity_id: Uuid,
     pub warehouse_id: Uuid,
