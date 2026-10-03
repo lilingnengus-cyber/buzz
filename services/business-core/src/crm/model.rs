@@ -3,7 +3,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Editable presales fields. Scope is fixed after creation.
+/// Editable presales fields. Legal entity is fixed; operating-unit changes recheck access.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveOpportunity {
