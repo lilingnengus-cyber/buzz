@@ -98,3 +98,7 @@ Pacioli 已登录生产 Business Dock 刷新后，法定主体输入测试搜索
 Agent 提示同时移除客户法定主体、经营主体选择要求。当前固定工具仅支持创建客户，供应商创建未开放；本次没有增加该写入能力。该机制是疑似重复核对，不是数据库名称唯一约束，网页仍保留非阻断提示。
 
 隔离 PostgreSQL 验证未确认不写入、确认创建与幂等重试、停用和不可见资料、同账号并发；Core 30、MCP 14、Read API 17 项单元测试通过，另有 ACP 提示契约及 12 项 Life 回复兼容测试通过。Clippy、格式和文件大小检查通过。生产构建/启用状态见后续发布记录。
+
+发布补充：构建期间线上 Core 更新为 `iam-scopes-62dfe0055`，先同步其 `07fb66cfc`/`62dfe0055` 两项权限修复（本分支 `392d9bb7e`/`47cb3289e`），未覆盖该更新。合并后 32 项 Core 单元测试、权限范围及重复确认两个隔离数据库测试、Clippy 通过。正式发布 Core `sha256:5a8eb6cd7f8b7b4e843d4d265922961b09a5cb36c9a21f092dfd8db318787a81` 与 Read API `sha256:e463629dc9f7cf074ad9c1d82e4afcc53ea4a5019e0fe44c8b53134fe415b539`，标签均为 `agent-duplicates-47cb3289e`。迁移 head=83/pending=0；服务健康。Core 证据 `/opt/business-platform/releases/agent-duplicates-47cb3289e/deployment/release.YHqbSyPw`；Read API 同目录上级保存 candidate/rollback JSON，回滚分别保留 IAM 修复版 Core 与原 Read API。
+
+macOS `/Applications/Pacioli.app` 的 `buzz-acp` 与 `business-read-mcp` 已更新并重新签名验证，旧文件在 `~/Library/Application Support/Pacioli/sidecar-backups/agent-duplicates-28cc5a58d/`。构建保留已安装 Life 回复改进对应的本地源文件，未将这些无关修改提交到本次功能。已确认本机企业助手为“拾玥_BizOS”，具有独立重启入口；此时 Mac 锁屏，尚未重启该 Agent，也未验证真实聊天往返。解锁请求已提出；不能将安装完成视为旧进程已经加载新版提示。未代发测试聊天、未写入生产客户。
