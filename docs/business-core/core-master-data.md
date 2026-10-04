@@ -59,3 +59,16 @@ Pacioli 已登录生产 Business Dock 刷新后，法定主体输入测试搜索
 客户、供应商、仓库、商品和 SKU 的详情路径分别为 `/customers/:id`、`/suppliers/:id`、`/warehouses/:id`、`/products/:id`、`/skus/:id`；均支持 `/embed` 前缀。进入链接按授权范围精确查询 ID 并直接打开详情，具备管理权限时可编辑，否则只读。详情提供对应链接；不存在或无权限时不打开其他记录，提供重试。未保存关闭保护继续生效。
 
 本轮合并验证共 50 项浏览器场景通过，覆盖上述五类直达的只读/编辑保存、失效链接、七个字段的名称/编码搜索与键盘操作、清除隔离、分页/候选完整性、编码规则 Esc/保存失败/提交关闭保护、资料启停提交保护、三类有效默认经营场景和独立登录恢复。类型、展示格式、构建、diff 和文件大小检查通过。
+
+最终前端发布为 `business-web-4cd3d2fd6`，回滚指向 `business-web-e6d675851`。公开 JS `assets/index-BcAO4i8j.js` 的 SHA256 为 `be9c5cbf3ec393a7b34b4a79ee6a1c6a28df3eed22fb1618ea88e3655637e6c4`，与本地一致；IAM/Core 健康，五类普通及嵌入详情 URL 共 10 条路径均返回新版应用。本轮未操作 Pacioli 正在打开的权限菜单，原生人工复验不计入以下已完成的自动化证据。
+
+### 六项目标完成核对
+
+| 目标 | 当前实现与验证证据 |
+| --- | --- |
+| 关闭保护 | `useRecordCloseGuard`、规则编辑保存禁用及资料启停 busy 守卫；`master-review-fixes` 覆盖规则 Esc/保存中/失败保留及两中心启停禁止关闭，`core-master-unsaved` 覆盖七类资料关闭保护。 |
+| 列表截断 | 两类后端 `list_page` 按授权先筛选后分页；独立数据库 1005/2005 可见记录验证、线上 11 类只读验证；`master-pagination` 覆盖翻页/搜索/树/候选/链接。 |
+| 过时默认设置 | `OperatingUnitPreferences` 仅销售、采购、商机三个上下文；`operating-unit-preferences` 验证三个有效场景与清除保存。 |
+| 分类筛选隔离及清除 | `useMasterFilters` 按类别保存状态并只清除当前类别；`master-review-fixes` 验证来回切换，`master-links-search` 验证两个中心的清除隔离。 |
+| 可搜索选择器 | `MasterSearchSelect` 复用键盘可访问组件；`master-links-search` 覆盖七个关联字段的编码/名称搜索、无结果、键盘选择及 Esc，`product-required` 验证必填焦点与真实表单请求。 |
+| 五类详情直达 | `businessRoute`、`useMasterDeepLink` 与详情链接组件；`master-links-search` 五类可编辑/只读、保存与关闭保护、无权限/缺失重试；线上十条 SPA 路径验证通过。 |
