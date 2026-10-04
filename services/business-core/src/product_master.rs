@@ -1,3 +1,5 @@
+#[path = "product_master_listing.rs"]
+mod listing;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
@@ -140,6 +142,8 @@ pub struct ProductMasterRecord {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductMasterList {
+    #[serde(flatten)]
+    pub page: crate::master_pagination::MasterPageMetadata,
     pub items: Vec<ProductMasterRecord>,
     pub can_manage: bool,
     pub data_as_of: chrono::DateTime<Utc>,
@@ -201,22 +205,13 @@ impl ProductMasterService {
         resource_type: Option<ProductMasterType>,
         limit: i64,
     ) -> Result<ProductMasterList, DomainError> {
-        let snapshot = self.snapshot(actor, "business_product_master:read").await?;
-        let brands = snapshot
-            .scopes
-            .brand_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let items=sqlx::query_as::<_,ProductMasterRecord>("SELECT resource_type,id,code,name,status,product_id,product_code,product_name,category_id,category_code,category_name,parent_category_id,parent_category_code,parent_category_name,brand_id,brand_code,brand_name,unit_of_measure_id,unit_of_measure_code,unit_of_measure_name,barcode,precision_scale,allow_zero_cost,factor_to_base,usage_scope,version,updated_at,(SELECT p.service_kind FROM business_products p WHERE p.id=CASE WHEN resource_type='product' THEN product_master_data_maintenance.id ELSE product_master_data_maintenance.product_id END) service_kind FROM product_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND (brand_id IS NULL OR brand_id=ANY($2)) ORDER BY CASE resource_type WHEN 'product_category' THEN 0 WHEN 'brand' THEN 1 WHEN 'unit_of_measure' THEN 2 WHEN 'product' THEN 3 WHEN 'sku' THEN 4 ELSE 5 END,code LIMIT $3")
-            .bind(resource_type.map(ProductMasterType::as_str)).bind(brands).bind(limit.clamp(1,2000)).fetch_all(self.store.pool()).await?;
-        Ok(ProductMasterList {
-            items,
-            can_manage: snapshot
-                .permission_keys
-                .contains("business_product_master:manage"),
-            data_as_of: Utc::now(),
-        })
+        self.list_page(
+            actor,
+            resource_type,
+            limit,
+            &crate::master_pagination::MasterPageFilter::default(),
+        )
+        .await
     }
 
     pub async fn save(

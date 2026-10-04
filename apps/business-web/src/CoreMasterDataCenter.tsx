@@ -1,3 +1,5 @@
+import { useMasterPage } from "./useMasterPage";
+import { MasterFormOptions } from "./MasterFormOptions";
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import { useMasterFilters } from "./useMasterFilters";
@@ -5,14 +7,12 @@ import { CoreCustomerContacts } from "./CoreCustomerContacts";
 import React from "react";
 import { createPortal } from "react-dom";
 import {
-  type ApiFailure,
   type CoreMasterCommandResult,
   type CoreMasterDisableImpact,
   type CoreMasterList,
   type CoreMasterRecord,
   type CoreMasterType,
   request,
-  toApiFailure,
 } from "./api";
 import { formatMoney } from "./formatters";
 import { PageLoadFailure } from "./PageLoadFailure";
@@ -103,40 +103,23 @@ export function CoreMasterDataCenter({
 }) {
   const [activeType, setActiveType] =
     React.useState<CoreMasterType>("legal_entity");
-  const [data, setData] = React.useState<CoreMasterList | null>(null);
   const { query, status, setQuery, setStatus, setForType } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<ApiFailure | null>(null);
+  const { data, loading, error, load, pagination } = useMasterPage<CoreMasterRecord>("/api/v1/core-master-data", activeType, query, status, activeType === "business_unit");
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(
-        await request<CoreMasterList>("/api/v1/core-master-data?limit=1000"),
-      );
-    } catch (reason) {
-      setError(toApiFailure(reason, "核心数据加载失败"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const [linkError, setLinkError] = React.useState("");
   React.useEffect(() => {
-    void load();
-  }, [load]);
-
-  React.useEffect(() => {
-    if (!initialCustomerId || !data) return;
-    const customer = data.items.find(
-      (item) =>
-        item.resourceType === "customer" && item.id === initialCustomerId,
-    );
-    if (!customer) return;
-    setActiveType("customer");
-    setForType("customer", { status: "all", query: customer.code });
-  }, [data, initialCustomerId]);
+    setLinkError("");
+    if (!initialCustomerId) return;
+    const controller = new AbortController();
+    request<CoreMasterList>(`/api/v1/core-master-data?resourceType=customer&id=${encodeURIComponent(initialCustomerId)}&limit=1`, { signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return;
+      const customer = result.items.find((item) => item.id === initialCustomerId);
+      if (customer) { setActiveType("customer"); setForType("customer", { status: "all", query: customer.code }); }
+      else setLinkError("该客户不存在或无访问权限");
+    }).catch((reason) => { if (!controller.signal.aborted) setLinkError(reason instanceof Error ? reason.message : "客户定位失败，请重试"); });
+    return () => controller.abort();
+  }, [initialCustomerId]);
 
   const current = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -145,7 +128,7 @@ export function CoreMasterDataCenter({
         item.resourceType === activeType &&
         (status === "all" || item.status === status) &&
         (activeType === "business_unit" ||
-          !needle ||
+          data?.total !== undefined || !needle ||
           `${item.code} ${item.name} ${item.legalEntityName ?? ""} ${item.businessUnitName ?? ""} ${(item.ancestorPath ?? []).join(" ")}`
             .toLocaleLowerCase()
             .includes(needle)),
@@ -157,7 +140,7 @@ export function CoreMasterDataCenter({
       Object.fromEntries(
         TYPES.map(({ id }) => [
           id,
-          (data?.items ?? []).filter((item) => item.resourceType === id).length,
+          data?.counts?.[id] ?? (data?.items ?? []).filter((item) => item.resourceType === id).length,
         ]),
       ) as Record<CoreMasterType, number>,
     [data],
@@ -184,6 +167,7 @@ export function CoreMasterDataCenter({
         )}
       </div>
 
+      {linkError && <p role="alert" className="master-form-error">{linkError}</p>}
       {!error && (
         <div className="master-tabs" role="tablist" aria-label="核心数据类别">
           {TYPES.map((item) => (
@@ -354,6 +338,7 @@ export function CoreMasterDataCenter({
         </div>
       )}
 
+      {pagination}
       <footer className="master-footnote">
         <span>DATA AS OF {data ? formatDate(data.dataAsOf) : "—"}</span>
         <p>
@@ -362,16 +347,18 @@ export function CoreMasterDataCenter({
       </footer>
 
       {modal?.kind === "form" && (
-        <MasterFormModal
+        <MasterFormOptions<CoreMasterRecord> endpoint="/api/v1/core-master-data" type={modal.type} onClose={() => setModal(null)}>
+          {(items) => <MasterFormModal
           state={modal}
           readOnly={data?.canManage !== true}
-          items={data?.items ?? []}
+          items={items}
           onClose={() => setModal(null)}
           onSaved={async () => {
             setModal(null);
             await load();
           }}
-        />
+        />}
+        </MasterFormOptions>
       )}
       {modal?.kind === "status" && (
         <StatusModal

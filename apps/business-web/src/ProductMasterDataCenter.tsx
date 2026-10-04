@@ -1,16 +1,15 @@
+import { useMasterPage } from "./useMasterPage";
+import { MasterFormOptions } from "./MasterFormOptions";
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import { useMasterFilters } from "./useMasterFilters";
 import React from "react";
 import {
-  type ApiFailure,
   type ProductMasterCommandResult,
   type ProductMasterDisableImpact,
-  type ProductMasterList,
   type ProductMasterRecord,
   type ProductMasterType,
   request,
-  toApiFailure,
 } from "./api";
 import { MasterModal } from "./CoreMasterDataCenter";
 import { PageLoadFailure } from "./PageLoadFailure";
@@ -106,31 +105,9 @@ const EMPTY_FORM: FormState = {
 export function ProductMasterDataCenter() {
   const [activeType, setActiveType] =
     React.useState<ProductMasterType>("product");
-  const [data, setData] = React.useState<ProductMasterList | null>(null);
   const { query, status, setQuery, setStatus } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<ApiFailure | null>(null);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(
-        await request<ProductMasterList>(
-          "/api/v1/product-master-data?limit=2000",
-        ),
-      );
-    } catch (reason) {
-      setError(toApiFailure(reason, "商品主数据加载失败"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
+  const { data, loading, error, load, pagination } = useMasterPage<ProductMasterRecord>("/api/v1/product-master-data", activeType, query, status);
 
   const current = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -138,7 +115,7 @@ export function ProductMasterDataCenter() {
       (item) =>
         item.resourceType === activeType &&
         (status === "all" || item.status === status) &&
-        (!needle ||
+        (data?.total !== undefined || !needle ||
           `${item.code} ${item.name} ${item.productName ?? ""} ${item.categoryName ?? ""} ${item.brandName ?? ""} ${item.barcode ?? ""}`
             .toLocaleLowerCase()
             .includes(needle)),
@@ -149,7 +126,7 @@ export function ProductMasterDataCenter() {
       Object.fromEntries(
         TYPES.map(({ id }) => [
           id,
-          (data?.items ?? []).filter((item) => item.resourceType === id).length,
+          data?.counts?.[id] ?? (data?.items ?? []).filter((item) => item.resourceType === id).length,
         ]),
       ) as Record<ProductMasterType, number>,
     [data],
@@ -288,6 +265,7 @@ export function ProductMasterDataCenter() {
         />
       )}
 
+      {pagination}
       <footer className="master-footnote">
         <span>DATA AS OF {data ? formatDate(data.dataAsOf) : "—"}</span>
         <p>
@@ -296,16 +274,18 @@ export function ProductMasterDataCenter() {
         </p>
       </footer>
       {modal?.kind === "form" && (
-        <ProductFormModal
+        <MasterFormOptions<ProductMasterRecord> endpoint="/api/v1/product-master-data" type={modal.type} onClose={() => setModal(null)}>
+          {(items) => <ProductFormModal
           state={modal}
           readOnly={data?.canManage !== true}
-          items={data?.items ?? []}
+          items={items}
           onClose={() => setModal(null)}
           onSaved={async () => {
             setModal(null);
             await load();
           }}
-        />
+        />}
+        </MasterFormOptions>
       )}
       {modal?.kind === "status" && (
         <ProductStatusModal

@@ -89,6 +89,12 @@ struct ProductMasterQuery {
     resource_type: Option<String>,
     #[serde(default = "default_limit")]
     limit: i64,
+    #[serde(default)]
+    query: String,
+    status: Option<String>,
+    #[serde(default)]
+    offset: i64,
+    id: Option<Uuid>,
 }
 fn default_limit() -> i64 {
     1000
@@ -128,7 +134,17 @@ async fn list(
         .map_err(|error| ProductMasterApiError::domain(error, context.trace_id))?;
     state
         .product_master
-        .list(context.actor_user_id, kind, query.limit)
+        .list_page(
+            context.actor_user_id,
+            kind,
+            query.limit,
+            &crate::master_pagination::MasterPageFilter {
+                query: query.query,
+                status: query.status,
+                offset: query.offset,
+                id: query.id,
+            },
+        )
         .await
         .map(Json)
         .map_err(|error| ProductMasterApiError::domain(error, context.trace_id))
@@ -225,4 +241,22 @@ fn key(headers: &HeaderMap, trace_id: Uuid) -> Result<&str, ProductMasterApiErro
         .get("idempotency-key")
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| ProductMasterApiError::invalid("Idempotency-Key is required", trace_id))
+}
+
+#[cfg(test)]
+mod pagination_query_tests {
+    use super::*;
+    #[test]
+    fn parses_pagination_and_rejects_unknown_fields() {
+        let uri = "/?resourceType=customer&query=hello&status=active&offset=50&limit=50"
+            .parse()
+            .unwrap();
+        let Query(query) = Query::<ProductMasterQuery>::try_from_uri(&uri).unwrap();
+        assert_eq!(query.offset, 50);
+        assert_eq!(query.query, "hello");
+        assert_eq!(query.status.as_deref(), Some("active"));
+        assert!(
+            Query::<ProductMasterQuery>::try_from_uri(&"/?bogus=true".parse().unwrap()).is_err()
+        );
+    }
 }

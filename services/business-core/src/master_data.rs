@@ -1,3 +1,5 @@
+#[path = "master_data_listing.rs"]
+mod listing;
 use crate::{
     b2::common::{begin_idempotent, finish_idempotent, record, request_hash, DomainError},
     model::AuthorizationSnapshot,
@@ -164,6 +166,8 @@ pub struct CoreMasterRecord {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreMasterList {
+    #[serde(flatten)]
+    pub page: crate::master_pagination::MasterPageMetadata,
     pub items: Vec<CoreMasterRecord>,
     pub can_manage: bool,
     pub data_as_of: chrono::DateTime<Utc>,
@@ -274,46 +278,13 @@ impl CoreMasterDataService {
         resource_type: Option<CoreMasterType>,
         limit: i64,
     ) -> Result<CoreMasterList, DomainError> {
-        let snapshot = self.snapshot(actor, "business_master_data:read").await?;
-        let entities = snapshot
-            .scopes
-            .legal_entity_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let units = snapshot
-            .scopes
-            .business_unit_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let warehouses = snapshot
-            .scopes
-            .warehouse_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let customers = snapshot
-            .scopes
-            .customer_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let suppliers = snapshot
-            .scopes
-            .supplier_ids
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let items=sqlx::query_as::<_,CoreMasterRecord>("SELECT resource_type,id,code,name,status,legal_entity_id,legal_entity_code,legal_entity_name,business_unit_id,business_unit_code,business_unit_name,country_code,functional_currency,registration_number,address,credit_currency,credit_limit_minor,payment_terms_days,version,updated_at,parent_business_unit_id,business_unit_path,business_unit_depth,descendant_count FROM core_master_data_maintenance WHERE ($1::text IS NULL OR resource_type=$1) AND ((resource_type='legal_entity' AND id=ANY($2)) OR (resource_type='business_unit' AND id=ANY($3)) OR resource_type IN ('customer','supplier','warehouse')) AND (resource_type<>'warehouse' OR id=ANY($4)) AND (resource_type<>'customer' OR id=ANY($5)) AND (resource_type<>'supplier' OR id=ANY($6)) ORDER BY CASE resource_type WHEN 'legal_entity' THEN 0 WHEN 'business_unit' THEN 1 WHEN 'customer' THEN 2 WHEN 'supplier' THEN 3 ELSE 4 END,code LIMIT $7")
-            .bind(resource_type.map(CoreMasterType::as_str)).bind(entities).bind(units).bind(warehouses).bind(customers).bind(suppliers).bind(limit.clamp(1,1000)).fetch_all(self.store.pool()).await?;
-        Ok(CoreMasterList {
-            items,
-            can_manage: snapshot
-                .permission_keys
-                .contains("business_master_data:manage"),
-            data_as_of: Utc::now(),
-        })
+        self.list_page(
+            actor,
+            resource_type,
+            limit,
+            &crate::master_pagination::MasterPageFilter::default(),
+        )
+        .await
     }
 
     pub async fn save(
