@@ -356,9 +356,11 @@ test("已转商机线索默认只读，保留商机入口", async ({ page }) => 
       json:
         path === "/api/session"
           ? { authenticated: true, csrfToken: "csrf" }
-          : path === "/api/v1/crm/leads/converted"
-            ? { item, followups: [], hasMore: false, duplicates: [] }
-            : { items: [item], canManage: true, hasMore: false },
+          : path.endsWith("/owners")
+            ? { items: [{ id: "me", name: "自己" }] }
+            : path === "/api/v1/crm/leads/converted"
+              ? { item, followups: [], hasMore: false, duplicates: [] }
+              : { items: [item], canManage: true, hasMore: false },
     });
   });
   await page.goto("/#crmLeads");
