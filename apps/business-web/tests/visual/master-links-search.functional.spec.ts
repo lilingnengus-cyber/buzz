@@ -40,6 +40,14 @@ for (const [type, path, label] of kinds) for (const canManage of [true, false]) 
       await expect(dialog).toHaveCount(0);
       expect(saved).toBeUndefined();
     }
+    if (canManage) await page.goto(`/embed/${path}/target#productData`);
+    else await page.getByRole('link',{name:'商品数据',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'商品主数据中心',exact:true})).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    if (canManage) await page.goto(`/embed/${path}/target#coreData`);
+    else await page.getByRole('link',{name:'核心数据',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'核心数据中心',exact:true})).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 }
 

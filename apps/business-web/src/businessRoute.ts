@@ -16,6 +16,20 @@ export function route(): { section: Section; id?: string; masterType?: CoreMaste
   const path = window.location.pathname;
   const embed = path.startsWith("/embed/");
   const clean = path.replace(/^\/embed/, "");
+  // Explicit in-app navigation takes precedence over the originating detail URL.
+  const [hashSection, hashQuery = ""] = window.location.hash
+    .slice(1)
+    .split("?");
+  if (hashSection === "crmLeads") return { section: "crmLeads", id: new URLSearchParams(hashQuery).get("lead") ?? undefined, embed };
+  if (hashSection === "crm")
+    return {
+      section: "crm",
+      id: new URLSearchParams(hashQuery).get("opportunity") ?? undefined,
+      embed,
+    };
+  const fromHash = hashSection as Section;
+  const section = WORKFLOW_NAV_ALIASES[fromHash] ?? fromHash;
+  if (NAV.some((item) => item.id === section)) return { section, embed };
   if (clean === "/operations-dashboard") return { section: "dashboard", embed };
   if (clean === "/data-quality") return { section: "quality", embed };
   if (clean === "/operating-incidents") return { section: "incidents", embed };
@@ -66,23 +80,5 @@ export function route(): { section: Section; id?: string; masterType?: CoreMaste
     const match = clean.match(pattern);
     if (match) return { section, id: decodeURIComponent(match[1]), embed };
   }
-  const [hashSection, hashQuery = ""] = window.location.hash
-    .slice(1)
-    .split("?");
-  if (hashSection === "crmLeads") return { section: "crmLeads", id: new URLSearchParams(hashQuery).get("lead") ?? undefined, embed };
-  if (hashSection === "crm")
-    return {
-      section: "crm",
-      id: new URLSearchParams(hashQuery).get("opportunity") ?? undefined,
-      embed,
-    };
-  const fromHash = hashSection as Section;
-  return {
-    section: WORKFLOW_NAV_ALIASES[fromHash]
-      ? WORKFLOW_NAV_ALIASES[fromHash]
-      : NAV.some((item) => item.id === fromHash)
-        ? fromHash
-        : "dashboard",
-    embed,
-  };
+  return { section: "dashboard", embed };
 }
