@@ -86,7 +86,7 @@ pub async fn authorize(
     business_unit: Option<Uuid>,
 ) -> Result<AuthorizationSnapshot, DomainError> {
     let snapshot = store
-        .snapshot(actor)
+        .snapshot_for_permission(actor, permission)
         .await
         .map_err(|_| DomainError::NotFoundOrForbidden)?;
     let allowed = snapshot.permission_keys.contains(permission)

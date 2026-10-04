@@ -219,7 +219,7 @@ impl CoreMasterDataService {
     ) -> Result<AuthorizationSnapshot, DomainError> {
         let snapshot = self
             .store
-            .snapshot(actor)
+            .snapshot_for_permission(actor, permission)
             .await
             .map_err(|_| DomainError::NotFoundOrForbidden)?;
         if snapshot.permission_keys.contains(permission) {

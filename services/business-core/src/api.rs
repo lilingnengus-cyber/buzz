@@ -331,7 +331,7 @@ async fn require_permission(
 ) -> Result<crate::model::AuthorizationSnapshot, ApiError> {
     let snapshot = state
         .store
-        .snapshot(context.actor_user_id)
+        .snapshot_for_permission(context.actor_user_id, permission)
         .await
         .map_err(|error| ApiError::from_store(error, context.trace_id))?;
     if !snapshot.permission_keys.contains(permission) {

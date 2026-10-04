@@ -1,3 +1,4 @@
+mod iam_scopes;
 mod master_search;
 
 use crate::{
@@ -229,7 +230,9 @@ impl PgStore {
         if !valid_key(permission_key, 96) {
             return Err(StoreError::Invalid("invalid permissionKey".into()));
         }
-        let snapshot = self.snapshot(user_id).await?;
+        let snapshot = self
+            .snapshot_for_permission(user_id, permission_key)
+            .await?;
         let resource = self.resource(resource_type, resource_id).await?;
         let allowed = snapshot.permission_keys.contains(permission_key)
             && resource.status == "active"
