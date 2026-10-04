@@ -14,9 +14,6 @@ const CONTEXTS = [
   { id: "sales-order", label: "销售订单" },
   { id: "purchase-order", label: "采购订单" },
   { id: "crm-opportunity", label: "售前商机" },
-  { id: "core-master-customer", label: "客户资料" },
-  { id: "core-master-supplier", label: "供应商资料" },
-  { id: "core-master-warehouse", label: "仓库资料" },
 ] as const;
 
 const INITIAL_CONTEXT = "sales-order";

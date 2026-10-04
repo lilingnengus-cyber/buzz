@@ -11,6 +11,7 @@ import {
   toApiFailure,
 } from "./api";
 import { PageLoadFailure } from "./PageLoadFailure";
+import { useRecordCloseGuard } from "./useRecordCloseGuard";
 import {
   appendEditableSegment,
   changeEditableScope,
@@ -490,6 +491,7 @@ function NumberingRuleEditor({
   });
   const segments = segmentRows.map((row) => row.segment);
   const [saving, setSaving] = React.useState(false);
+  const guard = useRecordCloseGuard({ name, status, resetPeriod, scopeDimension, segments }, true, saving, onClose);
   const [error, setError] = React.useState<string | null>(null);
   const title = RECORDS[rule.recordType]?.label ?? rule.name;
   const preview = previewNumber(segments, scopeDimension);
@@ -514,11 +516,12 @@ function NumberingRuleEditor({
 
   React.useEffect(() => {
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) onClose();
+      if (document.querySelector(".numbering-modal-layer dialog[open]")) return;
+      if (event.key === "Escape") { event.preventDefault(); guard.close(); }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [onClose, saving]);
+  }, [guard.close]);
 
   const update = (index: number, segment: NumberingSegment) => {
     setSegmentRows((current) =>
@@ -533,6 +536,7 @@ function NumberingRuleEditor({
     setSegmentRows((current) => changeEditableScope(current, nextScope));
   };
   const save = async () => {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -550,6 +554,7 @@ function NumberingRuleEditor({
           }),
         },
       );
+      guard.saved();
       await onSaved(result);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "编码规则保存失败");
@@ -564,7 +569,8 @@ function NumberingRuleEditor({
         className="numbering-modal-scrim"
         type="button"
         aria-label="关闭编码规则编辑器"
-        onClick={onClose}
+        disabled={saving}
+        onClick={guard.close}
       />
       <section
         className="numbering-modal"
@@ -577,11 +583,11 @@ function NumberingRuleEditor({
             <span>RULE COMPOSER / {RECORDS[rule.recordType]?.code}</span>
             <h2 id="numbering-modal-title">编辑{title}编码</h2>
           </div>
-          <button type="button" aria-label="关闭" onClick={onClose}>
+          <button type="button" aria-label="关闭" disabled={saving} onClick={guard.close}>
             ×
           </button>
         </header>
-        <div className="numbering-modal-body">
+        <div className="numbering-modal-body" inert={saving}>
           <div className="numbering-form-row">
             <label>
               <span>规则名称</span>
@@ -812,7 +818,7 @@ function NumberingRuleEditor({
           {error && <div className="numbering-message error">{error}</div>}
         </div>
         <footer>
-          <button type="button" className="numbering-cancel" onClick={onClose}>
+          <button type="button" className="numbering-cancel" disabled={saving} onClick={guard.close}>
             取消
           </button>
           <button
@@ -826,6 +832,7 @@ function NumberingRuleEditor({
           </button>
         </footer>
       </section>
+      {guard.prompt}
     </div>
   );
 }

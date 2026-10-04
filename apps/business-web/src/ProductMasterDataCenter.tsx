@@ -1,5 +1,6 @@
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
+import { useMasterFilters } from "./useMasterFilters";
 import React from "react";
 import {
   type ApiFailure,
@@ -106,8 +107,7 @@ export function ProductMasterDataCenter() {
   const [activeType, setActiveType] =
     React.useState<ProductMasterType>("product");
   const [data, setData] = React.useState<ProductMasterList | null>(null);
-  const [query, setQuery] = React.useState("");
-  const [status, setStatus] = React.useState("all");
+  const { query, status, setQuery, setStatus } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<ApiFailure | null>(null);
@@ -857,7 +857,8 @@ function ProductStatusModal({
     <MasterModal
       title={`${disabling ? "停用" : "启用"}${labelFor(record.resourceType)}`}
       eyebrow="PRODUCT STATUS / IMPACT CHECK"
-      onClose={onClose}
+      busy={saving}
+      onClose={() => { if (!saving) onClose(); }}
     >
       <div className="impact-panel">
         <div className="impact-target">
@@ -904,7 +905,7 @@ function ProductStatusModal({
         )}
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
-          <button type="button" className="master-secondary" onClick={onClose}>
+          <button type="button" className="master-secondary" disabled={saving} onClick={onClose}>
             取消
           </button>
           <button

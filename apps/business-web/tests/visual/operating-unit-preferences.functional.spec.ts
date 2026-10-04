@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const contexts = [
-  "sales-order",
-  "purchase-order",
-  "crm-opportunity",
-  "core-master-customer",
-  "core-master-supplier",
-  "core-master-warehouse",
-];
+const contexts = ["sales-order", "purchase-order", "crm-opportunity"];
 
 const units = [
   {
@@ -102,6 +95,12 @@ test("用户可以固定并清除各业务场景的默认经营主体", async ({
   await expect(
     page.getByRole("heading", { name: "默认经营主体" }),
   ).toBeVisible();
+  for (const label of ["客户资料", "供应商资料", "仓库资料"]) {
+    await expect(
+      page.getByRole("button", { name: new RegExp(label) }),
+    ).toHaveCount(0);
+  }
+  await expect(page.getByRole("button", { name: /售前商机/ })).toBeVisible();
   await page.getByRole("button", { name: /采购订单/ }).click();
   await page.getByRole("button", { name: /当前选择.*尚未选择/ }).click();
   await page

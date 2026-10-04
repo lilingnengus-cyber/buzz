@@ -1,5 +1,6 @@
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
 import { useRecordCloseGuard } from "./useRecordCloseGuard";
+import { useMasterFilters } from "./useMasterFilters";
 import { CoreCustomerContacts } from "./CoreCustomerContacts";
 import React from "react";
 import { createPortal } from "react-dom";
@@ -103,8 +104,7 @@ export function CoreMasterDataCenter({
   const [activeType, setActiveType] =
     React.useState<CoreMasterType>("legal_entity");
   const [data, setData] = React.useState<CoreMasterList | null>(null);
-  const [query, setQuery] = React.useState("");
-  const [status, setStatus] = React.useState("all");
+  const { query, status, setQuery, setStatus, setForType } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<ApiFailure | null>(null);
@@ -135,8 +135,7 @@ export function CoreMasterDataCenter({
     );
     if (!customer) return;
     setActiveType("customer");
-    setStatus("all");
-    setQuery(customer.code);
+    setForType("customer", { status: "all", query: customer.code });
   }, [data, initialCustomerId]);
 
   const current = React.useMemo(() => {
@@ -808,7 +807,8 @@ function StatusModal({
     <MasterModal
       title={`${disabling ? "停用" : "启用"}${labelFor(record.resourceType)}`}
       eyebrow="STATUS CONTROL / IMPACT CHECK"
-      onClose={onClose}
+      busy={saving}
+      onClose={() => { if (!saving) onClose(); }}
     >
       <div className="impact-panel">
         <div className="impact-target">
@@ -855,7 +855,7 @@ function StatusModal({
         )}
         {error && <p className="master-form-error">{error}</p>}
         <div className="master-form-actions">
-          <button type="button" className="master-secondary" onClick={onClose}>
+          <button type="button" className="master-secondary" disabled={saving} onClick={onClose}>
             取消
           </button>
           <button
