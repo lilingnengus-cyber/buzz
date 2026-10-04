@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseTable, importRows, importKey } from "./crmImportData.ts";
+import {
+  IMPORT_HEADERS,
+  parseTable,
+  importRows,
+  importKey,
+} from "./crmImportData.ts";
+test("company header rename preserves legacy payload and import identity", async () => {
+  assert.ok(IMPORT_HEADERS.includes("公司名称"));
+  assert.ok(!IMPORT_HEADERS.includes("客户公司"));
+  const current = importRows("线索名称,公司名称\n项目,公司")[0].payload;
+  const legacy = importRows("线索名称,客户公司\n项目,公司")[0].payload;
+  assert.equal(current.companyName, "公司");
+  assert.deepEqual(current, legacy);
+  assert.equal(await importKey(current), await importKey(legacy));
+  assert.throws(
+    () => importRows("线索名称,公司名称,客户公司\n项目,甲,乙"),
+    /仅保留一列/,
+  );
+  for (const name of ["公司名称", "客户公司"]) {
+    assert.match(
+      importRows(`线索名称,${name}\n项目,${"字".repeat(161)}`)[0].error,
+      /公司名称超过 160 字/,
+    );
+  }
+});
 test("CSV quotes, BOM, CRLF and spreadsheet paste", () => {
   assert.deepEqual(
     parseTable('\uFEFF线索名称,客户公司\r\n"年度,采购","客户""甲"\r\n'),

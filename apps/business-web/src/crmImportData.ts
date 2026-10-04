@@ -1,6 +1,6 @@
 export const IMPORT_HEADERS = [
   "线索名称",
-  "客户公司",
+  "公司名称",
   "联系人",
   "联系方式",
   "来源",
@@ -66,8 +66,11 @@ function date(value: string, label: string) {
 export function importRows(text: string) {
   if (new TextEncoder().encode(text).length > 1024 * 1024)
     throw new Error("文件不能超过 1 MB");
-  const [headers, ...rows] = parseTable(text);
-  if (!headers || !rows.length) throw new Error("请提供表头及至少一条线索");
+  const [rawHeaders, ...rows] = parseTable(text);
+  if (!rawHeaders || !rows.length) throw new Error("请提供表头及至少一条线索");
+  const headers = rawHeaders.map((h) => (h === "客户公司" ? "公司名称" : h));
+  if (rawHeaders.includes("公司名称") && rawHeaders.includes("客户公司"))
+    throw new Error("公司名称与客户公司是同一字段，请仅保留一列");
   if (rows.length > 200) throw new Error("每批最多导入 200 条线索");
   if (
     new Set(headers).size !== headers.length ||
@@ -83,7 +86,7 @@ export function importRows(text: string) {
       const get = (name: string) => cells[headers.indexOf(name)] || "";
       for (const [name, max] of [
         ["线索名称", 160],
-        ["客户公司", 160],
+        ["公司名称", 160],
         ["联系人", 100],
         ["联系方式", 200],
         ["来源", 100],
@@ -96,7 +99,7 @@ export function importRows(text: string) {
       if (!title) throw new Error("线索名称必填");
       const payload = {
         title,
-        companyName: get("客户公司"),
+        companyName: get("公司名称"),
         contactName: get("联系人"),
         contactDetails: get("联系方式"),
         source: get("来源"),

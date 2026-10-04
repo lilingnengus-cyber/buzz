@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 test("重复、必填、日期和列数错误逐行提示，修正后重新预览", async ({ page }) => {
   const writes: string[] = [];
@@ -204,12 +205,16 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "批量导入线索" });
   const pending = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "下载 CSV 模板" }).click();
-  expect((await pending).suggestedFilename()).toBe("线索导入模板.csv");
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("线索导入模板.csv");
+  const template = await readFile((await download.path())!, "utf8");
+  expect(template).toContain("线索名称,公司名称,联系人");
+  expect(template).not.toContain("客户公司");
   await dialog.getByLabel("上传 CSV").setInputFiles({
     name: "opportunities.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
-      '\uFEFF线索名称,客户公司,联系人,联系方式,来源,需求摘要,下一步,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,展会,年度采购需求,联系客户,2026-10-10',
+      '\uFEFF线索名称,公司名称,联系人,联系方式,来源,需求摘要,下一步,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,展会,年度采购需求,联系客户,2026-10-10',
     ),
   });
   await expect(dialog.getByLabel("表格内容")).toContainText("项目,甲");
