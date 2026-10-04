@@ -46,7 +46,15 @@ export function PageLoadFailure({
     failure.kind === "unexpected" ? failure.message : copy.description;
   const handleRecovery = () => {
     if (failure.kind === "session_expired") {
-      window.location.reload();
+      if (window.parent !== window) {
+        window.location.reload();
+      } else {
+        const returnTo =
+          window.location.pathname + window.location.search + window.location.hash;
+        window.location.assign(
+          `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+        );
+      }
       return;
     }
     onRetry();

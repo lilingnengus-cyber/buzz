@@ -136,4 +136,10 @@ test("通用数据页区分服务异常与登录失效", async ({ page }) => {
   await expect(alert).toHaveAttribute("data-failure-kind", "session_expired");
   await expect(alert).toContainText("登录状态已失效");
   await expect(alert.getByRole("button", { name: "重新登录" })).toBeVisible();
+  await page.route("**/api/auth/login?**", route => route.fulfill({
+    contentType: "text/html; charset=utf-8", body: "<h1>登录入口</h1>",
+  }));
+  await alert.getByRole("button", { name: "重新登录" }).click();
+  await expect(page).toHaveURL(/\/api\/auth\/login\?return_to=%2F%23dashboard$/);
+  await expect(page.getByRole("heading", { name: "登录入口" })).toBeVisible();
 });
