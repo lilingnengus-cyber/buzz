@@ -72,3 +72,13 @@ Pacioli 已登录生产 Business Dock 刷新后，法定主体输入测试搜索
 | 分类筛选隔离及清除 | `useMasterFilters` 按类别保存状态并只清除当前类别；`master-review-fixes` 验证来回切换，`master-links-search` 验证两个中心的清除隔离。 |
 | 可搜索选择器 | `MasterSearchSelect` 复用键盘可访问组件；`master-links-search` 覆盖七个关联字段的编码/名称搜索、无结果、键盘选择及 Esc，`product-required` 验证必填焦点与真实表单请求。 |
 | 五类详情直达 | `businessRoute`、`useMasterDeepLink` 与详情链接组件；`master-links-search` 五类可编辑/只读、保存与关闭保护、无权限/缺失重试；线上十条 SPA 路径验证通过。 |
+
+## 2026-10-05 Pacioli 原生复验与导航修复
+
+在 macOS `/Applications/Pacioli.app` 的生产 Business Dock、已登录管理员会话中复验：仓库按 `WH_DEFAULT` 搜索显示 1 条，切客户显示全部 3 条并保持独立搜索状态，返回仓库保留关键词，清除后恢复 2 条。仓库和商品详情链接均自动打开对应编码和名称；商品分类按编码搜索，品牌按名称搜索后可用方向键和 Enter 选中。Esc 先关闭搜索下拉且保留表单。默认经营主体仅显示销售订单、采购订单、售前商机三个场景。
+
+客户编码规则暂改名称后按 Esc 出现未保存确认，继续编辑保留修改；还原原名称后 Esc 直接关闭。新增商品品牌键盘选中后关闭也出现保护，最终丢弃测试草稿；未保存规则或业务记录，未执行启停或权限修改。生产数据不足一页，跨页与提交中保护仍以既有隔离数据库及浏览器测试为证据；本次原生只抽验仓库/商品直达，其余三类由自动化覆盖。
+
+原生复验发现详情路径优先于导航 hash，导致详情关闭后点击编码规则仍显示原页面。`c48dfb520` 调整为有效导航 hash 优先，无 hash 时保留精确详情路径；五类普通及嵌入详情测试增加跨页面切换，50 项浏览器回归全部通过，类型、展示格式、构建与 diff 检查通过。上线后原生商品详情 → 关闭 → 编码规则 → 默认经营主体 → 商品数据均成功。
+
+前端目录 `/opt/business-platform/shared/business-web-c48dfb520`，上一版本 `business-web-4cd3d2fd6` 完整保留用于回滚。公开 JS `assets/index-CJK-b_u_.js` SHA256 为 `a688538e868298fd9ac7a68a6241aa615183b9e7b59dea83467e376b837649b2`，与本地一致；IAM/Core 健康检查通过。未替换后端服务。
