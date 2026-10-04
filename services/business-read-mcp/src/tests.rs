@@ -449,3 +449,37 @@ fn crm_tools_are_fixed_and_write_results_bind_resource_and_version() {
     result["resourceRefs"][0]["bizUri"] = json!(format!("biz://crm-lead/{}", Uuid::new_v4()));
     assert!(validate_write_result("create_crm_lead", &result, &ctx, 128 * 1024).is_err());
 }
+
+#[tokio::test]
+async fn customer_duplicate_conflict_returns_candidates_without_retry_or_success() {
+    let ctx = context();
+    for valid_trace in [true, false] {
+        let trace = if valid_trace {
+            ctx.trace_id
+        } else {
+            Uuid::new_v4()
+        };
+        let body = json!({"code":"duplicate_confirmation_required","message":"EXISTING · 同名客户 · 已停用","traceId":trace}).to_string();
+        let (base, calls, server) = fixed_server(409, body, 1).await;
+        let mcp = BusinessReadMcp::new(production_config(base, ctx.trace_id)).expect("mcp");
+        let result = mcp
+            .call_write_api("create_customer", &json!({"name":"同名客户"}), &ctx)
+            .await;
+        if valid_trace {
+            let value = result.expect("confirmation");
+            assert_eq!(value["status"], "confirmation_required");
+            assert!(value["message"]
+                .as_str()
+                .expect("message")
+                .contains("EXISTING"));
+            assert_eq!(value["resourceRefs"], json!([]));
+            assert!(value.get("item").is_none());
+        } else {
+            assert_eq!(result, Err(BusinessCallError::Unavailable));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        server.await.expect("server");
+    }
+    let input: CreateCustomerInput = serde_json::from_value(json!({"name":"客户"})).expect("input");
+    assert!(!input.duplicate_confirmed);
+}

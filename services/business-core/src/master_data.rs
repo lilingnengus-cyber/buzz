@@ -1,3 +1,5 @@
+#[path = "master_duplicates.rs"]
+mod duplicates;
 #[path = "master_data_listing.rs"]
 mod listing;
 use crate::{
@@ -102,6 +104,9 @@ pub struct SaveCoreMasterData {
 pub struct CreateAgentCustomer {
     /// Customer name supplied by the user.
     pub name: String,
+    /// True only after the human confirms creating a separate customer despite the warning.
+    #[serde(default)]
+    pub duplicate_confirmed: bool,
     /// Optional credit currency; defaults to the group base currency.
     #[serde(default)]
     pub credit_currency: Option<String>,
@@ -296,6 +301,35 @@ impl CoreMasterDataService {
         key: &str,
         input: &SaveCoreMasterData,
     ) -> Result<CoreMasterCommandResult, DomainError> {
+        self.save_command(actor, trace_id, id, key, (input, None))
+            .await
+    }
+
+    /// Creates an agent customer with duplicate checking before number allocation.
+    pub async fn save_agent_customer(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        key: &str,
+        input: &SaveCoreMasterData,
+        confirmed: bool,
+    ) -> Result<CoreMasterCommandResult, DomainError> {
+        if input.resource_type != "customer" {
+            return Err(DomainError::Invalid("expected customer".into()));
+        }
+        self.save_command(actor, trace_id, None, key, (input, Some(confirmed)))
+            .await
+    }
+
+    async fn save_command(
+        &self,
+        actor: Uuid,
+        trace_id: Uuid,
+        id: Option<Uuid>,
+        key: &str,
+        command: (&SaveCoreMasterData, Option<bool>),
+    ) -> Result<CoreMasterCommandResult, DomainError> {
+        let (input, duplicate_confirmed) = command;
         let kind = CoreMasterType::from_str(&input.resource_type)?;
         validate(input, kind, id.is_some())?;
         let snapshot = self.snapshot(actor, "business_master_data:manage").await?;
@@ -313,6 +347,14 @@ impl CoreMasterDataService {
             replay.idempotent_replay = true;
             tx.commit().await?;
             return Ok(replay);
+        }
+        if id.is_none() && kind == CoreMasterType::Customer {
+            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('customer:create',0))")
+                .execute(&mut *tx)
+                .await?;
+            if duplicate_confirmed == Some(false) {
+                duplicates::check(&mut tx, actor, &input.name).await?;
+            }
         }
         let target_id = id.unwrap_or_else(Uuid::new_v4);
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
@@ -361,7 +403,7 @@ impl CoreMasterDataService {
             )?;
         }
         let version: i64 = row.get("version");
-        let audit_detail = json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"}});
+        let audit_detail = json!({"resourceType":kind.as_str(),"code":row.get::<String,_>("code"),"version":version,"mode":if id.is_some(){"update"}else{"create"},"duplicateConfirmed":duplicate_confirmed});
         record(
             &mut tx,
             trace_id,

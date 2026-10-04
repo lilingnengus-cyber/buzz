@@ -26,6 +26,8 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 
+unicode-normalization = "0.1.25"
+
 [dev-dependencies]
 reqwest = { workspace = true }
 tower = { workspace = true }

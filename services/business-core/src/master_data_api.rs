@@ -58,8 +58,14 @@ impl MasterApiError {
                 trace_id,
             },
             DomainError::Invalid(message) => Self {
-                status: StatusCode::BAD_REQUEST,
-                code: if message == "OPERATING_UNIT_CYCLE" {
+                status: if message.starts_with("DUPLICATE_CUSTOMER:") {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::BAD_REQUEST
+                },
+                code: if message.starts_with("DUPLICATE_CUSTOMER:") {
+                    "duplicate_confirmation_required"
+                } else if message == "OPERATING_UNIT_CYCLE" {
                     "OPERATING_UNIT_CYCLE"
                 } else {
                     "invalid_request"
@@ -206,12 +212,12 @@ async fn create_agent_customer(
     };
     state
         .master_data
-        .save(
+        .save_agent_customer(
             context.actor_user_id,
             context.trace_id,
-            None,
             key(&headers, context.trace_id)?,
             &command,
+            input.duplicate_confirmed,
         )
         .await
         .map(Json)
