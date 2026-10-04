@@ -216,6 +216,24 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
   await dialog.getByRole("button", { name: "预览校验" }).click();
   await expect(dialog.getByRole("status")).toContainText("校验错误 0 条");
   await expect(dialog.locator("tbody")).toContainText("联系客户");
+  for (const column of ["线索名称", "公司名称", "联系人", "联系方式"]) {
+    await expect(
+      dialog.getByRole("columnheader", { name: column, exact: true }),
+    ).toBeVisible();
+  }
+  const cells = dialog.locator("tbody tr").first().getByRole("cell");
+  await expect(cells.nth(1)).toHaveText("项目,甲");
+  await expect(cells.nth(2)).toHaveText("客户甲");
+  await expect(cells.nth(3)).toHaveText("张经理");
+  await expect(cells.nth(4)).toHaveText("13800138000");
+  await page.setViewportSize({ width: 520, height: 780 });
+  expect(
+    await dialog.evaluate((el) => el.getBoundingClientRect().right),
+  ).toBeLessThanOrEqual(520);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(520);
+  await expect(cells.nth(1)).toHaveText("项目,甲");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "继续编辑" }).click();
   await expect(dialog).toBeVisible();

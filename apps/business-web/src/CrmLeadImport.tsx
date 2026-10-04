@@ -167,7 +167,10 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
               <thead>
                 <tr>
                   <th>行</th>
-                  <th>线索 / 公司 / 联系人</th>
+                  <th>线索名称</th>
+                  <th>公司名称</th>
+                  <th>联系人</th>
+                  <th>联系方式</th>
                   <th>来源 / 需求摘要</th>
                   <th>下一步 / 跟进日期</th>
                   <th>校验及结果</th>
@@ -177,15 +180,10 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
                 {rows.map((r) => (
                   <tr key={r.row}>
                     <td>{r.row}</td>
-                    <td>
-                      {r.title}
-                      <br />
-                      {r.payload?.companyName}
-                      <br />
-                      {r.payload?.contactName}
-                      <br />
-                      {r.payload?.contactDetails}
-                    </td>
+                    <td>{r.title}</td>
+                    <td>{r.payload?.companyName || "未填写"}</td>
+                    <td>{r.payload?.contactName || "未填写"}</td>
+                    <td>{r.payload?.contactDetails || "未填写"}</td>
                     <td>
                       {r.payload?.source || "未填写来源"}
                       <br />
