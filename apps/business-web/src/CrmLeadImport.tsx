@@ -171,8 +171,10 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
                   <th>公司名称</th>
                   <th>联系人</th>
                   <th>联系方式</th>
-                  <th>来源 / 需求摘要</th>
-                  <th>下一步 / 跟进日期</th>
+                  <th>来源</th>
+                  <th>需求摘要</th>
+                  <th>下一步</th>
+                  <th>跟进日期</th>
                   <th>校验及结果</th>
                 </tr>
               </thead>
@@ -184,16 +186,10 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
                     <td>{r.payload?.companyName || "未填写"}</td>
                     <td>{r.payload?.contactName || "未填写"}</td>
                     <td>{r.payload?.contactDetails || "未填写"}</td>
-                    <td>
-                      {r.payload?.source || "未填写来源"}
-                      <br />
-                      {r.payload?.summary}
-                    </td>
-                    <td>
-                      {r.payload?.nextAction || "未安排下一步"}
-                      <br />
-                      {r.payload?.nextFollowUp || "未安排跟进日期"}
-                    </td>
+                    <td>{r.payload?.source || "未填写来源"}</td>
+                    <td>{r.payload?.summary || "未填写"}</td>
+                    <td>{r.payload?.nextAction || "未安排下一步"}</td>
+                    <td>{r.payload?.nextFollowUp || "未安排跟进日期"}</td>
                     <td>
                       {r.error || r.status || "待导入"}
                       {r.id && (

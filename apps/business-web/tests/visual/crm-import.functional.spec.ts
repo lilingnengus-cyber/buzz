@@ -209,14 +209,23 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
     name: "opportunities.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
-      '\uFEFF线索名称,客户公司,联系人,联系方式,下一步,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,联系客户,2026-10-10',
+      '\uFEFF线索名称,客户公司,联系人,联系方式,来源,需求摘要,下一步,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,展会,年度采购需求,联系客户,2026-10-10',
     ),
   });
   await expect(dialog.getByLabel("表格内容")).toContainText("项目,甲");
   await dialog.getByRole("button", { name: "预览校验" }).click();
   await expect(dialog.getByRole("status")).toContainText("校验错误 0 条");
   await expect(dialog.locator("tbody")).toContainText("联系客户");
-  for (const column of ["线索名称", "公司名称", "联系人", "联系方式"]) {
+  for (const column of [
+    "线索名称",
+    "公司名称",
+    "联系人",
+    "联系方式",
+    "来源",
+    "需求摘要",
+    "下一步",
+    "跟进日期",
+  ]) {
     await expect(
       dialog.getByRole("columnheader", { name: column, exact: true }),
     ).toBeVisible();
@@ -226,6 +235,10 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
   await expect(cells.nth(2)).toHaveText("客户甲");
   await expect(cells.nth(3)).toHaveText("张经理");
   await expect(cells.nth(4)).toHaveText("13800138000");
+  await expect(cells.nth(5)).toHaveText("展会");
+  await expect(cells.nth(6)).toHaveText("年度采购需求");
+  await expect(cells.nth(7)).toHaveText("联系客户");
+  await expect(cells.nth(8)).toHaveText("2026-10-10");
   await page.setViewportSize({ width: 520, height: 780 });
   expect(
     await dialog.evaluate((el) => el.getBoundingClientRect().right),
