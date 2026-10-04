@@ -61,6 +61,7 @@ impl PgStore {
                ON permission.id=grant_row.permission_id AND permission.status='active'
              WHERE principal.kind='human' AND principal.status='active'
                AND principal.external_id=$1 AND grant_row.data_scope->>'mode'='restricted'
+               AND permission.capability IN ('crm:read','crm:manage','business_master_data:read')
                AND grant_row.obligations='[]'::jsonb AND permission.obligations='[]'::jsonb",
         )
         .bind(user.to_string())

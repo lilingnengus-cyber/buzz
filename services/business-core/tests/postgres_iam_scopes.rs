@@ -101,6 +101,8 @@ async fn iam_only_presales_role_enforces_exact_units_and_live_revocation() {
     );
     assert_eq!(snapshot.scopes.customer_ids.len(), 2);
     assert!(!snapshot.permission_keys.contains("sales_order:read"));
+    // A capability outside this bridge must not advertise an unsupported edit action.
+    grant(&pool, role, "business_master_data:manage", restricted(unit)).await;
     let masters = CoreMasterDataService::new(store.clone());
     let customers = masters
         .list(user, Some(CoreMasterType::Customer), 100)
