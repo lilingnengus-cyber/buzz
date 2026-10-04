@@ -1,3 +1,4 @@
+import { MasterDuplicateNotice } from "./MasterDuplicateNotice";
 import { MasterRecordLink } from "./MasterRecordLink";
 import { useMasterDeepLink } from "./useMasterDeepLink";
 import { useMasterPage } from "./useMasterPage";
@@ -620,6 +621,7 @@ function MasterFormModal({
               onChange={(e) => set("name", e.target.value)}
             />
           </Field>
+          {!readOnly && (type === "customer" || type === "supplier") && <MasterDuplicateNotice type={type} name={form.name} id={record?.id} />}
           {type === "business_unit" && (
             <OperatingUnitPicker
               orderRequired={!record}
