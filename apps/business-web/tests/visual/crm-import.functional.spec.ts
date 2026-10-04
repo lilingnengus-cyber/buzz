@@ -1,4 +1,92 @@
 import { test, expect } from "@playwright/test";
+
+test("重复、必填、日期和列数错误逐行提示，修正后重新预览", async ({ page }) => {
+  const writes: string[] = [];
+  await page.route("**/api/**", (route) => {
+    if (route.request().method() === "POST") writes.push(route.request().url());
+    return route.fulfill({
+      json:
+        new URL(route.request().url()).pathname === "/api/session"
+          ? { authenticated: true, csrfToken: "csrf" }
+          : { items: [], hasMore: false, canManage: true },
+    });
+  });
+  await page.goto("/#crmLeads");
+  await page.getByRole("button", { name: "批量导入", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "批量导入线索" });
+  const source = dialog.getByLabel("表格内容");
+  await source.fill(
+    "线索名称,客户公司,跟进日期\n项目甲,公司甲,2026-10-10\n项目甲,公司甲,2026-10-10\n,公司乙,\n项目丙,公司丙,2026-02-30\n项目丁,公司丁",
+  );
+  await dialog.getByRole("button", { name: "预览校验" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "共 5 条，校验错误 4 条",
+  );
+  for (const [row, error] of [
+    [3, "与本批前面记录完全重复"],
+    [4, "线索名称必填"],
+    [5, "跟进日期须为有效的 YYYY-MM-DD 日期"],
+    [6, "列数与表头不一致"],
+  ] as const) {
+    const record = dialog.locator("tbody tr").filter({
+      has: page.getByRole("cell", { name: String(row), exact: true }),
+    });
+    await expect(record).toContainText(error);
+  }
+  await expect(dialog.getByRole("button", { name: "确认导入" })).toBeDisabled();
+  await source.fill(
+    "线索名称,客户公司,跟进日期\n项目甲,公司甲,2026-10-10\n项目甲,公司乙,2026-10-11",
+  );
+  await expect(dialog.locator("tbody")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "预览校验" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "共 2 条，校验错误 0 条",
+  );
+  await expect(dialog.getByRole("button", { name: "确认导入" })).toBeEnabled();
+  await source.fill("线索名称,线索名称\n甲,乙");
+  await dialog.getByRole("button", { name: "预览校验" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("表头重复或不受支持");
+  await expect(dialog.getByRole("button", { name: "确认导入" })).toHaveCount(0);
+  expect(writes).toHaveLength(0);
+});
+
+test("关闭后重复导入相同内容复用幂等标识", async ({ page }) => {
+  const keys: string[] = [];
+  const records = new Map<string, string>();
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/crm/leads" && route.request().method() === "POST") {
+      const key = route.request().headers()["idempotency-key"];
+      keys.push(key);
+      if (!records.has(key)) records.set(key, "imported-lead");
+      return route.fulfill({ json: { id: records.get(key), version: 1 } });
+    }
+    return route.fulfill({
+      json:
+        path === "/api/session"
+          ? { authenticated: true, csrfToken: "csrf" }
+          : { items: [], hasMore: false, canManage: true },
+    });
+  });
+  await page.goto("/#crmLeads");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole("button", { name: "批量导入", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "批量导入线索" });
+    await dialog
+      .getByLabel("表格内容")
+      .fill("线索名称,客户公司\n验收项目,验收公司");
+    await dialog.getByRole("button", { name: "预览校验" }).click();
+    await dialog.getByRole("button", { name: "确认导入" }).click();
+    await expect(dialog.getByRole("status")).toContainText("已保存 1 条");
+    await expect(dialog.locator("tbody")).toContainText("重复提交不会新建");
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+  }
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+  expect(records.size).toBe(1);
+});
+
 test("批量导入先校验、部分失败重试复用标识、成功项不重发", async ({ page }) => {
   const writes: any[] = [];
   let fail = true;
