@@ -166,6 +166,7 @@ pub struct CoreMasterRecord {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreMasterList {
+    /// Permission-scoped totals and continuation metadata for this page.
     #[serde(flatten)]
     pub page: crate::master_pagination::MasterPageMetadata,
     pub items: Vec<CoreMasterRecord>,
