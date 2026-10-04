@@ -207,7 +207,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           <span>点击记录查看详情与跟进</span>
         </div>
         <div className="crm-lead-columns" aria-hidden="true">
-          {["线索 / 公司", "联系人", "状态", "下一步", "跟进日期"].map((v) => (
+          {["线索名称", "公司名称", "联系人", "状态", "下一步", "跟进日期"].map((v) => (
             <span key={v}>{v}</span>
           ))}
         </div>
@@ -229,14 +229,14 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
                 setMode("detail");
               }}
             >
-              <span>
+              <span data-label="线索名称">
                 <strong>{item.title}</strong>
-                <small>{item.companyName || "公司待确认"}</small>
               </span>
-              <span>{item.contactName || "未填写"}</span>
-              <span>{LEAD_STATUSES[item.status]}</span>
-              <span>{item.nextAction || "未安排"}</span>
-              <span>{item.nextFollowUp || "未安排"}</span>
+              <span data-label="公司名称">{item.companyName || "公司待确认"}</span>
+              <span data-label="联系人">{item.contactName || "未填写"}</span>
+              <span data-label="状态">{LEAD_STATUSES[item.status]}</span>
+              <span data-label="下一步">{item.nextAction || "未安排"}</span>
+              <span data-label="跟进日期">{item.nextFollowUp || "未安排"}</span>
             </button>
           ))
         )}
@@ -390,8 +390,8 @@ function LeadRecord({
       <header className="crm-heading">
         <div>
           <span className="crm-stage">{LEAD_STATUSES[item.status]}</span>
+          <p className="crm-hint">线索名称</p>
           <h2>{item.title}</h2>
-          <p>{item.companyName || "公司待确认"}</p>
         </div>
         {canManage && item.status !== "converted" && (
           <button onClick={() => setMode("edit")}>编辑线索</button>
@@ -409,6 +409,7 @@ function LeadRecord({
       )}
       <dl className="crm-facts">
         {[
+          ["公司名称", item.companyName],
           ["联系人", item.contactName],
           ["联系方式", item.contactDetails],
           ["来源", item.source],
