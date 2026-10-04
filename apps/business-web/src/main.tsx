@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   type AgentQueryRun,
   type AgentQueryRunList,
-  type ApiFailure,
+  type ApiFailure, type CoreMasterType, type ProductMasterType,
   type DataQuality,
   type Envelope,
   type GoodsReceipt,
@@ -288,13 +288,13 @@ function App() {
             </time>
           </div>
         </header>
-        <SectionView section={current.section} id={current.id} />
+        <SectionView section={current.section} id={current.id} masterType={current.masterType} />
       </main>
     </div>
   );
 }
 
-function SectionView({ section, id }: { section: Section; id?: string }) {
+function SectionView({ section, id, masterType }: { section: Section; id?: string; masterType?: CoreMasterType | ProductMasterType }) {
   if (section === "agentQuery") return <AgentQueryReceipt traceId={id} />;
   if (section === "dashboard") return <OperationsDashboardView />;
   if (section === "quality") return <DataQualityView />;
@@ -316,8 +316,8 @@ function SectionView({ section, id }: { section: Section; id?: string }) {
       />
     );
   if (section === "coreData")
-    return <CoreMasterDataCenter initialCustomerId={id} />;
-  if (section === "productData") return <ProductMasterDataCenter />;
+    return <CoreMasterDataCenter initialCustomerId={id} initialResourceType={masterType as CoreMasterType | undefined} />;
+  if (section === "productData") return <ProductMasterDataCenter initialId={id} initialResourceType={masterType as ProductMasterType | undefined} />;
   if (section === "numbering") return <NumberingRulesCenter />;
   if (section === "preferences") return <OperatingUnitPreferences />;
   if (section === "profits") return <OrderProfits id={id} />;

@@ -64,9 +64,10 @@ test('编辑商品候选品牌包含第二页', async ({page})=>{
   await page.goto('/#productData');
   await page.getByRole('button',{name:'＋ 新增商品',exact:true}).click();
   const brand=page.getByRole('dialog').getByRole('combobox',{name:'品牌',exact:true});
-  await expect(brand.locator('option')).toContainText(['无品牌','首项','末页品牌']);
-  await brand.selectOption('second');
-  await expect(brand).toHaveValue('second');
+  await brand.click();
+  await expect(page.getByRole('option')).toContainText(['无品牌','首项','末页品牌']);
+  await page.getByRole('option',{name:'second · 末页品牌'}).click();
+  await expect(brand).toContainText('末页品牌');
   expect(seen).toEqual(['0','1']);
 });
 
@@ -82,6 +83,7 @@ test('客户链接按 id 定位到首屏之外的客户',async({page})=>{
     return route.fulfill({json:{items:match?[record]:[],total:match?1:0,hasMore:false,canManage:true,dataAsOf:'2026-10-05T00:00:00Z'}});
   });
   await page.goto('/customers/target');
-  await expect(page.getByText('末页客户',{exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'客户详情'})).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('textbox',{name:'名称 *'})).toHaveValue('末页客户');
   expect(exactLookup).toBe(true);
 });

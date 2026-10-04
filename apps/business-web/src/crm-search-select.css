@@ -12,3 +12,7 @@
 .order-product-picker .crm-search-select > button { padding: 9px 10px; color: var(--ink); background: white; border: 1px solid var(--line); font: inherit; min-width: 0; }
 .order-product-picker .crm-search-select > button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .order-product-picker .crm-search-select-panel { position: static; box-shadow: none; min-width: 0; }
+.master-search-picker { min-width: 0; }
+.master-search-picker .crm-search-select > button { background: white; color: var(--ink); border: 1px solid var(--line); padding: .65rem; font: inherit; min-height: 2.75rem; }
+.master-search-picker .crm-search-select-panel { position: static; box-shadow: none; }
+.master-search-picker button:focus-visible { outline: 2px solid #be841b; outline-offset: 2px; }

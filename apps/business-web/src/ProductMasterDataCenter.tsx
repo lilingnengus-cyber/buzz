@@ -1,3 +1,6 @@
+import { MasterRecordLink } from "./MasterRecordLink";
+import { useMasterDeepLink } from "./useMasterDeepLink";
+import { MasterSearchSelect } from "./MasterSearchSelect";
 import { useMasterPage } from "./useMasterPage";
 import { MasterFormOptions } from "./MasterFormOptions";
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
@@ -102,12 +105,18 @@ const EMPTY_FORM: FormState = {
   usageScope: "both",
 };
 
-export function ProductMasterDataCenter() {
+export function ProductMasterDataCenter({ initialId, initialResourceType = "product" }: { initialId?: string; initialResourceType?: ProductMasterType }) {
   const [activeType, setActiveType] =
     React.useState<ProductMasterType>("product");
-  const { query, status, setQuery, setStatus } = useMasterFilters(activeType);
+  const { query, status, setQuery, setStatus, setForType, clear } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const { data, loading, error, load, pagination } = useMasterPage<ProductMasterRecord>("/api/v1/product-master-data", activeType, query, status);
+
+  const link = useMasterDeepLink<ProductMasterRecord>("/api/v1/product-master-data", initialResourceType, initialId, (record) => {
+    setActiveType(record.resourceType);
+    setForType(record.resourceType, { query: record.code, status: "all" });
+    setModal({ kind: "form", type: record.resourceType, record, detail: true });
+  });
 
   const current = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -154,6 +163,7 @@ export function ProductMasterDataCenter() {
         )}
       </div>
 
+      {link.error && <p role="alert" className="master-form-error">{link.error} <button type="button" onClick={link.retry}>重试详情</button></p>}
       {!error && (
         <div
           className="master-spine product-spine"
@@ -225,6 +235,7 @@ export function ProductMasterDataCenter() {
               <option value="disabled">停用</option>
             </select>
           </label>
+          <button type="button" className="master-secondary" disabled={!query && status === "all"} onClick={clear}>清除筛选</button>
           <button
             type="button"
             className="master-secondary"
@@ -274,7 +285,7 @@ export function ProductMasterDataCenter() {
         </p>
       </footer>
       {modal?.kind === "form" && (
-        <MasterFormOptions<ProductMasterRecord> endpoint="/api/v1/product-master-data" type={modal.type} onClose={() => setModal(null)}>
+        <MasterFormOptions<ProductMasterRecord> key={`${modal.type}:${modal.record?.id ?? "new"}`} endpoint="/api/v1/product-master-data" type={modal.type} onClose={() => setModal(null)}>
           {(items) => <ProductFormModal
           state={modal}
           readOnly={data?.canManage !== true}
@@ -444,17 +455,17 @@ function ProductFormModal({
     setForm((current) => ({ ...current, [field]: value }));
   const categories = items.filter(
     (item) =>
-      item.resourceType === "product_category" && item.status === "active",
+      item.resourceType === "product_category" && (item.status === "active" || item.id === record?.categoryId || item.id === record?.parentCategoryId),
   );
   const brands = items.filter(
-    (item) => item.resourceType === "brand" && item.status === "active",
+    (item) => item.resourceType === "brand" && (item.status === "active" || item.id === record?.brandId),
   );
   const units = items.filter(
     (item) =>
-      item.resourceType === "unit_of_measure" && item.status === "active",
+      item.resourceType === "unit_of_measure" && (item.status === "active" || item.id === record?.unitOfMeasureId),
   );
   const products = items.filter(
-    (item) => item.resourceType === "product" && item.status === "active",
+    (item) => item.resourceType === "product" && (item.status === "active" || item.id === record?.productId),
   );
 
   async function submit(event: React.FormEvent) {
@@ -531,6 +542,7 @@ function ProductFormModal({
               ? "编码和所属关系不可更改；保存时校验当前版本。"
               : "编码与所属关系保存后不可更改，请确认定义准确。"}
           </span>
+          <MasterRecordLink type={type} id={record?.id} />
         </div>
         <fieldset className="master-form-grid" disabled={readOnly || saving}>
           {type !== "uom_conversion" && (
@@ -571,59 +583,13 @@ function ProductFormModal({
             </Field>
           )}
           {type === "product_category" && (
-            <Field label="上级分类">
-              <select
-                disabled={immutable}
-                value={form.parentCategoryId}
-                onChange={(event) =>
-                  set("parentCategoryId", event.target.value)
-                }
-              >
-                <option value="">顶级分类</option>
-                {categories
-                  .filter((item) => item.id !== record?.id)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.code} · {item.name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
+            <MasterSearchSelect label="上级分类" value={form.parentCategoryId} items={categories.filter((item) => item.id !== record?.id)} disabled={immutable} required={false} emptyLabel="顶级分类" onChange={(id) => set("parentCategoryId", id)} />
           )}
           {type === "product" && (
             <>
-              <Field label="商品分类 *">
-                <select
-                  required
-                  disabled={immutable}
-                  value={form.categoryId}
-                  onChange={(event) => set("categoryId", event.target.value)}
-                >
-                  <option value="">请选择</option>
-                  {categories.map(option)}
-                </select>
-              </Field>
-              <Field label="品牌">
-                <select
-                  disabled={immutable}
-                  value={form.brandId}
-                  onChange={(event) => set("brandId", event.target.value)}
-                >
-                  <option value="">无品牌</option>
-                  {brands.map(option)}
-                </select>
-              </Field>
-              <Field label="基础单位 *">
-                <select
-                  required
-                  disabled={immutable}
-                  value={form.baseUomId}
-                  onChange={(event) => set("baseUomId", event.target.value)}
-                >
-                  <option value="">请选择</option>
-                  {units.map(option)}
-                </select>
-              </Field>
+              <MasterSearchSelect label="商品分类 *" value={form.categoryId} items={categories} disabled={immutable} required={true} emptyLabel="请选择" onChange={(id) => set("categoryId", id)} />
+              <MasterSearchSelect label="品牌" value={form.brandId} items={brands} disabled={immutable} required={false} emptyLabel="无品牌" onChange={(id) => set("brandId", id)} />
+              <MasterSearchSelect label="基础单位 *" value={form.baseUomId} items={units} disabled={immutable} required={true} emptyLabel="请选择" onChange={(id) => set("baseUomId", id)} />
               <label>
                 商品类型
                 <select
@@ -650,17 +616,7 @@ function ProductFormModal({
           )}
           {type === "sku" && (
             <>
-              <Field label="所属商品 *">
-                <select
-                  required
-                  disabled={immutable}
-                  value={form.productId}
-                  onChange={(event) => set("productId", event.target.value)}
-                >
-                  <option value="">请选择</option>
-                  {products.map(option)}
-                </select>
-              </Field>
+              <MasterSearchSelect label="所属商品 *" value={form.productId} items={products} disabled={immutable} required={true} emptyLabel="请选择" onChange={(id) => set("productId", id)} />
               <Field label="条码">
                 <input
                   value={form.barcode}
@@ -672,41 +628,8 @@ function ProductFormModal({
           )}
           {type === "uom_conversion" && (
             <>
-              <Field label="商品 *">
-                <select
-                  required
-                  disabled={immutable}
-                  value={form.productId}
-                  onChange={(event) => {
-                    set("productId", event.target.value);
-                    set("unitOfMeasureId", "");
-                  }}
-                >
-                  <option value="">请选择</option>
-                  {products.map(option)}
-                </select>
-              </Field>
-              <Field label="换算单位 *">
-                <select
-                  required
-                  disabled={immutable}
-                  value={form.unitOfMeasureId}
-                  onChange={(event) =>
-                    set("unitOfMeasureId", event.target.value)
-                  }
-                >
-                  <option value="">请选择</option>
-                  {units
-                    .filter(
-                      (item) =>
-                        item.id !==
-                        products.find(
-                          (product) => product.id === form.productId,
-                        )?.unitOfMeasureId,
-                    )
-                    .map(option)}
-                </select>
-              </Field>
+              <MasterSearchSelect label="商品 *" value={form.productId} items={products} disabled={immutable} required={true} emptyLabel="请选择" onChange={(id) => { set("productId", id); set("unitOfMeasureId", ""); }} />
+              <MasterSearchSelect label="换算单位 *" value={form.unitOfMeasureId} items={units.filter((item) => item.id !== products.find((product) => product.id === form.productId)?.unitOfMeasureId)} disabled={immutable} required={true} emptyLabel="请选择" onChange={(id) => set("unitOfMeasureId", id)} />
               <Field label="折合基础单位数量 *">
                 <input
                   required

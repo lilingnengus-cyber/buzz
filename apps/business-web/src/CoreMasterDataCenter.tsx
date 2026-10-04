@@ -1,3 +1,5 @@
+import { MasterRecordLink } from "./MasterRecordLink";
+import { useMasterDeepLink } from "./useMasterDeepLink";
 import { useMasterPage } from "./useMasterPage";
 import { MasterFormOptions } from "./MasterFormOptions";
 import { ValidatedMasterForm } from "./ValidatedMasterForm";
@@ -9,7 +11,6 @@ import { createPortal } from "react-dom";
 import {
   type CoreMasterCommandResult,
   type CoreMasterDisableImpact,
-  type CoreMasterList,
   type CoreMasterRecord,
   type CoreMasterType,
   request,
@@ -97,29 +98,21 @@ const EMPTY_FORM: FormState = {
 };
 
 export function CoreMasterDataCenter({
-  initialCustomerId,
+  initialCustomerId, initialResourceType = "customer",
 }: {
-  initialCustomerId?: string;
+  initialCustomerId?: string; initialResourceType?: CoreMasterType;
 }) {
   const [activeType, setActiveType] =
     React.useState<CoreMasterType>("legal_entity");
-  const { query, status, setQuery, setStatus, setForType } = useMasterFilters(activeType);
+  const { query, status, setQuery, setStatus, setForType, clear } = useMasterFilters(activeType);
   const [modal, setModal] = React.useState<ModalState | null>(null);
   const { data, loading, error, load, pagination } = useMasterPage<CoreMasterRecord>("/api/v1/core-master-data", activeType, query, status, activeType === "business_unit");
 
-  const [linkError, setLinkError] = React.useState("");
-  React.useEffect(() => {
-    setLinkError("");
-    if (!initialCustomerId) return;
-    const controller = new AbortController();
-    request<CoreMasterList>(`/api/v1/core-master-data?resourceType=customer&id=${encodeURIComponent(initialCustomerId)}&limit=1`, { signal: controller.signal }).then((result) => {
-      if (controller.signal.aborted) return;
-      const customer = result.items.find((item) => item.id === initialCustomerId);
-      if (customer) { setActiveType("customer"); setForType("customer", { status: "all", query: customer.code }); }
-      else setLinkError("该客户不存在或无访问权限");
-    }).catch((reason) => { if (!controller.signal.aborted) setLinkError(reason instanceof Error ? reason.message : "客户定位失败，请重试"); });
-    return () => controller.abort();
-  }, [initialCustomerId]);
+  const link = useMasterDeepLink<CoreMasterRecord>("/api/v1/core-master-data", initialResourceType, initialCustomerId, (record) => {
+    setActiveType(record.resourceType);
+    setForType(record.resourceType, { query: record.code, status: "all" });
+    setModal({ kind: "form", type: record.resourceType, record, detail: true });
+  });
 
   const current = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -167,7 +160,7 @@ export function CoreMasterDataCenter({
         )}
       </div>
 
-      {linkError && <p role="alert" className="master-form-error">{linkError}</p>}
+      {link.error && <p role="alert" className="master-form-error">{link.error} <button type="button" onClick={link.retry}>重试详情</button></p>}
       {!error && (
         <div className="master-tabs" role="tablist" aria-label="核心数据类别">
           {TYPES.map((item) => (
@@ -209,6 +202,7 @@ export function CoreMasterDataCenter({
               <option value="disabled">停用</option>
             </select>
           </label>
+          <button type="button" className="master-secondary" disabled={!query && status === "all"} onClick={clear}>清除筛选</button>
           <button
             type="button"
             className="master-secondary"
@@ -347,7 +341,7 @@ export function CoreMasterDataCenter({
       </footer>
 
       {modal?.kind === "form" && (
-        <MasterFormOptions<CoreMasterRecord> endpoint="/api/v1/core-master-data" type={modal.type} onClose={() => setModal(null)}>
+        <MasterFormOptions<CoreMasterRecord> key={`${modal.type}:${modal.record?.id ?? "new"}`} endpoint="/api/v1/core-master-data" type={modal.type} onClose={() => setModal(null)}>
           {(items) => <MasterFormModal
           state={modal}
           readOnly={data?.canManage !== true}
@@ -607,6 +601,7 @@ function MasterFormModal({
               ? "编码不可更改；保存时校验当前版本。"
               : "编码由编码规则自动生成；客户、供应商与仓库为集团共享主数据。"}
           </span>
+          <MasterRecordLink type={type} id={record?.id} />
         </div>
         <fieldset className="master-form-grid" disabled={readOnly || saving}>
           <Field label="编码">

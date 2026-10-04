@@ -26,8 +26,10 @@ test("商品新建逐项定位必填字段，补齐后保存", async ({ page }) 
   expect(writes).toHaveLength(0);
   await code.fill("NEW-PRODUCT");
   await name.fill("新商品");
-  await dialog.getByRole("combobox", { name: /^商品分类/ }).selectOption("cat");
-  await dialog.getByRole("combobox", { name: /^基础单位/ }).selectOption("unit");
+  await dialog.getByRole("combobox", { name: /^商品分类/ }).click();
+  await dialog.getByRole("option", { name: "CAT · 测试分类" }).click();
+  await dialog.getByRole("combobox", { name: /^基础单位/ }).click();
+  await dialog.getByRole("option", { name: "EA · 件" }).click();
   await save.click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toHaveLength(1);

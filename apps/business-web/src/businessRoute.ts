@@ -1,3 +1,4 @@
+import type { CoreMasterType, ProductMasterType } from "./api";
 import { NAV, type Section } from "./businessNavigation";
 
 export const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
@@ -11,7 +12,7 @@ export const WORKFLOW_NAV_ALIASES: Partial<Record<Section, Section>> = {
   supplierPayments: "purchasing",
 };
 
-export function route(): { section: Section; id?: string; embed: boolean } {
+export function route(): { section: Section; id?: string; masterType?: CoreMasterType | ProductMasterType; embed: boolean } {
   const path = window.location.pathname;
   const embed = path.startsWith("/embed/");
   const clean = path.replace(/^\/embed/, "");
@@ -34,13 +35,12 @@ export function route(): { section: Section; id?: string; embed: boolean } {
   if (clean === "/crm/contacts") return { section: "crmContacts", embed };
   if (clean === "/crm/leads") return { section: "crmLeads", embed };
   if (clean === "/crm") return { section: "crm", embed };
-  const customer = clean.match(/^\/customers\/([^/]+)$/);
-  if (customer)
-    return {
-      section: "coreData",
-      id: decodeURIComponent(customer[1]),
-      embed,
-    };
+  const master = clean.match(/^\/(customers|suppliers|warehouses|products|skus)\/([^/]+)$/);
+  if (master) {
+    const types = { customers: "customer", suppliers: "supplier", warehouses: "warehouse", products: "product", skus: "sku" } as const;
+    const masterType = types[master[1] as keyof typeof types];
+    return { section: masterType === "product" || masterType === "sku" ? "productData" : "coreData", masterType, id: decodeURIComponent(master[2]), embed };
+  }
   if (clean === "/core-data") return { section: "coreData", embed };
   if (clean === "/product-data") return { section: "productData", embed };
   if (clean === "/preferences") return { section: "preferences", embed };

@@ -10,6 +10,7 @@ export function useMasterFilters<T extends string>(type: T) {
     query,
     status,
     setForType,
+    clear: () => setForType(type, { query: "", status: "all" }),
     setQuery: (query: string) => setForType(type, { query, status }),
     setStatus: (status: string) => setForType(type, { query, status }),
   };
