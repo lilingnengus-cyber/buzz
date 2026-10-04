@@ -41,7 +41,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   const [selected, setSelected] = React.useState<string | null>(
     initialId ?? null,
   );
-  const [mode, setMode] = React.useState("detail");
+  const [mode, setMode] = React.useState("edit");
   React.useEffect(() => {
     let active = true;
     setOwnerError("");
@@ -226,7 +226,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
               key={item.id}
               onClick={() => {
                 setSelected(item.id);
-                setMode("detail");
+                setMode("edit");
               }}
             >
               <span data-label="线索名称">
@@ -271,6 +271,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
                 key={`${selected}-${revision}`}
                 id={selected}
                 canManage={data.canManage}
+                defaultEdit={mode === "edit"}
                 onSaved={saved}
               />
             )
@@ -283,10 +284,12 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
 function LeadRecord({
   id,
   canManage,
+  defaultEdit,
   onSaved,
 }: {
   id: string;
   canManage: boolean;
+  defaultEdit: boolean;
   onSaved: (id: string, transferred: boolean) => void;
 }) {
   const [owner, setOwner] = React.useState("");
@@ -298,7 +301,7 @@ function LeadRecord({
   const [data, setData] = React.useState<LeadDetail | null>(null);
   const [error, setError] = React.useState("");
   const [revision, setRevision] = React.useState(0);
-  const [mode, setMode] = React.useState("detail");
+  const [mode, setMode] = React.useState(defaultEdit ? "initial" : "detail");
   const [offset, setOffset] = React.useState(0);
   const [options, setOptions] = React.useState<CrmOption[] | null>(null);
   const [optionsError, setOptionsError] = React.useState("");
@@ -342,7 +345,7 @@ function LeadRecord({
     );
   if (!data) return <p role="status">正在加载详情…</p>;
   const item = data.item;
-  if (mode === "edit")
+  if ((mode === "edit" || mode === "initial") && canManage && item.status !== "converted")
     return (
       <CrmLeadForm
         record={item}

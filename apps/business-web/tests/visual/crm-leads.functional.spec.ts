@@ -102,6 +102,10 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
   await page.goto("/embed/crm/leads/lead");
   await expect(
+    drawer.getByRole("heading", { name: "编辑线索", exact: true }),
+  ).toBeVisible();
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(
     drawer.getByRole("heading", { name: "年度采购需求" }),
   ).toBeVisible();
   await waitForAnimations(page);
@@ -315,8 +319,15 @@ test("线索编辑移除客户关联控件与查询，保留已有记录关联",
   ).toBe(true);
   await row.click();
   const drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
-  await expect(drawer.locator(".crm-facts")).toContainText("公司名称客户甲");
-  await drawer.getByRole("button", { name: "编辑线索", exact: true }).click();
+  await expect(
+    drawer.getByRole("heading", { name: "编辑线索", exact: true }),
+  ).toBeVisible();
+  await drawer.getByLabel("线索名称", { exact: true }).fill("未保存改名");
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "继续编辑", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "继续编辑", exact: true }).click();
   await expect(
     drawer.getByRole("combobox", { name: "关联已有客户", exact: true }),
   ).toHaveCount(0);
@@ -327,4 +338,42 @@ test("线索编辑移除客户关联控件与查询，保留已有记录关联",
   ).toBeVisible();
   expect(writes).toBe(1);
   expect(optionReads).toBe(0);
+});
+
+test("已转商机线索默认只读，保留商机入口", async ({ page }) => {
+  const item = {
+    id: "converted",
+    title: "已转线索",
+    companyName: "客户甲",
+    status: "converted",
+    ownerUserId: "me",
+    convertedOpportunityId: "opp",
+    version: 3,
+  };
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    return route.fulfill({
+      json:
+        path === "/api/session"
+          ? { authenticated: true, csrfToken: "csrf" }
+          : path === "/api/v1/crm/leads/converted"
+            ? { item, followups: [], hasMore: false, duplicates: [] }
+            : { items: [item], canManage: true, hasMore: false },
+    });
+  });
+  await page.goto("/#crmLeads");
+  await page.getByRole("button", { name: /已转线索.*客户甲/ }).click();
+  const drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
+  await expect(
+    drawer.getByRole("heading", { name: "已转线索", exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "编辑线索", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    drawer.getByRole("button", { name: "保存线索", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    drawer.getByRole("link", { name: "打开已转入的商机" }),
+  ).toHaveAttribute("href", "/#crm?opportunity=opp");
 });
