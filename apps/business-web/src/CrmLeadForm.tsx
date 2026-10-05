@@ -80,7 +80,7 @@ export function CrmLeadForm({
                 nextAction: record?.nextAction ?? "",
                 ownerUserId: owner || null,
                 customerId: record?.customerId ?? null,
-                nextFollowUp: form.get("nextFollowUp") || null,
+                nextFollowUp: record?.nextFollowUp ?? null,
                 expectedVersion: record?.version ?? null,
               }),
             },
@@ -139,14 +139,6 @@ export function CrmLeadForm({
               />
             </label>
           ))}
-          <label>
-            跟进日期
-            <input
-              type="date"
-              name="nextFollowUp"
-              defaultValue={record?.nextFollowUp ?? ""}
-            />
-          </label>
           <CrmSearchSelect
             label="负责人"
             value={owner}

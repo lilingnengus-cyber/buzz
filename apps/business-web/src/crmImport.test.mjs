@@ -39,17 +39,17 @@ test("CSV quotes, BOM, CRLF and spreadsheet paste", () => {
   ]);
   assert.throws(() => parseTable('"bad'), /引号/);
 });
-test("lead import accepts only title, validates optional dates, limits and duplicates", () => {
+test("lead import accepts only title, validates field lengths, limits and duplicates", () => {
   const rows = importRows(
-    "线索名称,跟进日期\n项目,2026-10-02\n项目,2026-10-02\n坏日期,2026-02-30",
+    "线索名称,来源\n项目,2026-10-02\n项目,2026-10-02\n长来源,XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
   );
   assert.equal(rows[0].payload.companyName, "");
-  assert.equal(rows[0].payload.nextFollowUp, "2026-10-02");
+  assert.equal(rows[0].payload.nextFollowUp, null);
   assert.equal(rows[0].payload.ownerUserId, null);
   assert.equal(rows[0].payload.customerId, null);
   assert.equal(rows[0].payload.expectedVersion, null);
   assert.match(rows[1].error, /重复/);
-  assert.match(rows[2].error, /日期/);
+  assert.match(rows[2].error, /来源超过/);
   assert.match(importRows("线索名称\n" + "字".repeat(161))[0].error, /160/);
   assert.match(
     importRows("线索名称,需求摘要\n项目," + "字".repeat(4001))[0].error,

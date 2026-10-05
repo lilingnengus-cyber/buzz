@@ -6,7 +6,7 @@ import { CrmDrawer } from "./CrmDrawer";
 import { CrmLeadForm } from "./CrmLeadForm";
 import { CrmLeadFollowup } from "./CrmLeadFollowup";
 import { CrmForm } from "./CrmForm";
-import { localDate, type CrmOption } from "./crm";
+import { type CrmOption } from "./crm";
 import {
   LEAD_STATUSES,
   leadLink,
@@ -32,7 +32,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   });
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState("");
-  const [overdue, setOverdue] = React.useState(false);
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
@@ -67,7 +66,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
       if (query.trim()) params.set("query", query.trim());
       if (status) params.set("status", status);
       if (owner) params.set("ownerUserId", owner);
-      if (overdue) params.set("dueBy", localDate());
       request<LeadList>(`/api/v1/crm/leads?${params}`)
         .then((r) => {
           if (active) setData(r);
@@ -86,7 +84,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [query, status, overdue, offset, revision, owner]);
+  }, [query, status, offset, revision, owner]);
   const close = () => {
     setSelected(null);
     setMode("detail");
@@ -147,15 +145,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
-        <button
-          aria-pressed={overdue}
-          onClick={() => {
-            setOverdue(!overdue);
-            setOffset(0);
-          }}
-        >
-          逾期未跟进
-        </button>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
       {ownerError ? (
@@ -207,7 +196,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           <span>点击记录查看详情与跟进</span>
         </div>
         <div className="crm-lead-columns" aria-hidden="true">
-          {["线索名称", "公司名称", "联系人", "状态", "跟进日期"].map((v) => (
+          {["线索名称", "公司名称", "联系人", "状态"].map((v) => (
             <span key={v}>{v}</span>
           ))}
         </div>
@@ -235,7 +224,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
               <span data-label="公司名称">{item.companyName || "公司待确认"}</span>
               <span data-label="联系人">{item.contactName || "未填写"}</span>
               <span data-label="状态">{LEAD_STATUSES[item.status]}</span>
-              <span data-label="跟进日期">{item.nextFollowUp || "未安排"}</span>
             </button>
           ))
         )}
@@ -416,7 +404,6 @@ function LeadRecord({
           ["联系方式", item.contactDetails],
           ["来源", item.source],
           ["负责人", item.ownerName],
-          ["跟进日期", item.nextFollowUp],
         ].map(([k, v]) => (
           <div key={k}>
             <dt>{k}</dt>
@@ -464,7 +451,6 @@ function LeadRecord({
             {n.disqualificationReason && (
               <p>淘汰原因：{n.disqualificationReason}</p>
             )}
-            <p>跟进日期：{n.nextFollowUp || "未安排"}</p>
           </article>
         ))}
       </section>

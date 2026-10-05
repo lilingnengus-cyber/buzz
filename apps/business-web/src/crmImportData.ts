@@ -5,7 +5,6 @@ export const IMPORT_HEADERS = [
   "联系方式",
   "来源",
   "需求摘要",
-  "跟进日期",
 ];
 export function parseTable(source: string): string[][] {
   const text = source.replace(/^\uFEFF/, "");
@@ -52,16 +51,6 @@ export function parseTable(source: string): string[][] {
   if (row.some(Boolean)) rows.push(row);
   return rows;
 }
-function date(value: string, label: string) {
-  if (!value) return null;
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
-    !Number.isFinite(Date.parse(value)) ||
-    new Date(value).toISOString().slice(0, 10) !== value
-  )
-    throw new Error(`${label}须为有效的 YYYY-MM-DD 日期`);
-  return value;
-}
 export function importRows(text: string) {
   if (new TextEncoder().encode(text).length > 1024 * 1024)
     throw new Error("文件不能超过 1 MB");
@@ -103,7 +92,7 @@ export function importRows(text: string) {
         source: get("来源"),
         summary: get("需求摘要"),
         nextAction: "",
-        nextFollowUp: date(get("跟进日期"), "跟进日期"),
+        nextFollowUp: null,
         customerId: null,
         ownerUserId: null,
         expectedVersion: null,

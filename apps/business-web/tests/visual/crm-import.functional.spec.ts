@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-test("重复、必填、日期和列数错误逐行提示，修正后重新预览", async ({ page }) => {
+test("重复、必填、长度和列数错误逐行提示，修正后重新预览", async ({ page }) => {
   const writes: string[] = [];
   await page.route("**/api/**", (route) => {
     if (route.request().method() === "POST") writes.push(route.request().url());
@@ -17,7 +17,7 @@ test("重复、必填、日期和列数错误逐行提示，修正后重新预�
   const dialog = page.getByRole("dialog", { name: "批量导入线索" });
   const source = dialog.getByLabel("表格内容");
   await source.fill(
-    "线索名称,客户公司,跟进日期\n项目甲,公司甲,2026-10-10\n项目甲,公司甲,2026-10-10\n,公司乙,\n项目丙,公司丙,2026-02-30\n项目丁,公司丁",
+    "线索名称,客户公司,来源\n项目甲,公司甲,2026-10-10\n项目甲,公司甲,2026-10-10\n,公司乙,\n项目丙,公司丙,XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n项目丁,公司丁",
   );
   await dialog.getByRole("button", { name: "预览校验" }).click();
   await expect(dialog.getByRole("status")).toContainText(
@@ -26,7 +26,7 @@ test("重复、必填、日期和列数错误逐行提示，修正后重新预�
   for (const [row, error] of [
     [3, "与本批前面记录完全重复"],
     [4, "线索名称必填"],
-    [5, "跟进日期须为有效的 YYYY-MM-DD 日期"],
+    [5, "来源超过 100 字"],
     [6, "列数与表头不一致"],
   ] as const) {
     const record = dialog.locator("tbody tr").filter({
@@ -36,7 +36,7 @@ test("重复、必填、日期和列数错误逐行提示，修正后重新预�
   }
   await expect(dialog.getByRole("button", { name: "确认导入" })).toBeDisabled();
   await source.fill(
-    "线索名称,客户公司,跟进日期\n项目甲,公司甲,2026-10-10\n项目甲,公司乙,2026-10-11",
+    "线索名称,客户公司,来源\n项目甲,公司甲,2026-10-10\n项目甲,公司乙,2026-10-11",
   );
   await expect(dialog.locator("tbody")).toHaveCount(0);
   await dialog.getByRole("button", { name: "预览校验" }).click();
@@ -214,7 +214,7 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
     name: "opportunities.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
-      '\uFEFF线索名称,公司名称,联系人,联系方式,来源,需求摘要,跟进日期\r\n"项目,甲",客户甲,张经理,13800138000,展会,年度采购需求,2026-10-10',
+      '\uFEFF线索名称,公司名称,联系人,联系方式,来源,需求摘要\r\n"项目,甲",客户甲,张经理,13800138000,展会,年度采购需求',
     ),
   });
   await expect(dialog.getByLabel("表格内容")).toContainText("项目,甲");
@@ -228,7 +228,6 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
     "联系方式",
     "来源",
     "需求摘要",
-    "跟进日期",
   ]) {
     await expect(
       dialog.getByRole("columnheader", { name: column, exact: true }),
@@ -241,7 +240,6 @@ test("CSV 模板下载、上传预览与未保存保护", async ({ page }) => {
   await expect(cells.nth(4)).toHaveText("13800138000");
   await expect(cells.nth(5)).toHaveText("展会");
   await expect(cells.nth(6)).toHaveText("年度采购需求");
-  await expect(cells.nth(7)).toHaveText("2026-10-10");
   await page.setViewportSize({ width: 520, height: 780 });
   expect(
     await dialog.evaluate((el) => el.getBoundingClientRect().right),

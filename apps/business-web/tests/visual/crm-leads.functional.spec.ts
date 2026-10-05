@@ -70,7 +70,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
       expect(body.expectedVersion).toBe(2);
       expect(body.opportunity.stage).toBe("contacting");
       expect(body.opportunity.nextAction).toBe("");
-      expect(body.opportunity.nextFollowUp).toBe("2026-10-06");
+      expect(body.opportunity.nextFollowUp).toBeNull();
       return route.fulfill({ json: { id: "opp", version: 1 } });
     }
     if (path === "/api/v1/crm/leads/lead")
@@ -100,6 +100,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   await drawer.getByLabel("线索名称", { exact: true }).fill("年度采购需求");
   await drawer.getByRole("button", { name: "保存线索", exact: true }).click();
   drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
+  await expect(drawer).toBeVisible();
   await page.goto("/embed/crm/leads/lead");
   await expect(
     drawer.getByRole("heading", { name: "编辑线索", exact: true }),
@@ -114,7 +115,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   await drawer.getByLabel("筛选结果").selectOption("contacting");
   await drawer.getByLabel("沟通内容").fill("已确认采购需求");
   await expect(drawer.getByLabel("下一步", { exact: true })).toHaveCount(0);
-  await drawer.getByLabel("跟进日期", { exact: true }).fill("2026-10-06");
+  await expect(drawer.getByLabel("跟进日期", { exact: true })).toHaveCount(0);
   await drawer.getByRole("button", { name: "保存跟进" }).click();
   await drawer.getByRole("button", { name: "转为商机", exact: true }).click();
   await expect(drawer.getByLabel("商机名称", { exact: true })).toHaveValue(
