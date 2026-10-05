@@ -104,3 +104,9 @@ Agent 提示同时移除客户法定主体、经营主体选择要求。当前�
 macOS `/Applications/Pacioli.app` 的 `buzz-acp` 与 `business-read-mcp` 已更新并重新签名验证，旧文件在 `~/Library/Application Support/Pacioli/sidecar-backups/agent-duplicates-28cc5a58d/`。构建保留已安装 Life 回复改进对应的本地源文件，未将这些无关修改提交到本次功能。已确认本机企业助手为“拾玥_BizOS”，具有独立重启入口；此时 Mac 锁屏，尚未重启该 Agent，也未验证真实聊天往返。解锁请求已提出；不能将安装完成视为旧进程已经加载新版提示。未代发测试聊天、未写入生产客户。
 
 2026-10-05 解锁后已通过 Pacioli 的企业助手 Profile → Restart agent 完成启用。界面显示 `Restarted 拾玥_BizOS.`，该助手恢复 Online / running；ACP 原进程 71343 退出，新进程 95361 从已更新的 `/Applications/Pacioli.app/Contents/MacOS/buzz-acp` 启动，另一 ACP 进程 71345 保持不变。此项验证确认企业助手重启恢复在线；未代发聊天，真实对话中的重复确认流程尚未验收，未创建生产客户。
+
+## 2026-10-05 线索精简与中文币种发布
+
+发布 `b6f136ca9`：线索移除下一步、跟进日期及逾期筛选，覆盖列表、录入/编辑、详情、线索跟进和导入模板；保留历史字段值。业务页面币种名称改为中文，选择值及接口仍使用标准代码。构建、相关单元测试、线索/导入 11 项浏览器场景及币种相关 5 项浏览器场景通过。
+
+生产目录 `business-web-b6f136ca9-8137c42593f6`，公开 JS `index-y6oWikSB.js` SHA256 `ca1f1adbc4d4e7ac24542ff4c9c3fe3ab4bb9ff7af6a5f2e8669f57a7a65b15a` 与构建一致；IAM/Core 健康。回滚保留 `business-web-ddf205993`。原生客户端仍打开旧版线索编辑表单，为避免丢失用户输入没有强制刷新；后续屏幕读取失败，原生新版复验尚未完成。
