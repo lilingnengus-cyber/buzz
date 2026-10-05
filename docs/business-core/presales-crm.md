@@ -469,3 +469,11 @@ Pacioli 已登录生产 Business Dock 中仅粘贴虚构测试表格并预览：
 仅修复已获用户授权的培训案例遗留项：商机 `657cea74-cc6d-40bf-aebd-c867f9322f07`，删除无引用的潜在联系人 `8149aba9-61ba-445a-8dea-2e3069184c13`，保留正式联系人 `2ff91a71-9204-4c92-b460-09df3eb641c1`。修复事务校验固定 ID、版本、测试公司名称、相同姓名/联系方式、已成交商机和零引用；完整原记录写入 `crm.contact.duplicate_repaired` 审计，另写 outbox。Pacioli 生产客户端搜索测试公司后显示 1 条联系人，姓名及联系方式正确。未新增订单、收款或记账。
 
 后端发布完成：以线上 `agent-duplicates-47cb3289e` 源码为基线，仅替换 `crm/conversion.rs`，保留已有 IAM/Agent 修复。镜像 `shiyue-business-core:crm-contacts-9c7387447`，不可变 ID `sha256:5b2e7a01399cd88dd626b594cba163fd36ee18fbf31d605849900b08db2e56a5`。迁移兼容 head=83/pending=0，Core 健康；发布证据 `/opt/business-platform/releases/crm-contacts-9c7387447/deployment/release.CNha0TST`，其中保留上一镜像回滚配置。训练数据修复 SQL/日志保存在同一发布根目录。没有重新创建生产测试商机来验证新转换逻辑，转换回归证据来自隔离数据库；客户端仅验证遗留重复项修复后的真实读取。
+
+## 2026-10-05 线索来源选项与筛选
+
+新建/编辑线索来源提供官网、转介绍、个人开发、天眼查导入四个选项，可留空；历史自由文本作为“历史来源”保留，批量导入仍兼容原有来源。列表增加“全部来源”及四个标准来源筛选，与搜索、负责人横排，窄屏换行。来源、状态、负责人、关键词按 AND 组合，切换来源重置分页；后端在权限过滤后、分页前按来源精确匹配，不在客户端过滤当前页。未选择来源时仍能看到历史来源记录。
+
+功能 `c4c0de7d7`、浏览器回归 `a921c14a5`。隔离 PostgreSQL CRM 全流程测试覆盖来源与关键词/状态/负责人组合、无匹配、越权隔离；8 项不同的线索浏览器场景覆盖原有编辑、鼠标负责人选择和新增来源筛选切换/清空。类型检查、构建、Core 全目标严格 Clippy、变更 Rust 格式与 diff 检查通过。无数据库迁移，没有修改生产线索来源。
+
+发布：Core 镜像 `crm-source-c4c0de7d7` / `sha256:59d7a4aeffe45f18e2509308e75478f39c070473b1839709063c81a6b167298d`，证据 `/opt/business-platform/releases/crm-source-c4c0de7d7/deployment/release.0cufBLcE`；网页 `business-web-a921c14a5-ad6feeda642c`，IAM/Core 健康。Pacioli 生产客户端选择“官网”显示正常空结果（现有三条均为历史测试来源），切回“全部来源”恢复三条记录；搜索、负责人、来源及刷新同排显示。未运行全仓 just ci，未创建 PR。
