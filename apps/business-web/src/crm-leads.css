@@ -4,7 +4,7 @@
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(
       0,
       0.8fr
-    ) minmax(0, 1.5fr) minmax(0, 1fr);
+    ) minmax(0, 1fr);
   gap: 1rem;
 }
 .crm-lead-columns {

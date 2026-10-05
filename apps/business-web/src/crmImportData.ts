@@ -5,7 +5,6 @@ export const IMPORT_HEADERS = [
   "联系方式",
   "来源",
   "需求摘要",
-  "下一步",
   "跟进日期",
 ];
 export function parseTable(source: string): string[][] {
@@ -91,7 +90,6 @@ export function importRows(text: string) {
         ["联系方式", 200],
         ["来源", 100],
         ["需求摘要", 4000],
-        ["下一步", 500],
       ] as const) {
         if (Array.from(get(name)).length > max)
           throw new Error(`${name}超过 ${max} 字`);
@@ -104,7 +102,7 @@ export function importRows(text: string) {
         contactDetails: get("联系方式"),
         source: get("来源"),
         summary: get("需求摘要"),
-        nextAction: get("下一步"),
+        nextAction: "",
         nextFollowUp: date(get("跟进日期"), "跟进日期"),
         customerId: null,
         ownerUserId: null,

@@ -38,7 +38,7 @@ export function CrmLeadFollowup({
               expectedVersion: item.version,
               note: f.get("note"),
               status,
-              nextAction: f.get("nextAction"),
+              nextAction: item.nextAction,
               nextFollowUp: f.get("nextFollowUp") || null,
               disqualificationReason:
                 status === "disqualified" ? f.get("reason") : "",
@@ -89,14 +89,6 @@ export function CrmLeadFollowup({
           <label className="crm-wide">
             沟通内容
             <textarea name="note" required rows={4} maxLength={4000} />
-          </label>
-          <label>
-            下一步
-            <input
-              name="nextAction"
-              maxLength={500}
-              defaultValue={item.nextAction}
-            />
           </label>
           <label>
             跟进日期

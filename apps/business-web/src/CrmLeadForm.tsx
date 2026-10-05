@@ -69,7 +69,6 @@ export function CrmLeadForm({
               "contactDetails",
               "source",
               "summary",
-              "nextAction",
             ].map((k) => [k, String(form.get(k) ?? "")]),
           );
           const result = await command<{ id: string; transferred: boolean }>(
@@ -78,6 +77,7 @@ export function CrmLeadForm({
               method: record ? "PUT" : "POST",
               body: JSON.stringify({
                 ...body,
+                nextAction: record?.nextAction ?? "",
                 ownerUserId: owner || null,
                 customerId: record?.customerId ?? null,
                 nextFollowUp: form.get("nextFollowUp") || null,
@@ -127,7 +127,6 @@ export function CrmLeadForm({
               ["contactName", "联系人", 100],
               ["contactDetails", "联系方式", 200],
               ["source", "线索来源", 100],
-              ["nextAction", "下一步", 500],
             ] as const
           ).map(([key, label, max]) => (
             <label key={key}>

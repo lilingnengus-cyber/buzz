@@ -207,7 +207,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           <span>点击记录查看详情与跟进</span>
         </div>
         <div className="crm-lead-columns" aria-hidden="true">
-          {["线索名称", "公司名称", "联系人", "状态", "下一步", "跟进日期"].map((v) => (
+          {["线索名称", "公司名称", "联系人", "状态", "跟进日期"].map((v) => (
             <span key={v}>{v}</span>
           ))}
         </div>
@@ -235,7 +235,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
               <span data-label="公司名称">{item.companyName || "公司待确认"}</span>
               <span data-label="联系人">{item.contactName || "未填写"}</span>
               <span data-label="状态">{LEAD_STATUSES[item.status]}</span>
-              <span data-label="下一步">{item.nextAction || "未安排"}</span>
               <span data-label="跟进日期">{item.nextFollowUp || "未安排"}</span>
             </button>
           ))
@@ -417,7 +416,6 @@ function LeadRecord({
           ["联系方式", item.contactDetails],
           ["来源", item.source],
           ["负责人", item.ownerName],
-          ["下一步", item.nextAction],
           ["跟进日期", item.nextFollowUp],
         ].map(([k, v]) => (
           <div key={k}>
@@ -466,7 +464,6 @@ function LeadRecord({
             {n.disqualificationReason && (
               <p>淘汰原因：{n.disqualificationReason}</p>
             )}
-            <p>下一步：{n.nextAction || "未安排"}</p>
             <p>跟进日期：{n.nextFollowUp || "未安排"}</p>
           </article>
         ))}
