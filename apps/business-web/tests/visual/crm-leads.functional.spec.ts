@@ -386,3 +386,22 @@ test("已转商机线索默认只读，保留商机入口", async ({ page }) => 
     drawer.getByRole("link", { name: "打开已转入的商机" }),
   ).toHaveAttribute("href", "/#crm?opportunity=opp");
 });
+
+test("管理员查看他人线索时详情只读", async ({ page }) => {
+  const item = { id: "other-lead", title: "官网咨询", companyName: "官网公司", contactName: "张经理", contactDetails: "test@example.invalid", source: "官网", summary: "咨询需求", ownerUserId: "other", ownerName: "李灵能", status: "new", version: 1, nextAction: "", nextFollowUp: null, disqualificationReason: "" };
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/session") return route.fulfill({ json: { authenticated: true, csrfToken: "csrf" } });
+    if (path === "/api/v1/crm/leads/other-lead") return route.fulfill({ json: { item, followups: [], duplicates: [], hasMore: false, canManage: false } });
+    if (path === "/api/v1/crm/leads") return route.fulfill({ json: { items: [item], hasMore: false, canManage: true, canReadAll: true } });
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/#crmLeads");
+  await expect(page.getByText("当前可查看全部线索。", { exact: false })).toBeVisible();
+  await page.getByRole("cell", { name: "官网咨询", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByText("官网公司", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "编辑", exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: "记录跟进", exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: "转为商机", exact: true })).toHaveCount(0);
+});

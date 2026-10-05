@@ -45,6 +45,66 @@ pub async fn check(
             .unwrap()
             .is_empty()
     );
+    // Read-all is independent of edit authority, and revocation takes effect immediately.
+    let read_all_role = Uuid::new_v4();
+    sqlx::query("INSERT INTO business_roles(id,role_key,name) VALUES($1,'lead_view_admin_test','Lead viewer')").bind(read_all_role).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO business_role_permissions(role_id,permission_key) VALUES($1,'crm:lead_read_all')").bind(read_all_role).execute(pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO business_user_roles(enterprise_user_id,role_id,assigned_by) VALUES($1,$2,$1)",
+    )
+    .bind(outsider)
+    .bind(read_all_role)
+    .execute(pool)
+    .await
+    .unwrap();
+    let all = crm
+        .leads(
+            outsider,
+            &LeadFilters {
+                source: Some("官网".into()),
+                owner_user_id: Some(actor),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(all["canReadAll"], true);
+    assert_eq!(all["items"][0]["id"], id.to_string());
+    let detail = crm.lead_detail(outsider, id, 0).await.unwrap();
+    assert_eq!(detail["canManage"], false);
+    assert!(detail["item"].get("createdByUserId").is_none());
+    let forbidden_edit = SaveLead {
+        expected_version: Some(1),
+        title: "should not edit".into(),
+        ..Default::default()
+    };
+    assert!(matches!(
+        crm.save_lead(
+            outsider,
+            trace,
+            Some(id),
+            "read-all-cannot-edit",
+            &forbidden_edit
+        )
+        .await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    sqlx::query("DELETE FROM business_user_roles WHERE enterprise_user_id=$1 AND role_id=$2")
+        .bind(outsider)
+        .bind(read_all_role)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        crm.lead_detail(outsider, id, 0).await,
+        Err(DomainError::NotFoundOrForbidden)
+    ));
+    assert!(
+        crm.leads(outsider, &LeadFilters::default()).await.unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let delegated = SaveLead {
         title: "交给其他负责人".into(),
         owner_user_id: Some(outsider),

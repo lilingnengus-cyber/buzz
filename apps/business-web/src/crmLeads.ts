@@ -36,6 +36,7 @@ export type LeadNote = {
   authorName: string;
 };
 export type LeadDetail = {
+  canManage?: boolean;
   item: Lead;
   followups: LeadNote[];
   hasMore: boolean;

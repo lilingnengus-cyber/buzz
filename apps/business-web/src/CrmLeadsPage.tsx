@@ -18,7 +18,7 @@ import {
 import "./crm.css";
 import "./crm-opportunities.css";
 import "./crm-leads.css";
-type LeadList = { items: Lead[]; hasMore: boolean; canManage: boolean };
+type LeadList = { items: Lead[]; hasMore: boolean; canManage: boolean; canReadAll?: boolean };
 export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   const [importing, setImporting] = React.useState(false);
   const [source, setSource] = React.useState("");
@@ -111,7 +111,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           <p className="eyebrow">售前 CRM</p>
           <h1>线索</h1>
           <p className="crm-hint">
-            筛选需求，确认值得推进后转为商机。显示自己负责或创建的线索。
+            筛选需求，确认值得推进后转为商机。{data.canReadAll ? "当前可查看全部线索。" : "显示自己负责或创建的线索。"}
           </p>
         </div>
         {data.canManage && (
@@ -328,7 +328,8 @@ function LeadRecord({
     );
   if (!data) return <p role="status">正在加载详情…</p>;
   const item = data.item;
-  if ((mode === "edit" || mode === "initial") && canManage && item.status !== "converted")
+  const canEdit = canManage && data.canManage !== false;
+  if ((mode === "edit" || mode === "initial") && canEdit && item.status !== "converted")
     return (
       <CrmLeadForm
         record={item}
@@ -379,7 +380,7 @@ function LeadRecord({
           <p className="crm-hint">线索名称</p>
           <h2>{item.title}</h2>
         </div>
-        {canManage && item.status !== "converted" && (
+        {canEdit && item.status !== "converted" && (
           <button onClick={() => setMode("edit")}>编辑线索</button>
         )}
       </header>
@@ -421,7 +422,7 @@ function LeadRecord({
           打开已转入的商机
         </a>
       ) : (
-        canManage && (
+        canEdit && (
           <div className="crm-heading">
             <button onClick={() => setMode("followup")}>
               {item.status === "disqualified" ? "重新跟进" : "记录跟进 / 淘汰"}

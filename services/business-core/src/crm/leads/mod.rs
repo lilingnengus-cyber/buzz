@@ -2,16 +2,17 @@ mod model;
 use super::*;
 pub use model::*;
 impl CrmService {
-    /// Owner/creator-scoped lead search, with bounded pagination.
+    /// Lead search scoped to owner/creator unless explicitly granted read-all access.
     pub async fn leads(&self, actor: Uuid, f: &LeadFilters) -> Result<Value, DomainError> {
         let scope = self.scope(actor, "crm:read").await?;
         model::validate_filters(f)?;
-        let mut items=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE (l.owner_user_id=$1 OR l.created_by_user_id=$1) AND ($2::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||l.contact_details),lower($2))>0) AND ($3::text IS NULL OR l.status=$3) AND ($4::date IS NULL OR (l.next_follow_up<$4 AND l.status IN ('new','contacting'))) AND ($5::uuid IS NULL OR l.owner_user_id=$5) AND ($7::text IS NULL OR l.source=$7) ORDER BY l.next_follow_up NULLS LAST,l.created_at DESC,l.id LIMIT 51 OFFSET $6")
-            .bind(actor).bind(&f.query).bind(&f.status).bind(f.due_by).bind(f.owner_user_id).bind(f.offset).bind(&f.source).fetch_all(self.store.pool()).await?;
+        let read_all = scope.permission_keys.contains("crm:lead_read_all");
+        let mut items=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE ($8 OR l.owner_user_id=$1 OR l.created_by_user_id=$1) AND ($2::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||l.contact_details),lower($2))>0) AND ($3::text IS NULL OR l.status=$3) AND ($4::date IS NULL OR (l.next_follow_up<$4 AND l.status IN ('new','contacting'))) AND ($5::uuid IS NULL OR l.owner_user_id=$5) AND ($7::text IS NULL OR l.source=$7) ORDER BY l.next_follow_up NULLS LAST,l.created_at DESC,l.id LIMIT 51 OFFSET $6")
+            .bind(actor).bind(&f.query).bind(&f.status).bind(f.due_by).bind(f.owner_user_id).bind(f.offset).bind(&f.source).bind(read_all).fetch_all(self.store.pool()).await?;
         let more = items.len() > 50;
         items.truncate(50);
         Ok(
-            json!({"items":items,"hasMore":more,"canManage":scope.permission_keys.contains("crm:manage")}),
+            json!({"items":items,"hasMore":more,"canManage":scope.permission_keys.contains("crm:manage"),"canReadAll":read_all}),
         )
     }
     /// Read lead details and a bounded page of preserved notes.
@@ -21,18 +22,23 @@ impl CrmService {
         id: Uuid,
         offset: i64,
     ) -> Result<Value, DomainError> {
-        self.scope(actor, "crm:read").await?;
+        let scope = self.scope(actor, "crm:read").await?;
+        let read_all = scope.permission_keys.contains("crm:lead_read_all");
         if !(0..=100000).contains(&offset) {
             return Err(DomainError::Invalid("无效页码".into()));
         }
-        let item=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE l.id=$1 AND (l.owner_user_id=$2 OR l.created_by_user_id=$2)")
-            .bind(id).bind(actor).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)?;
+        let item=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE l.id=$1 AND ($3 OR l.owner_user_id=$2 OR l.created_by_user_id=$2)")
+            .bind(id).bind(actor).bind(read_all).fetch_optional(self.store.pool()).await?.ok_or(DomainError::NotFoundOrForbidden)?;
         let mut notes:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',f.id,'note',f.note,'status',f.status,'disqualificationReason',f.disqualification_reason,'nextAction',f.next_action,'nextFollowUp',f.next_follow_up,'createdAt',f.created_at,'authorName',u.display_name) FROM crm_lead_followups f JOIN enterprise_users u ON u.id=f.author_user_id WHERE f.lead_id=$1 ORDER BY f.created_at DESC,f.id DESC LIMIT 101 OFFSET $2").bind(id).bind(offset).fetch_all(self.store.pool()).await?;
         let more = notes.len() > 100;
         notes.truncate(100);
-        let duplicates:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'title',title) FROM crm_leads WHERE (owner_user_id=$1 OR created_by_user_id=$1) AND id!=$2 AND status!='disqualified' AND (($3!='' AND lower(company_name)=lower($3)) OR ($4!='' AND contact_details=$4)) ORDER BY created_at DESC LIMIT 10")
-            .bind(actor).bind(id).bind(&item.company_name).bind(&item.contact_details).fetch_all(self.store.pool()).await?;
-        Ok(json!({"item":item,"followups":notes,"hasMore":more,"duplicates":duplicates}))
+        let duplicates:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'title',title) FROM crm_leads WHERE ($5 OR owner_user_id=$1 OR created_by_user_id=$1) AND id!=$2 AND status!='disqualified' AND (($3!='' AND lower(company_name)=lower($3)) OR ($4!='' AND contact_details=$4)) ORDER BY created_at DESC LIMIT 10")
+            .bind(actor).bind(id).bind(&item.company_name).bind(&item.contact_details).bind(read_all).fetch_all(self.store.pool()).await?;
+        let can_manage = scope.permission_keys.contains("crm:manage")
+            && (item.owner_user_id == actor || item.created_by_user_id == actor);
+        Ok(
+            json!({"item":item,"followups":notes,"hasMore":more,"duplicates":duplicates,"canManage":can_manage}),
+        )
     }
     /// CRM operators eligible to receive leads; no business scope is granted.
     pub async fn lead_owners(&self, actor: Uuid) -> Result<Value, DomainError> {

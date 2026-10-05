@@ -59,6 +59,8 @@ pub struct Lead {
     pub disqualification_reason: String,
     pub customer_id: Option<Uuid>,
     pub owner_user_id: Uuid,
+    #[serde(skip)]
+    pub created_by_user_id: Uuid,
     pub owner_name: String,
     pub converted_opportunity_id: Option<Uuid>,
     pub version: i64,
