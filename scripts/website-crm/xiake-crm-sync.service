@@ -1,0 +1,12 @@
+[Unit]
+Description=Deliver Xiake website inquiries to CRM
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/xiake-crm-sync/run.py
+TimeoutStartSec=2400
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
