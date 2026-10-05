@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import { formatAmount } from "./formatters";
 import React from "react";
 import { request } from "./api";
@@ -347,7 +348,7 @@ function ProjectDetail({
       )}
       {data.receivable && (
         <p role="status">
-          应收 {data.receivable.number} · {data.receivable.currency}{" "}
+          应收 {data.receivable.number} · {formatCurrency(data.receivable.currency)}{" "}
           {formatAmount(data.receivable.amount)} · 未收 {formatAmount(data.receivable.openAmount)} · 到期{" "}
           {data.receivable.dueDate}
         </p>
@@ -383,7 +384,7 @@ function ProjectDetail({
           )}
           {data.receivable && (
             <p role="status">
-              应收 {data.receivable.number} · {data.receivable.currency}{" "}
+              应收 {data.receivable.number} · {formatCurrency(data.receivable.currency)}{" "}
               {formatAmount(data.receivable.amount)} · 未收 {formatAmount(data.receivable.openAmount)} ·
               到期 {data.receivable.dueDate}
             </p>
@@ -628,7 +629,7 @@ function ServiceForm({
                   .map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.order_number} · {v.title} · {v.customer_name} ·{" "}
-                      {v.currency} {v.amount}
+                      {formatCurrency(v.currency)} {v.amount}
                     </option>
                   ))}
               </select>

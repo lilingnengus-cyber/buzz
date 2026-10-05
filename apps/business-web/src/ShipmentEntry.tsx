@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import React from "react";
 import {
   type ShipmentDraftOptionLine,
@@ -210,7 +211,7 @@ export function ShipmentEntry({ onDone }: { onDone: () => void }) {
                   <div>
                     <span>销售订单</span>
                     <strong>{selected.orderNumber}</strong>
-                    <small>{selected.currency}</small>
+                    <small>{formatCurrency(selected.currency)}</small>
                   </div>
                 </div>
                 <div className="pick-line pick-line-head" aria-hidden="true">

@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import type React from "react";
 import { formatAmount } from "./formatters";
 import type {
@@ -901,7 +902,7 @@ function MoneyCell({
 }) {
   return (
     <div className={`money-cell ${emphasis ? "attention" : ""}`}>
-      <small>{currency}</small>
+      <small>{formatCurrency(currency)}</small>
       <strong>{formatAmount(amount)}</strong>
     </div>
   );

@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import React from "react";
 import {
   type GoodsReceiptDraftOptionLine,
@@ -161,7 +162,7 @@ export function GoodsReceiptEntry({ onDone }: { onDone: () => void }) {
                 <div className="pick-ticket-meta receipt-ticket-meta">
                   <div><span>供应商</span><strong>{selected.supplierName}</strong><small>{selected.supplierCode}</small></div>
                   <div><span>收货仓库</span><strong>{selected.warehouseName}</strong><small>{selected.warehouseCode}</small></div>
-                  <div><span>采购订单</span><strong>{selected.orderNumber}</strong><small>{selected.currency}</small></div>
+                  <div><span>采购订单</span><strong>{selected.orderNumber}</strong><small>{formatCurrency(selected.currency)}</small></div>
                 </div>
                 <div className="receipt-line receipt-line-head" aria-hidden="true">
                   <span>行 / 商品</span><span>订购</span><span>已收</span><span>已取消</span><span>草稿占用</span><span>本次可收</span><span>本次到货</span>

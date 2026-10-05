@@ -1,3 +1,4 @@
+import { CurrencySelect } from "./CurrencySelect";
 import React from "react";
 import { request } from "./api";
 import type { CrmOption, Opportunity } from "./crm";
@@ -71,13 +72,7 @@ export function CrmConversionFields({ item }: { item: Opportunity }) {
           <div className="crm-fields">
             <label>
               信用币种
-              <input
-                name="conversionCurrency"
-                required
-                pattern="[A-Z]{3}"
-                maxLength={3}
-                defaultValue={item.currency}
-              />
+              <CurrencySelect name="conversionCurrency" required defaultValue={item.currency} />
             </label>
             <label>
               付款账期（天）

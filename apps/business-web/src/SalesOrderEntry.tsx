@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import { useOrderDraft } from "./OrderDraft";
 import { useOrderValidation } from "./OrderValidation";
 import "./order-entry-responsive.css";
@@ -339,7 +340,7 @@ export function SalesOrderEntry({
           <p>先保存草稿，再进入订单详情核对库存并执行确认。</p>
           {source && (
             <p>
-              来源商机：{source.title} · {source.currency}
+              来源商机：{source.title} · {formatCurrency(source.currency)}
             </p>
           )}
         </div>
@@ -538,7 +539,7 @@ export function SalesOrderEntry({
               </div>
               <div className="grand">
                 <dt>订单合计</dt>
-                <dd>CNY {formatAmount(totals.gross)}</dd>
+                <dd>人民币 {formatAmount(totals.gross)}</dd>
               </div>
             </dl>
           </div>

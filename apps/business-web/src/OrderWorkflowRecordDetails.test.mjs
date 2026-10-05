@@ -36,7 +36,7 @@ test("builds a readable sales-order detail record", () => {
     detail.fields.slice(0, 5).map(({ label, value }) => [label, value]),
     [
       ["订单编号", "SO-2026-001"],
-      ["含税总额", "CNY 1,280.50"],
+      ["含税总额", "人民币 1,280.50"],
       ["订单状态", "已确认"],
       ["履约状态", "部分出库"],
       ["冻结状态", "正常"],

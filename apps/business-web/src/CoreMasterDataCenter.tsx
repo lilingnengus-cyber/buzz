@@ -1,3 +1,5 @@
+import { CurrencySelect } from "./CurrencySelect";
+import { formatCurrency } from "./formatters";
 import { MasterDuplicateNotice } from "./MasterDuplicateNotice";
 import { MasterRecordLink } from "./MasterRecordLink";
 import { useMasterDeepLink } from "./useMasterDeepLink";
@@ -642,22 +644,14 @@ function MasterFormModal({
                 />
               </Field>
               <Field label="功能币">
-                <input
-                  maxLength={3}
-                  value={form.functionalCurrency}
-                  onChange={(e) => set("functionalCurrency", e.target.value)}
-                />
+                <CurrencySelect value={form.functionalCurrency} onChange={(e) => set("functionalCurrency", e.target.value)} />
               </Field>
             </>
           )}
           {type === "customer" && (
             <>
               <Field label="信用币种">
-                <input
-                  maxLength={3}
-                  value={form.creditCurrency}
-                  onChange={(e) => set("creditCurrency", e.target.value)}
-                />
+                <CurrencySelect value={form.creditCurrency} onChange={(e) => set("creditCurrency", e.target.value)} />
               </Field>
               <Field label="信用额度（元）">
                 <input
@@ -956,9 +950,9 @@ function labelFor(type: CoreMasterType) {
 }
 function attribute(item: CoreMasterRecord) {
   if (item.resourceType === "legal_entity")
-    return `${item.countryCode ?? "—"} · ${item.functionalCurrency ?? "—"}`;
+    return `${item.countryCode ?? "—"} · ${formatCurrency(item.functionalCurrency)}`;
   if (item.resourceType === "customer")
-    return `信用 ${formatMoney("CNY", (item.creditLimitMinor ?? 0) / 100)}`;
+    return `信用 ${formatMoney(item.creditCurrency ?? "CNY", (item.creditLimitMinor ?? 0) / 100)}`;
   if (item.resourceType === "supplier")
     return `${item.paymentTermsDays ?? 0} 天账期`;
   if (item.resourceType === "warehouse") return item.address || "地址待维护";
@@ -967,7 +961,7 @@ function attribute(item: CoreMasterRecord) {
 function attributeNote(item: CoreMasterRecord) {
   if (item.resourceType === "legal_entity") return "国家/地区 · 功能币";
   if (item.resourceType === "customer")
-    return `${item.paymentTermsDays ?? 0} 天账期 · ${item.creditCurrency ?? "CNY"}`;
+    return `${item.paymentTermsDays ?? 0} 天账期 · ${formatCurrency(item.creditCurrency ?? "CNY")}`;
   return item.resourceType === "business_unit"
     ? "独立经营组织节点"
     : "集团共享主数据";

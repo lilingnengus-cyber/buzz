@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import React from "react";
 import {
   type MasterDataList,
@@ -187,7 +188,7 @@ function SettlementEntry({
             </Field>
             <Field label={copy.amountLabel}>
               <div className="money-input">
-                <span>CNY</span>
+                <span>人民币</span>
                 <input
                   aria-label={copy.amountLabel}
                   inputMode="decimal"
@@ -439,7 +440,7 @@ function SettlementAllocation({
                   <span>
                     <small>未结余额</small>
                     <strong>
-                      {row.currency} {formatAmount(row.openAmount)}
+                      {formatCurrency(row.currency)} {formatAmount(row.openAmount)}
                     </strong>
                   </span>
                   <input
@@ -490,10 +491,10 @@ function SettlementAllocation({
             className={`allocation-check ${requested > unapplied ? "over" : ""}`}
           >
             <span>
-              本次核销 {current.currency} {formatAmount(requested)}
+              本次核销 {formatCurrency(current.currency)} {formatAmount(requested)}
             </span>
             <strong>
-              提交后剩余 {current.currency}{" "}
+              提交后剩余 {formatCurrency(current.currency)}{" "}
               {formatAmount(Math.max(0, unapplied - requested))}
             </strong>
           </div>
@@ -554,7 +555,7 @@ function Metric({
     <div className={emphasis ? "emphasis" : ""}>
       <span>{label}</span>
       <strong>
-        <small>{currency}</small> {formatAmount(value)}
+        <small>{formatCurrency(currency)}</small> {formatAmount(value)}
       </strong>
     </div>
   );

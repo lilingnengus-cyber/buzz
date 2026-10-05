@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import { InventorySummary } from "./InventorySummary";
 import React from "react";
 import {
@@ -382,7 +383,7 @@ function OpeningRegister({
               <div>
                 <code>{item.batchNumber}</code>
                 <small>
-                  {item.businessDate} · {item.currency} · v{item.version}
+                  {item.businessDate} · {formatCurrency(item.currency)} · v{item.version}
                 </small>
               </div>
               <span className={`inventory-state ${item.status}`}>

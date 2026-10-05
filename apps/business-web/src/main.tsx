@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -1951,7 +1952,7 @@ function ProfitAdjustments({ id }: { id?: string }) {
               </a>
               <Status value={item.status} />
               <span>
-                {item.managementPeriod} · {item.currency}
+                {item.managementPeriod} · {formatCurrency(item.currency)}
               </span>
               <div className="row-actions">
                 <em>v{item.version}</em>

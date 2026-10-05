@@ -88,7 +88,7 @@ export function InventoryCountPanel({ onChanged }: { onChanged: () => void }) {
           note="已加载任务，按仓库 / SKU 冻结"
         />
         <Metric
-          label="本月库存周转（CNY）"
+          label="本月库存周转（人民币）"
           value={turnover?.turnoverRate ? `${turnover.turnoverRate} 次` : "—"}
           note={
             loadErrors.turnover ? loadErrors.turnover : turnover?.excludedCurrencyBalances

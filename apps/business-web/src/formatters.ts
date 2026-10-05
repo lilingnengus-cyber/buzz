@@ -19,8 +19,21 @@ export function formatDecimal(value: DecimalValue, fallback = "—") {
 export const formatAmount = formatDecimal;
 export const formatQuantity = formatDecimal;
 
+const currencyNames = new Intl.DisplayNames(["zh-CN"], { type: "currency" });
+
+export function formatCurrency(currency: string | null | undefined) {
+  const code = currency?.trim().toUpperCase();
+  if (!code) return "—";
+  try {
+    const name = currencyNames.of(code);
+    return name && name !== code ? name : `未知币种（${code}）`;
+  } catch {
+    return `未知币种（${code}）`;
+  }
+}
+
 export function formatMoney(currency: string, value: DecimalValue) {
-  return `${currency} ${formatAmount(value)}`;
+  return `${formatCurrency(currency)} ${formatAmount(value)}`;
 }
 
 export function formatSignedQuantity(value: DecimalValue) {

@@ -1,3 +1,4 @@
+import { formatCurrency } from "./formatters";
 import React from "react";
 import type { Lead } from "./crmLeads";
 import { CrmOwnerPicker } from "./CrmOwnerPicker";
@@ -357,7 +358,7 @@ export function CrmForm({
                   ),
                 ),
               ).map((v) => (
-                <option key={v}>{v}</option>
+                <option key={v} value={v}>{formatCurrency(v)}</option>
               ))}
             </select>
           </label>

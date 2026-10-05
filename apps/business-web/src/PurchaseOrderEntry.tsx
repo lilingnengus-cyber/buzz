@@ -404,7 +404,7 @@ export function PurchaseOrderEntry({
               {availableSuppliers.find((item) => item.id === supplierId)
                 ?.name ?? "请选择供应商"}
             </strong>
-            <small>交付至所选仓库 · 币种 CNY</small>
+            <small>交付至所选仓库 · 币种 人民币</small>
           </div>
 
           <div className="entry-lines purchase-lines">
@@ -526,7 +526,7 @@ export function PurchaseOrderEntry({
               </div>
               <div className="grand">
                 <dt>含税合计</dt>
-                <dd>CNY {formatAmount(totals.gross)}</dd>
+                <dd>人民币 {formatAmount(totals.gross)}</dd>
               </div>
             </dl>
           </div>
