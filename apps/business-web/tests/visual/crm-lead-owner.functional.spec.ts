@@ -28,10 +28,15 @@ test("线索负责人鼠标选择、失败重试及重新打开保留", async ({
   const drawer=page.getByRole("dialog",{name:"线索详情",exact:true});
   await drawer.getByRole("combobox",{name:"负责人",exact:true}).click();
   const option=drawer.getByRole("option",{name:"新负责人",exact:true});
-  // WebKit does not focus buttons on mouse-down. Reproduce that focus policy.
-  await option.evaluate(el => el.addEventListener("mousedown", () => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-  }, {once:true}));
+  // Emulate native WebKit moving focus outside the picker on mouse-down.
+  // A cancelled mouse-down must retain search focus until the click arrives.
+  await page.evaluate(() => {
+    document.addEventListener("mousedown", event => {
+      if ((event.target as HTMLElement).closest('[role="option"]') && !event.defaultPrevented) {
+        (document.querySelector('input[name="title"]') as HTMLInputElement).focus();
+      }
+    });
+  });
   await option.click();
   await expect(drawer.getByRole("combobox",{name:"负责人",exact:true})).toContainText("新负责人");
   await drawer.getByRole("button",{name:"保存线索",exact:true}).click();

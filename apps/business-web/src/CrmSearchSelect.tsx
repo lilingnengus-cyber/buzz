@@ -68,6 +68,11 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
       <div id={`${id}-list`} role="listbox" aria-label={label}>
         {options.map((option, index) => <button type="button" role="option" id={`${id}-${index}`} key={option.value}
           aria-selected={option.value === value} className={index === active ? "is-active" : ""}
+          onMouseDown={(event) => {
+            // Keep focus in the search until click selects the option. Native
+            // WebKit may otherwise move focus to the surrounding dialog.
+            if (event.button === 0) event.preventDefault();
+          }}
           onClick={() => choose(option.value)}>{option.label}</button>)}
         {showEmptyHint && options.length <= 1 && query && <p className="crm-hint">暂无匹配结果，可调整关键词</p>}
       </div>
