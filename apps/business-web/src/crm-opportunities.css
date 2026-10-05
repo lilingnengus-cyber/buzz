@@ -314,3 +314,28 @@
       );
   }
 }
+
+/* Keep CRM search and filter controls on a shared horizontal baseline. */
+.crm-opportunities .crm-filter-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+}
+.crm-opportunities .crm-followup-filters {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.crm-filter-toolbar .crm-search { min-width: 0; max-width: none; }
+.crm-filter-toolbar > label { min-width: 0; line-height: 1.2rem; }
+.crm-filter-toolbar .crm-customer-filter { display: block; grid-column: auto; min-width: 0; margin: 0; }
+.crm-filter-toolbar .crm-search-select { font-size: .8rem; line-height: 1.2rem; }
+.crm-filter-toolbar input,
+.crm-filter-toolbar select,
+.crm-filter-toolbar .crm-search-select > button,
+.crm-filter-toolbar > button { box-sizing: border-box; min-height: 2.75rem; }
+.crm-filter-toolbar > button { margin-top: 1.65rem; }
+@media (max-width: 600px) {
+  .crm-opportunities .crm-filter-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .crm-opportunities .crm-followup-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-filter-toolbar .crm-search { grid-column: 1 / -1; }
+  .crm-filter-toolbar > button { margin-top: 0; justify-self: start; }
+}

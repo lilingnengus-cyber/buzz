@@ -138,7 +138,7 @@ function CrmHistoryRegister() {
           />
         </CrmDrawer>
       )}
-      <div className="crm-toolbar">
+      <div className="crm-toolbar crm-filter-toolbar crm-followup-filters">
         <label className="crm-search">
           搜索{title}
           <input
@@ -170,6 +170,14 @@ function CrmHistoryRegister() {
             <option value="">全部</option>
           </select>
         </label>
+        <CrmAccountPicker
+          filter
+          value={account}
+          onChange={(value) => {
+            setAccount(value);
+            setOffset(0);
+          }}
+        />
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
       {due && (
@@ -177,14 +185,6 @@ function CrmHistoryRegister() {
           按关联线索或商机当前的跟进安排筛选；记录内日期保留当时安排，历史记录不代表当前待办。
         </p>
       )}
-      <CrmAccountPicker
-        filter
-        value={account}
-        onChange={(value) => {
-          setAccount(value);
-          setOffset(0);
-        }}
-      />
       {error && (
         <p role="alert" className="crm-error">
           {error}{" "}

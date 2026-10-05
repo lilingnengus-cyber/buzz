@@ -146,7 +146,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           {notice}
         </p>
       )}
-      <div className="crm-toolbar">
+      <div className="crm-toolbar crm-filter-toolbar">
         <label className="crm-search">
           搜索商机
           <input
