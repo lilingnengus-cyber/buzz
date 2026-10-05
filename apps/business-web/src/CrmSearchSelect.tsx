@@ -35,7 +35,11 @@ export function CrmSearchSelect({ label, value, options, query, onQuery, onChang
   React.useEffect(() => { setActive(0); }, [query, options.length]);
   React.useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   return <div className="crm-search-select" ref={root}
-    onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
+    onBlur={(event) => {
+      // WebKit can blur the search without focusing a clicked option. Let its
+      // click finish; outside pointer-down already closes the panel.
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+    }}
     onKeyDown={(event) => {
       if (open && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
     }}>
