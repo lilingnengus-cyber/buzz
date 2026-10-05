@@ -1,3 +1,5 @@
+#[path = "support/crm_conversion_contacts.rs"]
+mod crm_conversion_contacts;
 #[path = "support/crm_scope_edit.rs"]
 mod crm_scope_edit;
 #[path = "support/lead_checks.rs"]
@@ -805,6 +807,7 @@ async fn crm_persists_scoped_followups_and_rejects_conflicts() {
         .await,
         Err(DomainError::NotFoundOrForbidden)
     ));
+    crm_conversion_contacts::check(&crm, &pool, actor, &conversion_input, &reuse).await;
     let sales = business_core::b2::SalesService::new(
         PgStore::new(pool.clone()),
         "SO".into(),

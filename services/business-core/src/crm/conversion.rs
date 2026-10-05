@@ -134,8 +134,24 @@ impl CrmService {
         let account: Uuid=sqlx::query_scalar("INSERT INTO crm_accounts(customer_id,name,owner_user_id) VALUES($1,$2,$3) ON CONFLICT(customer_id) DO UPDATE SET customer_id=excluded.customer_id RETURNING id").bind(customer).bind(&name).bind(actor).fetch_one(&mut *tx).await?;
         let contact: Uuid=sqlx::query_scalar("INSERT INTO crm_contacts(account_id,name,details) VALUES($1,$2,$3) ON CONFLICT(account_id,name,details) DO UPDATE SET name=excluded.name RETURNING id").bind(account).bind(input.contact_name.trim()).bind(input.contact_details.trim()).fetch_one(&mut *tx).await?;
         sqlx::query("UPDATE crm_opportunities SET customer_id=$2,account_id=$3,contact_id=$4,stage='won',loss_reason='',next_action='',next_follow_up=NULL,version=version+1,updated_at=now() WHERE id=$1").bind(id).bind(customer).bind(account).bind(contact).execute(&mut *tx).await?;
+        // Remove only the source prospect contact made redundant by this conversion.
+        // Keep contacts referenced by any other opportunity, including archived ones,
+        // and keep old contact details when the user confirmed a different person.
+        let retired_contact: Option<Uuid> = sqlx::query_scalar(
+            "DELETE FROM crm_contacts c USING crm_accounts a
+             WHERE c.id=$1 AND c.id<>$2 AND c.account_id=a.id
+               AND a.customer_id IS NULL AND c.name=$3 AND c.details=$4
+               AND NOT EXISTS(SELECT 1 FROM crm_opportunities o WHERE o.contact_id=c.id)
+             RETURNING c.id",
+        )
+        .bind(previous.contact_id)
+        .bind(contact)
+        .bind(input.contact_name.trim())
+        .bind(input.contact_details.trim())
+        .fetch_optional(&mut *tx)
+        .await?;
         sqlx::query("INSERT INTO crm_followups(id,opportunity_id,author_user_id,note,stage,next_action) VALUES($1,$2,$3,$4,'won','')").bind(Uuid::new_v4()).bind(id).bind(actor).bind(input.note.trim()).execute(&mut *tx).await?;
-        let result = json!({"id":id,"customerId":customer,"accountId":account,"contactId":contact,"version":version+1,"traceId":trace});
+        let result = json!({"id":id,"customerId":customer,"accountId":account,"contactId":contact,"retiredContactId":retired_contact,"version":version+1,"traceId":trace});
         record(
             &mut tx,
             trace,
