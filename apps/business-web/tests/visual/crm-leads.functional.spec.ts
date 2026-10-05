@@ -303,14 +303,14 @@ test("线索编辑移除客户关联控件与查询，保留已有记录关联",
     });
   });
   await page.goto("/#crmLeads");
-  const row = page.getByRole("button", { name: /既有线索.*客户甲/ });
-  const titleCell = row.locator('[data-label="线索名称"]');
-  const companyCell = row.locator('[data-label="公司名称"]');
+  const row = page.getByRole("row", { name: /既有线索.*客户甲/ });
+  const titleCell = row.getByRole("cell").nth(0);
+  const companyCell = row.getByRole("cell").nth(1);
   await expect(titleCell).toHaveText("既有线索");
   await expect(companyCell).toHaveText("客户甲");
   const titleBox = await titleCell.boundingBox();
   const companyBox = await companyCell.boundingBox();
-  expect(companyBox.x).toBeGreaterThan(titleBox.x + titleBox.width);
+  expect(companyBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
   await page.setViewportSize({ width: 520, height: 800 });
   await expect(companyCell).toBeVisible();
   expect(
@@ -365,7 +365,7 @@ test("已转商机线索默认只读，保留商机入口", async ({ page }) => 
     });
   });
   await page.goto("/#crmLeads");
-  await page.getByRole("button", { name: /已转线索.*客户甲/ }).click();
+  await page.getByRole("button", { name: "已转线索", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
   await expect(
     drawer.getByRole("heading", { name: "已转线索", exact: true }),

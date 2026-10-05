@@ -24,7 +24,17 @@ test("线索负责人鼠标选择、失败重试及重新打开保留", async ({
     return route.fulfill({json:{items:[item],canManage:true,hasMore:false}});
   });
   await page.goto("/#crmLeads");
-  await page.locator(".crm-lead-row").click();
+  await expect(page.getByRole("columnheader")).toHaveText([
+    "线索名称", "公司名称", "联系人", "联系方式", "线索来源", "需求摘要",
+    "负责人", "状态", "淘汰原因", "已转商机", "创建时间", "更新时间",
+  ]);
+  await page.setViewportSize({width:520,height:780});
+  const tableRegion = page.getByRole("region", {name:"线索完整资料"});
+  await expect(tableRegion).toBeVisible();
+  expect(await tableRegion.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(520);
+  await page.setViewportSize({width:1366,height:768});
+  await page.locator(".crm-lead-title").click();
   const drawer=page.getByRole("dialog",{name:"线索详情",exact:true});
   await drawer.getByRole("combobox",{name:"负责人",exact:true}).click();
   const option=drawer.getByRole("option",{name:"新负责人",exact:true});

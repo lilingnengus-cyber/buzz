@@ -1,4 +1,5 @@
 import React from "react";
+import { CrmLeadTable } from "./CrmLeadTable";
 import { CrmLeadImport } from "./CrmLeadImport";
 import { request } from "./api";
 import { CrmSearchSelect } from "./CrmSearchSelect";
@@ -195,11 +196,6 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           <strong>线索筛选</strong>
           <span>点击记录查看详情与跟进</span>
         </div>
-        <div className="crm-lead-columns" aria-hidden="true">
-          {["线索名称", "公司名称", "联系人", "状态"].map((v) => (
-            <span key={v}>{v}</span>
-          ))}
-        </div>
         {loading ? (
           <p className="crm-empty" role="status">
             正在加载线索…
@@ -209,23 +205,10 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             暂无符合条件的线索。新建线索，先记下一个需求。
           </p>
         ) : (
-          data.items.map((item) => (
-            <button
-              className="crm-row crm-lead-row"
-              key={item.id}
-              onClick={() => {
-                setSelected(item.id);
-                setMode("edit");
-              }}
-            >
-              <span data-label="线索名称">
-                <strong>{item.title}</strong>
-              </span>
-              <span data-label="公司名称">{item.companyName || "公司待确认"}</span>
-              <span data-label="联系人">{item.contactName || "未填写"}</span>
-              <span data-label="状态">{LEAD_STATUSES[item.status]}</span>
-            </button>
-          ))
+          <CrmLeadTable items={data.items} onOpen={(id) => {
+            setSelected(id);
+            setMode("edit");
+          }} />
         )}
       </div>
       {(offset > 0 || data.hasMore) && (
