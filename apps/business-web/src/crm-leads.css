@@ -11,3 +11,18 @@
 .crm-lead-table tbody tr:hover, .crm-lead-table tbody tr:focus-within { background: var(--surface-alt, #e3edf0); }
 .crm-lead-table .crm-lead-title { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-align: left; }
 .crm-lead-title:focus-visible, .crm-lead-table-scroll:focus-visible { outline: 2px solid #be841b; outline-offset: 2px; }
+
+.crm-leads .crm-lead-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+.crm-lead-filters .crm-search { min-width: 0; max-width: none; }
+.crm-lead-filters .crm-search-select { font-size: .8rem; }
+.crm-lead-filters .crm-search input,
+.crm-lead-filters .crm-search-select > button { box-sizing: border-box; min-height: 2.75rem; }
+.crm-lead-filters > p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .crm-leads .crm-lead-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .crm-lead-filters > button { justify-self: start; }
+}

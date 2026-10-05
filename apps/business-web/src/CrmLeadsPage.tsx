@@ -132,7 +132,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           {notice}
         </p>
       )}
-      <div className="crm-toolbar">
+      <div className="crm-toolbar crm-lead-filters">
         <label className="crm-search">
           搜索线索
           <input
@@ -146,31 +146,31 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
+        {ownerError ? (
+          <p role="alert">
+            负责人选项加载失败：{ownerError}{" "}
+            <button onClick={() => setRevision((v) => v + 1)}>重试负责人</button>
+          </p>
+        ) : (
+          <CrmSearchSelect
+            label="筛选负责人"
+            value={owner}
+            query={ownerQuery}
+            onQuery={setOwnerQuery}
+            options={[
+              { value: "", label: "全部负责人" },
+              ...owners
+                .filter((o) => o.name.includes(ownerQuery))
+                .map((o) => ({ value: o.id, label: o.name })),
+            ]}
+            onChange={(v) => {
+              setOwner(v);
+              setOffset(0);
+            }}
+          />
+        )}
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
-      {ownerError ? (
-        <p role="alert">
-          负责人选项加载失败：{ownerError}{" "}
-          <button onClick={() => setRevision((v) => v + 1)}>重试负责人</button>
-        </p>
-      ) : (
-        <CrmSearchSelect
-          label="筛选负责人"
-          value={owner}
-          query={ownerQuery}
-          onQuery={setOwnerQuery}
-          options={[
-            { value: "", label: "全部负责人" },
-            ...owners
-              .filter((o) => o.name.includes(ownerQuery))
-              .map((o) => ({ value: o.id, label: o.name })),
-          ]}
-          onChange={(v) => {
-            setOwner(v);
-            setOffset(0);
-          }}
-        />
-      )}
       <nav className="crm-stage-nav" aria-label="按线索状态筛选">
         {[["", "全部线索"], ...Object.entries(LEAD_STATUSES)].map(([k, v]) => (
           <button
