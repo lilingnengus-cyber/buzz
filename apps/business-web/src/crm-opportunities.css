@@ -339,3 +339,12 @@
   .crm-filter-toolbar .crm-search { grid-column: 1 / -1; }
   .crm-filter-toolbar > button { margin-top: 0; justify-self: start; }
 }
+.crm-filter-toolbar select {
+  appearance: none;
+  height: 2.75rem;
+  padding: .65rem 2rem .65rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: .4rem;
+  color: var(--ink);
+  background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4 3 3 3-3' fill='none' stroke='%2319394b' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right .75rem center;
+}
