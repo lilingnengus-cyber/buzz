@@ -59,3 +59,29 @@ test("线索负责人鼠标选择、失败重试及重新打开保留", async ({
   expect(attempts).toBe(2);
   expect(keys[0]).toBe(keys[1]);
 });
+
+test("来源筛选与关键词及状态组合，清空后恢复全部来源", async ({ page }) => {
+  let last = new URLSearchParams();
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/session") return route.fulfill({json:{authenticated:true,csrfToken:"csrf"}});
+    if (url.pathname === "/api/v1/crm/leads") last = url.searchParams;
+    return route.fulfill({json:{items:[],hasMore:false,canManage:true}});
+  });
+  await page.goto("/#crmLeads");
+  const source = page.getByRole("combobox", {name:"线索来源",exact:true});
+  for (const value of ["官网", "转介绍", "个人开发", "天眼查导入"]) {
+    await source.selectOption(value);
+    await expect.poll(() => last.get("source")).toBe(value);
+    expect(last.get("offset")).toBe("0");
+  }
+  await page.getByRole("searchbox", {name:"搜索线索"}).fill("杭州");
+  await page.getByRole("button", {name:"待筛选",exact:true}).click();
+  await expect.poll(() => last.get("query")).toBe("杭州");
+  await expect.poll(() => last.get("status")).toBe("new");
+  expect(last.get("source")).toBe("天眼查导入");
+  await source.selectOption("");
+  await expect.poll(() => last.has("source")).toBe(false);
+  expect(last.get("query")).toBe("杭州");
+  expect(last.get("status")).toBe("new");
+});
