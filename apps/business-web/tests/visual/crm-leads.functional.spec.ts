@@ -40,6 +40,7 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
     if (path === "/api/v1/crm/leads" && req.method() === "POST") {
       const body = req.postDataJSON();
       expect(body.title).toBe("年度采购需求");
+      expect(body.source).toBe("官网");
       expect(body.customerId).toBeNull();
       expect(req.headers()["idempotency-key"]).toBeTruthy();
       item = {
@@ -97,6 +98,10 @@ test("线索录入、右侧详情、筛选跟进与确认转商机", async ({ pa
   await expect(
     drawer.getByRole("combobox", { name: "关联已有客户", exact: true }),
   ).toHaveCount(0);
+  await expect(drawer.getByLabel("线索来源").locator("option")).toHaveText([
+    "请选择来源", "官网", "转介绍", "个人开发", "天眼查导入",
+  ]);
+  await drawer.getByLabel("线索来源").selectOption("官网");
   await drawer.getByLabel("线索名称", { exact: true }).fill("年度采购需求");
   await drawer.getByRole("button", { name: "保存线索", exact: true }).click();
   drawer = page.getByRole("dialog", { name: "线索详情", exact: true });
@@ -261,7 +266,7 @@ test("线索编辑移除客户关联控件与查询，保留已有记录关联",
     companyName: "客户甲",
     contactName: "",
     contactDetails: "",
-    source: "",
+    source: "系统验收",
     summary: "",
     nextAction: "",
     nextFollowUp: null,
@@ -289,6 +294,7 @@ test("线索编辑移除客户关联控件与查询，保留已有记录关联",
     if (path === "/api/v1/crm/leads/lead" && req.method() === "PUT") {
       const body = req.postDataJSON();
       expect(body.customerId).toBe("existing-customer");
+      expect(body.source).toBe("系统验收");
       expect(body.expectedVersion).toBe(1);
       writes++;
       item = { ...item, ...body, version: 2 };

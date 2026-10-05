@@ -5,6 +5,8 @@ import { useCrmDraft } from "./CrmDrawer";
 import { CrmSearchSelect } from "./CrmSearchSelect";
 import type { Lead } from "./crmLeads";
 
+const LEAD_SOURCES = ["官网", "转介绍", "个人开发", "天眼查导入"];
+
 export function CrmLeadForm({
   record,
   onSaved,
@@ -126,7 +128,6 @@ export function CrmLeadForm({
               ["companyName", "公司名称", 160],
               ["contactName", "联系人", 100],
               ["contactDetails", "联系方式", 200],
-              ["source", "线索来源", 100],
             ] as const
           ).map(([key, label, max]) => (
             <label key={key}>
@@ -139,6 +140,18 @@ export function CrmLeadForm({
               />
             </label>
           ))}
+          <label>
+            线索来源
+            <select name="source" defaultValue={record?.source ?? ""}>
+              <option value="">请选择来源</option>
+              {record?.source && !LEAD_SOURCES.includes(record.source) && (
+                <option value={record.source}>{record.source}（历史来源）</option>
+              )}
+              {LEAD_SOURCES.map((source) => (
+                <option key={source} value={source}>{source}</option>
+              ))}
+            </select>
+          </label>
           <CrmSearchSelect
             label="负责人"
             value={owner}
