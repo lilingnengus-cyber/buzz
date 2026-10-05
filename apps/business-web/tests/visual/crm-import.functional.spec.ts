@@ -273,3 +273,40 @@ test("只读线索页隐藏导入入口", async ({ page }) => {
     page.getByRole("button", { name: "批量导入", exact: true }),
   ).toHaveCount(0);
 });
+
+test("统一来源覆盖表格并重新校验，保存使用预览内容", async ({ page }) => {
+  const sources: string[] = [];
+  await page.route("**/api/**", (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (path === "/api/v1/crm/leads" && req.method() === "POST") {
+      sources.push(req.postDataJSON().source);
+      return route.fulfill({json:{id:`lead-${sources.length}`}});
+    }
+    return route.fulfill({json:path === "/api/session" ? {authenticated:true,csrfToken:"csrf"} : {items:[],hasMore:false,canManage:true}});
+  });
+  await page.goto("/#crmLeads");
+  await page.getByRole("button", {name:"批量导入",exact:true}).click();
+  const dialog = page.getByRole("dialog", {name:"批量导入线索"});
+  await dialog.getByLabel("表格内容").fill("线索名称,来源\n项目甲,官网\n项目甲,转介绍");
+  await dialog.getByRole("button", {name:"预览校验"}).click();
+  await expect(dialog.getByRole("status")).toContainText("校验错误 0 条");
+  const source = dialog.getByLabel("统一线索来源");
+  await source.selectOption("天眼查导入");
+  await expect(dialog.locator("tbody")).toHaveCount(0);
+  await dialog.getByRole("button", {name:"预览校验"}).click();
+  await expect(dialog.getByRole("status")).toContainText("校验错误 1 条");
+  await expect(dialog.getByRole("button", {name:"确认导入"})).toBeDisabled();
+  await dialog.getByLabel("表格内容").fill("线索名称,来源\n项目甲,官网\n项目乙,");
+  await dialog.getByRole("button", {name:"预览校验"}).click();
+  await expect(dialog.locator("tbody tr td:nth-child(6)")).toHaveText(["天眼查导入","天眼查导入"]);
+  await source.selectOption("");
+  await dialog.getByRole("button", {name:"预览校验"}).click();
+  await expect(dialog.locator("tbody tr td:nth-child(6)")).toHaveText(["官网","未填写来源"]);
+  await source.selectOption("天眼查导入");
+  await dialog.getByRole("button", {name:"预览校验"}).click();
+  await dialog.getByRole("button", {name:"确认导入"}).click();
+  await expect(dialog.getByRole("status")).toContainText("已保存 2 条");
+  await expect(source).toBeDisabled();
+  expect(sources).toEqual(["天眼查导入","天眼查导入"]);
+});

@@ -1,4 +1,5 @@
 import React from "react";
+import { LEAD_SOURCES } from "./crmLeads";
 import { request } from "./api";
 import { CrmDrawer, useCrmDraft } from "./CrmDrawer";
 import { IMPORT_HEADERS, importRows, importKey } from "./crmImportData";
@@ -32,6 +33,7 @@ export function CrmLeadImport({
 }
 function ImportForm({ onChanged }: { onChanged: () => void }) {
   const draft = useCrmDraft();
+  const [uniformSource, setUniformSource] = React.useState("");
   const [source, setSource] = React.useState("");
   const [rows, setRows] = React.useState<Row[]>([]);
   const [error, setError] = React.useState("");
@@ -45,7 +47,7 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
   };
   const preview = () => {
     try {
-      setRows(importRows(source));
+      setRows(importRows(source, uniformSource));
       setError("");
     } catch (e) {
       setRows([]);
@@ -105,6 +107,17 @@ function ImportForm({ onChanged }: { onChanged: () => void }) {
         下载 CSV 模板
       </button>
       <fieldset className="crm-edit-fields" disabled={busy || started}>
+        <label>
+          统一线索来源
+          <select value={uniformSource} onChange={(event) => {
+            setUniformSource(event.target.value);
+            invalidate();
+          }}>
+            <option value="">使用表格中的来源</option>
+            {LEAD_SOURCES.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
+        <p className="crm-hint">选择后，本批所有线索统一使用所选来源，覆盖表格中的来源；不选择则保留表格内容。更改后需重新预览校验。</p>
         <label>
           上传 CSV
           <input

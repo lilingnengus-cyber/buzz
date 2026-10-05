@@ -51,7 +51,7 @@ export function parseTable(source: string): string[][] {
   if (row.some(Boolean)) rows.push(row);
   return rows;
 }
-export function importRows(text: string) {
+export function importRows(text: string, uniformSource = "") {
   if (new TextEncoder().encode(text).length > 1024 * 1024)
     throw new Error("文件不能超过 1 MB");
   const [rawHeaders, ...rows] = parseTable(text);
@@ -71,7 +71,8 @@ export function importRows(text: string) {
     const title = cells[headers.indexOf("线索名称")] || "";
     try {
       if (cells.length !== headers.length) throw new Error("列数与表头不一致");
-      const get = (name: string) => cells[headers.indexOf(name)] || "";
+      const get = (name: string) =>
+        name === "来源" && uniformSource ? uniformSource : cells[headers.indexOf(name)] || "";
       for (const [name, max] of [
         ["线索名称", 160],
         ["公司名称", 160],
