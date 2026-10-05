@@ -69,6 +69,8 @@ pub struct Lead {
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LeadFilters {
+    /// Exact source match; omitted includes all sources.
+    pub source: Option<String>,
     pub query: Option<String>,
     pub status: Option<String>,
     pub owner_user_id: Option<Uuid>,
@@ -104,6 +106,7 @@ impl LeadFollowup {
     }
 }
 pub(super) fn validate_filters(f: &LeadFilters) -> Result<(), DomainError> {
+    text(f.source.as_deref().unwrap_or(""), 100, false)?;
     text(f.query.as_deref().unwrap_or(""), 160, false)?;
     if !(0..=100000).contains(&f.offset)
         || f.status

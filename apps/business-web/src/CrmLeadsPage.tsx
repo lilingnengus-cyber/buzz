@@ -10,6 +10,7 @@ import { CrmForm } from "./CrmForm";
 import { type CrmOption } from "./crm";
 import {
   LEAD_STATUSES,
+  LEAD_SOURCES,
   leadLink,
   type Lead,
   type LeadDetail,
@@ -20,6 +21,7 @@ import "./crm-leads.css";
 type LeadList = { items: Lead[]; hasMore: boolean; canManage: boolean };
 export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   const [importing, setImporting] = React.useState(false);
+  const [source, setSource] = React.useState("");
   const [owner, setOwner] = React.useState("");
   const [ownerQuery, setOwnerQuery] = React.useState("");
   const [owners, setOwners] = React.useState<{ id: string; name: string }[]>(
@@ -66,6 +68,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
       const params = new URLSearchParams({ offset: String(offset) });
       if (query.trim()) params.set("query", query.trim());
       if (status) params.set("status", status);
+      if (source) params.set("source", source);
       if (owner) params.set("ownerUserId", owner);
       request<LeadList>(`/api/v1/crm/leads?${params}`)
         .then((r) => {
@@ -85,7 +88,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [query, status, offset, revision, owner]);
+  }, [query, status, offset, revision, owner, source]);
   const close = () => {
     setSelected(null);
     setMode("detail");
@@ -169,6 +172,16 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             }}
           />
         )}
+        <label>
+          线索来源
+          <select value={source} onChange={(event) => {
+            setSource(event.target.value);
+            setOffset(0);
+          }}>
+            <option value="">全部来源</option>
+            {LEAD_SOURCES.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
         <button onClick={() => setRevision((v) => v + 1)}>刷新</button>
       </div>
       <nav className="crm-stage-nav" aria-label="按线索状态筛选">

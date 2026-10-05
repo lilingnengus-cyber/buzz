@@ -19,6 +19,7 @@ pub async fn check(
         .unwrap();
     let input = SaveLead {
         title: "线索筛选验收".into(),
+        source: "官网".into(),
         company_name: "候选公司".into(),
         summary: "需".repeat(4000),
         ..Default::default()
@@ -53,6 +54,34 @@ pub async fn check(
         .save_lead(actor, trace, None, "lead-assigned", &delegated)
         .await
         .unwrap();
+    let filtered = crm
+        .leads(
+            actor,
+            &LeadFilters {
+                source: Some("官网".into()),
+                query: Some("候选公司".into()),
+                status: Some("new".into()),
+                owner_user_id: Some(actor),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered["items"].as_array().unwrap().len(), 1);
+    assert_eq!(filtered["items"][0]["id"], id.to_string());
+    for (user, source) in [(outsider, "官网"), (actor, "转介绍")] {
+        let result = crm
+            .leads(
+                user,
+                &LeadFilters {
+                    source: Some(source.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(result["items"].as_array().unwrap().is_empty());
+    }
     let assigned_id: Uuid = serde_json::from_value(assigned["id"].clone()).unwrap();
     assert!(crm.lead_detail(outsider, assigned_id, 0).await.is_ok());
     assert!(crm.lead_detail(actor, assigned_id, 0).await.is_ok());

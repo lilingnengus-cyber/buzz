@@ -339,7 +339,8 @@
   .crm-filter-toolbar .crm-search { grid-column: 1 / -1; }
   .crm-filter-toolbar > button { margin-top: 0; justify-self: start; }
 }
-.crm-filter-toolbar select {
+.crm-filter-toolbar select,
+.crm-lead-filters select {
   appearance: none;
   height: 2.75rem;
   padding: .65rem 2rem .65rem .85rem;

@@ -3,9 +3,7 @@ import { request } from "./api";
 import { useCrmCommand } from "./useCrmCommand";
 import { useCrmDraft } from "./CrmDrawer";
 import { CrmSearchSelect } from "./CrmSearchSelect";
-import type { Lead } from "./crmLeads";
-
-const LEAD_SOURCES = ["官网", "转介绍", "个人开发", "天眼查导入"];
+import { LEAD_SOURCES, type Lead } from "./crmLeads";
 
 export function CrmLeadForm({
   record,

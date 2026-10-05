@@ -1,3 +1,4 @@
+export const LEAD_SOURCES = ["官网", "转介绍", "个人开发", "天眼查导入"];
 export const LEAD_STATUSES = {
   new: "待筛选",
   contacting: "跟进中",

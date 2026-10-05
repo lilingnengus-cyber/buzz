@@ -6,8 +6,8 @@ impl CrmService {
     pub async fn leads(&self, actor: Uuid, f: &LeadFilters) -> Result<Value, DomainError> {
         let scope = self.scope(actor, "crm:read").await?;
         model::validate_filters(f)?;
-        let mut items=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE (l.owner_user_id=$1 OR l.created_by_user_id=$1) AND ($2::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||l.contact_details),lower($2))>0) AND ($3::text IS NULL OR l.status=$3) AND ($4::date IS NULL OR (l.next_follow_up<$4 AND l.status IN ('new','contacting'))) AND ($5::uuid IS NULL OR l.owner_user_id=$5) ORDER BY l.next_follow_up NULLS LAST,l.created_at DESC,l.id LIMIT 51 OFFSET $6")
-            .bind(actor).bind(&f.query).bind(&f.status).bind(f.due_by).bind(f.owner_user_id).bind(f.offset).fetch_all(self.store.pool()).await?;
+        let mut items=sqlx::query_as::<_,Lead>("SELECT l.*,u.display_name owner_name FROM crm_leads l JOIN enterprise_users u ON u.id=l.owner_user_id WHERE (l.owner_user_id=$1 OR l.created_by_user_id=$1) AND ($2::text IS NULL OR strpos(lower(l.title||' '||l.company_name||' '||l.contact_name||' '||l.contact_details),lower($2))>0) AND ($3::text IS NULL OR l.status=$3) AND ($4::date IS NULL OR (l.next_follow_up<$4 AND l.status IN ('new','contacting'))) AND ($5::uuid IS NULL OR l.owner_user_id=$5) AND ($7::text IS NULL OR l.source=$7) ORDER BY l.next_follow_up NULLS LAST,l.created_at DESC,l.id LIMIT 51 OFFSET $6")
+            .bind(actor).bind(&f.query).bind(&f.status).bind(f.due_by).bind(f.owner_user_id).bind(f.offset).bind(&f.source).fetch_all(self.store.pool()).await?;
         let more = items.len() > 50;
         items.truncate(50);
         Ok(
