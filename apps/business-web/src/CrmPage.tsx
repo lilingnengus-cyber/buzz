@@ -1,5 +1,6 @@
 import React from "react";
-import { request } from "./api";
+import { request, toApiFailure, type ApiFailure } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 import { formatMoney } from "./formatters";
 import { CrmForm } from "./CrmForm";
 import { CrmDrawer } from "./CrmDrawer";
@@ -35,14 +36,14 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   const [creating, setCreating] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [detailError, setDetailError] = React.useState("");
+  const [error, setError] = React.useState<ApiFailure | null>(null);
+  const [detailError, setDetailError] = React.useState<ApiFailure | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [notice, setNotice] = React.useState("");
   React.useEffect(() => {
     let current = true;
     setLoading(true);
-    setError("");
+    setError(null);
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ offset: String(offset) });
       if (query.trim()) params.set("query", query.trim());
@@ -57,7 +58,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
         .catch((e) => {
           if (current) {
             setData({ items: [], hasMore: false, canManage: false });
-            setError(e instanceof Error ? e.message : "商机加载失败");
+            setError(toApiFailure(e, "商机加载失败"));
           }
         })
         .finally(() => {
@@ -84,7 +85,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
   React.useEffect(() => {
     let current = true;
     setDetail(null);
-    setDetailError("");
+    setDetailError(null);
     if (!selected) return;
     setDetailLoading(true);
     request<Detail>(`/api/v1/crm/opportunities/${selected}`)
@@ -93,7 +94,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
       })
       .catch((e) => {
         if (current)
-          setDetailError(e instanceof Error ? e.message : "商机详情加载失败");
+          setDetailError(toApiFailure(e, "商机详情加载失败"));
       })
       .finally(() => {
         if (current) setDetailLoading(false);
@@ -135,7 +136,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           </button>
         )}
       </header>
-      {optionsError && (
+      {optionsError && !error && (
         <p role="alert" className="crm-error">
           商机录入选项读取失败，暂时无法新建或编辑：{optionsError}{" "}
           <button onClick={() => setOptionsRevision((value) => value + 1)}>重试录入选项</button>
@@ -187,12 +188,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
           ),
         )}
       </nav>
-      {error && (
-        <p role="alert" className="crm-error">
-          {error}{" "}
-          <button onClick={() => setRevision((v) => v + 1)}>重新加载</button>
-        </p>
-      )}
+      {error && <PageLoadFailure failure={error} resourceLabel="商机" onRetry={() => setRevision((v) => v + 1)} />}
       <div className="crm-layout">
         <div className="crm-register" aria-busy={loading}>
           <div className="crm-list-caption">
@@ -307,12 +303,7 @@ export function CrmPage({ initialId }: { initialId?: string }) {
             ) : detailLoading ? (
               <p role="status">正在加载详情…</p>
             ) : detailError ? (
-              <p role="alert" className="crm-error">
-                {detailError}
-                <button onClick={() => setRevision((v) => v + 1)}>
-                  重新加载
-                </button>
-              </p>
+              <PageLoadFailure failure={detailError} resourceLabel="商机详情" onRetry={() => setRevision((v) => v + 1)} />
             ) : (
               detail &&
               (editing ? (

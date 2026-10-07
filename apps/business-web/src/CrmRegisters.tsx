@@ -3,7 +3,8 @@ import { LEAD_STATUSES, leadLink, type Lead } from "./crmLeads";
 import { CrmLeadFollowupCreate } from "./CrmLeadFollowupCreate";
 import { CrmFollowupCreate } from "./CrmFollowupCreate";
 import { CrmDirectoryPage } from "./CrmDirectoryPage";
-import { request } from "./api";
+import { request, toApiFailure, type ApiFailure } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 import { CrmDrawer } from "./CrmDrawer";
 import { CrmFollowupDetail } from "./CrmRecordDetails";
 import { CrmAccountPicker } from "./CrmDirectoryFields";
@@ -64,11 +65,11 @@ function CrmHistoryRegister() {
     hasMore: false,
   });
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
+  const [error, setError] = React.useState<ApiFailure | null>(null);
   React.useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError(null);
     const timer = setTimeout(() => {
       const params = new URLSearchParams({
         query: query.trim(),
@@ -86,7 +87,7 @@ function CrmHistoryRegister() {
         .catch((e) => {
           if (active) {
             setData({ items: [], hasMore: false });
-            setError(e instanceof Error ? e.message : `${title}加载失败`);
+            setError(toApiFailure(e, `${title}加载失败`));
           }
         })
         .finally(() => {
@@ -116,7 +117,7 @@ function CrmHistoryRegister() {
         )}
       </header>
       {notice && <p role="status">{notice}</p>}
-      {permissionError && (
+      {permissionError && !error && (
         <p role="alert" className="crm-error">
           跟进录入权限读取失败：{permissionError}{" "}
           <button onClick={() => setPermissionRevision((v) => v + 1)}>
@@ -185,12 +186,7 @@ function CrmHistoryRegister() {
           按关联线索或商机当前的跟进安排筛选；记录内日期保留当时安排，历史记录不代表当前待办。
         </p>
       )}
-      {error && (
-        <p role="alert" className="crm-error">
-          {error}{" "}
-          <button onClick={() => setRevision((v) => v + 1)}>重新加载</button>
-        </p>
-      )}
+      {error && <PageLoadFailure failure={error} resourceLabel="跟进记录" onRetry={() => setRevision((v) => v + 1)} />}
       <div className="crm-register" aria-busy={loading}>
         <div className="crm-list-caption">
           <strong>沟通历史</strong>

@@ -165,6 +165,15 @@ export async function logoutBusinessSession(
     throw new Error(`Business logout failed (${logoutResponse.status})`);
 }
 
+let requestHostSignIn: (() => void) | null = null;
+
+/** Ask the authenticated parent bridge to start an interactive sign-in. */
+export function requestBusinessSignIn(): boolean {
+  if (!requestHostSignIn) return false;
+  requestHostSignIn();
+  return true;
+}
+
 export function connectBusinessDockAuthBridge(): () => void {
   if (window.parent === window) return () => undefined;
   const knownOrigin = parentOrigin();
@@ -172,7 +181,7 @@ export function connectBusinessDockAuthBridge(): () => void {
 
   const post = (
     request: BusinessHostAuthMessage,
-    type: "AUTH_STATUS" | "AUTH_REQUIRED" | "SESSION_EXPIRED",
+    type: "AUTH_STATUS" | "AUTH_REQUIRED" | "SESSION_EXPIRED" | "LOGIN_REQUEST",
     payload: unknown,
     targetOrigin: string,
   ) => {
@@ -245,6 +254,8 @@ export function connectBusinessDockAuthBridge(): () => void {
     }
     const request = parseBusinessHostAuthMessage(event.data);
     if (!request) return;
+    const targetOrigin = event.origin === "null" ? "*" : event.origin;
+    requestHostSignIn = () => post(request, "LOGIN_REQUEST", {}, targetOrigin);
     if (request.type === "HOST_INIT" || request.type === "CHECK_AUTH")
       void check(request, event.origin === "null" ? "*" : event.origin);
     else if (request.type === "LOGOUT")
@@ -268,5 +279,8 @@ export function connectBusinessDockAuthBridge(): () => void {
         });
   };
   window.addEventListener("message", onMessage);
-  return () => window.removeEventListener("message", onMessage);
+  return () => {
+    requestHostSignIn = null;
+    window.removeEventListener("message", onMessage);
+  };
 }

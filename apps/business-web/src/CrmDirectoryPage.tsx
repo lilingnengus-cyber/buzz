@@ -1,7 +1,8 @@
 import "./crm-registers.css";
 import "./crm-opportunities.css";
 import React from "react";
-import { request } from "./api";
+import { request, toApiFailure, type ApiFailure } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 import { CrmDirectoryDetail } from "./CrmRecordDetails";
 import { CrmDrawer, useCrmDraft } from "./CrmDrawer";
 import { CrmAccountPicker } from "./CrmDirectoryFields";
@@ -213,7 +214,7 @@ export function CrmDirectoryPage() {
     canManage: false,
   });
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
+  const [error, setError] = React.useState<ApiFailure | null>(null);
   const [editing, setEditing] = React.useState<{
     item: CrmAccount | CrmContact | null;
     details?: boolean;
@@ -221,7 +222,7 @@ export function CrmDirectoryPage() {
   React.useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError(null);
     const timer = setTimeout(() => {
       request<Directory>(
         `/api/v1/crm/${kind}?query=${encodeURIComponent(query.trim())}&offset=${offset}${kind === "contacts" && filterAccount ? `&accountId=${encodeURIComponent(filterAccount.id)}` : ""}`,
@@ -232,7 +233,7 @@ export function CrmDirectoryPage() {
         .catch((e) => {
           if (active) {
             setData({ items: [], hasMore: false, canManage: false });
-            setError(e instanceof Error ? e.message : "档案加载失败");
+            setError(toApiFailure(e, "档案加载失败"));
           }
         })
         .finally(() => {
@@ -292,11 +293,7 @@ export function CrmDirectoryPage() {
           }}
         />
       )}
-      {error && (
-        <p className="crm-error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <PageLoadFailure failure={error} resourceLabel="联系人" onRetry={() => setRevision((v) => v + 1)} />}
       <div className="crm-register" aria-busy={loading}>
         <div className="crm-list-caption">
           <strong>{title}档案</strong>

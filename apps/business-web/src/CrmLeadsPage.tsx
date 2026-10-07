@@ -1,7 +1,8 @@
 import React from "react";
 import { CrmLeadTable } from "./CrmLeadTable";
 import { CrmLeadImport } from "./CrmLeadImport";
-import { request } from "./api";
+import { request, toApiFailure, type ApiFailure } from "./api";
+import { PageLoadFailure } from "./PageLoadFailure";
 import { CrmSearchSelect } from "./CrmSearchSelect";
 import { CrmDrawer } from "./CrmDrawer";
 import { CrmLeadForm } from "./CrmLeadForm";
@@ -38,7 +39,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   const [offset, setOffset] = React.useState(0);
   const [revision, setRevision] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
+  const [error, setError] = React.useState<ApiFailure | null>(null);
   const [notice, setNotice] = React.useState("");
   const [selected, setSelected] = React.useState<string | null>(
     initialId ?? null,
@@ -63,7 +64,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
   React.useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError(null);
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ offset: String(offset) });
       if (query.trim()) params.set("query", query.trim());
@@ -76,7 +77,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
         })
         .catch((e) => {
           if (active) {
-            setError(e.message);
+            setError(toApiFailure(e));
             setData({ items: [], hasMore: false, canManage: false });
           }
         })
@@ -149,7 +150,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
             }}
           />
         </label>
-        {ownerError ? (
+        {ownerError && !error ? (
           <p role="alert">
             负责人选项加载失败：{ownerError}{" "}
             <button onClick={() => setRevision((v) => v + 1)}>重试负责人</button>
@@ -198,12 +199,7 @@ export function CrmLeadsPage({ initialId }: { initialId?: string }) {
           </button>
         ))}
       </nav>
-      {error && (
-        <p role="alert" className="crm-error">
-          {error}{" "}
-          <button onClick={() => setRevision((v) => v + 1)}>重新加载</button>
-        </p>
-      )}
+      {error && <PageLoadFailure failure={error} resourceLabel="线索" onRetry={() => setRevision((v) => v + 1)} />}
       <div className="crm-register" aria-busy={loading}>
         <div className="crm-list-caption">
           <strong>线索筛选</strong>
@@ -282,7 +278,7 @@ function LeadRecord({
   );
   const [ownerError, setOwnerError] = React.useState("");
   const [data, setData] = React.useState<LeadDetail | null>(null);
-  const [error, setError] = React.useState("");
+  const [error, setError] = React.useState<ApiFailure | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [mode, setMode] = React.useState(defaultEdit ? "initial" : "detail");
   const [offset, setOffset] = React.useState(0);
@@ -290,14 +286,14 @@ function LeadRecord({
   const [optionsError, setOptionsError] = React.useState("");
   React.useEffect(() => {
     let active = true;
-    setError("");
+    setError(null);
     setData(null);
     request<LeadDetail>(`/api/v1/crm/leads/${id}?offset=${offset}`)
       .then((r) => {
         if (active) setData(r);
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active) setError(toApiFailure(e));
       });
     return () => {
       active = false;
@@ -321,10 +317,7 @@ function LeadRecord({
   }, [mode, revision]);
   if (error)
     return (
-      <p role="alert">
-        {error}{" "}
-        <button onClick={() => setRevision((v) => v + 1)}>重试详情</button>
-      </p>
+      <PageLoadFailure failure={error} resourceLabel="线索详情" onRetry={() => setRevision((v) => v + 1)} />
     );
   if (!data) return <p role="status">正在加载详情…</p>;
   const item = data.item;

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { ApiFailure } from "./api";
+import { requestBusinessSignIn } from "./businessDockBridge";
 import "./page-load-failure.css";
 
 const COPY: Record<
@@ -41,13 +43,15 @@ export function PageLoadFailure({
   resourceLabel: string;
   onRetry: () => void;
 }) {
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const copy = COPY[failure.kind];
   const detail =
     failure.kind === "unexpected" ? failure.message : copy.description;
   const handleRecovery = () => {
     if (failure.kind === "session_expired") {
       if (window.parent !== window) {
-        window.location.reload();
+        if (!requestBusinessSignIn())
+          setRecoveryError("登录连接尚未就绪，请重新打开企业工作台后重试。");
       } else {
         const returnTo =
           window.location.pathname + window.location.search + window.location.hash;
@@ -77,6 +81,7 @@ export function PageLoadFailure({
       <div>
         <h2>{copy.title(resourceLabel)}</h2>
         <p>{detail}</p>
+        {recoveryError && <p role="status">{recoveryError}</p>}
         {failure.traceId && <small>追踪号：{failure.traceId}</small>}
         <button type="button" onClick={handleRecovery}>
           {copy.action}

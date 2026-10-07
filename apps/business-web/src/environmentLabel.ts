@@ -1,4 +1,7 @@
-const PRODUCTION_HOSTNAME = "business.shiyueshizi.com";
+const PRODUCTION_HOSTNAMES = new Set([
+  "business.shiyueshizi.com",
+  "business.xiakeyuzhou.com",
+]);
 
 export function resolveBusinessEnvironmentLabel(
   configuredLabel: string | undefined,
@@ -6,5 +9,5 @@ export function resolveBusinessEnvironmentLabel(
 ): string {
   const configured = configuredLabel?.trim();
   if (configured) return configured;
-  return hostname === PRODUCTION_HOSTNAME ? "Production" : "Staging";
+  return PRODUCTION_HOSTNAMES.has(hostname) ? "Production" : "Staging";
 }
