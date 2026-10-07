@@ -4,11 +4,11 @@
 
 ## 维护规则
 
-- 新增、编辑和状态变更均要求 `business_master_data:manage`；读取要求 `business_master_data:read`。法定主体与经营主体按各自范围过滤，客户、供应商和仓库只按对象范围过滤。
+- 新增、编辑、删除和状态变更均要求 `business_master_data:manage`；读取要求 `business_master_data:read`。法定主体与经营主体按各自范围过滤，客户、供应商和仓库只按对象范围过滤。
 - 编码创建后不可修改。客户、供应商和仓库不保存法定主体或经营主体归属；历史单据保留各自原始维度，迁移时会清空旧主数据上的兼容归属字段而不改写业务事实。
 - 新对象自动向创建者授予对应范围；父级必须处于启用状态且已在创建者授权范围内。
 - 所有写入使用幂等键、对象级事务锁、乐观版本、审计事件和 outbox 记录。
-- 主数据不物理删除。停用后禁止用于新业务，历史业务事实仍保留原始关联。
+- 未被下级或业务记录引用的主数据可在确认后物理删除，授权范围随记录删除，审计与 outbox 保留。数据库外键在事务中阻止删除任何被引用的记录（包括历史业务和并发新增引用）；这些记录应使用停用，历史业务事实仍保留原始关联。
 
 ## 停用影响
 
@@ -19,6 +19,7 @@
 - `GET /api/v1/core-master-data`
 - `POST /api/v1/core-master-data`
 - `PUT /api/v1/core-master-data/{resourceType}/{id}`
+- `DELETE /api/v1/core-master-data/{resourceType}/{id}`，请求体为 `{ "expectedVersion": 1 }`
 - `GET /api/v1/core-master-data/{resourceType}/{id}/disable-impact`
 - `POST /api/v1/core-master-data/{resourceType}/{id}/status`
 

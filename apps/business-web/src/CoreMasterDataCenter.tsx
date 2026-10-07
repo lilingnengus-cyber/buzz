@@ -1,3 +1,4 @@
+import { CoreMasterDeleteModal } from "./CoreMasterDeleteModal";
 import { CurrencySelect } from "./CurrencySelect";
 import { formatCurrency } from "./formatters";
 import { MasterDuplicateNotice } from "./MasterDuplicateNotice";
@@ -20,10 +21,7 @@ import {
 } from "./api";
 import { formatMoney } from "./formatters";
 import { PageLoadFailure } from "./PageLoadFailure";
-import {
-  buildOperatingTree,
-  type OperatingUnitNode,
-} from "./OperatingUnitTree";
+import { OperatingTreePanel } from "./CoreOperatingTreePanel";
 import { OperatingUnitPicker } from "./OperatingUnitPicker";
 import "./core-master-data.css";
 
@@ -85,7 +83,7 @@ type ModalState =
       record?: CoreMasterRecord;
       detail?: boolean;
     }
-  | { kind: "status"; record: CoreMasterRecord };
+  | { kind: "status" | "delete"; record: CoreMasterRecord };
 
 const EMPTY_FORM: FormState = {
   code: "",
@@ -141,6 +139,7 @@ export function CoreMasterDataCenter({
       ) as Record<CoreMasterType, number>,
     [data],
   );
+  const CommandModal = modal?.kind === "delete" ? CoreMasterDeleteModal : StatusModal;
   const selected = TYPES.find((item) => item.id === activeType) ?? TYPES[0];
 
   return (
@@ -244,6 +243,7 @@ export function CoreMasterDataCenter({
             })
           }
           onStatus={(record) => setModal({ kind: "status", record })}
+          onDelete={(record) => setModal({ kind: "delete", record })}
         />
       ) : (
         <div className="master-register">
@@ -325,6 +325,13 @@ export function CoreMasterDataCenter({
                     >
                       {item.status === "active" ? "停用" : "启用"}
                     </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => setModal({ kind: "delete", record: item })}
+                    >
+                      删除
+                    </button>
                   </>
                 ) : (
                   <small>只读权限</small>
@@ -357,8 +364,8 @@ export function CoreMasterDataCenter({
         />}
         </MasterFormOptions>
       )}
-      {modal?.kind === "status" && (
-        <StatusModal
+      {(modal?.kind === "status" || modal?.kind === "delete") && (
+        <CommandModal
           record={modal.record}
           onClose={() => setModal(null)}
           onSaved={async () => {
@@ -368,150 +375,6 @@ export function CoreMasterDataCenter({
         />
       )}
     </section>
-  );
-}
-
-function OperatingTreePanel({
-  records,
-  query,
-  canManage,
-  onEdit,
-  onStatus,
-}: {
-  records: CoreMasterRecord[];
-  query: string;
-  canManage: boolean;
-  onEdit: (record: CoreMasterRecord, detail?: boolean) => void;
-  onStatus: (record: CoreMasterRecord) => void;
-}) {
-  const tree = buildOperatingTree(records, query);
-  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
-  const byId = new Map(records.map((record) => [record.id, record]));
-  const toggle = (id: string) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  return (
-    <div className="operating-tree" role="tree" aria-label="经营组织树">
-      <header>
-        <span>经营路径</span>
-        <span>下级</span>
-        <span>状态</span>
-        <span>操作</span>
-      </header>
-      {tree.map((node) => (
-        <OperatingTreeRow
-          key={node.id}
-          node={node}
-          byId={byId}
-          collapsed={collapsed}
-          toggle={toggle}
-          canManage={canManage}
-          onEdit={onEdit}
-          onStatus={onStatus}
-        />
-      ))}
-    </div>
-  );
-}
-
-function OperatingTreeRow({
-  node,
-  byId,
-  collapsed,
-  toggle,
-  canManage,
-  onEdit,
-  onStatus,
-}: {
-  node: OperatingUnitNode;
-  byId: Map<string, CoreMasterRecord>;
-  collapsed: Set<string>;
-  toggle: (id: string) => void;
-  canManage: boolean;
-  onEdit: (record: CoreMasterRecord, detail?: boolean) => void;
-  onStatus: (record: CoreMasterRecord) => void;
-}) {
-  const record = byId.get(node.id);
-  const isCollapsed = collapsed.has(node.id);
-  const path = [...node.ancestorPath.slice(0, -1), node.name].join(" / ");
-  return (
-    <React.Fragment>
-      <div
-        role="treeitem"
-        tabIndex={0}
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest("button")) return;
-          if (record) onEdit(record, true);
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.target !== event.currentTarget ||
-            !["Enter", " "].includes(event.key)
-          )
-            return;
-          event.preventDefault();
-          if (record) onEdit(record, true);
-        }}
-        aria-expanded={node.children.length ? !isCollapsed : undefined}
-        className={`${node.status === "disabled" ? "disabled" : ""} ${node.orphaned ? "orphan" : ""}`}
-        style={{ "--tree-depth": node.depth } as React.CSSProperties}
-      >
-        <div className="operating-tree-name">
-          <button
-            type="button"
-            className="operating-tree-toggle"
-            disabled={node.children.length === 0}
-            aria-label={isCollapsed ? "展开下级" : "收起下级"}
-            onClick={() => toggle(node.id)}
-          >
-            {node.children.length === 0 ? "·" : isCollapsed ? "+" : "−"}
-          </button>
-          <button
-            type="button"
-            className="master-record-link"
-            onClick={() => record && onEdit(record, true)}
-            aria-label={`查看${node.name}详情`}
-          >
-            <code>{node.code}</code>
-            <strong>{node.name}</strong>
-            <small>{path || node.name}</small>
-          </button>
-        </div>
-        <b>{node.descendantCount}</b>
-        <span className={`master-status ${node.status}`}>
-          {node.status === "active" ? "启用" : "停用"}
-        </span>
-        <div className="master-actions">
-          {record && canManage && (
-            <>
-              <button type="button" onClick={() => onEdit(record)}>
-                编辑
-              </button>
-              <button type="button" onClick={() => onStatus(record)}>
-                {record.status === "active" ? "停用" : "启用"}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {!isCollapsed &&
-        node.children.map((child) => (
-          <OperatingTreeRow
-            key={child.id}
-            node={child}
-            byId={byId}
-            collapsed={collapsed}
-            toggle={toggle}
-            canManage={canManage}
-            onEdit={onEdit}
-            onStatus={onStatus}
-          />
-        ))}
-    </React.Fragment>
   );
 }
 

@@ -2,7 +2,8 @@ use crate::{
     api::AppState,
     b2::common::DomainError,
     master_data::{
-        ChangeCoreMasterStatus, CoreMasterType, CreateAgentCustomer, SaveCoreMasterData,
+        ChangeCoreMasterStatus, CoreMasterType, CreateAgentCustomer, DeleteCoreMasterData,
+        SaveCoreMasterData,
     },
     security::RequestContext,
 };
@@ -124,7 +125,10 @@ pub fn service_routes() -> Router<Arc<AppState>> {
 pub fn browser_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/core-master-data", get(list).post(create))
-        .route("/api/v1/core-master-data/{resource_type}/{id}", put(update))
+        .route(
+            "/api/v1/core-master-data/{resource_type}/{id}",
+            put(update).delete(delete),
+        )
         .route(
             "/api/v1/core-master-data/{resource_type}/{id}/disable-impact",
             get(impact),
@@ -249,6 +253,30 @@ async fn update(
         .map(Json)
         .map_err(|error| MasterApiError::domain(error, context.trace_id))
 }
+async fn delete(
+    State(state): State<Arc<AppState>>,
+    Extension(context): Extension<RequestContext>,
+    Path((resource_type, id)): Path<(String, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<DeleteCoreMasterData>,
+) -> Result<Json<impl serde::Serialize>, MasterApiError> {
+    let kind = CoreMasterType::from_str(&resource_type)
+        .map_err(|error| MasterApiError::domain(error, context.trace_id))?;
+    state
+        .master_data
+        .delete(
+            context.actor_user_id,
+            context.trace_id,
+            kind,
+            id,
+            key(&headers, context.trace_id)?,
+            &input,
+        )
+        .await
+        .map(Json)
+        .map_err(|error| MasterApiError::domain(error, context.trace_id))
+}
+
 async fn impact(
     State(state): State<Arc<AppState>>,
     Extension(context): Extension<RequestContext>,

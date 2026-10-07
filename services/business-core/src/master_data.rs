@@ -1,3 +1,5 @@
+#[path = "master_data_delete.rs"]
+mod deletion;
 #[path = "master_duplicates.rs"]
 mod duplicates;
 #[path = "master_data_listing.rs"]
@@ -122,6 +124,14 @@ pub struct CreateAgentCustomer {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeCoreMasterStatus {
     pub status: String,
+    pub expected_version: i64,
+}
+
+/// Version precondition for deleting an unreferenced core master record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteCoreMasterData {
+    /// Version observed by the caller before confirmation.
     pub expected_version: i64,
 }
 

@@ -295,7 +295,7 @@
   display: grid;
   grid-template-columns:
     minmax(125px, 0.75fr) minmax(220px, 1.55fr) minmax(150px, 1fr) 105px
-    125px;
+    155px;
   gap: 16px;
   align-items: center;
 }
@@ -416,6 +416,7 @@
 
 .master-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
