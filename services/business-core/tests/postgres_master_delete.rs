@@ -67,7 +67,7 @@ async fn delete_preserves_references_and_enforces_command_contract() {
                 "INSERT INTO business_legal_entity_scopes(enterprise_user_id,legal_entity_id,granted_by) VALUES($1,$2,$1)",
             ),
             CoreMasterType::BusinessUnit => (
-                "INSERT INTO business_units(id,code,name) VALUES($1,$2,'Delete test')",
+                "INSERT INTO business_units(id,code,name,legal_entity_id) VALUES($1,$2,'Delete test',$3)",
                 "INSERT INTO business_unit_scopes(enterprise_user_id,business_unit_id,granted_by) VALUES($1,$2,$1)",
             ),
             CoreMasterType::Customer => (
@@ -83,12 +83,15 @@ async fn delete_preserves_references_and_enforces_command_contract() {
                 "INSERT INTO business_warehouse_scopes(enterprise_user_id,warehouse_id,granted_by) VALUES($1,$2,$1)",
             ),
         };
-        sqlx::query(insert)
+        let query = sqlx::query(insert)
             .bind(id)
-            .bind(format!("T{}", &id.simple().to_string()[..16]).to_uppercase())
-            .execute(&pool)
-            .await
-            .unwrap();
+            .bind(format!("T{}", &id.simple().to_string()[..16]).to_uppercase());
+        let query = if kind == CoreMasterType::BusinessUnit {
+            query.bind(legal_id)
+        } else {
+            query
+        };
+        query.execute(&pool).await.unwrap();
         sqlx::query(grant)
             .bind(actor)
             .bind(id)
@@ -98,8 +101,8 @@ async fn delete_preserves_references_and_enforces_command_contract() {
     }
     // A disabled subordinate in the independent operating tree remains a reference.
     let child = Uuid::new_v4();
-    sqlx::query("INSERT INTO business_units(id,code,name,parent_business_unit_id,status) VALUES($1,$2,'Child',$3,'disabled')")
-        .bind(child).bind(child.to_string()).bind(unit_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO business_units(id,code,name,parent_business_unit_id,status,legal_entity_id) VALUES($1,$2,'Child',$3,'disabled',$4)")
+        .bind(child).bind(child.to_string()).bind(unit_id).bind(legal_id).execute(&pool).await.unwrap();
     assert!(matches!(
         service
             .delete(
